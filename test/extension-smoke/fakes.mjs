@@ -34,6 +34,7 @@ import {
 } from "../../extension/local-audio-setup.js";
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
+import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
@@ -970,25 +971,23 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/import \{ createBackupSettingsController \} from "\.\/backup-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/theme-store\.js";\s*/gmu, "")
     .replace(/import \{ createExperimentalSettings \} from "\.\/experimental-settings\.js";\s*/u, "")
-    .replace(/import \{ createActivationSettings \} from "\.\/activation-settings\.js";\s*/u, "")
     .replace(/import \{ createMemorySettings \} from "\.\/memory-settings\.js";\s*/u, "")
     .replace(/^import .* from "\.\/dictionary-name-drafts\.js";\s*/gmu, "")
-    .replace(/^import .* from "\.\/dictionary-import-errors\.js";\s*/gmu, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-progress\.js";\s*/u, "")
     .replace(/import \{ createAnkiTemplateSettingsController \} from "\.\/anki-settings\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import\s*\{ createAudioSettingsController \}\s*from\s*"\.\/audio-settings\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-groups\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
-    .replace(/import \{ readDictionaryArchiveIdentity \} from "\.\/dictionary-import-archive\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/dictionary-import\.js";\s*/u, "")
     .replace(/import \{ captureDebugLog \} from "\.\/debug-log\.js";\s*/u, "")
     .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
+    .replace(/^import \{[^}]*\} from "\.\/[\w-]+-settings\.js";\s*/gmu, "")
+    .replace(/^export\s+/gmu, "")
     // The module awaits its entry point; a classic script has no top-level await.
     .replace(/^await start\(\);$/mu, "start();");
+  // The modules that share settings.js's bindings run in its script, ahead of it.
+  const settingsModules = SETTINGS_PAGE_MODULES.slice(0, -1).map(file => readFileSync(resolve(EXTENSION, file), "utf8")
+    .replace(/^import[^;]+;\s*/gmu, "").replace(/^export\s+/gmu, "")).join("\n");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   window.TextEncoder ??= TextEncoder;
@@ -1005,7 +1004,7 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     };
   }
   window.eval(
-    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${errorText}\n${settings}`,
+    `${externalLinks}\n${customButtonSettings}\n${readerOptions}\n${recommended.replace(/^export\s+/gmu, "")}\n${customDictionary}\n${managedSource}\n${groupState}\n${groups}\n${nameDrafts}\n${dictionaryProgress}\n${dictionaryImport}\n${importErrors}\nasync function readDictionaryArchiveIdentity(file) { return window.__readDictionaryArchiveIdentity(file); }\n${setupState}\n${settingsDom}\n${audioSettings}\n${ankiTemplates}\n${anki}\n${ankiSettings}\n${automaticBackups}\n${backupSettings}\n${experimentalSettings}\n${themeStore}\n${activationSettings}\n${memorySettings}\n${localFileAccess}\n${debugLog}\n${errorText}\n${settingsModules}\n${settings}`,
   );
 }
 

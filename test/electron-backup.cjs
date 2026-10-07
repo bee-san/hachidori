@@ -36,7 +36,12 @@ async function run() {
   const extension = path.join(temporary, "extension");
   fs.cpSync(path.join(root, "extension"), extension, { recursive: true });
   if (baseline) {
-    for (const file of ["settings.js", "settings.html", "backup-settings.js", "overlay-mode.js"]) {
+    const { SETTINGS_PAGE_MODULES } = await import(pathToFileURL(path.join(root, "test/settings-modules.mjs")).href);
+    // A revision from before the Settings split has no feature modules, and its
+    // settings.js imports none, so the copy's current ones go unused.
+    const tracked = new Set(execFileSync("git", ["ls-tree", "--name-only", `${baseline}:extension`], { cwd: root, encoding: "utf8" }).split("\n"));
+    const modules = SETTINGS_PAGE_MODULES.filter(file => file === "settings.js" || tracked.has(file));
+    for (const file of [...modules, "settings.html", "backup-settings.js", "overlay-mode.js"]) {
       fs.writeFileSync(path.join(extension, file), execFileSync("git", ["show", `${baseline}:extension/${file}`], { cwd: root }));
     }
   }

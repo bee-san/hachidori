@@ -45,7 +45,7 @@ validated URL in the system browser.
 | `background.js` | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, the words marked as known or ignored, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. |
 | `content.js`, with the classic scripts listed under `content_scripts` | every frame of a web page | Scans the Japanese text near the pointer and renders a popup in that frame, bounded by its viewport. The popup uses a shadow root through `theme-host.js` and the selected renderer (`render/popup.js` for Default), with Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). `content.css` is the only style the page itself receives: the source highlight and the word highlights. |
 | `offscreen.html`, `offscreen.js` | Chrome’s offscreen document | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, and imports each archive in a short-lived second instance, `import-worker.js`, so lookups keep working; `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), and `engine-worker-local.js` the single-thread build on IDBFS when there is no shared memory, all through `engine-worker-runtime.js`; `engine-service.js` runs in the document only where workers are unavailable. `engine-recycler.js` decides when Low memory mode replaces the worker, and `dictionary-index-storage.js` which hash indexes stay in memory ([docs/memory.md](../docs/memory.md)). Pronunciation, Anki and the first-run installer load here on demand. |
-| `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, backup and sharing, and global search. The larger sections have their own `*-settings.js` controller; `design-preview.html` is the live preview inside Design. |
+| `settings.html`, `settings.js` | the options page | Dictionaries, groups, updates, the personal dictionary, Reading, Design, pronunciation, Anki, keybinds, backup and sharing, and global search. `settings.js` navigates the sections, constructs their controllers and starts the page; the larger sections have their own `*-settings.js` controller or module (see **Pages** below); `design-preview.html` is the live preview inside Design. |
 | `startup.html`, `startup.js` | a tab opened once after install | First-run setup: recommended dictionaries, Anki detection, a practice lookup, and the offer to use a Hachidori that another browser on this computer already shares. Overlay mode skips it. |
 | `toolbar.html`, `toolbar.js` | the toolbar button's popup | Turns lookups on and off, shows the sharing state and opens Settings. |
 
@@ -152,7 +152,15 @@ the service worker and both engine runtimes run the same code.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `settings-theme.js` is the classic script in its `<head>` that applies the
   saved theme before the first paint, ahead of the `settings.js` module;
-  `experimental-settings.js` renders the Advanced → Experimental features
+  `library-settings.js` (Library → Dictionaries: the rows, their order,
+  selection and bulk actions, the revision-checked commit queue and removal),
+  `import-settings.js` (Add dictionaries and the recommended installer),
+  `update-settings.js` (Updates), `custom-dictionary-settings.js` (Personal
+  dictionary), `lookup-stats-settings.js` (Reading's lookup counts and
+  definition blur) and `option-settings.js` (the other option controls and
+  their autosave) are the page's own modules: they import from `settings.js`
+  and from each other, and assign a binding only in the module that declares
+  it; `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `memory-settings.js`
   the Advanced → Memory readout and each Library row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
