@@ -319,11 +319,12 @@
       for (const element of textBlocks(node)) track(element);
     }
 
-    // Marks what a mutation changed; true when it removed nodes. Only the
-    // block holding the target as its own text can have changed runs: text
-    // added to a nested block, such as a line appended to a list, leaves the
-    // blocks around it alone. A target already out of the document belongs to
-    // a removed block, which onMutations drops.
+    // Marks what a mutation changed; true when it removed nodes. The block
+    // whose own text holds the target, the node whose text or children
+    // changed, is the one whose runs can have changed: a line appended to a
+    // nested block's list leaves the blocks around it alone, while a nested
+    // block removed from its parent re-reads the parent. A target already out
+    // of the document belongs to a removed block, which onMutations drops.
     function noteMutation(record) {
       const block = record.target.isConnected ? blocks.get(blockOf(record.target)) : undefined;
       if (block) block.dirty = true;
