@@ -848,6 +848,15 @@
   const WORD_STATUS_ANCHORS = ":scope > :is(.gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back, "
     + ".gsm-hoshidicts-mine-button, .gsm-hoshidicts-audio-control)";
 
+  // A button's name for its word. A failed save stays in it until the button
+  // is pressed again.
+  function labelWordStatusButton(button, headword) {
+    const action = button.dataset.wordStatus === "known" ? `Mark ${headword} as known` : `Ignore ${headword}`;
+    const text = button.dataset.error ? `${action}. Could not save: ${button.dataset.error}` : action;
+    button.title = text;
+    button.setAttribute("aria-label", text);
+  }
+
   function createWordStatusActions({ send }) {
     // Each popup level's bound entries, and the buttons in each entry's row.
     const owners = new Map();
@@ -857,18 +866,10 @@
 
     const headwordOf = item => item.result.term.expression;
 
-    // A failed save stays in the button's name until it is pressed again.
-    function label(button, headword) {
-      const action = button.dataset.wordStatus === "known" ? `Mark ${headword} as known` : `Ignore ${headword}`;
-      const text = button.dataset.error ? `${action}. Could not save: ${button.dataset.error}` : action;
-      button.title = text;
-      button.setAttribute("aria-label", text);
-    }
-
     function sync(row) {
       const headword = headwordOf(row.item);
       for (const button of row.buttons) {
-        label(button, headword);
+        labelWordStatusButton(button, headword);
         button.setAttribute("aria-pressed", String(overrides.get(headword) === button.dataset.wordStatus));
       }
     }
@@ -878,7 +879,7 @@
       const button = rows.get(item.actions)?.buttons.find(candidate => candidate.dataset.wordStatus === status);
       if (button) {
         delete button.dataset.error;
-        label(button, headword);
+        labelWordStatusButton(button, headword);
         button.setAttribute("aria-busy", "true");
       }
       try {
@@ -886,7 +887,7 @@
       } catch (error) {
         if (button) {
           button.dataset.error = error.message;
-          label(button, headword);
+          labelWordStatusButton(button, headword);
         }
       } finally {
         button?.removeAttribute("aria-busy");

@@ -94,6 +94,22 @@ function readEntry(entry) {
   });
 }
 
+// A supported manifest's snapshot and statistics rows in the current shape:
+// version 1 has no lookup statistics, and versions 1 and 2 no words marked as
+// known or ignored. Older backups also include the retired external corpus
+// integration; only those fields are dropped before the complete snapshot
+// contract validates the restore.
+function currentSnapshot(manifest) {
+  let { snapshot } = manifest;
+  if (manifest.version === 1) snapshot = { ...snapshot, lookupStats: emptyLookupStats() };
+  if (manifest.version < 3) {
+    snapshot = { ...snapshot, wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides() };
+  }
+  delete snapshot?.options?.corpusSeenEnabled;
+  delete snapshot?.options?.corpusSeenUrl;
+  return { snapshot, lookupStatsRows: manifest.version === 1 ? [] : manifest.lookupStatsRows };
+}
+
 export async function openBackupArchive(blob) {
   const reader = new ZipReader(new BlobReader(blob), { useWebWorkers: false, checkAmbiguity: true });
   try {
@@ -111,17 +127,7 @@ export async function openBackupArchive(blob) {
         || typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
       throw new Error("The selected archive is not a supported Hachidori backup.");
     }
-    let { snapshot } = manifest;
-    if (manifest.version === 1) snapshot = { ...snapshot, lookupStats: emptyLookupStats() };
-    // Version 3 adds the words marked as known or ignored; an older backup has none.
-    if (manifest.version < 3) {
-      snapshot = { ...snapshot, wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides() };
-    }
-    // Older backups include the retired external corpus integration. Drop only
-    // those fields before the complete snapshot contract validates the restore.
-    delete snapshot?.options?.corpusSeenEnabled;
-    delete snapshot?.options?.corpusSeenUrl;
-    const lookupStatsRows = manifest.version === 1 ? [] : manifest.lookupStatsRows;
+    const { snapshot, lookupStatsRows } = currentSnapshot(manifest);
     assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
     assertFileList(manifest.files);
     if (entries.length !== manifest.files.length + 1) throw new Error("The backup contains unlisted or missing files.");
