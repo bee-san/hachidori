@@ -251,6 +251,32 @@ test("entry storage saves independently and low memory temporarily overrides its
 });
 
 
+test("Use less ram by default saves independently and yields to explicit hash storage and Low memory mode", async t => {
+  const { window, el } = fixture(t);
+  await settle();
+  const toggle = el("opt-use-less-ram-by-default");
+  assert.equal(toggle.checked, true);
+  assert.equal(toggle.disabled, false);
+  toggle.click();
+  await tick();
+  assert.equal(window.readOptions().useLessRamByDefault, false);
+  assert.equal(window.readOptions().lowMemoryMode, false);
+  assert.equal(JSON.stringify(window.readPending()), JSON.stringify({ useLessRamByDefault: false }));
+  const hashes = el("opt-dictionary-index-storage");
+  hashes.value = "resident";
+  hashes.dispatchEvent(new window.Event("change"));
+  assert.equal(toggle.disabled, true);
+  hashes.value = "auto";
+  hashes.dispatchEvent(new window.Event("change"));
+  assert.equal(toggle.disabled, false);
+  el("opt-low-memory-mode").click();
+  assert.equal(toggle.disabled, true);
+  assert.equal(toggle.checked, false, "Low memory mode preserves the preference");
+  const local = fixture(t, { threaded: false });
+  await local.window.pollStatus();
+  assert.equal(local.el("use-less-ram-by-default").hidden, true);
+});
+
 test("memory separates the index budget, shared cache and entry-paging label", async t => {
   const memory = { ok: true, heapBytes: 64 * 1048576, hashIndexStorage: "budget", dictionaryIndexStorage: "auto",
     residentHashBudgetBytes: 32 * 1048576, pageCacheBytes: 2 * 1048576,

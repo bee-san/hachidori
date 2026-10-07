@@ -6,6 +6,19 @@ import "../extension/reader-options.js";
 const { DEFAULT_OPTIONS, KEYBIND_TOGGLE_OPTIONS, normaliseOptions, projectStoredOptions, validateOptionsPatch }
   = globalThis.HDReaderOptions;
 
+test("useLessRamByDefault starts on for existing installs and accepts only boolean changes", () => {
+  assert.equal(DEFAULT_OPTIONS.useLessRamByDefault, true);
+  assert.equal(normaliseOptions({}).useLessRamByDefault, true);
+  assert.equal(normaliseOptions({ useLessRamByDefault: false }).useLessRamByDefault, false);
+  for (const garbage of ["false", 0, null]) {
+    assert.equal(normaliseOptions({ useLessRamByDefault: garbage }).useLessRamByDefault, true);
+  }
+  assert.deepEqual(projectStoredOptions({ useLessRamByDefault: "off" }), { useLessRamByDefault: true });
+  assert.deepEqual(validateOptionsPatch({ useLessRamByDefault: false }), { useLessRamByDefault: false });
+  assert.throws(() => validateOptionsPatch({ useLessRamByDefault: "off" }), /invalid reader option/);
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("useLessRamByDefault"));
+});
+
 test("lowMemoryMode is a boolean option that starts off", () => {
   assert.equal(DEFAULT_OPTIONS.lowMemoryMode, false);
   assert.equal(normaliseOptions({}).lowMemoryMode, false, "missing");
