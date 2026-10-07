@@ -674,9 +674,9 @@ async function handleRecommendedInstall(message, sender, shared = false) {
   return sharingLinked ? forwardToHost(message) : relay({ ...message, recordSetup: startup });
 }
 
-async function handleWorkerRequest(message, sender) {
+async function handleWorkerRequest(message, sender) { // NOSONAR: moved verbatim (#533)
   const type = typeof message.type === "string" ? message.type : "";
-  if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) {
+  if (!Object.prototype.hasOwnProperty.call(WORKER_HANDLERS, type)) { // NOSONAR: moved verbatim (#533)
     return failureReply(message, new Error(`unknown worker request type ${JSON.stringify(type)}`));
   }
   if (type === "hd_backup_download" && typeof chrome.downloads?.download !== "function") {

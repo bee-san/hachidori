@@ -36,7 +36,7 @@ const SHARED_STATE_KEYS = [DICTIONARY_STATE_KEY, OPTIONS_KEY, CUSTOM_DICTIONARY_
   WORD_STATUS_OVERRIDES_KEY];
 // What this install is called by the ones it shares with or links to.
 const SHARING_NAME = OVERLAY_MODE ? "GameSentenceMiner overlay" : browserName(globalThis.navigator);
-let sharingHost;
+let sharingHost; // NOSONAR: a live binding the other worker modules read
 
 function dictionaryCount(state) {
   return Array.isArray(state?.dictionaries) ? state.dictionaries.length : 0;
@@ -135,10 +135,10 @@ function getApiHost() {
 // Client side: this install uses another Hachidori. `sharingLinked` is read
 // synchronously by the interception points below after `sharingReady`.
 let sharingClient;
-let sharingLinked = false;
+let sharingLinked = false; // NOSONAR: a live binding the other worker modules read
 let sharingEpoch = 0;
 
-let sharingTransitionTail = Promise.resolve();
+let sharingTransitionTail = Promise.resolve(); // NOSONAR: a live binding the other worker modules read
 const WORKER_FORWARDS = FORWARDED_REQUESTS[WORKER_TARGET];
 const SHARING_OPTIONS_VERSION_KEY = "sharingOptionsVersion";
 const OVERLAY_OPTIONS_STORAGE_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY];

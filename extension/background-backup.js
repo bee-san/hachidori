@@ -31,8 +31,8 @@ import { alarms, sharingReady } from "./background.js";
 
 let backupDownloads;
 let automaticBackupRun = null;
-let automaticBackupNextAt = null;
-let automaticBackupWaitingForState = false;
+let automaticBackupNextAt = null; // NOSONAR: a live binding the other worker modules read
+let automaticBackupWaitingForState = false; // NOSONAR: a live binding the other worker modules read
 
 function getBackupDownloads() {
   backupDownloads ??= createBackupDownloads(chrome, relay);

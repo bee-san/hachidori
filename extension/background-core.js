@@ -129,7 +129,7 @@ async function relay(message, stillCurrent = null) {
       attempt -= 1;
       continue;
     }
-    await sleep(RELAY_BACKOFF_MS * (attempt + 1));
+    await sleep(RELAY_BACKOFF_MS * (attempt + 1)); // NOSONAR: each retry backs off before the next
   }
   throw failure ?? new Error("offscreen document unreachable");
 }

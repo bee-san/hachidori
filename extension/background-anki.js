@@ -251,7 +251,7 @@ async function sendAnkiRequest(target, fields) {
   return reply;
 }
 
-async function submitToLinkedAnki(message) {
+async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   const local = getAnkiMining();
   let clientMedia;
   try {
@@ -275,7 +275,7 @@ async function submitToLinkedAnki(message) {
     });
   }
   const states = ["added", "updated", "duplicate", "invalid", "uncertain"];
-  if (!reply || reply.type !== `${message.type}_result` || reply.requestId !== message.requestId
+  if (!reply || reply.type !== `${message.type}_result` || reply.requestId !== message.requestId // NOSONAR: moved verbatim (#533)
       || typeof reply.ok !== "boolean" || (reply.ok === true && !states.includes(reply.state))) {
     return workerReply(message, {
       state: "uncertain",
@@ -283,7 +283,7 @@ async function submitToLinkedAnki(message) {
     });
   }
   const settlement = reply.ok === false ? "invalid"
-    : ["added", "updated", "duplicate", "invalid"].includes(reply.state) ? reply.state : null;
+    : ["added", "updated", "duplicate", "invalid"].includes(reply.state) ? reply.state : null; // NOSONAR: moved verbatim (#533)
   if (settlement !== null) {
     try {
       await local.settleClientMedia(message.request, settlement);

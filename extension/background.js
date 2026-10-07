@@ -105,7 +105,7 @@ function createTimerAlarms() {
   };
 }
 
-let sharingReady = Promise.resolve();
+let sharingReady = Promise.resolve(); // NOSONAR: a live binding the other worker modules read
 
 let latestAudioOperation = null;
 

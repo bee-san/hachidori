@@ -233,11 +233,11 @@ async function runManagedUpdateCycle({ dictionaryIds = null, install = false, du
 
   for (const candidate of candidates) {
     // A later package can be switched Off while an earlier fetch is in flight.
-    if (dueOnly && !await scheduledCandidateIsDue(candidate)) continue;
+    if (dueOnly && !await scheduledCandidateIsDue(candidate)) continue; // NOSONAR: candidates update one at a time
     const checkedAt = new Date().toISOString();
-    const checked = await checkManagedCandidate(candidate, checkedAt);
+    const checked = await checkManagedCandidate(candidate, checkedAt); // NOSONAR: candidates update one at a time
     outcomes.push(install
-      ? await installCheckedCandidate(candidate, checked, checkedAt)
+      ? await installCheckedCandidate(candidate, checked, checkedAt) // NOSONAR: candidates update one at a time
       : checked.outcome);
   }
 
@@ -250,7 +250,7 @@ async function runManagedUpdateCycle({ dictionaryIds = null, install = false, du
 }
 
 let updateTail = Promise.resolve();
-let updateCycleActive = false;
+let updateCycleActive = false; // NOSONAR: a live binding the other worker modules read
 
 function queueManagedUpdate(options) {
   const execute = async () => {
