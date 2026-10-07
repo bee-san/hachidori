@@ -928,7 +928,7 @@ function selectedDefinitionBlurFrequencyDictionary(title = definitionBlurFrequen
     && isAvailableFrequencyDictionary(dictionary));
 }
 
-function normaliseDictionarySelections() {
+function normaliseKanjiClickOption() {
   let changed = false;
   const kanjiSelection = selectionParts(options.kanjiClickDictionary);
   if (kanjiSelection?.kind === "tabGroup") {
@@ -2565,7 +2565,7 @@ function renderDictionaryState() {
   dictionaryGroupController.render();
   renderRecommendedActions();
   setControlsDisabled(importing);
-  normaliseDictionarySelections();
+  normaliseKanjiClickOption();
   renderOptions();
   if (focus) restoreManagementFocus(focus);
 }

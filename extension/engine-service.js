@@ -1027,7 +1027,7 @@ async function ask(type, fields = {}) {
   return reply;
 }
 
-async function readDictionaryStorage() {
+async function requestDictionaryStorage() {
   const reply = await ask("hd_state_read");
   if (reply.ok !== true) {
     throw new Error(reply.error || "the service worker could not read dictionary state");
@@ -1050,7 +1050,7 @@ async function readDictionaryStorage() {
 }
 
 async function readStoredDictionaries() {
-  const { state } = await readDictionaryStorage();
+  const { state } = await requestDictionaryStorage();
   return state?.dictionaries ?? [];
 }
 
@@ -1175,7 +1175,7 @@ async function commitDictionaryState(baseRevision, dictionaries) {
   } catch (commitError) {
     let state;
     try {
-      ({ state } = await readDictionaryStorage());
+      ({ state } = await requestDictionaryStorage());
     } catch (readError) {
       throw new UnknownDictionaryStateCommitError(commitError, readError);
     }
@@ -1220,7 +1220,7 @@ async function recoverPendingRemovals(snapshot) {
 // published merely because the live engine would otherwise skip it.
 async function commitDictionaryCandidate(buildCandidate) {
   for (let attempt = 0; ; attempt += 1) {
-    const snapshot = await readDictionaryStorage();
+    const snapshot = await requestDictionaryStorage();
     const next = await buildCandidate(snapshot);
     const loadedCount = loadDictionaries(next, { committed: snapshot.state?.dictionaries ?? [] });
     if (snapshot.state !== null && sameDictionaries(next, snapshot.state.dictionaries)) {
@@ -1321,7 +1321,7 @@ function migrateLegacyPackages(legacy, onDisk) {
 }
 
 async function reconcile() {
-  await recoverPendingRemovals(await readDictionaryStorage());
+  await recoverPendingRemovals(await requestDictionaryStorage());
   return commitDictionaryCandidate(async (snapshot) => {
     if (snapshot.state !== null) {
       return refreshReferencedPackages(snapshot.state.dictionaries);
@@ -1624,7 +1624,7 @@ function publishLoadedDictionaries(loadedCount, { warm = true } = {}) {
 }
 
 async function restoreCommittedDictionaries(state = null, { publish = true } = {}) {
-  const committed = state ?? (await readDictionaryStorage()).state;
+  const committed = state ?? (await requestDictionaryStorage()).state;
   if (committed === null) {
     throw new Error("the committed dictionary state is unavailable");
   }
@@ -1986,7 +1986,7 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
 
 async function cleanupCommittedDictionaries() {
   try {
-    const { state } = await readDictionaryStorage();
+    const { state } = await requestDictionaryStorage();
     if (state === null) {
       return;
     }
@@ -3672,7 +3672,7 @@ const HANDLERS = {
         throw error;
       }
       try {
-        const { state } = await readDictionaryStorage();
+        const { state } = await requestDictionaryStorage();
         await restoreCommittedDictionaries(state);
       } catch (restoreError) {
         reloadError = asError(restoreError);
@@ -3695,7 +3695,7 @@ const HANDLERS = {
     if (!usableDictionaryTitle(title) && !legacyRemovalRoot) {
       throw new Error("the remove request carried an unusable dictionary title");
     }
-    const snapshot = await readDictionaryStorage();
+    const snapshot = await requestDictionaryStorage();
     if (snapshot.state === null) {
       throw new Error("the dictionary state is unavailable");
     }
