@@ -78,7 +78,7 @@ import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyNetflixFlag } from "./netflix.js";
 
 const {
-  ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseOptions, projectStoredOptions,
+  ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, hasCapability, normaliseOptions, projectStoredOptions,
   validateOptionsPatch,
 } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
@@ -664,13 +664,6 @@ async function readDictionaryStorage(includeCustomDocument = false, store = chro
 async function readUpdateSettings() {
   const stored = await chrome.storage.local.get(UPDATE_SETTINGS_KEY);
   return normaliseUpdateSettings(stored?.[UPDATE_SETTINGS_KEY]);
-}
-
-function hasCapability(dictionary, kind) {
-  if (kind === "freq") return dictionary.frequencyCount > 0;
-  if (kind === "kanji") return dictionary.kanjiCount > 0;
-  if (dictionary.termCount > 0) return true;
-  return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
 }
 
 // The stored clicked-kanji selection after a dictionary or group change: a

@@ -681,6 +681,18 @@
     }
   }
 
+  // Whether a dictionary has entries of a kind: "freq", "pitch", "kanji", or
+  // terms for any other kind. A package with no entries of any kind counts as
+  // a term dictionary. Settings and the service worker check option
+  // selections with it.
+  function hasCapability(dictionary, kind) {
+    if (kind === "freq") return dictionary.frequencyCount > 0;
+    if (kind === "pitch") return dictionary.pitchCount > 0;
+    if (kind === "kanji") return dictionary.kanjiCount > 0;
+    if (dictionary.termCount > 0) return true;
+    return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
+  }
+
   // A dictionary's clicked-kanji capability: native kanji entries when it has
   // them, otherwise its term entries. Metadata-only packages have neither.
   function kanjiCapability(dictionary, requestedKind = "") {
@@ -851,6 +863,6 @@
     GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch,
     resolvePopupImageSources,
-    resolveKanjiDictionary,
+    hasCapability, resolveKanjiDictionary,
   };
 }());

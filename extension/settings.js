@@ -86,7 +86,7 @@ const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
-  activationLabel, clampOption, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
+  activationLabel, clampOption, hasCapability, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -875,14 +875,6 @@ function visibleDictionaries() {
   return dictionaries.filter((dictionary) =>
     [dictionary.title, dictionary.displayName].some((name) =>
       normaliseDictionarySearch(name).includes(search)));
-}
-
-function hasCapability(dictionary, kind) {
-  if (kind === "freq") return dictionary.frequencyCount > 0;
-  if (kind === "pitch") return dictionary.pitchCount > 0;
-  if (kind === "kanji") return dictionary.kanjiCount > 0;
-  if (dictionary.termCount > 0) return true;
-  return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
 }
 
 function dictionaryLabel(dictionary) {
