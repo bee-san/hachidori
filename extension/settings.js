@@ -405,7 +405,7 @@ function renderSharingLink(value) {
   element("sharing-backup-notice").hidden = !linked;
   element("library-reset-linked").hidden = !linked;
   element("lookup-counts-reset-linked").hidden = !linked;
-  for (const node of document.querySelectorAll("#backup > .backup-action, #backup > .section-note")) node.hidden = linked;
+  element("backup-files").hidden = linked;
   element("automatic-backups").hidden = linked;
   setControlsDisabled(importing);
   renderLookupCountsReset();

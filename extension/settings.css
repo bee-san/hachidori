@@ -213,10 +213,10 @@
   --font-body: 14px;
   --font-title: 15px;
   --font-large: 17px;
-  --font-page-title: 28px;
+  --font-page-title: 24px;
 
   --control-height: 36px;
-  --row-padding: 14px;
+  --row-padding: 12px;
 
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 6%);
   --shadow-overlay: 0 12px 32px rgb(0 0 0 / 22%);
@@ -1423,20 +1423,90 @@ textarea {
   resize: vertical;
   tab-size: 2;
 }
+/*
+ * A group of settings is one card of rows, titled by its legend above it, as
+ * in Chrome's and macOS's settings. The card's edge is an inset outline, so
+ * the first row's top rule falls on it instead of doubling it, whatever that
+ * row is. Rows stack once the card itself is narrow (see @container below).
+ */
 .lookup-group {
+  position: relative;
   min-width: 0;
   margin: 0;
-  padding: 0;
+  padding: 0 16px;
   border: 0;
+  border-radius: var(--radius-surface);
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+  background: var(--surface);
+  container-type: inline-size;
 }
-.lookup-group + .lookup-group {
-  margin-top: 4px;
+.lookup-group:has(> legend) {
+  margin-top: 30px;
 }
-.lookup-group legend {
-  margin-bottom: 12px;
-  padding: 0;
+.lookup-group > legend {
+  position: absolute;
+  bottom: 100%;
+  left: 2px;
+  max-width: 100%;
+  padding: 0 0 8px;
   font-size: var(--font-title);
   font-weight: var(--weight-bold);
+  overflow-wrap: anywhere;
+}
+/* Free text in a card is a row of its own: an introduction, a note or a status. */
+.lookup-group > :is(.field-hint, .hint, .section-note):not(.lookup-enable + *),
+.setting-row,
+.setting-block {
+  margin: 0;
+  padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
+}
+.lookup-group > :is(.field-hint, .hint, .section-note) {
+  max-width: none;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+}
+.setting-row > :is(.setting-text, .field-hint) {
+  flex: 1 1 320px;
+  min-width: 0;
+  margin: 0;
+}
+.setting-text {
+  display: grid;
+  gap: 3px;
+}
+.setting-text h2 {
+  margin: 0;
+  font-size: var(--font-body);
+  font-weight: var(--weight-medium);
+}
+.setting-text p {
+  margin: 0;
+}
+.setting-block {
+  display: grid;
+  gap: 8px;
+}
+/* A switch's description sits under its label, inside the same row. */
+.lookup-enable:has(+ .field-hint:not([hidden])) {
+  padding-bottom: 2px;
+}
+.lookup-enable + .field-hint {
+  margin: 0;
+  padding: 0 56px var(--row-padding) 0;
+}
+/* An option for the action beside it (Start over), so a checkbox, not a switch. */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 .settings-disclosure,
 .format-help {
@@ -1460,6 +1530,20 @@ textarea {
 }
 .settings-disclosure code {
   background: var(--surface);
+}
+/* Inside a card a disclosure is one more row: its summary reads as the row's title. */
+.lookup-group > .settings-disclosure {
+  padding: var(--row-padding) 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+}
+.lookup-group > .settings-disclosure[open] > summary {
+  margin-bottom: 4px;
+}
+.lookup-group > .settings-disclosure code {
+  background: var(--surface-sunken);
 }
 .fields {
   display: grid;
@@ -2094,39 +2178,53 @@ textarea {
   flex-direction: column;
   gap: 6px;
 }
-.lookup-group .field {
+/* List rows (audio sources, keybinds) lay their own fields out. */
+.lookup-group .field:not(li *) {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 50%);
+  grid-template-columns: minmax(0, 1fr) minmax(180px, min(50%, 340px));
   grid-template-rows: auto auto;
   gap: 3px 24px;
   padding: var(--row-padding) 0;
   border-top: 1px solid var(--border);
   align-items: center;
 }
-.lookup-group .field > .field-label {
+.lookup-group .field:not(li *) > .field-label {
   grid-column: 1;
   grid-row: 1;
 }
-.lookup-group .field > .field-hint {
+.lookup-group .field:not(li *) > .field-hint {
   grid-column: 1;
   grid-row: 2;
 }
-.lookup-group .field > :not(.field-label, .field-hint) {
+.lookup-group .field:not(li *) > :not(.field-label, .field-hint) {
   grid-column: 2;
   grid-row: 1 / 3;
   justify-self: end;
 }
-.design-controls .field:has(select) {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 7px;
-}
-.design-controls .lookup-group .field > select {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: stretch;
-}
-.design-controls .field:has(select) > .field-hint {
-  grid-row: 3;
+/*
+ * In a narrow card (a phone, or Design beside its preview) a chooser or text
+ * field goes under its label at full width, with its hint below it; a number
+ * stays beside its label.
+ */
+@container (max-width: 560px) {
+  .lookup-group .field:not(li *) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 16px;
+  }
+  .lookup-group .field:not(li *):has(select, textarea, input:is([type="text"], [type="url"], [type="password"], [type="search"])) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 6px;
+  }
+  .lookup-group .field:not(li *):has(select, textarea, input:is([type="text"], [type="url"], [type="password"], [type="search"]))
+    > :not(.field-label, .field-hint) {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: stretch;
+  }
+  .lookup-group .field:not(li *):has(select, textarea, input:is([type="text"], [type="url"], [type="password"], [type="search"]))
+    > .field-hint {
+    grid-row: 3;
+  }
 }
 .lookup-group input[type="number"] {
   width: 8ch;
@@ -2286,24 +2384,6 @@ textarea {
   .dict-group-add-row {
     align-items: stretch;
     flex-direction: column;
-  }
-  .lookup-group .field {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-  .lookup-group .field > :not(.field-label, .field-hint) {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-  }
-  .lookup-group .field:has(input[type="number"]):not(:has(select)) {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 3px 16px;
-  }
-  .lookup-group .field:has(input[type="number"]):not(:has(select)) > :not(.field-label, .field-hint) {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    justify-self: end;
   }
   .automatic-backup-row {
     align-items: stretch;
