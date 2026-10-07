@@ -235,6 +235,60 @@ Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
 elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
 summaries are on, so those timings include the summary walkers.
 
+## Content-script injection per frame
+
+`content-injection.mjs` measures what the manifest's content scripts cost every
+frame before any hover, and what loading the popup renderer
+(`render/glossary.js`, `render/popup.js`) on demand would cost instead:
+
+```sh
+HACHIDORI_CHROME=/path/to/chrome HACHIDORI_PUPPETEER=/path/to/puppeteer-core.js \
+  node benchmark/content-injection.mjs /tmp/content-injection
+```
+
+It reads Linux `/proc`, so it runs on Linux only. Set
+`HACHIDORI_ALLOW_NO_SANDBOX=1` where sandboxed Chrome cannot start.
+
+Each sample loads one page in a fresh profile and browser: a plain page, or 20
+same-site iframes (one renderer process) or 20 cross-site iframes (a process
+each, through `--host-resolver-rules`), each frame holding one line of text.
+Each round rotates three copies of the extension: `none` without content
+scripts (the control), `production` with the manifest's list, and
+`no-renderer` without the two renderer files and with a stub for the two
+`HDPopup` members `content.js` reads before a popup exists. That last copy only
+estimates what deferring the renderer saves before the first hover; it cannot
+show a popup. All three wait for their frames through Puppeteer, whose utility
+script then sits in every frame's main world, so the deltas leave it out.
+`summary.json` reports distributions (n, quartiles, p95 and range) of:
+
+- the synchronous injection task of each frame, per file, from timing marks run
+  between the files, pooled over every frame of every round. A cold frame is
+  the first in its renderer process; later same-site frames reuse V8's
+  compilation cache and are warm;
+- per-frame deltas across rounds from the same round's `none` page
+  (`contentScripts`) and `no-renderer` page (`renderer`): main-thread CPU of
+  the page renderers and CPU of every Chrome process (Linux `schedstat`) from
+  navigation until `HACHIDORI_INJECTION_SETTLE_MS` (3000) after load, which
+  includes the asynchronous start-up after injection; V8 heap after two forced
+  collections; page-renderer USS and PSS; and the load event.
+  `perAdditionalFrame` is a warm same-site frame: the same-site delta less the
+  plain page's, per iframe;
+- in `no-renderer`'s cross-site page, each iframe loading the renderer on
+  demand, timed in the frame until its globals exist: through the worker's
+  `chrome.scripting.executeScript` (cold, then again warm) or through `import()`
+  (the copy lists the two files as web-accessible).
+
+`HACHIDORI_INJECTION_SAMPLES` (5) and `HACHIDORI_INJECTION_FRAMES` (20) size the
+run and `HACHIDORI_BENCH_REPO` measures another checkout. Every row is kept in
+`raw.jsonl`, with `definition.json` beside it. Puppeteer's network monitoring is
+off: with it, Chrome records each content-script request's initiator stack and
+collects the requesting script's source positions, about 5 ms more per cold
+frame than with no DevTools client at all. The profile is a fresh install with no
+dictionaries, so the start-up storage read is the smallest it can be.
+Content-script clocks are coarsened to 0.1 ms, the timing marks add up to 15
+tiny scripts, and USS after collection can still hold pages V8 has not returned.
+First-hover latency is the hover-popup harness's `cold` scan.
+
 ## Word segmentation (#520)
 
 `segmentation.mjs` measures `hdw_segment`, the word-highlighting feature's
