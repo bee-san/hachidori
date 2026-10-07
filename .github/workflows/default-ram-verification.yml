@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  screenshots:
+  benchmark:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -29,58 +29,19 @@ jobs:
           sudo apt-get install -y g++-14 fonts-noto-cjk
           npm --prefix test/tooling run install:chrome
           sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
-      - name: Capture the detected OPFS memory controls and verify both toggle states
+      - name: Build the pinned importer and prepare the 58-package library
         run: |
+          cmake -S third_party/hoshidicts -B test/tmp/default-ram-native -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DHOSHIDICTS_CLI=ON
+          cmake --build test/tmp/default-ram-native --target hoshidicts-cli --parallel 2
+          node benchmark/index-residency-fixture.mjs test/tmp/default-ram-fixture test/tmp/default-ram-native/hoshidicts-cli reporter
+      - name: Compare main with the 65 MiB default in normal mode
+        run: |
+          export HACHIDORI_PUPPETEER="$(node -p "require.resolve('puppeteer-core', { paths: ['./test/tooling'] })")"
           export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict';
-          import { mkdirSync, writeFileSync } from 'node:fs';
-          import { createRequire } from 'node:module';
-          import { resolve } from 'node:path';
-          const require = createRequire(resolve('test/tooling/package.json'));
-          const puppeteer = require('puppeteer-core');
-          const extension = resolve('extension');
-          const output = resolve('test/tmp/default-ram-ui');
-          mkdirSync(output, { recursive: true });
-          const browser = await puppeteer.launch({ executablePath: process.env.HACHIDORI_CHROME,
-            headless: true, enableExtensions: true, defaultViewport: { width: 1280, height: 1100 },
-            args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'] });
-          try {
-            const target = await browser.waitForTarget(t => t.type() === 'service_worker' && t.url().startsWith('chrome-extension://'));
-            const id = new URL(target.url()).host;
-            const page = await browser.newPage();
-            for (const open of await browser.pages()) if (open !== page) await open.close();
-            await page.goto(`chrome-extension://${id}/settings.html#advanced`);
-            const wait = value => page.waitForFunction(async value => {
-              const status = await chrome.runtime.sendMessage({ target: 'hoshidicts-offscreen', type: 'hd_status' });
-              return status?.ok && status.ready && !status.loading && status.lowMemory === false
-                && status.useLessRamByDefault === value ? status : false;
-            }, { timeout: 30000, polling: 250 }, value).then(h => h.jsonValue());
-            const initial = await wait(true);
-            assert.equal(initial.residentHashBudgetBytes, 65 * 1024 * 1024);
-            await page.waitForFunction(() => !document.getElementById('use-less-ram-by-default').hidden
-              && document.getElementById('opt-use-less-ram-by-default').checked
-              && !document.getElementById('opt-use-less-ram-by-default').disabled
-              && document.getElementById('memory-indexes').textContent.includes('65.0'));
-            await page.bringToFront();
-            for (const palette of ['light', 'dark']) {
-              await page.evaluate(palette => { document.documentElement.dataset.hoshidictsTheme = palette; }, palette);
-              await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
-              await (await page.$('#memory-settings')).screenshot({ path: resolve(output, `memory-${palette}.png`) });
-            }
-            await page.evaluate(() => document.getElementById('opt-use-less-ram-by-default').click());
-            const off = await wait(false);
-            assert.equal(off.hashIndexStorage, 'resident');
-            assert.equal(off.residentHashBudgetBytes, null);
-            await page.evaluate(() => document.getElementById('opt-use-less-ram-by-default').click());
-            const on = await wait(true);
-            assert.equal(on.residentHashBudgetBytes, 65 * 1024 * 1024);
-            writeFileSync(resolve(output, 'states.json'), JSON.stringify({ initial, off, on }, null, 2));
-          } finally { await browser.close(); }
-          JS
+          node benchmark/index-residency.mjs --fixture test/tmp/default-ram-fixture --output test/tmp/default-ram-results --before-ref d5bac6318c0cc03c2d07214719be639c3b50f43e --samples 3 --variants baseline,65 --low-memory false
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: default-ram-ui
-          path: test/tmp/default-ram-ui/
+          name: default-ram-verification
+          path: test/tmp/default-ram-results/
           retention-days: 7
