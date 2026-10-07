@@ -29,7 +29,7 @@
     "hd_anki_word_status",
     "hd_anki_word_status_changed",
     // The Hachidori Relay add-on's API requests, answered by api-host.js, which
-    // passes the hd_api_dictionary_* file requests on to the engine.
+    // passes the hd_api_dictionary_* dictionary downloads on to the engine.
     "hd_api_anki_card_formats",
     "hd_api_anki_fields",
     "hd_api_dictionaries",
@@ -115,8 +115,8 @@
     "hd_status",
     "hd_status_result",
     "hd_styles",
-    // Stands in for the missing type of a malformed message, in its failure
-    // reply (`hd_unknown_result`) and its debug log entry.
+    // Stands in for a message's missing type in its failure reply
+    // (`hd_unknown_result`) and its debug log entry.
     "hd_unknown",
     "hd_updates_check",
     "hd_updates_install",
