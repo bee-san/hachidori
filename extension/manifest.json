@@ -113,6 +113,7 @@
         "theme-host.js",
         "word-status-overrides.js",
         "word-highlights.js",
+        "content-dictionaries.js",
         "content-scan.js",
         "content.js"
       ],
