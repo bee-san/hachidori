@@ -11,8 +11,9 @@ import {
 import {
   adoptDictionaryState, backingUp, committing, element, importing, installingRecommended, removing,
   renderChangedDictionaryState, send, setControlsDisabled, setSectionStatus, stringValue,
-  syncNavigationStatus, updating, WORKER_TARGET,
+  syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
+import { updating } from "./update-settings.js";
 
 let customDocument = null;
 let customBaseDocument = null;
