@@ -686,7 +686,7 @@ function exists(path) {
   try {
     engine.FS.stat(path);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -735,7 +735,7 @@ function removeTree(path) {
   let stat;
   try {
     stat = FS.stat(path);
-  } catch (error) {
+  } catch {
     return;
   }
   if (!isDirectory(stat)) {
@@ -768,7 +768,7 @@ function removeUnreferencedDictionaryRoot(name, referencedRoots) {
   let stat;
   try {
     stat = engine.FS.stat(path);
-  } catch (error) {
+  } catch {
     return false;
   }
   if (!isDirectory(stat)) {
@@ -871,16 +871,6 @@ function recommendedSourceForImport(message) {
     throw new Error(`${source.name} downloaded from an unexpected final URL`);
   }
   return source;
-}
-
-function capabilities(value) {
-  return [
-    ["term", value.termCount],
-    ["freq", value.frequencyCount],
-    ["pitch", value.pitchCount],
-    ["kanji", value.kanjiCount],
-    ["media", value.mediaCount],
-  ].filter(([, count]) => Number(count) > 0).map(([kind]) => kind);
 }
 
 function withRecommendedSource(dictionary, source) {
@@ -998,7 +988,7 @@ async function listLegacyImported(legacy) {
     let stat;
     try {
       stat = FS.stat(path);
-    } catch (error) {
+    } catch {
       continue;
     }
     if (isDirectory(stat) && hasDictionaryMarker(path)) {
@@ -2305,7 +2295,7 @@ export async function stageImportArchive(response, onProgress = null) {
 function removeStagedFile(module, path) {
   try {
     nativeImportCall(module, () => module.FS.unlink(path));
-  } catch (error) {
+  } catch {
     // Never written, or already gone.
   }
 }
@@ -2386,7 +2376,7 @@ export async function importDictionaryArchive(
     if (directory !== null) {
       try {
         nativeImportCall(module, () => FS.rmdir(directory));
-      } catch (error) {
+      } catch {
         // Never created, or already gone.
       }
     }
