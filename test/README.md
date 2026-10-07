@@ -200,14 +200,14 @@ see [benchmark/README.md](../benchmark/README.md).
 | `frequency-presentation` | Yomitan-style frequency values and tags, abbreviations, averages and live controls. |
 | `furigana` | Headword furigana split by KANJIDIC readings. |
 | `google-docs` | The Google Docs flag and its main-world script. |
-| `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. |
+| `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. The Issue template workflow also runs it on relevant pull requests and pushes to `main`; that workflow's issue-event job enforces the template on opened, edited and reopened issues. |
 | `kanji-click-settings`, `kanji-group-mining`, `reader-options` | The clicked-kanji chooser and groups, `kanjiEntryResult` against the engine's `LookupResult`, and reader option normalisation. |
 | `keybind-settings` | Yomitan's default keybinds, capture, Alt+wheel rows and Chrome's browser shortcuts list. |
 | `linked-import` | Dictionary uploads from a linked browser: chunk order and limits, replace or install beside, aborts and timeouts. |
 | `local-audio-setup`, `local-file-access`, `startup-practice` | Local audio detection, the file-access prompt and the startup practice step's recovery. |
 | `lookup-stats` | Canonical lookup-count keys and their row updates. |
 | `message-types` | `extension/message-types.js` equals the `hd_*` names written in the code of every extension JavaScript file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as does a listed name nothing uses. It loads the list as a classic script and as an ES module, and checks that blanking comments leaves strings, templates and regular expressions alone. |
-| `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks and player replay, hover pause, the recorder's clock fit, WAV and GIF encoding, and the preview helper. Real playback, capture grants and protected video are not covered by any automated suite. |
+| `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks and player replay, hover pause, the recorder's clock fit, WAV and GIF encoding, and the preview helper. Real playback, capture grants and protected video are not covered by any automated suite, nor are preview availability and image quality on a signed-in title (see [capture research](../docs/netflix-screenshot-research.md)). |
 | `note-editor` | The personal-dictionary pencil on term, kanji and missing-word views. |
 | `pitch-accent-colors`, `pitch-badges` | Pitch colours at 3:1 in every palette; Yomitan's pronunciation markup in the popup. |
 | `popup-scale`, `popup-theme`, `progressive-results` | Popup scale, AUTO appearance and progressively appended results. |
@@ -247,7 +247,9 @@ pinned/latest package commands and the schema-only boundary.
   controlled worker and fallback endpoints (through Node 22.15's
   `module.registerHooks`): the 128-request admission bound, responsive status,
   mutation exclusion, exactly-once replies after failures, and reads during an
-  import's installing phase.
+  import's installing phase. It boots no fake native engine and leaves the
+  production bridge source alone; actual WASM/IDBFS behaviour stays covered by
+  `extension-smoke.mjs` and `chrome-fallback.mjs`.
 - **`submodule-identity.mjs`** checks that `.gitmodules`' tracking branch matches
   the pinned engine gitlink, so `git submodule update --remote` cannot rewind it.
 - **`baseline.sh`** builds the engine natively and cross-checks the fixture (see
@@ -379,7 +381,9 @@ one that runs twice. A step that throws is recorded as
 offscreen document's console. A run that leaves steps out (a name pattern, or one
 file on its own) counts only the checks that ran. When adding an assertion, add
 its name to `PLANNED` before its implementation, so a code path that never runs
-cannot look like a smaller successful suite.
+cannot look like a smaller successful suite. Do not nest a check under an `if`
+that could quietly drop it either: a hover that produced no popup fails the four
+assertions about that popup's contents.
 
 #### No sleeps
 
@@ -419,8 +423,9 @@ suite intercepts AnkiConnect on both the service-worker and offscreen targets, o
 refuses it, so a real Anki on port 8765 cannot decide an outcome; the word
 highlight checks use an AnkiConnect fake on the suite's own page server. The
 browser uses Chromium's `--disable-audio-output` fake output device, which runs
-native fetching, decoding and `ended` without audio hardware; audible output and
-installed speech voices are not proved. The native file-access switch is flipped
+native fetching, decoding and `ended` without audio hardware; without it, a
+headless macOS host accepts playback but stalls its audio clock at 64 ms. Audible
+output and installed speech voices are not proved. The native file-access switch is flipped
 in the isolated profile only, with Developer mode on (Chrome 152 otherwise
 disables a command-line extension when it reloads).
 
