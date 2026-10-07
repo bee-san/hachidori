@@ -11,9 +11,9 @@ import {
   normaliseOptions, OPTIONS_KEY, sleep, relay, startupSender, workerReply, failureReply,
 } from "./background-core.js";
 import {
-  sharingLinked, sharingReady, sharingTransitionTail, linkedAnkiConfigKey, hostLinkedAnkiRequest, getSharingClient,
-  forwardToHost, getAnkiDuplicateIndex, getAnkiMining,
-} from "./background.js";
+  sharingLinked, sharingTransitionTail, linkedAnkiConfigKey, hostLinkedAnkiRequest, getSharingClient, forwardToHost,
+} from "./background-sharing.js";
+import { sharingReady, getAnkiDuplicateIndex, getAnkiMining } from "./background.js";
 
 let activeAnkiOperations = 0;
 const ankiIdleWaiters = new Set();

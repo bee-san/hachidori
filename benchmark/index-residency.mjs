@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { cpSync, createReadStream, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -126,7 +126,9 @@ async function sample(variant, repetition) {
   writeFileSync(manifestFile, JSON.stringify({ ...manifest, key: publicKey }));
   // An owned benchmark copy must not claim a relay on the developer's machine.
   // Apply the same disabled host configuration to both revisions before startup.
-  const backgroundFile = resolve(extension, "background.js");
+  // The worker restores sharing in background-sharing.js, or in background.js
+  // in revisions from before that module.
+  const backgroundFile = ["background-sharing.js", "background.js"].map(file => resolve(extension, file)).find(existsSync);
   const background = readFileSync(backgroundFile, "utf8");
   const hostConfig = "  const host = stored[SHARING_KEY]?.host;";
   assert.equal(background.split(hostConfig).length, 2);
