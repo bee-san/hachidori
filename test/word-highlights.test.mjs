@@ -307,6 +307,120 @@ test("only text near the viewport keeps ranges, inside one long block and in blo
   assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫"] });
 });
 
+test("an override wins over a word's Anki status and re-marks the words shown without asking again", async t => {
+  const page = fixture(t, `<p id="line">猫がいる。漢字を読む。今日は学生</p>`, {
+    lexicon: { ...VERBS,
+      今日は: { candidates: [{ expression: "今日は", reading: "こんにちは" }], alternative: [
+        { start: 0, length: 2, functionWord: false, candidates: [{ expression: "今日", reading: "きょう" }] },
+        { start: 2, length: 1, functionWord: true, candidates: [{ expression: "は", reading: "" }] }] },
+      学生: {} },
+    statuses: { 漢字: "learning", 読む: "known" },
+  });
+  page.start();
+  page.show(page.document.getElementById("line"));
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫", "いる", "今日は", "学生"], "hd-word-learning": ["漢字"] });
+  const requests = page.sent.length;
+  // Mark as known on 猫 and 今日, Ignore on いる and 漢字: known and ignored
+  // words are left unmarked by default, and 今日は is now marked as 今日.
+  page.highlighter.setOverrides(new Map([["猫", "known"], ["今日", "known"], ["いる", "ignored"], ["漢字", "ignored"]]));
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["学生"] });
+  assert.equal(page.window.CSS.highlights.has("hd-word-ignored"), false, "Ignored is off by default");
+  page.highlighter.update({ ...page.options, wordHighlightKnown: true, wordHighlightIgnored: true });
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["学生"], "hd-word-known": ["猫", "読む", "今日"],
+    "hd-word-ignored": ["いる", "漢字"] });
+  assert.equal(page.window.CSS.highlights.get("hd-word-ignored").priority, -1);
+  // Clearing them brings back each word's own status.
+  page.highlighter.setOverrides(new Map());
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["猫", "いる", "今日は", "学生"], "hd-word-learning": ["漢字"],
+    "hd-word-known": ["読む"] });
+  assert.equal(page.sent.length, requests, "overrides need no segmentation or status request");
+});
+
+// The popup's entry rows as the Default renderer builds them: Anki and
+// pronunciation, then the lookup's own pencil.
+function actionRows(t, count = 2) {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", { runScripts: "outside-only" });
+  t.after(() => dom.window.close());
+  dom.window.eval(SOURCE);
+  const { document } = dom.window;
+  const items = Array.from({ length: count }, (_, index) => {
+    const actions = document.createElement("div");
+    actions.className = "gsm-hoshidicts-entry-actions";
+    actions.innerHTML = `<button class="gsm-hoshidicts-mine-button"></button><div class="gsm-hoshidicts-audio-control"></div>`
+      + "<button class=\"gsm-hoshidicts-note-button\"></button>";
+    document.body.append(actions);
+    return { actions, feedback: null, result: { term: { expression: ["猫", "犬"][index], reading: "" } } };
+  });
+  const sent = [];
+  let reply = async () => ({ ok: true });
+  const controls = dom.window.HDWordHighlights.createWordStatusActions({
+    send: async (type, fields) => { sent.push({ type, fields: { ...fields } }); return reply(); },
+  });
+  const row = item => [...item.actions.children].map(child => child.dataset.wordStatus ?? child.className);
+  const pressed = item => Object.fromEntries([...item.actions.querySelectorAll(".gsm-hoshidicts-word-status-button")]
+    .map(button => [button.dataset.wordStatus, button.getAttribute("aria-pressed")]));
+  return { document, items, sent, controls, row, pressed, failNext(error) { reply = async () => { reply = async () => ({ ok: true }); throw error; }; } };
+}
+
+test("Mark as known and Ignore join each entry's row while highlighting is on and send one explicit change", async t => {
+  const page = actionRows(t);
+  const owner = {};
+  const context = { owner, isCurrent: () => true };
+  page.controls.update({ wordHighlightEnabled: false });
+  page.controls.bind(page.items, context);
+  assert.deepEqual(page.row(page.items[0]), ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-control",
+    "gsm-hoshidicts-note-button"], "nothing is added while word highlighting is off");
+  assert.equal(page.controls.press(owner, 0, "known"), false, "and the keybind passes its key on");
+  page.controls.update({ wordHighlightEnabled: true });
+  assert.deepEqual(page.row(page.items[0]), ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-control", "known", "ignored",
+    "gsm-hoshidicts-note-button"]);
+  const known = page.items[0].actions.querySelector("[data-word-status=known]");
+  assert.equal(known.getAttribute("aria-label"), "Mark 猫 as known");
+  assert.equal(page.items[1].actions.querySelector("[data-word-status=ignored]").getAttribute("aria-label"), "Ignore 犬");
+  assert.deepEqual(page.pressed(page.items[0]), { known: "false", ignored: "false" });
+  known.click();
+  await settle();
+  assert.deepEqual(page.sent.at(-1), { type: "hd_word_status_override", fields: { headword: "猫", status: "known" } });
+  // The stored record, not the reply, presses the button: in every tab at once.
+  assert.deepEqual(page.pressed(page.items[0]), { known: "false", ignored: "false" });
+  page.controls.setOverrides(new Map([["猫", "known"]]));
+  assert.deepEqual(page.pressed(page.items[0]), { known: "true", ignored: "false" });
+  assert.deepEqual(page.pressed(page.items[1]), { known: "false", ignored: "false" });
+  // Pressed again it clears; Ignore on a known word moves it.
+  known.click();
+  await settle();
+  assert.deepEqual(page.sent.at(-1).fields, { headword: "猫", status: null });
+  assert.equal(page.controls.press(owner, 0, "ignored"), true, "the keybind acts on the current entry");
+  await settle();
+  assert.deepEqual(page.sent.at(-1).fields, { headword: "猫", status: "ignored" });
+  // A failed write says why on the button and keeps the stored state.
+  page.failNext(new Error("The linked Hachidori is not reachable."));
+  page.items[1].actions.querySelector("[data-word-status=ignored]").click();
+  await settle();
+  const failed = page.items[1].actions.querySelector("[data-word-status=ignored]");
+  assert.equal(failed.dataset.state, "error");
+  assert.match(failed.title, /not reachable/u);
+  assert.equal(failed.getAttribute("aria-pressed"), "false");
+  // Retiring the popup's results, or turning highlighting off, takes them away.
+  page.controls.retire(owner);
+  assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 0);
+  assert.equal(page.controls.press(owner, 0, "known"), false);
+  page.controls.bind(page.items, context);
+  assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 4);
+  page.controls.update({ wordHighlightEnabled: false });
+  assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 0);
+  // A renderer that does not style them gets the keybinds alone.
+  page.controls.update({ wordHighlightEnabled: true });
+  page.controls.bind(page.items, { ...context, buttons: false });
+  assert.equal(page.document.querySelectorAll(".gsm-hoshidicts-word-status-button").length, 0);
+  assert.equal(page.controls.press(owner, 1, "known"), true);
+  await settle();
+  assert.deepEqual(page.sent.at(-1).fields, { headword: "犬", status: "known" });
+});
+
 test("an unavailable index marks nothing until the worker signals, and stale or stopped replies are dropped", async t => {
   const page = fixture(t, `<p id="line">猫がいる</p>`, { lexicon: VERBS, available: false });
   page.start();
@@ -346,7 +460,9 @@ test("an unavailable index marks nothing until the worker signals, and stale or 
 
 test("status colours follow the palette, made legible against the page, and stand aside in forced colours", async t => {
   const page = fixture(t, `<p id="line">猫がいる</p>`, { lexicon: VERBS,
-    palette: { "--hoshidicts-palette-error": "#ffd0d0", "--hoshidicts-palette-warning": "#ffe6b0" } });
+    palette: { "--hoshidicts-palette-error": "#ffd0d0", "--hoshidicts-palette-warning": "#ffe6b0",
+      // Ignored is the palette's faint text, here nearly white.
+      "--hoshidicts-palette-base-content": "#f4f4f4", "--hoshidicts-palette-base-100": "#ffffff" } });
   const luminance = rgb => rgb.map(value => value / 255)
     .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
     .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
@@ -362,7 +478,7 @@ test("status colours follow the palette, made legible against the page, and stan
   page.show(page.document.getElementById("line"));
   await settle();
   const underline = rules();
-  for (const status of ["unknown", "learning", "known"]) {
+  for (const status of ["unknown", "learning", "known", "ignored"]) {
     assert.ok(contrastWithWhite(channels(underline[`::highlight(hd-word-${status})`].textDecorationColor)) >= 3, status);
   }
   page.highlighter.update({ ...page.options, wordHighlightStyle: "color" });

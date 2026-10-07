@@ -5,7 +5,8 @@
 // changed. The local engine segments the text (`hd_segment`) and the worker's
 // cached Anki index answers each word's status (`hd_anki_word_status`); the
 // worker's change signal re-reads the statuses of the words already marked
-// without segmenting the page again.
+// without segmenting the page again. A word marked as known or ignored from
+// the popup (createWordStatusActions below) takes that status instead.
 //
 // content.js supplies how page text is read, the way a hover reads it: the
 // blocks under a node whose own text includes Japanese, the block whose own
@@ -15,14 +16,18 @@
 (function () {
   "use strict";
 
-  const STATUSES = ["unknown", "learning", "known"];
+  const STATUSES = ["unknown", "learning", "known", "ignored"];
   const HIGHLIGHT_NAMES = Object.fromEntries(STATUSES.map(status => [status, `hd-word-${status}`]));
-  const OPTION_KEYS = { unknown: "wordHighlightUnknown", learning: "wordHighlightLearning", known: "wordHighlightKnown" };
-  const CARD_STATUSES = new Set(["learning", "known"]);
+  const OPTION_KEYS = { unknown: "wordHighlightUnknown", learning: "wordHighlightLearning", known: "wordHighlightKnown",
+    ignored: "wordHighlightIgnored" };
   // Each status takes a colour of the popup palette chosen in Design, or of
-  // the default palette for a theme renderer that brings none.
+  // the default palette for a theme renderer that brings none. Ignored is the
+  // popup's own faint text, reader.css's --hoshidicts-text-faint: its content
+  // colour 56% into its base.
   const PALETTE_TOKENS = { unknown: "error", learning: "warning", known: "success" };
-  const DEFAULT_COLORS = { unknown: "#c67d80", learning: "#c29a65", known: "#7fa58d" };
+  const FAINT_TOKENS = ["base-content", "base-100"];
+  const FAINT_SHARE = 0.56;
+  const DEFAULT_COLORS = { unknown: "#c67d80", learning: "#c29a65", known: "#7fa58d", ignored: "#939199" };
   // WCAG's contrast for a line against its background, and for coloured text.
   const LINE_CONTRAST = 3;
   const TEXT_CONTRAST = 4.5;
@@ -42,7 +47,8 @@
   const MAX_RETRY_MS = 60_000;
   const RECHECK_MS = 100;
 
-  const isCardStatus = status => CARD_STATUSES.has(status);
+  // A word with a card, or one marked as known or ignored: anything but unknown.
+  const isDecided = status => status !== "unknown";
 
   // sRGB relative luminance and contrast ratio, as WCAG defines them.
   function luminance(rgb) {
@@ -177,6 +183,10 @@
     // rows for the first Anki Template, so nothing is segmented or marked.
     let available = null;
     let statusing = false;
+    // Mark as known and Ignore, by headword (word-status-overrides.js). They
+    // win over the Anki status and need no request: content.js hands over the
+    // stored record whenever it changes.
+    let overrides = new Map();
 
     function schedule() {
       if (scheduled || !running) return;
@@ -382,22 +392,25 @@
       return headwords;
     }
 
+    // A headword's status: its override, else its card's.
+    const statusOf = headword => overrides.get(headword) ?? statuses.get(headword);
+
     // The popup's first result decides, so a mark agrees with what a hover
-    // shows; when it has no card, a candidate the surface spells out may.
+    // shows; when it is unknown, a candidate the surface spells out may decide.
     function spanStatus(span, text) {
-      const first = statuses.get(span.candidates[0].expression);
-      if (first !== "unknown") return first;
-      return readingCandidates(span, text).map(candidate => statuses.get(candidate.expression))
-        .find(isCardStatus) ?? "unknown";
+      const first = statusOf(span.candidates[0].expression);
+      if (isDecided(first)) return first;
+      return readingCandidates(span, text).map(candidate => statusOf(candidate.expression))
+        .find(isDecided) ?? "unknown";
     }
 
-    // Marks are { start, length, status } in the chunk's text. A phrase with
-    // no card made only of words with cards is marked as those words.
+    // Marks are { start, length, status } in the chunk's text. A phrase that
+    // is unknown, made only of words that are not, is marked as those words.
     function spanMarks(span, text) {
       if (!markable(span, text)) return [];
       const status = spanStatus(span, text);
       if (status === "unknown" && alternativeApplies(span)
-          && span.alternative.every(word => !markable(word, text) || isCardStatus(spanStatus(word, text)))) {
+          && span.alternative.every(word => !markable(word, text) || isDecided(spanStatus(word, text)))) {
         return span.alternative.flatMap(word => spanMarks(word, text));
       }
       return [{ start: span.start, length: span.length, status }];
@@ -512,6 +525,16 @@
       return dark ? [18, 18, 18] : [255, 255, 255];
     }
 
+    // A status's sRGB colour from the palette's tokens, or the default palette's.
+    function statusColor(palette, status) {
+      const token = name => palette?.getPropertyValue(`--hoshidicts-palette-${name}`).trim();
+      if (status !== "ignored") return rgba(token(PALETTE_TOKENS[status]) || DEFAULT_COLORS[status]).slice(0, 3);
+      const [content, base] = FAINT_TOKENS.map(token);
+      if (!content || !base) return rgba(DEFAULT_COLORS.ignored).slice(0, 3);
+      const [from, to] = [rgba(content), rgba(base)];
+      return from.slice(0, 3).map((channel, index) => Math.round(channel * FAINT_SHARE + to[index] * (1 - FAINT_SHARE)));
+    }
+
     // content.css draws each status with its own line style. This owned sheet
     // gives it the palette's colour, or swaps the line for coloured text or a
     // tinted background. Under forced colours Chrome paints every highlight in
@@ -522,8 +545,7 @@
       const palette = readPalette();
       const background = pageBackground();
       const rules = STATUSES.map(status => {
-        const token = palette?.getPropertyValue(`--hoshidicts-palette-${PALETTE_TOKENS[status]}`).trim();
-        const color = rgba(token || DEFAULT_COLORS[status]).slice(0, 3);
+        const color = statusColor(palette, status);
         let declarations = `text-decoration-color: rgb(${legible(color, background, LINE_CONTRAST).join(" ")});`;
         if (options.wordHighlightStyle === "color") {
           declarations = `text-decoration-line: none; color: rgb(${legible(color, background, TEXT_CONTRAST).join(" ")});`;
@@ -798,9 +820,148 @@
       };
     }
 
-    return { start, stop, update, invalidate, statusChanged, refreshColors, suspend,
+    // Mark as known or Ignore changed a word: the marks shown are worked out
+    // again from the statuses already read.
+    function setOverrides(next) {
+      overrides = next;
+      if (!running) return;
+      repaintAll();
+      schedule();
+    }
+
+    return { start, stop, update, invalidate, statusChanged, refreshColors, suspend, setOverrides,
       get running() { return running; } };
   }
 
-  globalThis.HDWordHighlights = { createWordHighlighter };
+  // Mark as known and Ignore: two toggle buttons in each entry's action row,
+  // after its Anki and pronunciation buttons, and the keybinds that act on
+  // the current entry. A press asks the worker to set the entry's headword to
+  // that status, or to clear it when it already has it; the stored record,
+  // which every tab receives, then presses the buttons and re-marks the page.
+  // The buttons show only while word highlighting is on, and only in a
+  // renderer that styles them; the keybinds work in every renderer.
+  const WORD_STATUS_ICONS = { known: "checkmark", ignored: "eye-off" };
+  const WORD_STATUS_ANCHORS = ":scope > :is(.gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back, "
+    + ".gsm-hoshidicts-mine-button, .gsm-hoshidicts-audio-control)";
+
+  function createWordStatusActions({ send }) {
+    // Each popup level's bound entries, and the buttons in each entry's row.
+    const owners = new Map();
+    const rows = new Map();
+    let enabled = false;
+    let overrides = new Map();
+
+    const headwordOf = item => item.result.term.expression;
+
+    function label(button, headword) {
+      const text = button.dataset.wordStatus === "known" ? `Mark ${headword} as known` : `Ignore ${headword}`;
+      button.setAttribute("aria-label", text);
+      if (button.dataset.state !== "error") button.title = text;
+    }
+
+    function sync(row) {
+      const headword = headwordOf(row.item);
+      for (const button of row.buttons) {
+        label(button, headword);
+        button.setAttribute("aria-pressed", String(overrides.get(headword) === button.dataset.wordStatus));
+      }
+    }
+
+    async function change(item, status) {
+      const headword = headwordOf(item);
+      const button = rows.get(item.actions)?.buttons.find(candidate => candidate.dataset.wordStatus === status);
+      if (button) {
+        delete button.dataset.state;
+        button.setAttribute("aria-busy", "true");
+      }
+      try {
+        await send("hd_word_status_override", { headword, status: overrides.get(headword) === status ? null : status });
+        if (button) label(button, headword);
+      } catch (error) {
+        if (button) {
+          button.dataset.state = "error";
+          button.title = `Could not save: ${error.message}`;
+        }
+      } finally {
+        button?.removeAttribute("aria-busy");
+      }
+    }
+
+    function createButton(document, item, status) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "gsm-hoshidicts-word-status-button";
+      button.dataset.wordStatus = status;
+      const icon = document.createElement("span");
+      icon.className = "hd-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.dataset.icon = WORD_STATUS_ICONS[status];
+      button.append(icon);
+      button.addEventListener("click", () => {
+        const row = rows.get(item.actions);
+        if (button.getAttribute("aria-busy") !== "true" && row) void change(row.item, status);
+      });
+      return button;
+    }
+
+    function removeRow(actions) {
+      for (const button of rows.get(actions)?.buttons ?? []) button.remove();
+      rows.delete(actions);
+    }
+
+    function render(group) {
+      const shown = new Set(enabled && group.context.buttons !== false ? group.items.map(item => item.actions) : []);
+      for (const [actions, row] of rows) {
+        if (row.owner === group.context.owner && !shown.has(actions)) removeRow(actions);
+      }
+      for (const item of group.items) {
+        if (!shown.has(item.actions)) continue;
+        let row = rows.get(item.actions);
+        if (!row) {
+          const buttons = ["known", "ignored"].map(status => createButton(item.actions.ownerDocument, item, status));
+          const anchor = [...item.actions.querySelectorAll(WORD_STATUS_ANCHORS)].at(-1);
+          if (anchor) anchor.after(...buttons);
+          else item.actions.prepend(...buttons);
+          row = { buttons };
+          rows.set(item.actions, row);
+        }
+        Object.assign(row, { item, owner: group.context.owner });
+        sync(row);
+      }
+    }
+
+    return {
+      // `items` are a render's { actions, result } mining bindings; `context`
+      // is { owner, isCurrent, buttons }.
+      bind(items, context) {
+        const group = { items, context };
+        owners.set(context.owner, group);
+        render(group);
+      },
+      retire(owner) {
+        for (const [actions, row] of rows) {
+          if (row.owner === owner) removeRow(actions);
+        }
+        owners.delete(owner);
+      },
+      update(options) {
+        enabled = options.wordHighlightEnabled === true;
+        for (const group of owners.values()) render(group);
+      },
+      setOverrides(next) {
+        overrides = next;
+        for (const row of rows.values()) sync(row);
+      },
+      // A keybind: the entry at `index` of `owner`'s current results.
+      press(owner, index, status) {
+        const group = owners.get(owner);
+        const item = group?.items[index];
+        if (!enabled || !item || group.context.isCurrent?.() === false) return false;
+        void change(item, status);
+        return true;
+      },
+    };
+  }
+
+  globalThis.HDWordHighlights = { createWordHighlighter, createWordStatusActions };
 }());

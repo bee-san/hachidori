@@ -3223,7 +3223,7 @@ async function toggleLookupsFromCommand() {
 const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
-  "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights"]);
+  "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord"]);
 
 chrome.commands?.onCommand?.addListener((command, tab) => {
   if (command === "openSettingsPage") {
