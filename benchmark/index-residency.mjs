@@ -395,7 +395,8 @@ async function sample(variant, repetition) {
         row.uiControls[policy] = { heapBytes: memory.heapBytes, residentHashBytes: memory.dictionaries.reduce((sum, item) => sum + item.residentHashBytes, 0) };
       }
       await page.reload();
-      await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident"));
+      await page.waitForFunction(() => document.getElementById("memory-indexes").textContent.includes("resident")
+        && !document.getElementById("use-less-ram-by-default").hidden);
       mkdirSync(resolve(output, "screenshots"), { recursive: true });
       for (const palette of ["light", "dark"]) {
         await page.evaluate(palette => { document.documentElement.dataset.hoshidictsTheme = palette; }, palette);
