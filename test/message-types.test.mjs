@@ -6,10 +6,13 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import "../extension/message-types.js";
 
 const EXTENSION = new URL("../extension/", import.meta.url);
 const REGISTRY = "message-types.js";
+const REGISTRY_SOURCE = readFileSync(new URL(REGISTRY, EXTENSION), "utf8");
+// Imported from its source so it runs as an ES module, as it does when an
+// extension module imports it; Node would load the file itself as CommonJS.
+await import(`data:text/javascript,${encodeURIComponent(REGISTRY_SOURCE)}`);
 const { MESSAGE_TYPES } = globalThis.HDMessageTypes;
 
 // One token at `lastIndex`. Where an operand may start, a `/` opens a regular
@@ -105,9 +108,9 @@ test("comments are blanked, but not strings, templates or regular expressions ho
   assert.deepEqual(names(source), ["hd_a", "hd_d", "hd_f", "hd_g", "hd_j", "hd_m"]);
 });
 
-test("message-types.js loads as a classic script as well as a module", () => {
+test("message-types.js also loads as a classic script", () => {
   const script = vm.createContext({});
-  vm.runInContext(readFileSync(new URL(REGISTRY, EXTENSION), "utf8"), script);
+  vm.runInContext(REGISTRY_SOURCE, script);
   assert.deepEqual([...script.HDMessageTypes.MESSAGE_TYPES], MESSAGE_TYPES);
 });
 
