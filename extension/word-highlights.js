@@ -842,7 +842,9 @@
   // which every tab receives, then presses the buttons and re-marks the page.
   // The buttons show only while word highlighting is on, and only in a
   // renderer that styles them; the keybinds work in every renderer.
-  const WORD_STATUS_ICONS = { known: "checkmark", ignored: "eye-off" };
+  // The prohibited sign rather than a crossed-out eye: in software raster that
+  // eye's mask added about 1.5 ms to the slowest hovers (benchmark/word-highlights.mjs).
+  const WORD_STATUS_ICONS = { known: "checkmark", ignored: "prohibited" };
   const WORD_STATUS_ANCHORS = ":scope > :is(.gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back, "
     + ".gsm-hoshidicts-mine-button, .gsm-hoshidicts-audio-control)";
 
