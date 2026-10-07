@@ -700,7 +700,7 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
-const BACKGROUND_MODULES = ["background-core.js", "background.js"];
+const BACKGROUND_MODULES = ["background-core.js", "background-netflix.js", "background.js"];
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview });
