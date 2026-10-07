@@ -23,10 +23,9 @@ import {
   normaliseOptions, projectStoredOptions, normaliseWordStatusOverrides, OFFSCREEN_DOCUMENT, TARGET, relay,
   optionsRevision, serialiseStorage,
 } from "./background-core.js";
+import { reconcileAnkiIndex } from "./background-anki.js";
 import { UPDATE_ALARM, queueManagedUpdate } from "./background-updates.js";
-import {
-  alarms, getSharingHost, sharingLinked, sharingReady, forwardToHost, WORKER_HANDLERS, reconcileAnkiIndex,
-} from "./background.js";
+import { alarms, getSharingHost, sharingLinked, sharingReady, forwardToHost, WORKER_HANDLERS } from "./background.js";
 
 let backupDownloads;
 let automaticBackupRun = null;
