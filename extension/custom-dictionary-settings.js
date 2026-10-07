@@ -21,9 +21,9 @@ let customDocument = null;
 let customBaseDocument = null;
 let customBaseEditorText = "";
 let customValidationTimer = null;
-let customEditorLoaded = false;
-let customLoading = false;
-let customSaving = false;
+let customEditorLoaded = false; // NOSONAR: shared with the other Settings modules
+let customLoading = false; // NOSONAR: shared with the other Settings modules
+let customSaving = false; // NOSONAR: shared with the other Settings modules
 let customDraftStale = false;
 let customDraftNewline = "\n";
 

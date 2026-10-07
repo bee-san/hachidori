@@ -28,11 +28,11 @@ import {
 } from "./custom-dictionary-settings.js";
 import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
-let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] };
-let dictionaries = dictionaryState.dictionaries;
-let removing = false;
-let committing = false;
-let pendingDictionaryCommits = 0;
+let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] }; // NOSONAR: shared with the other Settings modules
+let dictionaries = dictionaryState.dictionaries; // NOSONAR: shared with the other Settings modules
+let removing = false; // NOSONAR: shared with the other Settings modules
+let committing = false; // NOSONAR: shared with the other Settings modules
+let pendingDictionaryCommits = 0; // NOSONAR: shared with the other Settings modules
 let pendingDictionaryReorders = 0;
 let pendingDictionaryOrder = null;
 let dictionaryReorderEpoch = 0;
@@ -965,7 +965,7 @@ async function removePackages(entries) {
   await dictionaryCommitTail;
   for (const { id, title } of entries) {
     try {
-      const reply = await send("hd_remove", { id, title });
+      const reply = await send("hd_remove", { id, title }); // NOSONAR: packages are removed one at a time, in order
       if (!reply.ok) throw new Error(reply.error ?? "unknown error");
       selectedDictionaryIds.delete(id);
     } catch (error) {

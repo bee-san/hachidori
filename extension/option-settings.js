@@ -22,13 +22,13 @@ import {
   attachDefinitionBlurHandlers, renderDefinitionBlurControls, renderDefinitionBlurFrequencyChoices,
 } from "./lookup-stats-settings.js";
 
-let pendingOptions = {};
+let pendingOptions = {}; // NOSONAR: shared with the other Settings modules
 let pendingOptionsRevision = 0;
-let savingOptions = null;
+let savingOptions = null; // NOSONAR: shared with the other Settings modules
 let optionsSaveCompletion = Promise.resolve();
 let optionsTimer = null;
 let optionsSaveFailed = false;
-let optionsEditRevision = null;
+let optionsEditRevision = null; // NOSONAR: shared with the other Settings modules
 let activationController;
 
 function selectionParts(value) {
@@ -790,7 +790,7 @@ async function flushOptionsUntilIdle() {
       throw new Error("Save the pending settings before checking AnkiConnect.");
     }
     if (savingOptions === null && Object.keys(pendingOptions).length === 0) return;
-    await flushOptions();
+    await flushOptions(); // NOSONAR: each pass saves what the previous save left queued
   }
 }
 

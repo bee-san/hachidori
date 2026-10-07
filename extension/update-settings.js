@@ -23,9 +23,9 @@ import { importing, installingRecommended } from "./import-settings.js";
 import { customSaving } from "./custom-dictionary-settings.js";
 
 let updateSettings = { revision: -1, schedule: "off", lastCheckedAt: null };
-let pendingSchedule = null, savingSchedule = null, scheduleTimer = null;
+let pendingSchedule = null, savingSchedule = null, scheduleTimer = null; // NOSONAR: shared with the other Settings modules
 let scheduleSaveFailed = false;
-let updating = false;
+let updating = false; // NOSONAR: shared with the other Settings modules
 
 function adoptUpdateSettings(value) {
   const next = normaliseUpdateSettings(value);

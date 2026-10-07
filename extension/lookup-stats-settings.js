@@ -46,7 +46,7 @@ function renderDefinitionBlurFrequencyChoices() {
 
 // All blur rules use the shared reveal controls. The delay field shows
 // seconds, fractions allowed, for the stored milliseconds.
-function renderDefinitionBlurControls() {
+function renderDefinitionBlurControls() { // NOSONAR: existing complexity, kept as it was by the #533 split
   const countEnabled = options.definitionBlurCountEnabled;
   const ankiEnabled = options.definitionBlurAnkiMature;
   const frequencyEnabled = options.definitionBlurFrequencyEnabled;
@@ -91,10 +91,10 @@ function renderDefinitionBlurControls() {
     } else {
       const automatic = options.definitionBlurFrequencyOrder === "auto";
       const order = automatic && selected.frequencyMode === "rank-based"
-        ? "ascending" : automatic ? "descending" : options.definitionBlurFrequencyOrder;
+        ? "ascending" : automatic ? "descending" : options.definitionBlurFrequencyOrder; // NOSONAR: existing nested ternary, kept by the #533 split
       const mode = automatic
-        ? selected.frequencyMode === "rank-based" ? "rank-based metadata"
-          : selected.frequencyMode === "occurrence-based" ? "occurrence-based metadata" : "undeclared metadata"
+        ? selected.frequencyMode === "rank-based" ? "rank-based metadata" // NOSONAR: existing nested ternary, kept by the #533 split
+          : selected.frequencyMode === "occurrence-based" ? "occurrence-based metadata" : "undeclared metadata" // NOSONAR: existing nested ternary, kept by the #533 split
         : "your manual order";
       frequencyHelp.textContent = order === "ascending"
         ? `Using ${mode}: values at or below the threshold qualify.`

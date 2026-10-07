@@ -27,8 +27,8 @@ import {
 } from "./settings.js";
 import { dictionaries, reloadDictionaries, setControlsDisabled } from "./library-settings.js";
 
-let importing = false;
-let installingRecommended = false;
+let importing = false; // NOSONAR: shared with the other Settings modules
+let installingRecommended = false; // NOSONAR: shared with the other Settings modules
 let renderedInstallRun = null;
 let importProgress;
 let importDragDepth = 0;
@@ -342,7 +342,7 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
         if (outcome === "imported-with-notes") withNotes += 1;
         // A later archive in the same batch must decide against the state the
         // previous archive actually committed, not a delayed storage event.
-        await reloadDictionaries();
+        await reloadDictionaries(); // NOSONAR: the next archive is checked against the state this one committed
       } else if (outcome === "cancelled") cancelled += 1;
     }
     const failed = items.length - imported - cancelled;

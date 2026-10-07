@@ -142,14 +142,14 @@ const WORD_HIGHLIGHT_SWITCHES = [
 ];
 
 const numberFormat = new Intl.NumberFormat();
-let options = normaliseOptions({});
+let options = normaliseOptions({}); // NOSONAR: shared with the other Settings modules
 const themeStore = createThemeStore({ root: document.getElementById("theme-store"), design: document.getElementById("design"), onSelect(slug) {
   options.popupTheme = slug;
   renderThemeChoices();
   writeOptions();
 } });
-let savedOptions = normaliseOptions({});
-let optionsRevision = -1;
+let savedOptions = normaliseOptions({}); // NOSONAR: shared with the other Settings modules
+let optionsRevision = -1; // NOSONAR: shared with the other Settings modules
 const OPTIONS_SAVE_DELAY_MS = 150;
 const nameDrafts = createDictionaryNameDrafts({
   delayMs: OPTIONS_SAVE_DELAY_MS,
@@ -161,7 +161,7 @@ const recommendedInstallation = createRecommendedInstallClient({
   onError(error) { setImportState(`Could not observe dictionary installation: ${describeErrorOrJson(error)}`, "error"); },
 });
 let statusTimer = null;
-let lastEngineStatus = null;
+let lastEngineStatus = null; // NOSONAR: shared with the other Settings modules
 let requestCounter = 0;
 let audioController;
 let keybindController;
@@ -169,15 +169,15 @@ let ankiController;
 let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
-let sharingLinkedAddress = null;
+let sharingLinkedAddress = null; // NOSONAR: shared with the other Settings modules
 let backupController;
 let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
-let customButtonController;
+let customButtonController; // NOSONAR: shared with the other Settings modules
 let experimentalController;
 let memoryController;
-let backingUp = false;
+let backingUp = false; // NOSONAR: shared with the other Settings modules
 let settingsSearch;
 
 const SECTION_STATUSES = {
@@ -192,7 +192,7 @@ const SECTION_STATUSES = {
   "sharing-status": { section: "sharing", label: "Sharing" },
   "debug-info-status": { section: "advanced", label: "Troubleshooting" },
 };
-let activeSection = "dictionaries";
+let activeSection = "dictionaries"; // NOSONAR: shared with the other Settings modules
 const unseenSectionCompletions = new Set();
 
 function element(id) {
