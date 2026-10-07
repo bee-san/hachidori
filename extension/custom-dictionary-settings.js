@@ -9,9 +9,11 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import {
-  adoptDictionaryState, backingUp, committing, element, removing, renderChangedDictionaryState, send,
-  setControlsDisabled, setSectionStatus, stringValue, syncNavigationStatus, WORKER_TARGET,
+  backingUp, element, send, setSectionStatus, syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
+import {
+  adoptDictionaryState, committing, removing, renderChangedDictionaryState, setControlsDisabled, stringValue,
+} from "./library-settings.js";
 import { importing, installingRecommended } from "./import-settings.js";
 import { updating } from "./update-settings.js";
 

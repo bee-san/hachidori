@@ -22,9 +22,10 @@ import {
   mdxImportNotes,
 } from "./dictionary-import.js";
 import {
-  dictionaries, element, numberFormat, recommendedInstallation, refreshStatus, reloadDictionaries, send,
-  setControlsDisabled, setSectionStatus, sharingLinkedAddress, syncNavigationStatus,
+  element, numberFormat, recommendedInstallation, refreshStatus, send, setSectionStatus, sharingLinkedAddress,
+  syncNavigationStatus,
 } from "./settings.js";
+import { dictionaries, reloadDictionaries, setControlsDisabled } from "./library-settings.js";
 
 let importing = false;
 let installingRecommended = false;

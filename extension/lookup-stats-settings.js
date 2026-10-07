@@ -5,10 +5,11 @@
 
 import { describeErrorOrJson } from "./error-text.js";
 import {
-  clampOption, definitionBlurFrequencyDictionary, dictionaries, dictionaryLabel, element,
-  isAvailableFrequencyDictionary, options, selectedFrequencyDictionary, send, setOptionsStatus,
-  setSectionStatus, sharingLinkedAddress, WORKER_TARGET, writeOptions,
+  clampOption, definitionBlurFrequencyDictionary, element, isAvailableFrequencyDictionary, options,
+  selectedFrequencyDictionary, send, setOptionsStatus, setSectionStatus, sharingLinkedAddress, WORKER_TARGET,
+  writeOptions,
 } from "./settings.js";
+import { dictionaries, dictionaryLabel } from "./library-settings.js";
 
 let resettingLookupCounts = false;
 
