@@ -970,6 +970,65 @@ input[type="checkbox"] {
   margin: 0;
   accent-color: var(--accent-fill);
 }
+/*
+ * Every on/off setting is a switch: the setting rows, and the Enabled toggle
+ * of a dictionary, audio source or keybind. It stays a native checkbox, so
+ * its keyboard behaviour, label, state and form semantics are unchanged; only
+ * the drawing differs. Selections and one-off choices stay checkboxes.
+ */
+.lookup-enable > input[type="checkbox"],
+input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input) {
+  --switch-knob: var(--border-strong);
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: radial-gradient(circle closest-side, var(--switch-knob) 0 calc(100% - 1px), transparent 100%)
+    no-repeat 1px 50% / 16px 16px var(--surface);
+  cursor: pointer;
+}
+.lookup-enable > input[type="checkbox"]:checked,
+input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):checked {
+  --switch-knob: var(--accent-contrast);
+  border-color: var(--accent-fill);
+  background-color: var(--accent-fill);
+  background-position: calc(100% - 1px) 50%;
+}
+.lookup-enable > input[type="checkbox"]:disabled,
+input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lookup-enable > input[type="checkbox"],
+  input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input) {
+    transition: background-position 120ms ease, background-color 120ms ease;
+  }
+}
+/* Windows contrast themes: system colours, the knob's position still says which. */
+@media (forced-colors: active) {
+  .lookup-enable > input[type="checkbox"],
+  input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input) {
+    forced-color-adjust: none;
+    --switch-knob: CanvasText;
+    border-color: CanvasText;
+    background-color: Canvas;
+  }
+  .lookup-enable > input[type="checkbox"]:checked,
+  input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):checked {
+    --switch-knob: HighlightText;
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+  .lookup-enable > input[type="checkbox"]:disabled,
+  input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
+    --switch-knob: GrayText;
+    border-color: GrayText;
+    background-color: Canvas;
+    opacity: 1;
+  }
+}
 .lookup-enable {
   display: flex;
   align-items: center;
