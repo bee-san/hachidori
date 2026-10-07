@@ -320,8 +320,14 @@
         let clip = await heardLine(cue);
         const result = {};
         if (gif) {
-          const recorded = await conceal(() => recordTab(cue, { send, templateId, audio: false, gif }));
-          result.gif = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.gif;
+          try {
+            const recorded = await conceal(() => recordTab(cue, { send, templateId, audio: false, gif }));
+            result.gif = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.gif;
+          } catch (error) {
+            // The GIF and the sentence audio are recorded apart, so a failed
+            // GIF costs only the GIF.
+            result.gif = { unavailable: error.message };
+          }
           // The GIF's replay played the line, and the line audio kept it.
           clip ??= await heardLine(cue);
         }

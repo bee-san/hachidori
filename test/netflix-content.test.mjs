@@ -390,6 +390,19 @@ test("a {gif} field records with tab capture concealed, and its sentence audio c
   assert.deepEqual(await g.netflix.record(cue, { send: grantless, templateId: "default", gif: true }), {
     gif: { unavailable: "grant" }, audio: { token: "t2", filename: "b.wav" } });
   assert.equal(replayed.length, 1);
+
+  // A GIF recording the worker refuses outright costs only the GIF.
+  const refused = heardAudio({ heard: [null, null, LINE] });
+  const h = netflix(t, { lineAudio: refused.lineAudio });
+  const played = answerReplays(h);
+  h.netflix.setLineAudio(true);
+  const inactive = async type => {
+    if (type === "hd_netflix_capture_start") throw new Error("The Netflix tab is no longer the active tab.");
+    return { token: "t3", filename: "c.wav" };
+  };
+  assert.deepEqual(await h.netflix.record(cue, { send: inactive, templateId: "default", gif: true }), {
+    gif: { unavailable: "The Netflix tab is no longer the active tab." }, audio: { token: "t3", filename: "c.wav" } });
+  assert.equal(played.length, 1, "the line still plays for its audio");
 });
 
 // Where the fixture's two lines are drawn: a gap between them, inside
