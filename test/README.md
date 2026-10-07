@@ -4,8 +4,8 @@
 
 This page is an index: each file below with what it proves, plus what the code
 does not say on its own (setup, environment, conventions). The checks themselves
-are named in the code; the two largest suites list their tests with
-`node --test-reporter=spec`.
+are named in the code, and for the two largest suites the spec reporter that
+`test/run.mjs` passes prints each test's name as it runs.
 
 ## Run the checks
 
@@ -76,8 +76,13 @@ lists gets extension-page globals, so a `chrome` or `document` it cannot use
 still passes.
 
 Direct `node test/...` commands below still support the external cache and
-`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. To run
-a focused jsdom test with the locked tooling directly:
+`HACHIDORI_JSDOM`, `HACHIDORI_PUPPETEER`, and `HACHIDORI_CHROME` overrides. Unlike
+the launcher, a direct `node test/chrome-e2e.mjs` also accepts `CHROME_BIN`: it
+takes `HACHIDORI_CHROME`, then `CHROME_BIN`, then the newest Chrome for Testing in
+the external cache, then a system Chrome (`/usr/bin/google-chrome` and the like),
+and stops with a message naming `HACHIDORI_CHROME` or `HACHIDORI_PUPPETEER` when
+the browser or puppeteer-core is missing. To run a focused jsdom test with the
+locked tooling directly:
 
 ```sh
 HACHIDORI_JSDOM="$PWD/test/tooling" node --test test/sharing-settings.test.mjs
@@ -215,6 +220,16 @@ see [benchmark/README.md](../benchmark/README.md).
 | `toolbar` | The toolbar toggle and its revision conflicts. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d, written inline. |
+
+`anki_note_type_upstream_test.py` is the one Python test. The Anki note-type
+compatibility workflow runs it with
+`python -m unittest discover -s test -p 'anki_note_type_upstream_test.py' -v`
+(after `python -m pip install zstandard==0.25.0`). It tests the bounded read-only
+APKG extractor: legacy and modern SQLite, Zstandard collections, dummy legacy
+databases, corruption, ambiguous members, unsupported schemas, checksums, URLs and
+redirect credential stripping. See
+[Anki note-type compatibility](../docs/anki-note-type-compatibility.md) for the
+pinned/latest package commands and the schema-only boundary.
 
 ### WASM, bridge and fixtures
 
