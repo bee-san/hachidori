@@ -281,6 +281,13 @@ plain object with and without a `message`, an Error from another realm, and
 `null`, `undefined` and `NaN`, so sharing the variants cannot change a log
 line, status or reply.
 
+`node --test test/message-types.test.mjs` keeps `extension/message-types.js`
+equal to the `hd_*` names written in the code of every extension JavaScript
+file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as
+does a listed name nothing uses. It loads the list as a classic script and as
+an ES module, and checks that blanking comments leaves strings, templates and
+regular expressions alone.
+
 `node --test test/engine-recycler.test.mjs test/memory-settings.test.mjs
 test/low-memory-option.test.mjs` covers [Low memory mode](../docs/memory.md):
 the pure recycle scheduler (no restart while busy, the two-second idle window,
