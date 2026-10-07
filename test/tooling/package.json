@@ -14,6 +14,7 @@
     "minimumChrome": "128.0.6613.137"
   },
   "scripts": {
+    "lint": "node ../run.mjs lint",
     "test": "node ../run.mjs node",
     "test:smoke": "node ../run.mjs smoke",
     "test:chrome": "node ../run.mjs chrome-e2e",
@@ -24,6 +25,8 @@
   },
   "devDependencies": {
     "@puppeteer/browsers": "3.2.3",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
     "jsdom": "30.1.1",
     "puppeteer-core": "25.12.0"
   }
