@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { captureNetflixPreview } from "../extension/netflix-preview.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 import { buildAnkiResourceFields } from "../extension/anki-resources.js";
 import { createSetupInstaller } from "../extension/setup-installer.js";
@@ -777,7 +778,7 @@ function loadClassicScript(file, sandbox) {
 }
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
-  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads });
+  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview });
   sandbox.createAnkiWorkerService ??= createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -835,6 +836,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
     .replace(/import \{ detectAnkiSetup, verifyAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
     .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
+    .replace(/import \{ captureNetflixPreview \} from "\.\/netflix-preview\.js";\s*/u, "")
     .replace(/import \{ detectLocalAudioSource \} from "\.\/local-audio-setup\.js";\s*/u, "")
     .replace(/import \{ createLocalAudioSource, findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
     .replace(/^import .* from "\.\/anki-index(?:-cache)?\.js";\s*/gmu, "")
@@ -3821,6 +3823,78 @@ async function ankiScreenshotStage() {
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
     JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
       background, navigated, fromExtensionPage, startupTaken, startupTabTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
+
+  const injections = [];
+  const previewData = "data:image/jpeg;base64,/9j/4AAQ/9k=";
+  let previewResult = { dataUrl: previewData };
+  let duringPreview = () => {};
+  chrome.scripting = { executeScript: async injection => {
+    injections.push(injection);
+    duringPreview();
+    return [{ frameId: 0, documentId: reader.documentId, result: previewResult }];
+  } };
+  const screenshotOptions = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
+  await storage.api().local.set({ options: { revision: 3, anki: screenshotOptions } });
+  documentId = reader.documentId;
+  tab = { ...tab, url: "https://www.netflix.com/watch/81000001?trackId=123" };
+  const netflixReader = { ...reader, url: tab.url, tab: { id: tab.id, url: tab.url } };
+  const beforeDefault = captures.length;
+  const defaultNetflix = await ask(netflixReader);
+  check("Netflix screenshots keep the viewport capture until preview screenshots are enabled",
+    defaultNetflix.ok === true && captures.length === beforeDefault + 1 && injections.length === 0,
+    JSON.stringify({ defaultNetflix, captures: captures.length, injections: injections.length }));
+
+  await storage.api().local.set({ options: { revision: 4, anki: screenshotOptions,
+    experimental: { netflixPreviewScreenshots: true } } });
+  const beforePreview = captures.length;
+  const previewTaken = await ask(netflixReader);
+  const injected = injections[0];
+  check("enabled Netflix previews target the exact top-frame document in MAIN world without viewport capture",
+    previewTaken.ok === true && captures.length === beforePreview && injections.length === 1
+      && injected.func === captureNetflixPreview && injected.world === "MAIN"
+      && injected.target.tabId === tab.id && injected.target.documentIds.join() === reader.documentId
+      && injected.args[0] === netflixReader.url,
+    JSON.stringify({ previewTaken, target: injected?.target, world: injected?.world, args: injected?.args }));
+
+  previewResult = { error: "Netflix preview screenshot: this player has no seek preview image." };
+  const previewMissing = await ask(netflixReader);
+  previewResult = { dataUrl: "data:image/png;base64,c2hvdA==" };
+  const previewInvalid = await ask(netflixReader);
+  check("unavailable or invalid Netflix previews report an error without substituting a viewport screenshot",
+    previewMissing.ok === false && previewMissing.error.includes("no seek preview image")
+      && previewInvalid.ok === false && previewInvalid.error.includes("no JPEG preview image")
+      && captures.length === beforePreview,
+    JSON.stringify({ previewMissing, previewInvalid }));
+
+  previewResult = { dataUrl: previewData };
+  duringPreview = () => { tab = { ...tab, url: "https://www.netflix.com/watch/999" }; };
+  const previewNavigated = await ask(netflixReader);
+  tab = { ...tab, url: netflixReader.url };
+  duringPreview = () => { documentId = "replacement-document"; };
+  const previewReloaded = await ask(netflixReader);
+  documentId = reader.documentId;
+  duringPreview = () => { tab = { ...tab, windowId: 4 }; };
+  const previewMoved = await ask(netflixReader);
+  tab = { ...tab, windowId: 3, active: false };
+  duringPreview = () => {};
+  const beforeInactive = injections.length;
+  const previewInactive = await ask(netflixReader);
+  check("Netflix previews preserve the active tab, document, route and window ownership checks",
+    previewNavigated.ok === false && previewNavigated.error.includes("moved to another page")
+      && previewReloaded.ok === false && previewReloaded.error.includes("document")
+      && previewMoved.ok === false && previewMoved.error.includes("moved to another window")
+      && previewInactive.ok === false && previewInactive.error.includes("no longer the active tab")
+      && injections.length === beforeInactive && captures.length === beforePreview,
+    JSON.stringify({ previewNavigated, previewReloaded, previewMoved, previewInactive }));
+
+  tab = { ...tab, active: true };
+  const subframe = await ask({ ...netflixReader, frameId: 1 });
+  tab = { ...tab, url: reader.url };
+  const ordinaryPage = await ask(reader);
+  check("the preview flag leaves non-Netflix pages and subframes on the ordinary screenshot path",
+    subframe.ok === true && ordinaryPage.ok === true && captures.length === beforePreview + 2
+      && injections.length === beforeInactive,
+    JSON.stringify({ subframe, ordinaryPage }));
 }
 
 async function ankiBackgroundStage() {

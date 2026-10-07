@@ -2828,10 +2828,28 @@ response does not tell the extension whether the browser omitted that video,
 and Hachidori does not guess DRM from black pixels: a video can show a black
 frame.
 
-Migaku takes its card screenshot with the same API. Its Chrome Web Store
+**Netflix preview screenshots** is a separate experimental switch, off by
+default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
+preview JPEG for `{screenshot}`. These images are lower resolution and can show
+a nearby moment rather than the exact video frame; they contain no page UI or
+subtitle overlay. This is the preview-image approach used by Language Reactor,
+not protected-video readback. See the [capture investigation](netflix-screenshot-research.md)
+for the inspected implementations and their limitations.
+
+The worker invokes `netflix-preview.js` in the exact requesting document's main
+world only when a screenshot is requested with this switch on. It uses the
+current watch player's `getTrickPlayFrame` and feeds the JPEG into the same
+pending screenshot, upload and cleanup lifecycle. Existing active-tab,
+document, route and window checks still apply. A missing player or preview is
+a screenshot warning on the otherwise successful note. It does not silently
+substitute a potentially black viewport capture. Other pages and the switch-off
+path retain their ordinary screenshots. It needs neither the Netflix mining
+switch nor a subtitle timeline, recording grant, replay or additional permission.
+
+Migaku takes its card screenshot with `tabs.captureVisibleTab`. Its Chrome Web Store
 package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
 for the reading tab's window as PNG and crops the picture to the video;
-Hachidori keeps the whole viewport. Migaku's audio clip comes from a
+Hachidori's default screenshot path keeps the whole viewport. Migaku's audio clip comes from a
 `tabCapture` stream. Both calls receive what Chrome composites for that window,
 so in the same browser, graphics settings and frame, Chrome decides for both
 whether the picture includes protected video:
