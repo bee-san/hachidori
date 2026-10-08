@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings → Library → Personal dictionary: the source editor, its validation,
+// Settings → Dictionaries → Personal dictionary: the source editor, its validation,
 // and the revision-checked loads and saves of the source.
 
 import { describeErrorOrJson } from "./error-text.js";

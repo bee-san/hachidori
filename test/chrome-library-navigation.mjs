@@ -21,7 +21,7 @@ export async function checkLibraryNavigation(puppeteer, launchOptions, settingsU
     await page.$eval("#dictionaries", panel => { panel.style.minHeight = "1200px"; });
     const measurements = [];
     for (const section of ["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary", "dictionaries"]) {
-      await page.click(`#library-navigation a[href="#${section}"]`);
+      await page.click(`.section-tabs a[href="#${section}"]`);
       await page.waitForFunction(id => !document.getElementById(id).hidden
         && document.querySelector('#library-navigation [aria-current="page"]')?.hash === `#${id}`, {}, section);
       measurements.push(await page.evaluate(section => {

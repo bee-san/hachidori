@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings → Library → Add dictionaries: Yomitan ZIP and MDX imports, the
+// Settings → Dictionaries → Add dictionaries: Yomitan ZIP and MDX imports, the
 // replace-or-install decision, the drop zone, the recommended installer and
 // the import progress list.
 

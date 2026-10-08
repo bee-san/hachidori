@@ -84,7 +84,7 @@ test("No key and hover searches lead to the Activation key picker, as does its h
   assert.equal(f.document.activeElement, f.el("opt-activation-key"));
 });
 
-test("Library exposes its related views together and search reports that hierarchy", t => {
+test("Dictionaries exposes its related views together and search reports that hierarchy", t => {
   const f = fixture(t);
   const expected = [
     ["dictionaries", "Dictionaries"],
@@ -100,18 +100,18 @@ test("Library exposes its related views together and search reports that hierarc
     expected,
   );
   assert.deepEqual(
-    [...f.el("settings-section").querySelector('optgroup[label="Library"]').querySelectorAll("option")]
+    [...f.el("settings-section").querySelector('optgroup[label="Dictionaries"]').querySelectorAll("option")]
       .map(option => [option.value, option.textContent.trim()]),
     expected,
   );
   f.query("default automatic updates");
   const result = f.match("Default automatic updates");
   assert.ok(result);
-  assert.equal(result.querySelector("small").textContent, "Library › Updates");
+  assert.equal(result.querySelector("small").textContent, "Dictionaries › Updates");
   f.query("dictionaries search");
   const dictionarySearch = f.match("Search");
   assert.ok(dictionarySearch);
-  assert.equal(dictionarySearch.querySelector("small").textContent, "Library › Dictionaries");
+  assert.equal(dictionarySearch.querySelector("small").textContent, "Dictionaries");
 });
 
 test("result opens collapsed details and focuses the existing textarea without touching its draft", t => {
@@ -154,7 +154,7 @@ test("highlight, selection and custom dictionary searches find the personal dict
     f.query(words);
     const result = f.match("Use the personal dictionary");
     assert.ok(result, `"${words}" finds the switch`);
-    assert.equal(result.querySelector("small").textContent, "Library › Personal dictionary › Lookups");
+    assert.equal(result.querySelector("small").textContent, "Dictionaries › Personal dictionary › Lookups");
   }
   // Off, the notice switch it governs is hidden and leads back to it.
   f.el("selection-notice-controls").hidden = true;

@@ -21,7 +21,7 @@ Statistics contain each looked-up term and reading, its count, and
 first/last lookup times. Turning off lookup counts in Reading settings pauses
 new recording and keeps your existing history. Statistics do not contain a list
 of visited page URLs. **Reset lookup counts** in Reading settings deletes that
-history, and **Remove all imported dictionaries** in Library deletes the
+history, and **Remove all imported dictionaries** in Dictionaries deletes the
 imported dictionaries (and, if you choose, your personal entries). Backups you
 exported and the automatic backups this browser keeps still contain what they
 held when they were made.

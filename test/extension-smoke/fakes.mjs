@@ -915,7 +915,9 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const localAudioSetup = readFileSync(resolve(EXTENSION, "local-audio-setup.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
-  window.eval(`{ ${localAudioSource}\n${localAudioSetup}; window.createLocalAudioSetup = createLocalAudioSetup; }`);
+  // Detection builds its sample URL and reads the reply with the shared audio-source rules.
+  const audioSources = readFileSync(resolve(EXTENSION, "audio-sources.js"), "utf8").replace(/^export\s+/gmu, "");
+  window.eval(`{ ${audioSources}\n${localAudioSource}\n${localAudioSetup}; window.createLocalAudioSetup = createLocalAudioSetup; }`);
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const groupState = readFileSync(resolve(EXTENSION, "dictionary-group-state.js"), "utf8");
   const recommended = readFileSync(resolve(EXTENSION, "recommended-dictionaries.js"), "utf8");

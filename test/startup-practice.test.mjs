@@ -127,7 +127,7 @@ test("missing or disabled term dictionaries and disabled lookups give recovery w
     const installed = dictionaries.some(entry => entry.termCount > 0);
     assert.equal(state.heading, installed ? "Enable a dictionary to try Hachidori" : "Add a dictionary to try Hachidori");
     assert.equal(state.canProbe, false);
-    assert.equal(f.el("setup-practice-recovery").querySelector("a").textContent, installed ? "Open Library" : "Add dictionaries");
+    assert.equal(f.el("setup-practice-recovery").querySelector("a").textContent, installed ? "Open Dictionaries" : "Add dictionaries");
     assert.equal(f.el("setup-practice-scene").hidden, true);
     assert.match(f.el("setup-practice-recovery").textContent, dictionaries.some(entry => entry.termCount > 0)
       ? /Your term dictionaries are turned off/u : /Add a term dictionary/u);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings → Library → Dictionaries: the installed packages as this page holds
+// Settings → Dictionaries → Dictionaries: the installed packages as this page holds
 // them, their rows, order, selection and bulk actions, the revision-checked
 // commit queue behind every Library and group edit, removal and Remove all.
 
@@ -1040,7 +1040,7 @@ function removedSummary(entries, failures) {
   return `Removed ${removed} of ${total}. Could not remove ${failures.join("; ")}.`;
 }
 
-// Settings → Library → Remove all imported dictionaries. The confirmation names
+// Settings → Dictionaries → Remove all imported dictionaries. The confirmation names
 // the packages left once pending edits settle; each is removed in turn, so a
 // failure is reported by title rather than undoing the others.
 async function removeAllDictionaries() {

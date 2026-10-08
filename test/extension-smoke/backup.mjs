@@ -393,6 +393,9 @@ async function settingsBackupRetentionStage() {
     input.dispatchEvent(new window.Event("change", { bubbles: true }));
     await waitFor(() => writes.length === 1);
     result.afterFive = input.value;
+    const status = () => document.querySelector("#backup #options-status")?.textContent;
+    await waitFor(() => status() === "Saved.");
+    result.status = status();
     input.value = "99";
     input.dispatchEvent(new window.Event("change", { bubbles: true }));
     await waitFor(() => writes.length === 2);
@@ -419,8 +422,9 @@ describe("backups", () => {
 
   test("Settings backup retention", async () => {
     const backupRetention = await settingsBackupRetentionStage();
-    check("the Backup section saves the automatic snapshot retention and clamps it to the shared option range",
+    check("the Backup section saves the automatic snapshot retention, says so and clamps it to the shared option range",
       backupRetention?.section === "backup"
+        && backupRetention.status === "Saved."
         && backupRetention.rendered === "7"
         && backupRetention.min === "1" && backupRetention.max === "30"
         && backupRetention.afterFive === "5"

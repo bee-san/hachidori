@@ -445,18 +445,20 @@ async function showSettingsSection(page, id) {
     if (picker.checkVisibility()) {
       picker.value = section;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
-    } else document.querySelector(`.settings-nav a[href="#${section}"], #library-navigation a[href="#${section}"]`).click();
+    } else document.querySelector(`.settings-nav a[href="#${section}"], .section-tabs a[href="#${section}"]`).click();
   }, id);
   await page.waitForFunction((sectionId) => {
-    const librarySections = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
     const visible = [...document.querySelectorAll("main > section")].filter((section) => !section.hidden);
-    const primaryHash = librarySections.has(sectionId) ? "#dictionaries" : `#${sectionId}`;
-    const libraryContext = librarySections.has(sectionId)
-      ? document.querySelector('#library-navigation [aria-current="page"]')?.hash === `#${sectionId}`
-      : document.getElementById("library-navigation")?.hidden;
+    // Dictionaries and Reading show their views as tabs under one rail link.
+    const allTabs = [...document.querySelectorAll(".section-tabs")];
+    const ownTabs = allTabs.find((tabs) => tabs.querySelector(`a[href="#${sectionId}"]`));
+    const primaryHash = ownTabs?.querySelector("a").hash ?? `#${sectionId}`;
+    const tabContext = allTabs.every((tabs) => (tabs === ownTabs && !tabs.hidden
+      ? tabs.querySelector('[aria-current="page"]')?.hash === `#${sectionId}`
+      : tabs.hidden));
     return visible.length === 1 && visible[0].id === sectionId
       && document.querySelector('.settings-nav [aria-current="page"]')?.hash === primaryHash
-      && libraryContext;
+      && tabContext;
   }, {}, id);
 }
 
