@@ -2915,7 +2915,7 @@ was open when the switch went on has the reader without `netflix-content.js`
 reader's), and then follows the switch with them. Hover pause and the line
 audio start at once, but Netflix read the playing episode's subtitle list
 before the page's hooks were there, so that episode's notes say its timing was
-not found and to reload the page; the next episode is timed. The reader and the
+not found and to reload the page, which gives it its timing. The reader and the
 worker also check the switch themselves, so a page that still has the scripts
 records nothing once it is off, though its page hooks stay until the page
 reloads.
