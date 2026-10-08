@@ -370,7 +370,8 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const repairStart = calls.length;
     const savedFocused = await popup.focusAnki();
     await tab.keyboard.press("Enter");
-    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount && !state.controls[0].disabled);
+    await settled(state => calls.filter(call => call.action === "guiBrowse").length > browseCount
+      && state?.controls[0]?.disabled === false);
     const repairCalls = calls.slice(repairStart);
     const note = [...notes.values()].at(-1);
     const browse = calls.filter(call => call.action === "guiBrowse").at(-1);

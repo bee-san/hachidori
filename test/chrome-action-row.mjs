@@ -331,7 +331,9 @@ export async function checkActionRow(browser, { screenshotDirectory } = {}) {
       "remaining controls keep their size without Anki");
     assert.equal(new Set(absent.buttons.map(({ top }) => Math.round(top))).size, 1,
       "Back, audio, Note and links stay aligned without Anki");
-    console.log("PASS action row geometry", JSON.stringify(evidence));
+    // One line per layout: `gh run view --log` stops reading a step's log at its
+    // first line over 64 KiB, and the whole list is over 100 KiB.
+    for (const layout of evidence) console.log("PASS action row geometry", JSON.stringify(layout));
   } finally {
     await page.close();
   }
