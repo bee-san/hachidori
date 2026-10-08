@@ -33,6 +33,7 @@ import {
   detectLocalAudioSource as realDetectLocalAudioSource,
 } from "../../extension/local-audio-setup.js";
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
+import { NETFLIX_SCRIPTS } from "../../extension/netflix.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
@@ -782,6 +783,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
     applyGoogleDocsFlag: sandbox.applyGoogleDocsFlag ?? (() => Promise.resolve()),
     applyNetflixFlag: sandbox.applyNetflixFlag ?? (() => Promise.resolve()),
+    NETFLIX_SCRIPTS,
   });
   const context = createContext(sandbox);
   context.globalThis = context;

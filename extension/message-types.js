@@ -92,6 +92,7 @@
     "hd_netflix_capture_finish",
     "hd_netflix_capture_start",
     "hd_netflix_line_audio",
+    "hd_netflix_load",
     "hd_open_external",
     "hd_options_write",
     "hd_options_write_result",
