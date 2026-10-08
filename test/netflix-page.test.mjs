@@ -9,13 +9,22 @@ const PAGE_EVENT = "hachidori-netflix-page";
 const COMMAND_EVENT = "hachidori-netflix-command";
 
 // A main world with only what netflix-page.js touches: the page's JSON, fetch,
-// location, Netflix's player global and a <video>.
-function page({ pathname = "/watch/81000001", subtitles = {}, player = null, video = null } = {}) {
+// location, Netflix's player global and a <video> inside `.watch-video`.
+// `sessions` are Netflix's player sessions in the order it lists them: by
+// default the watch page's own, which names itself `watch…`, says which movie
+// it plays and has its element in the player (as Theater-Mode-Everywhere,
+// WebNowPlaying and read-frog find on Netflix).
+function page({ pathname = "/watch/81000001", subtitles = {}, player = null, video = null,
+  sessions = player && [["watch-1", player]] } = {}) {
   const document = new EventTarget();
-  document.querySelector = selector => (selector === ".watch-video video" || selector === "video" ? video : null);
+  document.querySelector = selector => {
+    if (selector === ".watch-video") return video && { contains: node => node === video };
+    return selector === ".watch-video video" || selector === "video" ? video : null;
+  };
   const posted = [];
   const fetched = [];
   document.addEventListener(PAGE_EVENT, event => posted.push(JSON.parse(event.detail)));
+  const byId = new Map(sessions ?? []);
   const context = vm.createContext({
     document, CustomEvent, EventTarget, ArrayBuffer, Promise, Reflect, performance, setTimeout, clearTimeout,
     setInterval, clearInterval,
@@ -25,9 +34,9 @@ function page({ pathname = "/watch/81000001", subtitles = {}, player = null, vid
       if (!Object.hasOwn(subtitles, url)) return { ok: false, status: 404 };
       return { ok: true, status: 200, text: async () => subtitles[url] };
     },
-    netflix: player && { appContext: { state: { playerApp: { getAPI: () => ({ videoPlayer: {
-      getAllPlayerSessionIds: () => ["old", "current"],
-      getVideoPlayerBySessionId: id => (id === "current" ? player : null),
+    netflix: sessions && { appContext: { state: { playerApp: { getAPI: () => ({ videoPlayer: {
+      getAllPlayerSessionIds: () => [...byId.keys()],
+      getVideoPlayerBySessionId: id => byId.get(id) ?? null,
     } }) } } } },
   });
   context.window = context;
@@ -169,6 +178,8 @@ function playerFixture({ startMs = 7000, paused = true, rate = 1.5 } = {}) {
     play() { calls.push(["play", video.playbackRate]); if (playingSince === null) playingSince = now(); },
     pause() { calls.push(["pause"]); pause(); },
     getCurrentTime: () => video.currentTime * 1000,
+    getMovieId: () => 81000001,
+    getElement: () => video,
   };
   if (!paused) playingSince = now();
   return { calls, video, player };
@@ -253,6 +264,59 @@ test("pause and resume go through Netflix's player, wait for a replay, and malfo
   const playing = playerFixture({ paused: false });
   page({ video: playing.video }).command({ type: "pause" });
   assert.equal(playing.video.paused, false);
+});
+
+// Another session of Netflix's: its calls are logged under its name.
+function otherSession(log, name, movieId, element) {
+  return { getMovieId: () => movieId, getElement: () => element, getCurrentTime: () => 0,
+    seek: ms => log.push([name, "seek", ms]), play: () => log.push([name, "play"]), pause: () => log.push([name, "pause"]) };
+}
+
+test("pause, resume and replays use the watch page's own session, not one Netflix lists after it (#548)", async () => {
+  const { calls, video, player } = playerFixture({ paused: false, rate: 1 });
+  const others = [];
+  // The next episode Netflix prepares in the background, a preview of this
+  // one and a preloaded copy outside the player, all listed last.
+  const sessions = [["watch-1", player], ["watch-2", otherSession(others, "next episode", 81000002, {})],
+    ["preview-3", otherSession(others, "preview", 81000001, video)],
+    ["watch-4", otherSession(others, "preloaded", 81000001, {})]];
+  const { posted, command } = page({ player, video, sessions });
+  command({ type: "pause" });
+  command({ type: "resume" });
+  command({ type: "replay", id: "r1", startMs: 500, endMs: 550, padMs: 25 });
+  assert.equal((await replayed(posted)).ok, true);
+  assert.deepEqual(calls.map(([name]) => name), ["pause", "play", "seek", "play", "pause", "seek", "play"]);
+  assert.deepEqual(others, [], "no other session is paused, played or seeked");
+});
+
+test("a page with a single session keeps it; several with no attached watch player of this movie pause nothing", async () => {
+  // One session that says nothing of itself: the player before #548 used it.
+  const lone = playerFixture({ paused: false });
+  const unnamed = { seek: lone.player.seek, play: lone.player.play, pause: lone.player.pause };
+  page({ video: lone.video, sessions: [["session", unnamed]] }).command({ type: "pause" });
+  assert.equal(lone.video.paused, true);
+  // A watch session of this movie without an element to compare stands alone.
+  const bare = playerFixture({ paused: false });
+  const noElement = { ...bare.player };
+  delete noElement.getElement;
+  page({ video: bare.video, sessions: [["watch-1", noElement], ["preview-2", otherSession([], "preview", 81000001, {})]] })
+    .command({ type: "pause" });
+  assert.equal(bare.video.paused, true);
+
+  for (const [name, sessions] of Object.entries({
+    "unnamed sessions": player => [["a", player], ["b", player]],
+    "other movies'": player => [["watch-1", { ...player, getMovieId: () => 81000002 }],
+      ["watch-2", { ...player, getMovieId: () => 81000003 }]],
+    "outside the player": player => [["watch-1", { ...player, getElement: () => ({}) }], ["preview-2", player]],
+    "two attached": player => [["watch-1", player], ["watch-2", { ...player }]],
+  })) {
+    const f = playerFixture({ paused: false });
+    const { posted, command } = page({ video: f.video, sessions: sessions(f.player) });
+    command({ type: "pause" });
+    command({ type: "replay", id: "r1", startMs: 0, endMs: 10, padMs: 0 });
+    assert.equal(f.video.paused, false, name);
+    assert.deepEqual(await replayed(posted), { kind: "replay", id: "r1", ok: false, error: "player" }, name);
+  }
 });
 
 test("a replay asked to keep the video paused restores a playing video paused", async () => {
