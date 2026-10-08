@@ -371,10 +371,25 @@
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
   function syncNetflix() {
-    if (typeof window.HDNetflix?.setHoverPause !== "function") return;
+    if (typeof window.HDNetflix?.setHoverPause !== "function") {
+      loadNetflix();
+      return;
+    }
     const enabled = !disposed && netflixMiningEnabled();
     window.HDNetflix.setHoverPause(enabled);
     window.HDNetflix.setLineAudio(enabled);
+  }
+
+  // background.js registers netflix-content.js for Netflix pages that load
+  // after the switch goes on. A page that was already open has this reader
+  // without it, so the reader asks the worker once to add the Netflix scripts
+  // to its document, then follows the switch.
+  let netflixLoad = null;
+  function loadNetflix() {
+    if (netflixLoad !== null || disposed || !NETFLIX_HOST || window !== window.top
+        || options.experimental.netflixMining !== true) return;
+    netflixLoad = sendRequest("hd_netflix_load", {}, "hachidori-netflix")
+      .then(syncNetflix, () => { netflixLoad = null; });
   }
 
   // Reading → Word highlighting (#520, experimental): word-highlights.js marks

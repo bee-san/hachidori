@@ -1,5 +1,6 @@
 /*
- * Experimental Netflix mining: the recorder port and the line audio request.
+ * Experimental Netflix mining: the recorder port, the line audio request, and
+ * the Netflix scripts for a page open before the switch went on.
  *
  * Part of the extension smoke suite (test/extension-smoke.mjs); see test/README.md.
  *
@@ -7,6 +8,7 @@
  */
 
 import { describe } from "node:test";
+import { contentNoteStage, createHarness } from "./content-harness.mjs";
 import { loadBackgroundScript, makeBus, makeChrome, makeEvent, makeStorage } from "./fakes.mjs";
 import { check, test } from "./harness.mjs";
 
@@ -95,11 +97,98 @@ async function netflixLineAudioStage() {
     JSON.stringify({ held, subframe, notWav, reloaded, browsing, off }));
 }
 
+// Experimental Netflix mining: a Netflix page that was open before the switch
+// went on gets the Netflix scripts in its own top-frame document, as netflix.js
+// registers them, and only while the switch is on.
+async function netflixLoadStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("netflix-load", bus, storage);
+  chrome.runtime.getContexts = async () => [{}];
+  const injected = [];
+  chrome.scripting = { executeScript: async injection => { injected.push(JSON.parse(JSON.stringify(injection))); return [{}]; } };
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
+  const experimental = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true };
+  await storage.api().local.set({ options: { revision: 1, experimental } });
+  const ask = sender => bus.sendMessage("reader", { target: "hachidori-netflix", type: "hd_netflix_load",
+    requestId: "netflix-load" }, sender);
+  const browse = "https://www.netflix.com/browse";
+  const reader = { id: chrome.runtime.id, url: browse, frameId: 0, documentId: "netflix-document", tab: { id: 7, url: browse } };
+  const loaded = await ask(reader);
+  const scripts = injected.splice(0);
+  const refused = [await ask({ ...reader, frameId: 2 }), await ask({ ...reader, url: "https://example.test/" }),
+    await ask({ ...reader, documentId: undefined })];
+  await storage.api().local.set({ options: { revision: 2, experimental: { ...experimental, netflixMining: false } } });
+  const off = await ask(reader);
+  const target = { tabId: 7, documentIds: ["netflix-document"] };
+  check("a Netflix page open before the switch went on gets the Netflix scripts in its own document, with the switch on",
+    loaded?.ok === true && JSON.stringify(scripts) === JSON.stringify([
+      { target, files: ["netflix-page.js"], world: "MAIN" },
+      { target, files: ["netflix-subtitles.js", "netflix-audio.js", "netflix-content.js"], world: "ISOLATED" }])
+      && refused.every(reply => reply?.ok === false && reply.error.includes("Only a Netflix page"))
+      && off?.ok === false && off.error.includes("turned off in Settings") && injected.length === 0,
+    JSON.stringify({ loaded, scripts, refused, off, injected }));
+}
+
+// The reader's side: on a Netflix page without netflix-content.js it asks
+// once when the switch is on, then follows the switch through the scripts it
+// got; elsewhere, with the switch off or with the scripts there, it asks nothing.
+async function netflixLoadCase() {
+  const { DEFAULT_OPTIONS } = globalThis.HDReaderOptions;
+  const on = { ...DEFAULT_OPTIONS.experimental, netflixMining: true };
+  const off = DEFAULT_OPTIONS.experimental;
+  const loads = harness => harness.sent.filter(request => request.type === "hd_netflix_load")
+    .map(request => request.target);
+  const harness = await createHarness(undefined, { url: "https://www.netflix.com/watch/81000001" });
+  const window = harness.popup.ownerDocument.defaultView;
+  const offAsked = loads(harness).length;
+  harness.emitOptions({ experimental: on });
+  harness.emitOptions({ experimental: on, maxResults: 5 });
+  const asked = loads(harness);
+  // A load that fails is asked for again with the next options.
+  harness.reply(harness.take("hd_netflix_load"), { error: "No document with id" }, false);
+  await harness.settle();
+  harness.emitOptions({ experimental: on, maxResults: 6 });
+  const retried = loads(harness).length;
+  // The worker added the scripts: netflix-content.js publishes HDNetflix.
+  const calls = [];
+  window.HDNetflix = { setHoverPause: value => calls.push(["hover", value]), setLineAudio: value => calls.push(["audio", value]),
+    miningFields: () => ({}), observe: () => null };
+  harness.reply(harness.take("hd_netflix_load"), { loaded: true });
+  await harness.settle();
+  const followedOn = JSON.stringify(calls) === JSON.stringify([["hover", true], ["audio", true]]);
+  harness.emitOptions({ experimental: off });
+  harness.emitOptions({ experimental: on, maxResults: 7 });
+  const followed = followedOn && JSON.stringify(calls.slice(2)) === JSON.stringify([["hover", false], ["audio", false],
+    ["hover", true], ["audio", true]]) && loads(harness).length === 2;
+  harness.close();
+  // Opened with the switch already on, it asks at once; elsewhere it never does.
+  const opened = await createHarness(undefined, { url: "https://www.netflix.com/browse", options: { experimental: on } });
+  const openedAsked = loads(opened).length;
+  opened.close();
+  const elsewhere = await createHarness(undefined, { url: "https://example.test/", options: { experimental: on } });
+  const elsewhereAsked = loads(elsewhere).length;
+  elsewhere.close();
+  return {
+    "a Netflix page open before the switch went on asks once for the Netflix scripts and follows the switch with them":
+      offAsked === 0 && JSON.stringify(asked) === JSON.stringify(["hachidori-netflix"]) && retried === 2 && followed
+      || { offAsked, asked, retried, calls },
+    "a page opened with the switch on asks at once, and other sites never ask": openedAsked === 1 && elsewhereAsked === 0
+      || { openedAsked, elsewhereAsked },
+  };
+}
+
 describe("Netflix", () => {
   test("Netflix recorder port", async () => {
     await netflixRecorderPortStage();
   });
   test("Netflix line audio", async () => {
     await netflixLineAudioStage();
+  });
+  test("Netflix scripts for an open page", async () => {
+    await netflixLoadStage();
+    const reader = await contentNoteStage({ netflix: netflixLoadCase });
+    for (const [name, passed] of Object.entries(reader?.netflix ?? { "the reader's Netflix load ran": false })) {
+      check(name, passed === true, JSON.stringify(passed));
+    }
   });
 });

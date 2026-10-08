@@ -144,6 +144,9 @@ changing and may be removed:
   and it plays on once the pointer has left the line and Hachidori's popup,
   unless you played, paused or skipped it yourself in the meantime. Adding a
   note leaves it paused until the line is recorded and the pointer has left.
+  A Netflix page that was already open when you turned the switch on pauses
+  too, but its notes say that the episode playing then needs the page reloaded
+  for its timing.
 - **Word highlighting** — mark the Japanese words on every page by their Anki
   status, like Migaku: unknown words (no card) get a solid line, learning words
   a dashed one and, if you turn them on, known words (a mature card) a dotted

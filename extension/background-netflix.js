@@ -6,6 +6,7 @@ import { normaliseOptions, OPTIONS_KEY } from "./background-core.js";
 import { getAnkiMining } from "./background-requests.js";
 import { sharingLinked } from "./background-sharing.js";
 import { sharingReady } from "./background.js";
+import { NETFLIX_SCRIPTS } from "./netflix.js";
 
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). The
 // player page cuts a line's sentence audio from what the viewer heard and
@@ -14,7 +15,8 @@ import { sharingReady } from "./background.js";
 // the tab: `start` lets that frame open its tab-capture stream, `finish` has it
 // cut the line out and gives its WAV and GIF to the Anki worker to hold for
 // the note, `cancel` stops it. The frame connects on a port; the worker holds
-// no media itself and only the WAV and GIF reach Anki.
+// no media itself and only the WAV and GIF reach Anki. `load` adds the Netflix
+// scripts to a page that was open before the switch went on.
 const NETFLIX_TARGET = "hachidori-netflix";
 const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
@@ -181,11 +183,29 @@ async function holdNetflixLineAudio(message, sender) {
   return getAnkiMining().sentenceAudio(message.data, message.templateId);
 }
 
+// Chrome adds a registered script only to pages that load after it was
+// registered, so a Netflix page open when the switch went on has the reader
+// without the Netflix scripts. Its reader asks once, and they are added to
+// that exact document as netflix.js registers them: the page's hooks in its
+// main world and the reader's scripts. Neither talks to the other as it loads.
+// Netflix read the playing episode's subtitle list before the hooks were
+// there, so that episode has no timing until the page reloads.
+async function loadNetflixScripts(message, sender) {
+  if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || typeof sender.tab?.id !== "number"
+      || !sender.documentId || !(sender.url ?? "").startsWith("https://www.netflix.com/")) {
+    throw new Error("Only a Netflix page can load the Netflix scripts.");
+  }
+  const target = { tabId: sender.tab.id, documentIds: [sender.documentId] };
+  await Promise.all(NETFLIX_SCRIPTS.map(({ js, world }) => chrome.scripting.executeScript({ target, files: js, world })));
+  return { loaded: true };
+}
+
 const NETFLIX_REQUESTS = {
   hd_netflix_capture_start: startNetflixRecording,
   hd_netflix_capture_finish: finishNetflixRecording,
   hd_netflix_capture_cancel: cancelNetflixRecording,
   hd_netflix_line_audio: holdNetflixLineAudio,
+  hd_netflix_load: loadNetflixScripts,
 };
 
 async function handleNetflixRequest(message, sender) {

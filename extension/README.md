@@ -128,7 +128,9 @@ the service worker and both engine runtimes run the same code.
   `netflix-subtitles.js`, `netflix-audio.js` and `netflix-content.js`
   (WebVTT/TTML cue timelines, the last 30 seconds of the video's sound, the
   hovered line's cue, and pausing while a line is hovered) on
-  `www.netflix.com`. `{sentence-audio}` attaches the line's WAV, cut from what
+  `www.netflix.com`; `background-netflix.js` adds the same scripts to a
+  Netflix page that was open before the switch went on, when its reader asks.
+  `{sentence-audio}` attaches the line's WAV, cut from what
   `netflix-audio.js` kept. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
   records the replayed line inside the Netflix tab for `{gif}`, a looping GIF

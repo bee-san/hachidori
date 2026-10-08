@@ -2906,10 +2906,19 @@ the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`,
 `netflix-audio.js` and `netflix-content.js` beside the manifest's content
 scripts. The worker
 applies the flag at startup and on every options change, serialised like the
-Google Docs flag; turning it off unregisters both. A Netflix tab that was open
-when the switch changed needs a reload. The reader and the worker also check
-the switch themselves, so a page that still has the scripts records nothing once
-it is off, though its page hooks stay until the page reloads.
+Google Docs flag; turning it off unregisters both. Chrome adds a registered
+script only to pages that load after it is registered, so a Netflix page that
+was open when the switch went on has the reader without `netflix-content.js`
+(#548). The reader of such a page, in its top frame, asks the worker once with
+`hd_netflix_load`, which adds the same scripts to that exact document with
+`scripting.executeScript` (the page's script in its main world and the
+reader's), and then follows the switch with them. Hover pause and the line
+audio start at once, but Netflix read the playing episode's subtitle list
+before the page's hooks were there, so that episode's notes say its timing was
+not found and to reload the page, which gives it its timing. The reader and the
+worker also check the switch themselves, so a page that still has the scripts
+records nothing once it is off, though its page hooks stay until the page
+reloads.
 
 **Subtitles.** The page script adapts Subadub's two hooks (MIT, see
 `distribution/THIRD_PARTY_NOTICES.md`). `JSON.stringify` finds the manifest
@@ -3021,7 +3030,10 @@ at when it opened, and the block being rendered then is its first, so a line
 played on after a pause joins the part heard before it; Chrome 152 can have
 rendered up to one 2.9 ms render quantum by the time the `play` event is
 handled, which the cut leaves out, and about 2 ms more when it resamples the
-video's sound to the context's rate. A stretch ends at the latest media time
+video's sound to the context's rate. On a busy page the event is handled
+later: in `test/chrome-netflix-mining.mjs`, with the popup open and the page
+animating, a 48 kHz line paused partway and played on had a 2–12 ms gap at
+the join in Chrome 152 and Edge 154. A stretch ends at the latest media time
 seen while it played, or at the time the video stood when it paused or
 stalled, so the silence Chrome renders between a pause and its event is not
 counted as heard. Turning the switch off cancels the reader, stops the track,
@@ -3090,7 +3102,12 @@ the cue and 2 s earlier again if the seek lands past that, plays at 1×, and
 reports `(wall ms, media ms)` pairs every 25 ms until 250 ms after the cue. It
 then restores the position, paused state and speed, each step independently;
 a replay sent with `keepPaused`, as hover pause sends it, restores a playing
-video paused (see **Hover pause**).
+video paused (see **Hover pause**). The replay, the play-on and hover pause
+use the watch page's own player session, chosen as `netflix-preview.js`
+chooses it: the `watch…` session whose movie is the address's and whose
+element is inside `.watch-video`, or the only session when Netflix lists one.
+Netflix keeps other sessions beside it, such as the next episode it prepares,
+and need not list the watch page's last (#548).
 `hd_netflix_capture_finish` has the frame wait up to 500 ms for the last audio,
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
@@ -3466,6 +3483,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
 | `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
+| `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
 
 ## Build outputs
 

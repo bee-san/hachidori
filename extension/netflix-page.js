@@ -190,12 +190,28 @@
   const wallClock = () => performance.timeOrigin + performance.now();
 
   // Netflix's own player: writing <video>.currentTime makes Netflix stop with
-  // error M7375, so seeking goes through its player API.
+  // error M7375, so seeking goes through its player API. Netflix keeps other
+  // sessions beside the watch page's, such as the next episode it prepares, and
+  // need not list that one first or last, so the player is chosen as
+  // netflix-preview.js chooses it: a `watch` session playing the movie in the
+  // address whose element is inside `.watch-video`. A page with a single
+  // session keeps that one even when it does not say what it is.
   function netflixPlayer() {
     try {
       const api = window.netflix?.appContext?.state?.playerApp?.getAPI?.()?.videoPlayer;
-      const sessions = api?.getAllPlayerSessionIds?.() ?? [];
-      const player = sessions.length > 0 ? api.getVideoPlayerBySessionId?.(sessions.at(-1)) : null;
+      const ids = api?.getAllPlayerSessionIds?.() ?? [];
+      const movieId = WATCH_PATH.exec(location.pathname)?.[1];
+      const watching = [];
+      for (const id of ids) {
+        const session = typeof id === "string" && id.startsWith("watch") ? api.getVideoPlayerBySessionId?.(id) : null;
+        if (typeof session?.getMovieId === "function" && String(session.getMovieId()) === movieId) watching.push(session);
+      }
+      const root = document.querySelector(".watch-video");
+      const shown = watching.filter(session => typeof session.getElement === "function" && root?.contains(session.getElement()));
+      let player = null;
+      if (shown.length === 1) player = shown[0];
+      else if (shown.length === 0 && watching.length === 1 && typeof watching[0].getElement !== "function") player = watching[0];
+      else if (shown.length === 0 && ids.length === 1) player = api.getVideoPlayerBySessionId?.(ids[0]);
       return typeof player?.seek === "function" ? player : null;
     } catch {
       return null;
