@@ -63,9 +63,9 @@ describe("Settings library", () => {
       const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
       return document.querySelector("main > section")?.id === "dictionaries"
         && row.getBoundingClientRect().bottom < window.innerHeight
-        // Word highlighting's link stays hidden until its experimental switch is on.
-        && links.length === 10
-        && links.filter((link) => link.checkVisibility()).length === 9
+        // Word highlighting is a Reading tab, not a rail link.
+        && links.length === 9
+        && links.every((link) => link.checkVisibility())
         && links.every((link) => document.getElementById(link.hash.slice(1))?.tagName === "SECTION")
         && JSON.stringify(libraryLinks.map(link => link.hash)) === JSON.stringify([
           "#dictionaries", "#add-dictionaries", "#updates", "#dictionary-groups", "#custom-dictionary",
