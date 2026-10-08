@@ -299,10 +299,10 @@ The fakes cover only the Chrome surface the extension actually touches:
 
 Each script gets its own `chrome` object. The offscreen document's has `runtime`
 only, as a real one does, so a storage call from `offscreen.js` fails here the way
-it fails in Chrome. The harness concatenates the shared modules into
-`background.js`, strips those ES-module boundaries, and runs the worker and render
-code in `node:vm`; `offscreen.js` is a real ES module and reads the shared global,
-which is the one wired to the bus as `"offscreen"`.
+it fails in Chrome. The harness concatenates the shared modules and the
+worker's own `background*.js` modules, strips those ES-module boundaries, and runs
+the worker and render code in `node:vm`; `offscreen.js` is a real ES module and
+reads the shared global, which is the one wired to the bus as `"offscreen"`.
 
 The renderer, Settings, startup and content stages need jsdom. A jsdom that
 cannot be loaded is a **failed check**, printed with the paths that were searched:
@@ -325,8 +325,11 @@ ESM ignores `NODE_PATH`, which is why the loader resolves jsdom through
 What it cannot prove: anything about Chrome itself. No manifest validation, no
 `chrome.offscreen`, no real IndexedDB or `unlimitedStorage` quota, no MV3 CSP, no
 layout (so no popup positioning, masonry or `@scope`), and no `blob:` URL crossing
-from the options page to the offscreen document. That is what `chrome-e2e.mjs` is
-for.
+from the options page to the offscreen document. Nor the worker's module
+boundaries: its `background*.js` modules run here as one script, so an import of
+a name its module does not export, an assignment to an imported binding, or a
+module that reads another's binding before Chrome has evaluated it can pass here
+and fail only in Chrome. That is what `chrome-e2e.mjs` is for.
 
 ### `chrome-e2e.mjs`
 

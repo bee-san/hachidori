@@ -700,6 +700,9 @@ function loadClassicScript(file, sandbox) {
   return context;
 }
 
+const BACKGROUND_MODULES = ["background-core.js", "background-requests.js", "background-anki.js",
+  "background-backup.js", "background-updates.js", "background-sharing.js", "background-netflix.js", "background.js"];
+
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview });
   sandbox.createAnkiWorkerService ??= createAnkiWorkerService;
@@ -753,37 +756,12 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
-  const background = readFileSync(resolve(EXTENSION, "background.js"), "utf8")
-    .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
-    .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "")
-    .replace(/^import .* from "\.\/error-text\.js";\s*/gmu, "")
-    .replace(/import \{ ensureChromeOffscreen \} from "\.\/chrome-offscreen\.js";\s*/u, "")
-    .replace(/^import .* from "\.\/lookup-stats\.js";\s*/gmu, "")
-    .replace(/^import .* from "\.\/backup-(?:state|downloads|automatic)\.js";\s*/gmu, "")
-    .replace(/import \{ createAnkiGateway \} from "\.\/anki\.js";\s*/u, "")
-    .replace(/import \{ detectAnkiSetup, verifyAnkiSetup \} from "\.\/anki-setup\.js";\s*/u, "")
-    .replace(/import \{ createAnkiWorkerService \} from "\.\/anki-worker\.js";\s*/u, "")
-    .replace(/import \{ captureNetflixPreview \} from "\.\/netflix-preview\.js";\s*/u, "")
-    .replace(/import \{ detectLocalAudioSource \} from "\.\/local-audio-setup\.js";\s*/u, "")
-    .replace(/import \{ createLocalAudioSource, findLocalAudioSource \} from "\.\/local-audio-source\.js";\s*/u, "")
-    .replace(/^import .* from "\.\/anki-index(?:-cache)?\.js";\s*/gmu, "")
-    .replace(/import "\.\/reader-options\.js";\s*/u, "")
-    .replace(/import "\.\/external-links\.js";\s*/u, "")
-    .replace(/import "\.\/dictionary-group-state\.js";\s*/u, "")
-    .replace(/import "\.\/word-status-overrides\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/managed-dictionary-source\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/custom-dictionary\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/json-value\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/response-limits\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/setup-state\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-host\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/api-host\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-client\.js";\s*/u, "")
-    .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
-    .replace(/import \{ applyCustomJavaScript \} from "\.\/custom-javascript\.js";\s*/u, "")
-    .replace(/import \{ applyGoogleDocsFlag \} from "\.\/google-docs\.js";\s*/u, "")
-    .replace(/import \{ applyNetflixFlag \} from "\.\/netflix\.js";\s*/u, "")
-    .replace(/import \{ HOST_CAPABILITIES, OVERLAY_MODE \} from "\.\/overlay-mode\.js";\s*/u, "");
+  // The worker's modules run as one script, as background.js did before it was
+  // split: each without its imports and exports, and each constant declared
+  // before the module-load code that reads it.
+  const background = BACKGROUND_MODULES.map(file => readFileSync(resolve(EXTENSION, file), "utf8")
+    .replace(/^import\s+(?:[^"';]*?\s+from\s+)?"[^"]+";\n/gmu, "")
+    .replace(/^export\s*\{[^}]*\};\n/gmu, "")).join("\n");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;

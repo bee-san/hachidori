@@ -268,9 +268,9 @@ exported archive URL or an open dictionary download) and the restart,
 `extension/engine-worker-runtime.js` reads the worker's name to size the
 pthread pool before the module starts and asks `engine-service.js` to apply the
 entry storage policy (`hd_status.dictionaryEntryStorage`,
-`hd_status.pagedDictionaries`), and `background.js` answers
-`hd_engine_config` for the offscreen document and pushes the option when it
-changes.
+`hd_status.pagedDictionaries`), and the service worker answers
+`hd_engine_config` for the offscreen document (`background-requests.js`) and
+pushes the option when it changes (`background.js`).
 
 ## Disabled dictionaries
 

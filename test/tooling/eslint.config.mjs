@@ -41,6 +41,8 @@ const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
   "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
   "custom-javascript.js", "google-docs.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
+  "background-anki.js", "background-backup.js", "background-core.js", "background-netflix.js",
+  "background-requests.js", "background-sharing.js", "background-updates.js",
 ];
 // Dedicated module workers and the modules only they load.
 const WORKERS = [
