@@ -461,7 +461,9 @@ These run separately:
   contrast theme.
 - **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
   headless Chrome records tab audio as silence), mines a fixture page served at
-  a Netflix watch address into a fake AnkiConnect. The video's sound is a
+  a Netflix watch address into a fake AnkiConnect. Request interception serves
+  the page, and the browser resolves no host but `127.0.0.1`, so nothing,
+  not even a preconnect, reaches Netflix. The video's sound is a
   different tone each second, and each note's WAV, decoded, must be the cue
   with its pads, audible except within 125 ms of its ends, with exactly the
   padded cue's seconds' tones, each change of tone within 125 ms. The page is

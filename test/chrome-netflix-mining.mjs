@@ -33,6 +33,9 @@
 // runs, until the pointer leaves; a note whose only Netflix field is {gif} gets
 // the GIF alone; and nothing pauses once the switch is off.
 //
+// Netflix is never contacted: request interception serves the fixture, and the
+// browser resolves no host but 127.0.0.1, so not even a preconnect leaves.
+//
 // Not part of the default runs. The browser runs headful because headless
 // Chrome captures tab audio as silence, and needs Extensions.triggerAction,
 // which CDP has had since Chromium r1577676 (January 2026), so not the
@@ -315,8 +318,12 @@ try {
     executablePath: chrome, headless: false, enableExtensions: true, userDataDir: profile,
     // Over a pipe, with extension debugging on, CDP can run the toolbar action as a click does.
     pipe: true,
+    // Request interception answers the page's requests, but Chrome preconnects
+    // to an address it is about to load before any request exists, so every
+    // host but the fake AnkiConnect's loopback address is left unresolvable.
     args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-audio-output",
       "--autoplay-policy=no-user-gesture-required", "--enable-unsafe-extension-debugging",
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
       `--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
   });
   console.log(`browser ${await browser.version()}`);
