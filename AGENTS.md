@@ -66,7 +66,7 @@ When implementing the dictionary-only scope from issue #9:
 - Generalize the offscreen import lock to a mutation lock for custom saves/appends. Reuse private staging/import helpers; do not recursively invoke the public queued import handler.
 - The fixed Note form is shared by term and kanji views. Treat append success separately from best-effort lookup refresh so a refresh error cannot invite a duplicate retry. Refresh the exact current request/view only if it is still current and anchored, and make reply/state-event ordering harmless by adopting only newer committed revisions.
 - While the Note form is open, Escape closes the form before document capture can hide the popup, and hover-hide timers must not discard the draft.
-- Library → Personal dictionary → Use the personal dictionary (`personalDictionaryEnabled`) is a reader option, not package state. Off, it stops automatic selection lookups, hides the pencil and filters personal glossaries out of lookup replies in the engine service; it never disables, reorders, recompiles or removes the managed package.
+- Dictionaries → Personal dictionary → Use the personal dictionary (`personalDictionaryEnabled`) is a reader option, not package state. Off, it stops automatic selection lookups, hides the pencil and filters personal glossaries out of lookup replies in the engine service; it never disables, reorders, recompiles or removes the managed package.
 
 ## Lookup statistics and definition blur
 
@@ -83,7 +83,7 @@ Settings → Advanced → Experimental features is the one place a feature that 
 - An experimental feature is one entry in `EXPERIMENTAL_FEATURES` in `extension/reader-options.js` (`id`, `label`, `description`, optional `section`) plus its `false` default under `options.experimental`. Add the entry and the default together; do not introduce a parallel storage key, a separate save path, or a second registry. `experimental-settings.js` renders the switches from that registry and needs no per-feature code.
 - Flags are booleans under `options.experimental` and travel through the existing revisioned `hd_options_write`, `normaliseOptions`, and backup paths. A patch must carry the complete record with known ids and boolean values, as the existing feature flags do; stored garbage normalises to the default without throwing.
 - A feature's own settings live where they always did. Turning a flag off hides the feature and keeps those settings; it must not clear them. When a feature has an enable switch that keeps runtime work going (Word highlighting → `wordHighlightEnabled`), the Settings toggle switches it off in the same save so nothing stays active behind a hidden section. Runtime code gates on the feature's own enable switch, not on the flag.
-- A feature that names a Settings `section` keeps that section, its rail link and its picker option hidden while off, and a hash request for it resolves to `#advanced`. Real-Chrome suites that open a gated section turn its switch on first.
+- A feature that names a Settings `section` keeps that section, its rail link or tab and its picker option hidden while off, and a hash request for it resolves to `#advanced`. Real-Chrome suites that open a gated section turn its switch on first.
 - Removing a flag means deleting its registry entry and default, dropping its gate, and leaving its feature permanently on or removing the feature; do not keep dead flags.
 
 ## Repository map

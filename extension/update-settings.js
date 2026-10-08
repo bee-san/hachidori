@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings → Library → Updates: the default schedule, Check now and Update all,
+// Settings → Dictionaries → Updates: the default schedule, Check now and Update all,
 // and each managed dictionary's update status and schedule.
 
 import { extensionApi as chrome } from "./browser-api.js";

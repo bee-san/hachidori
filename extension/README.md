@@ -152,7 +152,7 @@ the service worker and both engine runtimes run the same code.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
   `settings-theme.js` is the classic script in its `<head>` that applies the
   saved theme before the first paint, ahead of the `settings.js` module;
-  `library-settings.js` (Library → Dictionaries: the rows, their order,
+  `library-settings.js` (Dictionaries → Dictionaries: the rows, their order,
   selection and bulk actions, the revision-checked commit queue and removal),
   `import-settings.js` (Add dictionaries and the recommended installer),
   `update-settings.js` (Updates), `custom-dictionary-settings.js` (Personal
@@ -162,7 +162,7 @@ the service worker and both engine runtimes run the same code.
   and from each other, and assign a binding only in the module that declares
   it; `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `memory-settings.js`
-  the Advanced → Memory readout and each Library row's *In memory* line;
+  the Advanced → Memory readout and each Dictionaries row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
   with credentials redacted and reader content reduced to counts, and
   `debug-log.js` the recent warnings, errors and failed replies each

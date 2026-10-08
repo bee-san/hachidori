@@ -1031,7 +1031,7 @@ engine scan window; a prefix-only result is not an exact match. A miss retains
 selection ownership until the selection changes or is dismissed, so pointer
 movement cannot silently replace it with a prefix. Its notice exposes the same
 personal-dictionary pencil as term and kanji results, prefilled with the
-selected word even when no dictionaries are installed. Library → Personal
+selected word even when no dictionaries are installed. Dictionaries → Personal
 dictionary → **Show a popup when a selection has no definition**
 (`showNoResultNotice`, default on) owns that notice: switched off, a miss with
 loaded dictionaries hides the popup and still retains the selection, while the
@@ -1041,7 +1041,7 @@ Note append transaction and replays that exact request to show the new
 definition; publisher dictionaries remain unchanged.
 
 Automatic selection lookups are the personal dictionary's entry point, so
-Library → Personal dictionary → **Use the personal dictionary**
+Dictionaries → Personal dictionary → **Use the personal dictionary**
 (`personalDictionaryEnabled`, default on) owns them. Switched off, the reader
 behaves like Yomitan: a selection change or drag release never looks anything
 up, in any lookup mode, and a live selection no longer outranks the pointer, so
@@ -2220,22 +2220,24 @@ The real-Chrome fixture retains its ordinary structured formatting after contain
 ## Settings interface
 
 Settings is one document with native hash links and one visible task section.
-The primary rail exposes ten destinations. Library owns five local,
-hash-addressable task views: Dictionaries, Add, Updates, Groups, and Personal
-dictionary. Backup and restore remains a global destination. Advanced is the
+The primary rail exposes nine destinations. Dictionaries owns five local,
+hash-addressable task views shown as tabs: Dictionaries, Add, Updates, Groups,
+and Personal dictionary. Reading shows Reading and Word highlighting the same
+way. Backup and restore remains a global destination. Advanced is the
 last destination and holds Experimental features: one switch per entry in the
 `EXPERIMENTAL_FEATURES` registry in `reader-options.js`, stored as booleans
 under `options.experimental` and saved through the same revisioned option
 writes. A feature that names a Settings section keeps that section, its rail
-link and its picker option hidden while the switch is off; a hash request for
+link or tab and its picker option hidden while the switch is off; a hash request for
 the hidden section resolves to Advanced and is re-resolved when the stored
 options arrive or change. Global search leaves the hidden section's settings
 out too. The feature's own settings stay where they were, so
 turning a switch off preserves them. Word highlighting is such a section: its
-rail link sits indented under Reading. The compact picker
-keeps all fourteen task views available and groups those five Library choices.
-Global search matches settings across every section, includes the Library
-hierarchy in matching and result breadcrumbs, opens a result's enclosing
+tab under Reading is hidden while it is off, and Reading then shows no tab row.
+The compact picker keeps all fourteen task views available and groups the
+Dictionaries and Reading choices.
+Global search matches settings across every section, includes the Dictionaries
+and Reading hierarchy in matching and result breadcrumbs, opens a result's enclosing
 disclosures and focuses its control without changing values or discarding drafts.
 The Activation key or button picker stays editable in every lookup mode, and
 search finds it by "no key", "hover" or "mouse".
@@ -2247,9 +2249,9 @@ external option changes; startup pages retain their independent system light/dar
 fallback. Inactive sections mirror pending work, errors, and unseen operation
 completions next to their links. Visiting a section clears its completion notice,
 not its source output or draft. The compact navigation mirrors inactive notices,
-and shared options feedback stays near the section heading. Notices from Library
-children are labelled and aggregated on the primary Library destination while
-the local navigation identifies the active child. Status setters own these
+and shared options feedback stays near the section heading. Notices from a
+tab are labelled and aggregated on its rail destination while the tab row
+identifies the active tab. Status setters own these
 notices; there are no observers or additional polling loops.
 
 [The Settings UI review](history/settings-ui-review.md) records the layout decisions
@@ -2266,7 +2268,7 @@ Bulk actions appear when a selection exists, including selections outside the
 current search. Source editing remains lazy, and lookup preferences apply
 immediately; custom source still requires Save.
 
-**Remove all imported dictionaries**, under Start over at the end of Library,
+**Remove all imported dictionaries**, under Start over at the end of Dictionaries,
 lets pending dictionary edits settle, rereads the inventory and asks once with
 the number of ordinary packages, disabled and search-hidden ones included. It
 then sends one ordinary `hd_remove` per package in order and names each package
@@ -2281,7 +2283,7 @@ Reading owns local lookup history and definition blur. Design contains appearanc
 and displayed-content controls; its reset leaves reading behaviour and history
 preferences untouched. The preview and advanced CSS use native disclosures.
 Recommended sources remain reachable while any are missing, including after a
-local ZIP import; the empty Library offers both installation and import actions.
+local ZIP import; the empty Dictionaries view offers both installation and import actions.
 
 Reader options carry a worker-owned monotonic `revision` in the existing
 `options` storage value. Legacy values start at revision zero. Settings coalesces

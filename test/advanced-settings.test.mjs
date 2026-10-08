@@ -88,9 +88,11 @@ test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch
   assert.equal(el("opt-experimental-mdxImport"), null);
 });
 
-test("Word highlighting is a Reading section that only its experimental switch reveals, search included", t => {
+test("Word highlighting is a Reading tab that only its experimental switch reveals, search included", t => {
   const { window, el, visible } = fixture(t, { hash: "#word-highlighting", stored: { wordHighlightKnown: true } });
-  const railItem = () => window.document.querySelector('.settings-nav a[href="#word-highlighting"]').parentElement;
+  const tab = () => el("reading-navigation").querySelector('a[href="#word-highlighting"]');
+  const current = () => el("reading-navigation").querySelector('[aria-current="page"]')?.hash;
+  const railCurrent = () => window.document.querySelector('.settings-nav [aria-current="page"]')?.hash;
   const pickerOption = () => el("settings-section").querySelector('option[value="word-highlighting"]');
   const search = words => {
     el("settings-search").value = words;
@@ -100,15 +102,19 @@ test("Word highlighting is a Reading section that only its experimental switch r
     el("settings-search").dispatchEvent(new window.Event("input"));
     return found;
   };
-  // Off: the section, its rail link, its picker option and its settings in search are all hidden.
+  // Off: the section, its tab, its picker option and its settings in search are all hidden.
+  assert.equal(window.document.querySelector('.settings-nav a[href="#word-highlighting"]'), null, "no rail link of its own");
   assert.deepEqual(visible(), ["advanced"]);
-  assert.equal(railItem().hidden, true);
+  assert.equal(tab().hidden, true);
   assert.equal(pickerOption().hidden, true);
   assert.deepEqual(search("mark unknown words"), []);
 
   el("opt-experimental-wordHighlighting").click();
   assert.deepEqual(visible(), ["word-highlighting"], "the requested section opens once its switch is on");
-  assert.equal(railItem().hidden, false);
+  assert.equal(tab().hidden, false);
+  assert.equal(el("reading-navigation").hidden, false);
+  assert.equal(current(), "#word-highlighting");
+  assert.equal(railCurrent(), "#lookup", "Reading stays the rail destination");
   assert.equal(pickerOption().hidden, false);
   assert.deepEqual(search("mark unknown words"), ["Mark unknown words"]);
   assert.equal(el("opt-word-highlight").checked, false, "highlighting itself starts off");
@@ -129,6 +135,9 @@ test("turning Word highlighting's experimental switch off stops the marks in the
   assert.equal(el("opt-word-highlight").checked, true);
   el("opt-experimental-wordHighlighting").click();
   assert.deepEqual(visible(), ["advanced"]);
+  window.location.hash = "#lookup";
+  window.dispatchEvent(new window.Event("hashchange"));
+  assert.equal(el("reading-navigation").hidden, true, "Reading has no tab row with one view");
   assert.deepEqual(plain(window.readPending()), {
     experimental: { ...plain(window.readOptions().experimental), wordHighlighting: false }, wordHighlightEnabled: false });
   assert.equal(window.readOptions().wordHighlightKnown, true);

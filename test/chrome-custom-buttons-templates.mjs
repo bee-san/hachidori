@@ -214,7 +214,7 @@ async function showSection(page, id) {
       picker.value = section;
       picker.dispatchEvent(new Event("change", { bubbles: true }));
     } else {
-      document.querySelector(`.settings-nav a[href="#${section}"], #library-navigation a[href="#${section}"]`).click();
+      document.querySelector(`.settings-nav a[href="#${section}"], .section-tabs a[href="#${section}"]`).click();
     }
   }, id);
   await page.waitForFunction((section) => {

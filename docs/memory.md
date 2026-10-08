@@ -87,14 +87,14 @@ count the browser's shared libraries in every process.
 
 ![The same Memory controls on the dark palette](assets/index-residency-memory-dark.png)
 
-Each row in Library shows *In memory: ≈ Y MB* under **Details**: that
+Each row in Dictionaries shows *In memory: ≈ Y MB* under **Details**: that
 package's resident files as described above. A package whose entries are read
 from disk (the OPFS default, every package in Low memory mode, or one that did not fit) counts
 only its resident files and says which of its entries and hash index are
 read from disk. The hash readout separately shows the requested policy,
 resident hash bytes, budget and paged package count.
 
-![A Library row's Details with its In memory line](assets/memory-library-details.png)
+![A Dictionaries row's Details with its In memory line](assets/memory-library-details.png)
 
 The engine lines come from the engine's `hd_memory` read and the extension
 total from `hd_memory_total` (see [architecture.md](architecture.md), "Runtime
@@ -292,7 +292,7 @@ There are two failure regimes.
 **More than 4 GiB of resident files.** `memory.grow` is refused and the
 engine's `mmap` fails with `ENOMEM` (*not enough memory to load … dictionary*).
 The engine then loads that package again with its entries read from disk, as
-Low memory mode would, so only its index has to fit; its Library row says
+Low memory mode would, so only its index has to fit; its Dictionaries row says
 *(entries read from disk)* and its lookups cost what they cost in Low memory
 mode. A package whose index does not fit either is reported in
 `hd_status.failedDictionaries`. Nothing crashes: the other dictionaries keep

@@ -28,15 +28,17 @@
         <label class="settings-section-picker" for="settings-section">
           <span class="field-label">Section</span>
           <select id="settings-section">
-            <optgroup label="Library">
+            <optgroup label="Dictionaries">
               <option value="dictionaries">Dictionaries</option>
               <option value="add-dictionaries">Add</option>
               <option value="updates">Updates</option>
               <option value="dictionary-groups">Groups</option>
               <option value="custom-dictionary">Personal dictionary</option>
             </optgroup>
-            <option value="lookup">Reading</option>
-            <option value="word-highlighting" hidden>Word highlighting</option>
+            <optgroup label="Reading">
+              <option value="lookup">Reading</option>
+              <option value="word-highlighting" hidden>Word highlighting</option>
+            </optgroup>
             <option value="design">Design</option>
             <option value="audio">Audio</option>
             <option value="anki">Anki</option>
@@ -49,16 +51,12 @@
         <output id="settings-navigation-status" class="compact-nav-status" aria-live="polite"></output>
         <nav class="settings-nav" aria-label="Settings sections">
           <div class="nav-item">
-            <a href="#dictionaries" aria-describedby="nav-status-dictionaries">Library</a>
+            <a href="#dictionaries" aria-describedby="nav-status-dictionaries">Dictionaries</a>
             <output class="nav-status" id="nav-status-dictionaries" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#lookup" aria-describedby="nav-status-lookup">Reading</a>
             <output class="nav-status" id="nav-status-lookup" aria-live="polite"></output>
-          </div>
-          <div class="nav-item nav-subitem" hidden>
-            <a href="#word-highlighting" aria-describedby="nav-status-word-highlighting">Word highlighting</a>
-            <output class="nav-status" id="nav-status-word-highlighting" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#design" aria-describedby="nav-status-design">Design</a>
@@ -110,18 +108,22 @@
           <output id="settings-search-count" class="hint" aria-live="polite"></output>
           <ul id="settings-search-matches"></ul>
         </div>
-        <nav class="library-navigation" id="library-navigation" aria-label="Library sections" hidden>
+        <nav class="section-tabs" id="library-navigation" aria-label="Dictionaries sections" hidden>
           <a href="#dictionaries" data-label="Dictionaries">Dictionaries</a>
           <a href="#add-dictionaries" data-label="Add">Add</a>
           <a href="#updates" data-label="Updates">Updates</a>
           <a href="#dictionary-groups" data-label="Groups">Groups</a>
           <a href="#custom-dictionary" data-label="Personal dictionary">Personal dictionary</a>
         </nav>
+        <nav class="section-tabs" id="reading-navigation" aria-label="Reading sections" hidden>
+          <a href="#lookup" data-label="Reading">Reading</a>
+          <a href="#word-highlighting" data-label="Word highlighting" hidden>Word highlighting</a>
+        </nav>
         <section
           class="card library"
           id="dictionaries"
           aria-labelledby="dictionaries-heading"
-          data-settings-group="Library"
+          data-settings-group="Dictionaries"
           data-settings-name="Dictionaries"
         >
           <div class="section-heading">
@@ -217,7 +219,7 @@
           class="card"
           id="add-dictionaries"
           aria-labelledby="import-heading"
-          data-settings-group="Library"
+          data-settings-group="Dictionaries"
           hidden
         >
           <div class="card-head">
@@ -288,7 +290,7 @@
           </p>
         </section>
 
-        <section class="card" id="updates" aria-labelledby="updates-heading" data-settings-group="Library" hidden>
+        <section class="card" id="updates" aria-labelledby="updates-heading" data-settings-group="Dictionaries" hidden>
           <div class="card-head">
             <h1 id="updates-heading" tabindex="-1">Updates</h1>
             <p class="hint">For dictionaries with an update source. Other imports are local-only.</p>
@@ -341,7 +343,7 @@
           class="card"
           id="dictionary-groups"
           aria-labelledby="dictionary-groups-heading"
-          data-settings-group="Library"
+          data-settings-group="Dictionaries"
           hidden
         >
           <div class="card-head">
@@ -372,7 +374,7 @@
           class="card"
           id="custom-dictionary"
           aria-labelledby="custom-dictionary-heading"
-          data-settings-group="Library"
+          data-settings-group="Dictionaries"
           hidden
         >
           <div class="card-head">
@@ -516,7 +518,7 @@
                 <span class="field-hint" id="definition-scan-delay-hint">How long the pointer rests on a word in a popup's definitions before its child popup opens.</span>
               </div>
             </div>
-            <p class="field-hint">Highlighting Japanese text also opens a popup while <a href="#custom-dictionary">Library › Personal dictionary</a> is on.</p>
+            <p class="field-hint">Highlighting Japanese text also opens a popup while <a href="#custom-dictionary">Dictionaries › Personal dictionary</a> is on.</p>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Scanning</legend>
@@ -1374,7 +1376,7 @@
               <p id="memory-extension-total" class="section-note" aria-live="polite">Extension total: —</p>
               <p id="memory-indexes" class="section-note" aria-live="polite"></p>
             </div>
-            <p class="field-hint">On direct OPFS storage, entries and images are read from disk when needed by default. With Use less ram by default or Low memory mode, Automatic hash indexes also read a large library's bigger indexes from disk. Each dictionary's share is under its Details in Library. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
+            <p class="field-hint">On direct OPFS storage, entries and images are read from disk when needed by default. With Use less ram by default or Low memory mode, Automatic hash indexes also read a large library's bigger indexes from disk. Each dictionary's share is under its Details in Dictionaries. <a href="https://github.com/bee-san/hachidori/blob/main/docs/memory.md" target="_blank" rel="noopener noreferrer">How Hachidori uses memory</a></p>
             <div class="field" id="dictionary-entry-storage">
               <label class="field-label" for="opt-dictionary-entry-storage">Dictionary entries</label>
               <select id="opt-dictionary-entry-storage" aria-describedby="opt-dictionary-entry-storage-help">

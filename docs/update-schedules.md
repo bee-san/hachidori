@@ -1,6 +1,6 @@
 # Dictionary update schedules
 
-Settings → Updates chooses the default schedule. In Library → Details, each
+Settings → Updates chooses the default schedule. In Dictionaries → Details, each
 update-checkable dictionary can use that default or choose Off, hourly, daily,
 weekly or monthly. An explicit interval continues to work when the default is
 Off. Local-only packages have no schedule control. Disabled managed packages

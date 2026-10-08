@@ -360,10 +360,6 @@ button,
   color: var(--accent);
   font-weight: var(--weight-medium);
 }
-/* A section that belongs to the destination above it (Reading → Word highlighting). */
-.settings-nav .nav-subitem a {
-  padding-left: 24px;
-}
 .nav-status {
   display: block;
   padding: 2px 10px 8px;
@@ -425,7 +421,7 @@ button,
   border-inline: 1px solid var(--border);
   background: var(--surface);
 }
-.library-navigation {
+.section-tabs {
   display: flex;
   gap: 6px;
   margin: 0 0 28px;
@@ -434,7 +430,7 @@ button,
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.library-navigation a {
+.section-tabs a {
   /* The label and its hidden semibold copy share one column. */
   display: grid;
   justify-items: center;
@@ -450,18 +446,22 @@ button,
  * tab as wide as it is when current, so moving aria-current restyles one tab
  * without moving the others. It is clipped so it adds no scrollable overflow.
  */
-.library-navigation a::after {
+.section-tabs a::after {
   content: attr(data-label);
   height: 0;
   overflow: hidden;
   visibility: hidden;
   font-weight: var(--weight-medium);
 }
-.library-navigation a:hover {
+/* An experimental tab stays hidden while its switch is off. */
+.section-tabs a[hidden] {
+  display: none;
+}
+.section-tabs a:hover {
   background: var(--surface-sunken);
   color: var(--text);
 }
-.library-navigation a[aria-current="page"] {
+.section-tabs a[aria-current="page"] {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: var(--weight-medium);

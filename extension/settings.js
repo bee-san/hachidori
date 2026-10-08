@@ -77,10 +77,9 @@ const OPTION_SECTIONS = {
   // Backup & restore → Automatic backups → Days kept.
   backup: "Backup & restore",
   advanced: "Advanced",
-  // Library → Personal dictionary owns its lookup switches.
+  // Dictionaries → Personal dictionary owns its lookup switches.
   "custom-dictionary": "Personal dictionary",
 };
-const LIBRARY_SECTIONS = new Set(["dictionaries", "add-dictionaries", "updates", "dictionary-groups", "custom-dictionary"]);
 const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
@@ -183,7 +182,7 @@ let backingUp = false; // NOSONAR: shared with the other Settings modules
 let settingsSearch;
 
 const SECTION_STATUSES = {
-  "library-reset-status": { section: "dictionaries", label: "Library" },
+  "library-reset-status": { section: "dictionaries", label: "Dictionaries" },
   "import-state": { section: "add-dictionaries", label: "Import" },
   "update-state": { section: "updates", label: "Updates" },
   "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
@@ -220,8 +219,28 @@ function sectionHasPendingWork(id) {
   }
 }
 
+// A rail destination with views of its own shows them as a row of tabs; the
+// first tab is the destination itself (Dictionaries, Reading).
+function sectionTabs(section) {
+  return [...document.querySelectorAll(".section-tabs")]
+    .find(tabs => tabs.querySelector(`a[href="#${section}"]`)) ?? null;
+}
+
 function primaryNavigationSection(section) {
-  return LIBRARY_SECTIONS.has(section) ? "dictionaries" : section;
+  return sectionTabs(section)?.querySelector("a").hash.slice(1) ?? section;
+}
+
+// A tab row shows under its own destination while it offers more than one
+// view, so Reading has none while Word highlighting is switched off.
+function renderSectionTabs() {
+  const active = sectionTabs(activeSection);
+  for (const tabs of document.querySelectorAll(".section-tabs")) {
+    tabs.hidden = tabs !== active || tabs.querySelectorAll("a:not([hidden])").length < 2;
+    for (const link of tabs.querySelectorAll("a")) {
+      if (tabs === active && link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
+  }
 }
 
 function renderNavigationStatuses() {
@@ -294,15 +313,10 @@ function showSettingsSection(focus = false) {
   setPendingManagementFocus(null);
   for (const section of sections) section.hidden = section.id !== activeSection;
   element("settings-section").value = activeSection;
-  const libraryActive = LIBRARY_SECTIONS.has(activeSection);
-  element("library-navigation").hidden = !libraryActive;
+  renderSectionTabs();
   const primarySection = primaryNavigationSection(activeSection);
   for (const link of document.querySelectorAll(".settings-nav a")) {
     if (link.hash === `#${primarySection}`) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
-  }
-  for (const link of document.querySelectorAll("#library-navigation a")) {
-    if (libraryActive && link.hash === `#${activeSection}`) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   if (Object.hasOwn(OPTION_SECTIONS, activeSection)) {
@@ -479,7 +493,9 @@ function renderExperimentalSettings() {
   for (const feature of EXPERIMENTAL_FEATURES) {
     if (!feature.section) continue;
     const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section);
-    document.querySelector(`.settings-nav a[href="#${feature.section}"]`).parentElement.hidden = hidden;
+    // A gated section is a rail destination or one tab of one.
+    const link = document.querySelector(`.settings-nav a[href="#${feature.section}"], .section-tabs a[href="#${feature.section}"]`);
+    (link.closest(".nav-item") ?? link).hidden = hidden;
     element("settings-section").querySelector(`option[value="${feature.section}"]`).hidden = hidden;
     // Global search leaves the hidden section's settings out as well.
     element(feature.section).toggleAttribute("data-settings-gated", hidden);
@@ -487,6 +503,7 @@ function renderExperimentalSettings() {
   // A flag that changed elsewhere can hide the visible section, or reveal the
   // one this page was opened on before the stored options arrived.
   if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
+  else renderSectionTabs();
 }
 
 // Low memory mode recycles the engine worker, so it needs the threaded engine:
@@ -670,7 +687,7 @@ function attachSettingsNavigation() {
     event.preventDefault();
     element("settings-content").focus();
   });
-  for (const link of document.querySelectorAll(".settings-nav a, #library-navigation a, .section-action")) {
+  for (const link of document.querySelectorAll(".settings-nav a, .section-tabs a, .section-action")) {
     link.addEventListener("click", (event) => {
       if (link.hash === window.location.hash
           && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
@@ -794,7 +811,7 @@ function renderEngineStatus() {
     if (count === 0 && !lastEngineStatus.loading) {
       setStatus(dictionaries.length === 0
         ? "Ready to add your first dictionary."
-        : "Ready. Enable a dictionary in Library to start reading.");
+        : "Ready. Enable a dictionary in Dictionaries to start reading.");
       return;
     }
     const enabled = count === 1 ? "1 dictionary enabled" : `${numberFormat.format(count)} dictionaries enabled`;
