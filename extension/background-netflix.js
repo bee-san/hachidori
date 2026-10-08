@@ -19,7 +19,6 @@ import { NETFLIX_SCRIPTS } from "./netflix.js";
 // scripts to a page that was open before the switch went on.
 const NETFLIX_TARGET = "hachidori-netflix";
 const NETFLIX_RECORDER_PORT = "hachidori-netflix-recorder";
-const NETFLIX_PAGE_URL = /^https:\/\/www\.netflix\.com\//u;
 const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
 // How long the reader's recorder frame has to load and connect.
 const NETFLIX_RECORDER_CONNECT_MS = 10_000;
@@ -188,16 +187,16 @@ async function holdNetflixLineAudio(message, sender) {
 // registered, so a Netflix page open when the switch went on has the reader
 // without the Netflix scripts. Its reader asks once, and they are added to
 // that exact document as netflix.js registers them: the page's hooks in its
-// main world, then the reader's scripts. Netflix read the playing episode's
-// subtitle list before the hooks were there, so that episode has no timing
-// until the page reloads.
+// main world and the reader's scripts. Neither talks to the other as it loads.
+// Netflix read the playing episode's subtitle list before the hooks were
+// there, so that episode has no timing until the page reloads.
 async function loadNetflixScripts(message, sender) {
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || typeof sender.tab?.id !== "number"
-      || !sender.documentId || !NETFLIX_PAGE_URL.test(sender.url ?? "")) {
+      || !sender.documentId || !(sender.url ?? "").startsWith("https://www.netflix.com/")) {
     throw new Error("Only a Netflix page can load the Netflix scripts.");
   }
   const target = { tabId: sender.tab.id, documentIds: [sender.documentId] };
-  for (const { js, world } of NETFLIX_SCRIPTS) await chrome.scripting.executeScript({ target, files: js, world });
+  await Promise.all(NETFLIX_SCRIPTS.map(({ js, world }) => chrome.scripting.executeScript({ target, files: js, world })));
   return { loaded: true };
 }
 

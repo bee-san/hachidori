@@ -2911,7 +2911,7 @@ script only to pages that load after it is registered, so a Netflix page that
 was open when the switch went on has the reader without `netflix-content.js`
 (#548). The reader of such a page, in its top frame, asks the worker once with
 `hd_netflix_load`, which adds the same scripts to that exact document with
-`scripting.executeScript` (the page's script in its main world, then the
+`scripting.executeScript` (the page's script in its main world and the
 reader's), and then follows the switch with them. Hover pause and the line
 audio start at once, but Netflix read the playing episode's subtitle list
 before the page's hooks were there, so that episode's notes say its timing was
