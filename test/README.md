@@ -463,14 +463,16 @@ These run separately:
   headless Chrome records tab audio as silence), mines a fixture page served at
   a Netflix watch address into a fake AnkiConnect. The video's sound is a
   different tone each second, and each note's WAV, decoded, must be the cue
-  with its pads, nowhere silent, with exactly the padded cue's seconds' tones,
-  each change of tone within 125 ms. The page is open before the switch goes
-  on: it gets the Netflix scripts, pauses and resumes, and says to reload.
-  Without a toolbar click it records a line already heard (no seek, player call
-  or recorder frame), one not heard (replayed audibly, no recorder frame) and
-  one hover pause stopped partway and played on; with `{gif}` mapped the note
-  asks for the toolbar button. After the click (CDP's
-  `Extensions.triggerAction`, which grants tab capture as a click does), one
+  with its pads, audible except within 125 ms of its ends, with exactly the
+  padded cue's seconds' tones, each change of tone within 125 ms. The page is
+  open before the switch goes on: it gets the Netflix scripts, pauses and
+  resumes, and says to reload. Without a toolbar click it records a line
+  already heard (no seek, player call or recorder frame), one not heard
+  (replayed audibly, no recorder frame) and one hover pause stopped partway and
+  played on; with `{gif}` mapped, or on a page whose own Web Audio graph has
+  the video, the note asks for the toolbar button. After the click (CDP's
+  `Extensions.triggerAction`, which grants tab capture as a click does, and
+  which Chrome 128 lacks), that page's line is recorded from the tab, and one
   replay records a decodable looping GIF and the WAV. Playback is restored,
   hover pause pauses and resumes, and Netflix's other player session, listed
   last, is never touched.

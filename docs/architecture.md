@@ -3030,7 +3030,10 @@ at when it opened, and the block being rendered then is its first, so a line
 played on after a pause joins the part heard before it; Chrome 152 can have
 rendered up to one 2.9 ms render quantum by the time the `play` event is
 handled, which the cut leaves out, and about 2 ms more when it resamples the
-video's sound to the context's rate. A stretch ends at the latest media time
+video's sound to the context's rate. On a busy page the event is handled
+later: in `test/chrome-netflix-mining.mjs`, with the popup open and the page
+animating, a 48 kHz line paused partway and played on had a 3–9 ms gap at the
+join. A stretch ends at the latest media time
 seen while it played, or at the time the video stood when it paused or
 stalled, so the silence Chrome renders between a pause and its event is not
 counted as heard. Turning the switch off cancels the reader, stops the track,

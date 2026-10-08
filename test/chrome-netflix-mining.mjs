@@ -12,28 +12,31 @@
 // the Netflix scripts, so that hovering the playing line pauses it through the
 // player and leaving resumes it, and its note says that the episode's timing
 // needs a reload. After the reload it mines the subtitle word through the real
-// popup. Each note's WAV must be the cue with its pads, nowhere silent, with
-// the tone of every second the padded cue covers and no other, each change of
-// tone within 125 ms of its place:
+// popup. Each note's WAV, decoded, must be the cue with its pads, audible
+// except within 125 ms of its ends, with the tone of every second the padded
+// cue covers and no other, each change of tone within 125 ms of its place:
 // - before any click on Hachidori's toolbar button: a line the viewer heard is
 //   cut from what was kept (no seek, player call or recorder frame), a line
 //   not heard is replayed audibly through the player (no recorder frame), and
 //   a line hover pause stopped partway plays on to its end without a seek;
 //   with {gif} mapped too, the note says Chrome has not let Hachidori record
-//   the tab and still gets the sentence audio;
+//   the tab and still gets the sentence audio, and on a page whose own Web
+//   Audio graph has the video, sentence audio says the same;
 // - after the click (CDP's Extensions.triggerAction runs the action as a click
-//   does, which grants tab capture on the tab), one replay of a line never
-//   heard records a looping GIF that Chrome decodes into more than one
-//   distinct frame and the line audio keeps its sound, seeking only through
-//   the player and restoring the viewer's state.
+//   does, which grants tab capture on the tab), that page's line is recorded
+//   from the tab while it replays, and one replay of a line never heard
+//   records a looping GIF that Chrome decodes into more than one distinct
+//   frame while the line audio keeps its sound, each seeking only through the
+//   player and restoring the viewer's state.
 // Then hover pause around a note's replay; a note added while the viewer plays
 // it on over the line must leave it paused, never played on while the recorder
 // runs, until the pointer leaves; a note whose only Netflix field is {gif} gets
 // the GIF alone; and nothing pauses once the switch is off.
 //
 // Not part of the default runs. The browser runs headful because headless
-// Chrome captures tab audio as silence; on Linux without a display, run it
-// under Xvfb:
+// Chrome captures tab audio as silence, and needs Extensions.triggerAction,
+// which CDP has had since Chromium r1577676 (January 2026), so not the
+// manifest's minimum Chrome 128. On Linux without a display, run it under Xvfb:
 //
 //   node test/make-fixture.mjs && xvfb-run -a node test/chrome-netflix-mining.mjs
 import assert from "node:assert/strict";
@@ -686,7 +689,10 @@ try {
   // grant as the recorder will.
   for (let attempt = 1; ; attempt++) {
     await tab.bringToFront();
-    await tab.triggerExtensionAction((await browser.extensions()).get(id));
+    const extensions = await browser.extensions().catch(error => {
+      throw new Error(`this browser's DevTools protocol cannot click the toolbar button: ${error.message}`);
+    });
+    await tab.triggerExtensionAction(extensions.get(id));
     const popup = await browser.waitForTarget(target => target.url() === `chrome-extension://${id}/toolbar.html`);
     await (await popup.asPage()).close();
     const granted = await worker.evaluate(async () => {
