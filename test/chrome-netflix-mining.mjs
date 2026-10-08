@@ -245,28 +245,39 @@ function tonePower(samples, rate, hz, from, length) {
 // The RMS above which a 20 ms window holds the fixture's tone (a quarter of
 // full scale, about 0.18) rather than silence.
 const AUDIBLE_RMS = 0.05;
+// A near-silent run this long is a silence: the clip's silent edge or a gap at
+// a join, never one of the tone's zero crossings.
+const SILENCE_MS = 1;
 
 // What a clip of the fixture's sound holds, in 20 ms windows every 10 ms:
-// each window's RMS and the strongest of the fixture's tones in it, the
-// longest run of near-silent samples and where it starts, and where each change
-// of second's tone falls: the first audible window centre at which the next
-// tone is the stronger. `fromMs` is the media time of the clip's first sample.
+// each window's RMS, whether it holds a silence, and the strongest of the
+// fixture's tones in it; the longest run of near-silent samples and where it
+// starts; and where each change of second's tone falls: the first audible
+// window centre with no silence at which the next tone is the stronger. A
+// window that holds a sound's onset after a silence spreads it over every
+// frequency, so only windows with no silence tell which tone it is.
+// `fromMs` is the media time of the clip's first sample.
 function analyseClip(samples, rate, fromMs) {
   const length = Math.round(rate / 50);
   const toMs = fromMs + samples.length * 1000 / rate;
+  const silenceFrames = Math.round(SILENCE_MS * rate / 1000);
+  const silences = [];
+  let gap = 0, longestGap = 0, gapEnd = 0;
+  samples.forEach((sample, index) => {
+    gap = Math.abs(sample) < 0.01 ? gap + 1 : 0;
+    if (gap > longestGap) [longestGap, gapEnd] = [gap, index + 1];
+    if (gap === silenceFrames) silences.push({ start: index + 1 - gap, end: index + 1 });
+    else if (gap > silenceFrames) silences.at(-1).end = index + 1;
+  });
+  const silent = (start, end) => silences.some(silence => silence.start < end && silence.end > start);
   const windows = [];
   for (let start = 0; start + length <= samples.length; start += Math.round(length / 2)) {
     let energy = 0;
     for (let index = start; index < start + length; index++) energy += samples[index] ** 2;
     const powers = Array.from({ length: AUDIO_SECONDS }, (_, second) => tonePower(samples, rate, toneHz(second), start, length));
     windows.push({ centreMs: fromMs + (start + length / 2) * 1000 / rate, rms: Math.sqrt(energy / length),
-      strongest: powers.indexOf(Math.max(...powers)) });
+      silent: silent(start, start + length), strongest: powers.indexOf(Math.max(...powers)) });
   }
-  let gap = 0, longestGap = 0, gapEnd = 0;
-  samples.forEach((sample, index) => {
-    gap = Math.abs(sample) < 0.01 ? gap + 1 : 0;
-    if (gap > longestGap) [longestGap, gapEnd] = [gap, index + 1];
-  });
   const changes = [];
   for (let second = Math.ceil(fromMs / 1000); second * 1000 < toMs; second++) {
     const boundary = second * 1000;
@@ -275,7 +286,7 @@ function analyseClip(samples, rate, fromMs) {
       const start = Math.round((centre - fromMs) * rate / 1000) - length / 2;
       let energy = 0;
       for (let index = start; index < start + length; index++) energy += samples[index] ** 2;
-      if (Math.sqrt(energy / length) > AUDIBLE_RMS
+      if (Math.sqrt(energy / length) > AUDIBLE_RMS && !silent(start, start + length)
           && tonePower(samples, rate, toneHz(second), start, length) > tonePower(samples, rate, toneHz(second - 1), start, length)) {
         found = centre;
       }
@@ -465,10 +476,11 @@ try {
 
   // The note's WAV, decoded, must be the cue with its pads, with the
   // fixture's tone for every second of media time the padded cue covers and
-  // no other: each audible window away from a change of tone holds its own
-  // second's tone, and each change lands within TOLERANCE_MS of its place. It
-  // must be audible throughout, except within TOLERANCE_MS of its ends, where a
-  // clip that is that late or early holds what played before or after the line.
+  // no other: each audible window that holds no silence, away from a change of
+  // tone, holds its own second's tone, and each change lands within
+  // TOLERANCE_MS of its place. It must be audible throughout, except within
+  // TOLERANCE_MS of its ends, where a clip that is that late or early holds
+  // what played before or after the line.
   function checkLineAudio(back, label) {
     const filename = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.wav)\]/u.exec(back)?.[1];
     assert.ok(filename, `${label}: the note references the line's WAV: ${back}`);
@@ -484,7 +496,7 @@ try {
     const { windows, longestGapMs, gapAtMs, changes } = analyseClip(samples, rate, fromMs);
     const expected = new Set();
     for (let second = Math.floor(fromMs / 1000); second * 1000 < toMs; second++) expected.add(second);
-    const audible = windows.filter(window => window.rms > AUDIBLE_RMS);
+    const audible = windows.filter(window => window.rms > AUDIBLE_RMS && !window.silent);
     const heard = new Set(audible.map(window => window.strongest));
     const inside = windows.filter(window => window.centreMs - fromMs > TOLERANCE_MS && toMs - window.centreMs > TOLERANCE_MS);
     const quietest = Math.min(...inside.map(window => window.rms));
