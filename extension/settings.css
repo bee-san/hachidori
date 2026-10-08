@@ -2366,8 +2366,8 @@ textarea {
   display: grid;
   gap: 12px;
   padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
 }
-.audio-source-row { border-top: 1px solid var(--border); }
 .audio-source-heading,
 .audio-source-enabled,
 .audio-source-actions,
@@ -2413,8 +2413,8 @@ textarea {
   flex-wrap: wrap;
   gap: 8px 12px;
   padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
 }
-.custom-button-row { border-top: 1px solid var(--border); }
 .custom-button-text { display: grid; gap: 3px; min-width: 0; }
 .custom-button-summary {
   color: var(--text-dim);
@@ -2438,8 +2438,8 @@ textarea {
   display: grid;
   gap: 12px;
   padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
 }
-.keybind-row { border-top: 1px solid var(--border); }
 .keybind-heading,
 .keybind-enabled,
 .keybind-buttons,
