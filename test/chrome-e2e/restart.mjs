@@ -27,6 +27,7 @@ import {
   editSettingsControls,
   generationExists,
   generationIsAbsent,
+  GENERIC_KANJI_ID,
   launch,
   launchArgs,
   listOpfsPaths,
@@ -153,9 +154,12 @@ async function atomicReplacementBrowserScenarios(page) {
       groups: [{ id: "i04-group", name: "I04", dictionaryIds: [id] }],
     });
   }, { id: installed.id, index: installedIndex });
+  // The presented package is managed and has no lastUpdateCheck, so it is due at
+  // once: the update alarm's failed check of example.invalid can commit the next
+  // revision before this poll has seen the presented one.
   await page.waitForFunction((revision) =>
     chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
-      dictionaryState?.revision === revision), {}, presentedReply.state.revision);
+      dictionaryState?.revision >= revision), {}, presentedReply.state.revision);
   const presented = presentedReply.state.dictionaries[installedIndex];
 
   await page.evaluate(() => {
@@ -741,6 +745,16 @@ describe("browser restart", () => {
         await new Promise(resolvePromise => setTimeout(resolvePromise, 500));
       }
     }).catch(error => ({ error: String(error) }));
+    // The reload after the restart refreshes each package from its index.json,
+    // which gives the generic kanji fixture back the update source the I04
+    // scenario cleared, with no lastUpdateCheck. That makes it due at once: the
+    // update alarm checks example.test and records a failed check with a new
+    // state revision. Let that land before the removals below, or it can fall
+    // between one removal's read and its commit and make that removal conflict.
+    await page.waitForFunction((id) =>
+      chrome.storage.local.get("dictionaryState").then(({ dictionaryState }) =>
+        dictionaryState?.dictionaries?.find(dictionary => dictionary.id === id)?.lastUpdateCheck != null),
+    { timeout: 60_000, polling: 100 }, GENERIC_KANJI_ID).catch(() => null);
     const atomicRestartState = await page.evaluate(async () =>
       (await chrome.storage.local.get("dictionaryState")).dictionaryState);
     const atomicRestartLookup = await page.evaluate((query) => chrome.runtime.sendMessage({
