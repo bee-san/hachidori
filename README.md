@@ -29,11 +29,8 @@
 
 Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and opinionated.
 
-<p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.mp4"><img src="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.gif" width="720" alt="One-minute tour of Hachidori: importing dictionaries in seconds, hover lookups with conjugation, pitch accent and frequency, lookups in text boxes, one-click Anki cards, the personal dictionary, lookup blur and popup themes"></a>
-  <br>
-  <a href="https://cdn.jsdelivr.net/gh/bee-san/hachidori@27ac4da45bf6c63f07f16108af386a941b3972b9/media/promo-video/out/hachidori-promo.mp4">▶ Watch the one-minute tour (MP4)</a>
-</p>
+<img width="1701" height="1127" alt="image" src="https://github.com/user-attachments/assets/390c553a-a604-4fba-af7d-ddaa28b12f37" />
+
 
 ## Install in 15 seconds
 
@@ -86,81 +83,6 @@ from **Settings → Sharing → Download the Anki add-on**, then follow the
 [sharing guide](docs/sharing.md) to link your other browsers.
 
 <img width="775" height="471" alt="Screenshot 2026-09-14 at 14 19 41" src="https://github.com/user-attachments/assets/991d570a-599e-4277-8736-c72b2f371ed0" />
-
-
-# MDX dictionaries and long entries
-
-**Add dictionaries** imports MDict `.mdx` dictionaries with their `.mdd`
-resource files, next to Yomitan ZIPs. Choose the `.mdx` and its `.mdd` files
-together. When an import leaves something out (unreadable entries, aliases with
-no target, or images and styles no `.mdd` provides), its row says so with a note
-for each.
-
-Lookups also find entries longer than the scan length, such as proverbs and
-titles, without scanning further on every hover.
-
-# Experimental features
-
-**Settings → Advanced → Experimental features** switches on work that is still
-changing and may be removed:
-
-- **Google Docs** — look up words while reading a Google Doc. Docs paints its
-  text to a canvas; Hachidori asks it to expose the text as well, which Google
-  may change or remove without notice. The sentence is the hovered run of text.
-- **Smaller Anki cards** — write compact definitions to new Anki notes. The
-  dictionary stylesheets, classes and wrappers are left out; the text, line
-  breaks, lists, tables, furigana, images and the markers note types such as
-  Lapis, Kiku and Senren rely on are kept. As in Yomitan, the definition ends
-  without a Rules/Deinflection line; use `{part-of-speech}` and
-  `{conjugation}` for that information. A Jitendex note shrinks to about a
-  quarter of its size. Notes already in Anki are not changed. The behaviour
-  follows the Compact HTML Cleanup Anki add-on.
-- **Netflix mining** — Migaku-style sentence cards from Netflix. Hover a word
-  in a Japanese subtitle on `netflix.com/watch/…` and add it: the sentence is the
-  whole subtitle line, and a field mapped to `{sentence-audio}` gets that line's
-  audio. Kiku, Lapis and Senren use their blank sentence-audio field
-  automatically. A field mapped to `{gif}` gets a short looping GIF of the line;
-  off Netflix or with the switch off it is the page screenshot instead, so a
-  `Picture` field mapped to `{gif}` still gets a picture everywhere, and a
-  Netflix line that cannot be recorded also gets the screenshot, with a note
-  saying why. Hachidori reads Netflix's own subtitle files for the timing
-  (adapted from Subadub). While the switch is on, the video's sound plays
-  through Hachidori, which keeps the last 30 seconds you heard at normal speed
-  in the page's memory, so the audio of a line you have just watched is cut
-  from that without replaying anything. A line you have not heard all of plays
-  on to its end, if the video stopped partway through it, or replays once
-  otherwise; either way you hear it. This needs no click on Hachidori's
-  toolbar button, but the sound starts going through Hachidori only once you
-  have clicked or pressed a key on the Netflix page (or Chrome lets the site
-  play sound by itself), and stays that way until the page reloads, even with
-  the switch off. Until then, and for `{gif}`, Hachidori replays the line once
-  to record the tab, muted, then returns to where you were. Chrome lets it
-  record a tab only after you click Hachidori's toolbar button once on that
-  tab, or add notes with its **Add the current popup entry to Anki** shortcut.
-  Netflix may change its data without notice, and protected playback can
-  record as silence, in which case the note is added without the audio and
-  says why, or as black frames, which Hachidori cannot tell from a dark scene,
-  so the GIF is then black. While you hover a subtitle line the video pauses,
-  and it plays on once the pointer has left the line and Hachidori's popup,
-  unless you played, paused or skipped it yourself in the meantime. Adding a
-  note leaves it paused until the line is recorded and the pointer has left.
-  A Netflix page that was already open when you turned the switch on pauses
-  too, but its notes say that the episode playing then needs the page reloaded
-  for its timing.
-- **Word highlighting** — mark the Japanese words on every page by their Anki
-  status, like Migaku: unknown words (no card) get a solid line, learning words
-  a dashed one and, if you turn them on, known words (a mature card) a dotted
-  one, in your popup theme's colours. Turn it on under **Settings → Reading →
-  Word highlighting**. Your dictionaries split the page into words in the
-  browser and the status comes from the Anki index Hachidori keeps for the
-  first Anki Template, so opening a page never contacts Anki; adding a word from
-  the popup re-marks every copy of it at once. **Mark as known** and **Ignore**
-  in the popup, or their keybinds, set a word's status yourself without an Anki
-  note: a name you will never mine stops showing as unknown. Pressing one again
-  clears it. Known and ignored words are left plain unless you turn their marks
-  on; ignored ones get a double line. The words you set travel with your backups
-  and to linked browsers. The page's markup is not changed, but its own scripts
-  can read which words are marked.
 
 
 # Opinionated
