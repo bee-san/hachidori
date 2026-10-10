@@ -164,7 +164,7 @@ const MINING_REQUEST_FIELDS = [
   "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
   "searchQuery", "documentTitle", "pageUrl", "audioSelection", "dictionaryAliases", "dictionaryIds",
   "frequencyDictionaries", "configKey", "screenshot", "captureUnavailable",
-  "clientSpeech", "templateId",
+  "clientSpeech", "templateId", "allowDuplicate",
 ];
 
 function selectedFields(value, fields) {

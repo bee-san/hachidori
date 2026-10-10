@@ -345,18 +345,14 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     const loading = await settled(state => state?.controls[0]?.state === "checking"
       && calls.filter(call => call.action === "canAddNotesWithErrorDetail").length > preflightCount);
     const loadingAccessibility = await popup.ankiAccessibility();
-    const mutationCount = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length;
     const loadingFocused = await popup.focusAnki();
-    await popup.click(".gsm-hoshidicts-mine-button");
-    await new Promise(resolve => setTimeout(resolve, 100));
-    const loadingInert = calls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length === mutationCount;
     if (process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT) {
       const { x, y, width, height } = loading.rect;
       await tab.screenshot({ path: process.env.HACHIDORI_ANKI_LOADING_SCREENSHOT, clip: { x, y, width, height } });
     }
     control.preflightGate.resolve();
     control.preflightGate = null;
-    const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const ready = await settled(state => state?.controls.some(control => !control.hidden && control.state !== "checking" && !control.disabled));
     const readyAccessibility = await popup.ankiAccessibility();
     if (process.env.HACHIDORI_ANKI_POPUP_SCREENSHOT) {
       const { x, y, width, height } = ready.rect;
@@ -390,21 +386,21 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     await settled(() => calls.filter(call => call.action === "guiBrowse").length > exactBrowseCount);
     const exactBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
     console.log(`     Anki readiness evidence: ${JSON.stringify({
-      loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+      loading: loading.controls[0], loadingAccessibility, loadingFocused,
       ready: ready.controls[0], readyAccessibility, addFocused,
       saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused,
     })}`);
-    check("Anki readiness uses a disabled accessible Arrow Clockwise before Add and View resolve",
+    check("Anki readiness uses an enabled accessible Arrow Clockwise before Add and View resolve",
       loading.controls[0].icon === "arrow-clockwise"
         && loading.controls[0].state === "checking"
-        && loading.controls[0].disabled
+        && !loading.controls[0].disabled
         && loading.controls[0].ariaBusy === "true"
-        && loading.controls[0].ariaLabel === "Checking Anki card status"
+        && loading.controls[0].ariaLabel === "Checking Anki card status — click to add anyway"
         && loadingAccessibility?.role === "button"
-        && loadingAccessibility.name === "Checking Anki card status"
-        && loadingAccessibility.disabled === true
+        && loadingAccessibility.name === "Checking Anki card status — click to add anyway"
+        && loadingAccessibility.disabled !== true
         && loadingAccessibility.busy === true
-        && loadingFocused === false && loadingInert
+        && loadingFocused
         && ready.controls[0].icon === "add"
         && ready.controls[0].ariaBusy === "false"
         && readyAccessibility?.role === "button"
@@ -415,7 +411,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && duplicate.controls[0].icon === "book-search"
         && duplicate.controls[0].successColored
         && savedFocused && viewFocused,
-      JSON.stringify({ loading: loading.controls[0], loadingAccessibility, loadingFocused, loadingInert,
+      JSON.stringify({ loading: loading.controls[0], loadingAccessibility, loadingFocused,
         ready: ready.controls[0], readyAccessibility, addFocused,
         saved: saved.controls[0], savedFocused, duplicate: duplicate.controls[0], viewFocused }));
     check("Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
@@ -447,6 +443,25 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && addFocused && savedFocused && viewFocused
         && exactBrowse.params.query === `nid:${[...notes.keys()].at(-1)}`,
       JSON.stringify({ quiet, saved, note, browse, duplicate, exactBrowse, repairCalls }));
+    const forcedStart = calls.length, noteCount = notes.size;
+    control.preflightGate = Promise.withResolvers();
+    // Add-anyway policy keeps this known word on the live readiness path.
+    await configure(false, { duplicateBehavior: "new" });
+    await settled(state => state?.controls[0]?.state === "checking"
+      && calls.slice(forcedStart).some(call => call.action === "canAddNotesWithErrorDetail"));
+    await popup.click(".gsm-hoshidicts-mine-button");
+    const forced = await settled(state => state?.controls[0]?.state === "success");
+    const forcedCalls = calls.slice(forcedStart);
+    const forcedAdd = forcedCalls.find(call => call.action === "addNote");
+    check("clicking the Anki spinner adds a duplicate before its pending preflight resolves",
+      notes.size === noteCount + 1
+        && forcedAdd?.params.note.options.allowDuplicate === true
+        && forcedAdd.params.note.fields.Front === "食べる"
+        && forcedCalls.filter(call => call.action === "addNote").length === 1
+        && !forced.controls[0].disabled,
+      JSON.stringify({ forced, forcedCalls, noteCount, notes: notes.size }));
+    control.preflightGate.resolve();
+    control.preflightGate = null;
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
     await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
   } finally {
@@ -530,7 +545,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     window.__hostObserver.observe(host, { attributes: true, attributeFilter: ["style"] });
   });
   const uploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
-  const ready = await settled(state => state?.controls.some(item => !item.hidden && !item.disabled));
+  const ready = await settled(state => state?.controls.some(item => !item.hidden && item.state !== "checking" && !item.disabled));
   const popupRect = await popup.rect();
   const addRect = ready.controls[0].rect;
   const startedMining = Date.now();
@@ -642,7 +657,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       await configure(false, { fieldTemplates: { Front: template("{expression} screenshot refused"), Back: template("{screenshot}"), Audio: template("") } });
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#kanjiword");
-    const retry = await settled(state => state?.controls.some(item => !item.hidden && !item.disabled));
+    const retry = await settled(state => state?.controls.some(item => !item.hidden && item.state !== "checking" && !item.disabled));
     const retryRect = retry.controls[0].rect;
     const addsBefore = calls.filter(call => call.action === "addNote").length;
     await tab.mouse.click(retryRect.x + retryRect.width / 2, retryRect.y + retryRect.height / 2, { clickCount: 2 });
@@ -713,7 +728,7 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
       return { text: ranges.map(range => range.toString()).join(""),
         inLine: ranges.every(range => range.startContainer === document.getElementById("hooked-line").firstChild) };
     }, HIGHLIGHT_NAME);
-    const ready = await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    const ready = await settled(state => state?.controls.some(control => !control.hidden && control.state !== "checking" && !control.disabled));
     const addsBefore = calls.filter(call => call.action === "addNote").length;
     const focused = await popup.focusAnki();
     await tab.keyboard.press("Enter");
@@ -740,7 +755,7 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
       getSelection().setBaseAndExtent(selected.firstChild, 5, selected.lastChild, 3);
     });
     const selection = await popup.waitForVisible(10_000, state => state.plain.includes("ありがとう"));
-    await settled(state => state?.controls.some(control => !control.hidden && !control.disabled));
+    await settled(state => state?.controls.some(control => !control.hidden && control.state !== "checking" && !control.disabled));
     const selectionFocused = await popup.focusAnki();
     await tab.keyboard.press("Enter");
     await settled(state => state?.controls.some(control => control.state === "success"));

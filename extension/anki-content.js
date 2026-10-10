@@ -78,7 +78,7 @@
     const button = record.add;
     button.dataset.state = state;
     const actionTitle = message || {
-      checking: "Checking Anki card status",
+      checking: "Checking Anki card status — click to add anyway",
       ready: "Mine to Anki",
       "add-duplicate": "Add duplicate to Anki",
       overwrite: "Overwrite note in Anki",
@@ -130,7 +130,8 @@
   function disabled(record) {
     if (!record.add) return;
     record.add.disabled = record.busy
-      || (!record.terminal && (record.needsCheck || (!record.decision?.canAdd && !views(record))));
+      || (!record.terminal && record.add.dataset.state !== "checking"
+        && (record.needsCheck || (!record.decision?.canAdd && !views(record))));
   }
   function payload(record) {
     return {
@@ -278,7 +279,7 @@
       }
     }
     function applyCachedView(group, record, result) {
-      if (!cachedView(result)) return;
+      if (!cachedView(result) || record.busy || record.terminal) return;
       record.needsCheck = false;
       controls(record);
       showControls(record, true);
@@ -320,7 +321,7 @@
         replies = pending.map(() => ({ state: "error", canAdd: false, error: error.message }));
       }
       pending.forEach((record, index) => {
-        if (owns() && boundHere(record)) decision(record, replies[index]);
+        if (owns() && boundHere(record) && !record.busy && !record.terminal) decision(record, replies[index]);
       });
     }
     function recordsByTemplate(records) {
@@ -440,7 +441,7 @@
         await discardCaptures(record);
       }
       if (!owns()) return;
-      setMiningButtonState(record, decisionState(record.decision));
+      setMiningButtonState(record, decisionState(record.decision ?? { state: "error" }));
       setStatus(record, `Could not add: ${error.message}`, "error");
     }
     // One viewport screenshot for this submission, taken with Hachidori's own
@@ -526,16 +527,32 @@
       const group = record.group, epoch = group.epoch;
       const owns = () => current(record) && record.group === group && group.epoch === epoch;
       const baseRequest = (fromPointer && record.pointerRequest) || payload(record);
-      const request = record.decision?.clientSpeech
+      let request = record.decision?.clientSpeech
         ? { ...baseRequest, clientSpeech: record.decision.clientSpeech }
         : baseRequest;
+      if (record.add.dataset.state === "checking") request = { ...request, allowDuplicate: true };
       record.pointerRequest = null;
       record.busy = true;
+      record.needsCheck = false;
       setMiningButtonState(record, "mining");
       disabled(record);
       setStatus(record, "Saving to Anki…");
       let writeSent = false;
       try {
+        if (request.allowDuplicate === true) {
+          if (request.configKey === null) {
+            const status = await send("hd_anki_status", { templateId: record.templateId });
+            if (!status.available) throw new Error(status.error || "Anki mining is unavailable.");
+            request = { ...request, configKey: status.configKey };
+          }
+          // Obtain this note's media requirements without waiting for its
+          // duplicate lookup. The override belongs only to this submission.
+          const checked = await send("hd_anki_preflight", { request });
+          if (!owns()) return;
+          record.decision = checked;
+          if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
+          if (checked.clientSpeech) request = { ...request, clientSpeech: checked.clientSpeech };
+        }
         const screenshotted = await prepareScreenshot(record, request, owns);
         const prepared = await prepareNetflixMedia(record, screenshotted, owns);
         if (owns()) setStatus(record, "Saving to Anki…");
@@ -619,10 +636,13 @@
       Object.assign(record, { feedback, control, add, output, hidden: false });
       setMiningButtonState(record, "checking");
       record.onMouseDown = event => {
-        if (event.button === 0 && current(record) && !views(record)) record.pointerRequest = payload(record);
+        if (event.button === 0 && current(record) && !views(record)) {
+          record.pointerRequest = payload(record);
+          if (add.dataset.state === "checking") record.pointerRequest.allowDuplicate = true;
+        }
       };
       record.onClick = event => {
-        if (views(record)) void browse(record);
+        if (views(record) && !(event.detail > 0 && record.pointerRequest?.allowDuplicate === true)) void browse(record);
         else void submit(record, event.detail > 0);
       };
       add.addEventListener("mousedown", record.onMouseDown);

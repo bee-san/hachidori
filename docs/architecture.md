@@ -2615,8 +2615,13 @@ buttons use the same controller with their selected stable Template ID. Each
 action adds, and once there is a note to show it opens Anki instead, at the
 duplicates that block adding, the note it just wrote, or a search for the
 expression after a write it could not confirm. While cache and live readiness
-are unresolved, the disabled button exposes its busy state and an Arrow
-Clockwise icon. It resolves to Add or the green View in Anki book action.
+are unresolved, the button exposes its busy state and an Arrow Clockwise icon.
+Clicking it adds a new note regardless of duplicates, overriding Prevent or
+Overwrite for that submission only. The reader obtains its media requirements
+without a duplicate lookup, and the write sends `allowDuplicate: true` to Anki.
+Configuration, dictionary generation and field checks still apply. Late
+readiness replies cannot replace an in-progress or confirmed submission.
+Otherwise it resolves to Add or the green View in Anki book action.
 Missing Template IDs remain visible as disabled errors and send no Anki
 request.
 The content controller preflights each Template's rendered candidates in one
