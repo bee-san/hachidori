@@ -6,8 +6,9 @@ default. This avoids copying every installed definition into the WebAssembly
 heap while retaining all lookup results. Settings → Advanced → Memory →
 **Dictionary entries** can instead keep entries in memory for the fastest
 lookups. **Dictionary hash indexes** selects hash residency. **Use less ram by default**
-is on by default: Automatic keeps small hashes within one shared 65 MiB resident
-budget and pages the rest on direct OPFS. **Low memory mode** uses a 32 MiB budget.
+is off by default: Automatic keeps all hashes in memory. Turning the switch on
+keeps small hashes within one shared 65 MiB resident budget and pages the rest
+on direct OPFS. **Low memory mode** uses a 32 MiB budget.
 Low memory mode also reduces import peak memory and returns unused engine
 memory after changes. This page explains the storage policies,
 the readout, their costs, and what happens when dictionaries do not fit.
@@ -171,8 +172,9 @@ and trained compression dictionaries stay resident. The installed format stays
 the same; changing the policy uses the existing idle worker restart and needs no
 reimport. Import threading continues to follow Low memory mode.
 
-**Use less ram by default** is enabled for new and existing installations whose
-stored options do not yet include it. It changes only Automatic hash storage:
+**Use less ram by default** is off for new and existing installations whose
+stored options do not yet include it. Explicitly saved choices are preserved.
+It changes only Automatic hash storage:
 explicit **Read from disk** and **Keep in memory** choices still apply. Its switch
 is disabled while those choices or Low memory mode apply, preserving the saved
 preference. Changing it uses the same idle worker restart, without changing entry
@@ -189,8 +191,8 @@ the shared cache had filled) and made lookups about 0.4 ms (22%) slower with the
 OS file cache warm, or about 9 ms slower for the first lookups after the files
 had left it. A library whose hashes fit the budget is unchanged.
 
-The [normal-mode 65 MiB comparison](benchmarks/default-ram.md) measures the new
-default with the full import pool, including lookup latency, rendered hovers,
+The [normal-mode 65 MiB comparison](benchmarks/default-ram.md) measures the enabled
+65 MiB policy with the full import pool, including lookup latency, rendered hovers,
 startup, reimport and memory. It retains all dictionaries and complete results.
 
 For diagnostics, `hd_memory` separates `hashBytes`, `residentHashBytes`,
