@@ -196,17 +196,20 @@ describe("memory", () => {
   });
 
   step("Use less ram by default", async () => {
-    check("Use less ram by default applies a 65 MiB hash budget with the full import pool",
-      fullPoolStatus?.lowMemory === false && fullPoolStatus.useLessRamByDefault === true
-        && fullPoolStatus.hashIndexStorage === "budget" && fullPoolStatus.residentHashBudgetBytes === 65 * 1024 * 1024
-        && fullPoolMemory.residentHashBudgetBytes === fullPoolStatus.residentHashBudgetBytes
-        && fullPoolOptions.useLessRamByDefault === true
-        && await page.$eval("#opt-use-less-ram-by-default", input => input.checked && !input.disabled),
-      JSON.stringify({ status: fullPoolStatus, memory: fullPoolMemory }));
     const waitForRamDefault = expected => page.waitForFunction(async expected => {
       const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
       return status?.ok && status.ready && !status.loading && status.useLessRamByDefault === expected ? status : false;
     }, { timeout: 30_000, polling: 250 }, expected).then(handle => handle.jsonValue());
+    await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
+    const enabledStatus = await waitForRamDefault(true);
+    const enabledMemory = await engineRequest("hd_memory");
+    check("Use less ram by default applies a 65 MiB hash budget with the full import pool",
+      enabledStatus?.lowMemory === false && enabledStatus.useLessRamByDefault === true
+        && enabledStatus.hashIndexStorage === "budget" && enabledStatus.residentHashBudgetBytes === 65 * 1024 * 1024
+        && enabledMemory.residentHashBudgetBytes === enabledStatus.residentHashBudgetBytes
+        && (await page.evaluate(async () => (await chrome.storage.local.get("options")).options)).useLessRamByDefault === true
+        && await page.$eval("#opt-use-less-ram-by-default", input => input.checked && !input.disabled),
+      JSON.stringify({ status: enabledStatus, memory: enabledMemory }));
     await page.evaluate(() => document.getElementById("opt-use-less-ram-by-default").click());
     const fullRamStatus = await waitForRamDefault(false);
     const fullRamLookup = await engineRequest("hd_lookup", { text: "食べる" });
