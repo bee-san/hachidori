@@ -693,6 +693,40 @@
     return dictionary.frequencyCount === 0 && dictionary.pitchCount === 0 && dictionary.kanjiCount === 0;
   }
 
+  const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
+
+  // Groups keep their stable IDs through renames and membership edits; removed
+  // groups and removed or disabled dictionaries reset the clicked-kanji choice.
+  function normaliseKanjiClickSelection(value, dictionaries, groups) {
+    const selection = typeof value === "string" ? { title: value, kind: "" } : value;
+    if (selection?.kind === "tabGroup") {
+      return groups.some((group) => group.id === selection.id) ? value : "";
+    }
+    if (!selection?.title) return value;
+    const selected = dictionaries.find((entry) => entry.title === selection.title);
+    let kind = selection.kind;
+    if (!KANJI_SELECTION_KINDS.has(kind)) {
+      kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
+    }
+    if (!selected || selected.enabled === false || !hasCapability(selected, kind)) return "";
+    return KANJI_SELECTION_KINDS.has(selection.kind) ? value : { title: selection.title, kind };
+  }
+
+  // Storage commits and backup preparation prune against the same library.
+  function normaliseDictionarySelections(value, dictionaries, groups = []) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const options = { ...value };
+    const selectedFrequency = dictionaries.find((entry) => entry.title === options.frequencyDictionary);
+    if (options.frequencyDictionary
+        && (!selectedFrequency || selectedFrequency.enabled === false || !hasCapability(selectedFrequency, "freq"))) {
+      options.frequencyDictionary = "";
+    }
+    if (Object.hasOwn(options, "kanjiClickDictionary")) {
+      options.kanjiClickDictionary = normaliseKanjiClickSelection(options.kanjiClickDictionary, dictionaries, groups);
+    }
+    return options;
+  }
+
   // A dictionary's clicked-kanji capability: native kanji entries when it has
   // them, otherwise its term entries. Metadata-only packages have neither.
   function kanjiCapability(dictionary, requestedKind = "") {
@@ -860,7 +894,7 @@
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
-    projectStoredOptions, projectContentOptions, validateOptionsPatch,
+    projectStoredOptions, projectContentOptions, validateOptionsPatch, normaliseDictionarySelections,
     resolvePopupImageSources,
     hasCapability, resolveKanjiDictionary,
   };

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from "../extension/vendor/zip.js";
 import { createBackupArchive, openBackupArchive } from "../extension/backup-archive.js";
-import { assertBackupSnapshot } from "../extension/backup-state.js";
+import { assertBackupSnapshot, prepareBackupSnapshot } from "../extension/backup-state.js";
 import { emptyCustomDictionaryDocument } from "../extension/custom-dictionary.js";
 
 const snapshot = { state: { dictionaries: [{ id: "dictionary-id", title: "辞書" }] }, lookupStats: { generation: "archived", revision: 3 } };
@@ -121,6 +121,27 @@ async function rewrite(archive, change) {
   await reader.close();
   return writer.close();
 }
+
+test("archive versions 1, 2 and 3 restore with incompatible reader settings", async () => {
+  const current = {
+    state: { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] },
+    document: emptyCustomDictionaryDocument(), options: { revision: 3, popupTheme: "light" },
+    updates: { revision: 1, schedule: "off", lastCheckedAt: null },
+    lookupStats: { generation: "archived", revision: 0 },
+  };
+  const archive = await createBackupArchive({ ...current, options: { revision: 1, futureOption: true } }, [], []);
+  for (const version of [1, 2, 3]) {
+    const legacy = await rewrite(archive, async (path, data) => {
+      const manifest = JSON.parse(await data.text());
+      return { path, data: new Blob([JSON.stringify({ ...manifest, version })]) };
+    });
+    const archived = await openBackupArchive(legacy);
+    const prepared = await prepareBackupSnapshot(current, archived.snapshot);
+    assert.match(prepared.warning, /reader settings.*skipped/iu);
+    assert.deepEqual(prepared.snapshot.options, current.options);
+    await assertBackupSnapshot(prepared.snapshot);
+  }
+});
 
 test("backup validation rejects missing, unlisted, unsafe and non-file payloads", async () => {
   const archive = await createBackupArchive(snapshot, files, lookupStatsRows);
