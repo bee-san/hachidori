@@ -54,7 +54,7 @@ export async function assertAutomaticBackupRecord(record) {
       || !Array.isArray(record.lookupStatsRows)) {
     throw new Error("The automatic backup record is invalid.");
   }
-  await assertBackupSnapshot(record.snapshot);
+  await assertBackupSnapshot(record.snapshot, { allowInvalidSettings: true });
   assertLookupStatsRows(record.snapshot.lookupStats, record.lookupStatsRows);
   return record;
 }
