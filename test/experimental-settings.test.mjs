@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createExperimentalSettings } from "../extension/experimental-settings.js";
+import "../extension/reader-options.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -25,6 +26,20 @@ function fixture(t, features) {
   });
   return { window: dom.window, document: dom.window.document, controller, toggles };
 }
+
+test("all production experimental switches start unchecked and preserve explicit opt-ins", t => {
+  const { EXPERIMENTAL_FEATURES, normaliseOptions } = globalThis.HDReaderOptions;
+  const { document, controller } = fixture(t, EXPERIMENTAL_FEATURES);
+  controller.render(normaliseOptions({}).experimental);
+  const switches = [...document.querySelectorAll("#experimental-features input")];
+  assert.equal(switches.length, EXPERIMENTAL_FEATURES.length);
+  assert.ok(switches.every(input => !input.checked));
+
+  const feature = EXPERIMENTAL_FEATURES[0];
+  controller.render(normaliseOptions({ experimental: { [feature.id]: true } }).experimental);
+  assert.deepEqual(switches.filter(input => input.checked).map(input => input.id),
+    [`opt-experimental-${feature.id}`]);
+});
 
 test("each registered feature renders one labelled switch that reports changes", () => {
   const { window, document, controller, toggles } = fixture(test, FEATURES);
