@@ -131,7 +131,7 @@ assert.equal((await startupStatus.promise).storageBackend, undefined);
 capabilityWorkers[0].emit("message", { channel: "opfs-capability-result", ok: true });
 await tick();
 assert.equal(engineWorkers.length, 1);
-assert.equal(engineWorkers[0].name, "hoshidicts-engine", "a config push during selection supersedes the startup read");
+assert.equal(engineWorkers[0].name, "hoshidicts-engine:full-ram", "a config push during selection supersedes the startup read");
 assert.match(engineWorkers[0].url, /\/engine-worker\.js$/u, "a passing OPFS probe selects the direct-OPFS worker");
 const engine = engineWorkers[0];
 const queued = startup.map((entry) => entry.promise);
@@ -478,7 +478,7 @@ try {
   capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
   await tick();
   const originalWorkerCount = engineWorkers.length;
-  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine:low-memory");
+  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine:low-memory:full-ram");
   const settle = async (type, fields = {}) => {
     const pending = request(type, `recycle-${type}`);
     await tick();
@@ -504,7 +504,7 @@ try {
   await settle("hd_apply_state", { loadPath: "order-only" });
   mock.timers.tick(2000);
   assert.equal(engineWorkers.length, originalWorkerCount + 2, "order activity preserves a pending mode change");
-  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine");
+  assert.equal(engineWorkers.at(-1).name, "hoshidicts-engine:full-ram");
 } finally {
   configuredLowMemory = false;
   mock.timers.reset();
