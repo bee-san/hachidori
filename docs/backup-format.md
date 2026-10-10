@@ -43,6 +43,8 @@ request starts. The background retires delayed/retrying preparation requests;
 the engine queues token-scoped cleanup even behind another active mutation.
 Cleanup does not depend on the closed page receiving a preparation reply.
 
+![Dictionaries restored while incompatible reader and update settings are skipped](assets/backup-incompatible-settings.png)
+
 ## Automatic snapshots
 
 The service worker keeps the newest automatic snapshots in the browser profile
