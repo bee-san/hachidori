@@ -55,9 +55,9 @@ function assertChecking(item) {
   assert.deepEqual(buttonState(item), {
     state: "checking",
     icon: "arrow-clockwise",
-    disabled: true,
+    disabled: false,
     ariaBusy: "true",
-    ariaLabel: "Checking Anki card status",
+    ariaLabel: "Checking Anki card status — click to add anyway",
     action: "add",
   });
 }
@@ -241,11 +241,73 @@ test("a ready Anki action works while later rendered results are still checking"
   await until(() => laterChecks === 1);
   assert.equal(f.items[0].add.dataset.state, "ready");
   assert.equal(f.items[0].add.disabled, false, "later results must not block this ready action");
-  assert.equal(f.items[1].add.disabled, true);
-  assert.equal(f.items[2].add.disabled, true);
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[2].add.disabled, false);
   f.items[0].add.click();
   await until(() => writes === 1);
   await until(() => f.items[0].add.dataset.state === "success");
+});
+
+test("clicking pending readiness adds once without waiting for the duplicate check", async t => {
+  for (const phase of ["hd_anki_view", "hd_anki_preflight"]) await t.test(phase, async t => {
+    const held = Promise.withResolvers();
+    t.after(() => held.resolve());
+    const writes = [], calls = [];
+    const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+      calls.push(type);
+      if (type === "hd_anki_submit") {
+        writes.push(request);
+        return { state: "added", noteId: 52 };
+      }
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_preflight" && request.allowDuplicate === true) {
+        return { state: "addable", canAdd: true, screenshot: true };
+      }
+      if (type === "hd_anki_screenshot") return { token: "picture", filename: "picture.png" };
+      if (type === phase) await held.promise;
+      if (type === "hd_anki_view") return { state: "unknown", configKey: "current", cached: false };
+      return { state: "duplicate", canAdd: false, noteIds: [7] };
+    }));
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => calls.includes(phase));
+    assertChecking(f.items[0]);
+    f.items[0].add.click();
+    f.items[0].add.click();
+    await until(() => f.items[0].add.dataset.state === "success");
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].allowDuplicate, true);
+    assert.equal(writes[0].configKey, "current");
+    assert.deepEqual(writes[0].screenshot, { token: "picture", filename: "picture.png" });
+    held.resolve();
+    await tick();
+    assert.equal(f.items[0].add.dataset.state, "success", "late duplicate replies keep the confirmed add");
+  });
+});
+
+test("a pointer click begun on the spinner still adds if the duplicate check finishes before click", async t => {
+  const held = Promise.withResolvers();
+  t.after(() => held.resolve());
+  const writes = [];
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { writes.push(request); return { state: "added", noteId: 52 }; }
+    if (type === "hd_anki_browse") throw new Error("the spinner click must add, not browse");
+    if (request.allowDuplicate === true) return { state: "addable", canAdd: true };
+    await held.promise;
+    return { state: "duplicate", canAdd: false, noteIds: [7] };
+  });
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  const button = f.items[0].add, window = button.ownerDocument.defaultView;
+  button.dispatchEvent(new window.MouseEvent("mousedown", { button: 0 }));
+  held.resolve();
+  await until(() => button.dataset.state === "view-existing");
+  button.dispatchEvent(new window.MouseEvent("click", { detail: 1 }));
+  await until(() => button.dataset.state === "success");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].allowDuplicate, true);
 });
 
 test("a warm cached View action skips Anki status and preflight", async t => {
