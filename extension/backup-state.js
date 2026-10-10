@@ -74,31 +74,54 @@ function assertGroups(groups, dictionaries) {
   }
 }
 
-function validBackupReaderOptions(options) {
-  if (!options || typeof options !== "object" || Array.isArray(options)) return false;
+function projectBackupReaderSettings(settings) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return null;
+  const { revision, ...options } = settings;
+  if (!Number.isSafeInteger(revision) || revision < 0) return null;
   const { DEFAULT_OPTIONS, RETIRED_OPTION_KEYS } = globalThis.HDReaderOptions;
   const allowed = new Set([...Object.keys(DEFAULT_OPTIONS), ...RETIRED_OPTION_KEYS]);
-  if (Object.keys(options).some(key => !allowed.has(key))) return false;
+  if (Object.keys(options).some(key => !allowed.has(key))) return null;
   let projected;
   try {
     projected = globalThis.HDReaderOptions.validateOptionsPatch(options);
   } catch {
-    return false;
+    return null;
   }
   // A legacy backup may have only `customLinks`, and its singleton Anki
   // object has no `templates`. If the richer fields are present, however, they
   // must already be canonical instead of relying on migration to resolve two
   // conflicting representations.
   if (Object.hasOwn(options, "customButtons") && Object.hasOwn(options, "customLinks")
-      && !sameJsonValue(options.customLinks, projected.customLinks)) return false;
+      && !sameJsonValue(options.customLinks, projected.customLinks)) return null;
   if (options.anki && Object.hasOwn(options.anki, "templates")
-      && !sameJsonValue(options.anki, projected.anki)) return false;
-  return true;
+      && !sameJsonValue(options.anki, projected.anki)) return null;
+  return { ...projected, revision };
 }
 
-export async function assertBackupSnapshot(snapshot) {
+// Reader settings can change between releases without invalidating dictionary
+// files. Keep the local settings when the archived record cannot be imported;
+// prune selectors against the restored library before the exact storage CAS.
+export async function prepareBackupSnapshot(current, archived) {
+  await assertBackupSnapshot(archived, { allowInvalidReaderSettings: true });
+  const compatible = projectBackupReaderSettings(archived.options);
+  const { normaliseDictionarySelections, projectStoredOptions } = globalThis.HDReaderOptions;
+  const projected = compatible ?? { ...projectStoredOptions(current.options), revision: backupRevisions(current).options };
+  const selected = normaliseDictionarySelections(projected, archived.state.dictionaries, archived.state.groups);
+  const warnings = [];
+  if (!compatible) warnings.push("Incompatible reader settings were skipped. Your current reader settings were kept.");
+  if (projected.frequencyDictionary !== selected.frequencyDictionary
+      || !sameJsonValue(projected.kanjiClickDictionary, selected.kanjiClickDictionary)) {
+    warnings.push("Unavailable dictionary selections were reset.");
+  }
+  return {
+    snapshot: { ...archived, options: selected },
+    warning: warnings.length ? warnings.join(" ") : null,
+  };
+}
+
+export async function assertBackupSnapshot(snapshot, { allowInvalidReaderSettings = false } = {}) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)
-      || ["state", "options", "document", "updates"].some(key =>
+      || ["state", "document", "updates"].some(key =>
         !Number.isSafeInteger(snapshot[key]?.revision) || snapshot[key].revision < 0)
       || snapshot.state?.schemaVersion !== 1 || !Array.isArray(snapshot.state.dictionaries)) {
     throw new Error("The backup contains invalid dictionary state.");
@@ -111,9 +134,7 @@ export async function assertBackupSnapshot(snapshot) {
   const semanticRevision = await customDictionarySemanticRevision(entries);
   if (document.semanticRevision !== semanticRevision) throw new Error("The backup custom source has invalid semantics.");
   assertCustomSourceState(snapshot.state.dictionaries, semanticRevision, entries.length);
-  const { revision, ...options } = snapshot.options ?? {};
-  if (!Number.isSafeInteger(revision) || revision < 0
-      || !validBackupReaderOptions(options)) {
+  if (!allowInvalidReaderSettings && projectBackupReaderSettings(snapshot.options) === null) {
     throw new Error("The backup contains invalid reader settings.");
   }
   if (!sameJsonValue(snapshot.updates, normaliseUpdateSettings(snapshot.updates))) {

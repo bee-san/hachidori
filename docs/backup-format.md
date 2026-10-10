@@ -32,6 +32,10 @@ list. Nothing is published until the replacement checkbox is selected and
 **Replace and restore** is pressed. This replaces the entire saved configuration,
 including empty/default values; it does not merge libraries. Cancel discards the
 prepared files. A concurrent saved edit requires preparing the backup again.
+If reader settings are missing, invalid or incompatible with this version,
+restore keeps your current reader settings and still restores the dictionaries.
+The preview and success message report the skipped settings. Dictionary
+selections that are unavailable in the restored library are reset.
 Unsaved Settings drafts must be saved or discarded before starting an operation.
 Leaving Settings cancels its preparation using an ID allocated before the
 request starts. The background retires delayed/retrying preparation requests;
@@ -79,6 +83,8 @@ generation cleanup. Preparing a restore rejects malformed generation paths
 before filesystem access and validates the retained files in place. Settings
 shows each valid record's actual relative age and uses the same preview,
 replacement checkbox and **Replace and restore** action as manual restore.
+Incompatible reader settings do not make an automatic snapshot corrupt or hide
+it from the list; restore uses the same settings fallback as a manual archive.
 
 Linked clients suspend their local automatic-backup alarm and do not snapshot
 the mirrored host state. Their existing local records remain in the browser
@@ -130,12 +136,13 @@ sink, existing ZIP64 compatibility, and empty payloads.
 automatic cadence, retention, shared real generations, malformed paths, schema
 failure, lost replies, storage failures, uncertain commits, corrupt-newest
 fallback, interrupted cleanup, disabled-package validation, damaged-installation
-recovery and empty restores through real WASM. Eight shared browser assertions
-in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
+recovery, incompatible reader settings and empty restores through real WASM.
+Nine shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
 confirmation and a real oldest-retained-snapshot restore that brings back its
 saved retention count, plus the actual Chrome download,
 immutable preview/conflict, complete restore, corrupt-archive cleanup and actual
-page closure during staged preparation and a 16 MiB binary restore/re-export in
+page closure during staged preparation, dictionary restore with incompatible
+reader settings and a 16 MiB binary restore/re-export in
 both OPFS and IDBFS suites, followed by browser restart.
 
 ## Archive representation

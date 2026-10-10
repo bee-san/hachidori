@@ -409,6 +409,39 @@ export async function backupEngineScenarios({
   assert.ok(customLookup.results.length > 0);
   check("restore publishes all six values and statistics rows once before superseded-generation cleanup", true);
 
+  for (const automatic of [false, true]) {
+    const incompatible = structuredClone(parsed.snapshot);
+    incompatible.options = { revision: 1, popupWidthPx: -1, futureOption: true };
+    const before = await read();
+    let url;
+    try {
+      let preparation;
+      if (automatic) {
+        // Retained backups refer to the currently committed, real files.
+        incompatible.state.dictionaries = structuredClone(before.state.dictionaries);
+        await pageChrome.storage.local.set({ automaticBackups: { schemaVersion: 1, backups: [{
+          id: "incompatible-settings", createdAt: new Date().toISOString(),
+          snapshot: incompatible, lookupStatsRows: parsed.lookupStatsRows,
+        }] } });
+        preparation = await accepted("hd_backup_auto_prepare", { id: "incompatible-settings", token: crypto.randomUUID() });
+      } else {
+        url = URL.createObjectURL(await createBackupArchive(incompatible, parsed.files, parsed.lookupStatsRows));
+        preparation = await prepare(url);
+      }
+      assert.match(preparation.warning, /reader settings.*skipped/iu);
+      assert.deepEqual(await read(), before, "preparation preserves the committed settings and dictionaries");
+      const result = await accepted("hd_backup_restore", { token: preparation.token });
+      assert.match(result.warning, /Restored successfully.*reader settings.*skipped/iu);
+      const after = await read();
+      assert.deepEqual(after.options, { ...before.options, revision: before.options.revision + 1 });
+      assert.deepEqual(after.state.dictionaries.map(({ path, ...entry }) => entry),
+        before.state.dictionaries.map(({ path, ...entry }) => entry));
+      assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);
+    } finally { if (url) URL.revokeObjectURL(url); }
+  }
+  await pageChrome.storage.local.set({ automaticBackups: { schemaVersion: 1, backups: [] } });
+  check("manual and automatic restores import dictionaries with incompatible reader settings and keep current settings", true);
+
   for (const edit of ["options", "document", "updates", "state", "lookupStats", "wordStatusOverrides"]) {
     const pending = await prepare(exported.blobUrl);
     const base = await read();
