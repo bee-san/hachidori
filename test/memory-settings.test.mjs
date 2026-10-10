@@ -257,13 +257,13 @@ test("Use less ram by default saves independently and yields to explicit hash st
   const { window, el } = fixture(t);
   await settle();
   const toggle = el("opt-use-less-ram-by-default");
-  assert.equal(toggle.checked, true);
+  assert.equal(toggle.checked, false);
   assert.equal(toggle.disabled, false);
   toggle.click();
   await tick();
-  assert.equal(window.readOptions().useLessRamByDefault, false);
+  assert.equal(window.readOptions().useLessRamByDefault, true);
   assert.equal(window.readOptions().lowMemoryMode, false);
-  assert.equal(JSON.stringify(window.readPending()), JSON.stringify({ useLessRamByDefault: false }));
+  assert.equal(JSON.stringify(window.readPending()), JSON.stringify({ useLessRamByDefault: true }));
   const hashes = el("opt-dictionary-index-storage");
   hashes.value = "resident";
   hashes.dispatchEvent(new window.Event("change"));
@@ -273,7 +273,7 @@ test("Use less ram by default saves independently and yields to explicit hash st
   assert.equal(toggle.disabled, false);
   el("opt-low-memory-mode").click();
   assert.equal(toggle.disabled, true);
-  assert.equal(toggle.checked, false, "Low memory mode preserves the preference");
+  assert.equal(toggle.checked, true, "Low memory mode preserves the preference");
   const local = fixture(t, { threaded: false });
   await local.window.pollStatus();
   assert.equal(local.el("use-less-ram-by-default").hidden, true);

@@ -977,7 +977,7 @@ describe("engine: boot and import", () => {
       configFromPage?.ok === false
         && pushFromPage?.ok === false
         && configOff?.ok === true && configOff.lowMemoryMode === false && configOff.dictionaryEntryStorage === "auto"
-        && configOff.useLessRamByDefault === true
+        && configOff.useLessRamByDefault === false
         && lowMemoryWrite.ok === true
         && configOn?.ok === true && configOn.lowMemoryMode === true
         && unrelatedWrite.ok === true
@@ -987,14 +987,14 @@ describe("engine: boot and import", () => {
       JSON.stringify({ configFromPage, pushFromPage, configOff, configOn, residentConfig, pushesBefore, pushesAfterUnrelated }),
     );
     const pushesBeforeLessRam = enginePushes();
-    const lessRamWrite = await writeReaderOptions(entryStorageWrite.options.revision, { useLessRamByDefault: false });
+    const lessRamWrite = await writeReaderOptions(entryStorageWrite.options.revision, { useLessRamByDefault: true });
     for (let attempt = 0; attempt < 50 && enginePushes() === pushesBeforeLessRam; attempt += 1) {
       await new Promise((done) => setTimeout(done, 2));
     }
     const lessRamConfig = await readEngineConfig(engineConfigSender);
     check("changing only the RAM default pushes the engine configuration",
       lessRamWrite.ok === true && enginePushes() === pushesBeforeLessRam + 1
-        && lessRamConfig.useLessRamByDefault === false && lessRamConfig.lowMemoryMode === true
+        && lessRamConfig.useLessRamByDefault === true && lessRamConfig.lowMemoryMode === true
         && lessRamConfig.dictionaryEntryStorage === "resident",
       JSON.stringify({ lessRamConfig, pushesBeforeLessRam, pushesAfter: enginePushes() }));
     await writeReaderOptions(lessRamWrite.options.revision, { lowMemoryMode: false, useLessRamByDefault: true,

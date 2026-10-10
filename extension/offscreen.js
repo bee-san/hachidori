@@ -372,10 +372,10 @@ async function readEngineConfig() {
     const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_engine_config" });
     return { lowMemoryMode: reply?.ok === true && reply.lowMemoryMode === true,
       dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: reply?.dictionaryIndexStorage ?? "auto",
-      useLessRamByDefault: reply?.useLessRamByDefault !== false };
+      useLessRamByDefault: reply?.useLessRamByDefault === true };
   } catch (error) {
     console.warn(`hoshidicts: could not read the engine configuration: ${describeError(error)}`);
-    return { lowMemoryMode: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", useLessRamByDefault: true };
+    return { lowMemoryMode: false, dictionaryEntryStorage: "auto", dictionaryIndexStorage: "auto", useLessRamByDefault: false };
   }
 }
 
@@ -405,7 +405,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // hides the Low memory switch when threaded is false.
   pushedEngineConfig = { lowMemoryMode: message.lowMemoryMode === true,
     dictionaryEntryStorage: message.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: message.dictionaryIndexStorage ?? "auto",
-    useLessRamByDefault: message.useLessRamByDefault !== false };
+    useLessRamByDefault: message.useLessRamByDefault === true };
   if (recyclable) recycler.setDesired(pushedEngineConfig.lowMemoryMode, pushedEngineConfig.dictionaryEntryStorage,
     pushedEngineConfig.dictionaryIndexStorage, pushedEngineConfig.useLessRamByDefault);
   sendResponse({ type: "hd_engine_config_result", requestId: message.requestId ?? null, ok: true });
