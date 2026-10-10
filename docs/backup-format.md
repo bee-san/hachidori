@@ -36,6 +36,7 @@ If reader settings are missing, invalid or incompatible with this version,
 restore keeps your current reader settings and still restores the dictionaries.
 The preview and success message report the skipped settings. Dictionary
 selections that are unavailable in the restored library are reset.
+Incompatible update settings also keep your current update schedule.
 Unsaved Settings drafts must be saved or discarded before starting an operation.
 Leaving Settings cancels its preparation using an ID allocated before the
 request starts. The background retires delayed/retrying preparation requests;

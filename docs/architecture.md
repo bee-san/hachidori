@@ -212,6 +212,7 @@ refreshes when the index changes and after a persisted page is restored.
 Manual and automatic restores validate dictionaries independently of reader
 settings. Missing, malformed or incompatible archived reader settings keep the
 current reader settings and show a warning in the preview and success message.
+Incompatible update settings likewise keep the current update schedule.
 Compatible settings still migrate through the existing stored-options projection.
 Dictionary selectors are pruned against the restored library before the same
 atomic complete-state commit. Incompatible reader settings do not hide a retained

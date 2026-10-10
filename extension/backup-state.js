@@ -98,30 +98,37 @@ function projectBackupReaderSettings(settings) {
   return { ...projected, revision };
 }
 
+function validBackupUpdateSettings(settings) {
+  return Number.isSafeInteger(settings?.revision) && settings.revision >= 0
+    && sameJsonValue(settings, normaliseUpdateSettings(settings));
+}
+
 // Reader settings can change between releases without invalidating dictionary
 // files. Keep the local settings when the archived record cannot be imported;
 // prune selectors against the restored library before the exact storage CAS.
 export async function prepareBackupSnapshot(current, archived) {
-  await assertBackupSnapshot(archived, { allowInvalidReaderSettings: true });
+  await assertBackupSnapshot(archived, { allowInvalidSettings: true });
   const compatible = projectBackupReaderSettings(archived.options);
   const { normaliseDictionarySelections, projectStoredOptions } = globalThis.HDReaderOptions;
   const projected = compatible ?? { ...projectStoredOptions(current.options), revision: backupRevisions(current).options };
   const selected = normaliseDictionarySelections(projected, archived.state.dictionaries, archived.state.groups);
   const warnings = [];
   if (!compatible) warnings.push("Incompatible reader settings were skipped. Your current reader settings were kept.");
+  const updates = validBackupUpdateSettings(archived.updates) ? archived.updates : normaliseUpdateSettings(current.updates);
+  if (updates !== archived.updates) warnings.push("Incompatible update settings were skipped. Your current update schedule was kept.");
   if (projected.frequencyDictionary !== selected.frequencyDictionary
       || !sameJsonValue(projected.kanjiClickDictionary, selected.kanjiClickDictionary)) {
     warnings.push("Unavailable dictionary selections were reset.");
   }
   return {
-    snapshot: { ...archived, options: selected },
+    snapshot: { ...archived, options: selected, updates },
     warning: warnings.length ? warnings.join(" ") : null,
   };
 }
 
-export async function assertBackupSnapshot(snapshot, { allowInvalidReaderSettings = false } = {}) {
+export async function assertBackupSnapshot(snapshot, { allowInvalidSettings = false } = {}) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)
-      || ["state", "document", "updates"].some(key =>
+      || ["state", "document"].some(key =>
         !Number.isSafeInteger(snapshot[key]?.revision) || snapshot[key].revision < 0)
       || snapshot.state?.schemaVersion !== 1 || !Array.isArray(snapshot.state.dictionaries)) {
     throw new Error("The backup contains invalid dictionary state.");
@@ -134,10 +141,10 @@ export async function assertBackupSnapshot(snapshot, { allowInvalidReaderSetting
   const semanticRevision = await customDictionarySemanticRevision(entries);
   if (document.semanticRevision !== semanticRevision) throw new Error("The backup custom source has invalid semantics.");
   assertCustomSourceState(snapshot.state.dictionaries, semanticRevision, entries.length);
-  if (!allowInvalidReaderSettings && projectBackupReaderSettings(snapshot.options) === null) {
+  if (!allowInvalidSettings && projectBackupReaderSettings(snapshot.options) === null) {
     throw new Error("The backup contains invalid reader settings.");
   }
-  if (!sameJsonValue(snapshot.updates, normaliseUpdateSettings(snapshot.updates))) {
+  if (!allowInvalidSettings && !validBackupUpdateSettings(snapshot.updates)) {
     throw new Error("The backup contains invalid update settings.");
   }
   // Absent from automatic snapshots taken before overrides existed.

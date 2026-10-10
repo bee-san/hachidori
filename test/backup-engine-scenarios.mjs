@@ -412,6 +412,7 @@ export async function backupEngineScenarios({
   for (const automatic of [false, true]) {
     const incompatible = structuredClone(parsed.snapshot);
     incompatible.options = { revision: 1, popupWidthPx: -1, futureOption: true };
+    incompatible.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
     const before = await read();
     let url;
     try {
@@ -434,6 +435,7 @@ export async function backupEngineScenarios({
       assert.match(result.warning, /Restored successfully.*reader settings.*skipped/iu);
       const after = await read();
       assert.deepEqual(after.options, { ...before.options, revision: before.options.revision + 1 });
+      assert.deepEqual(after.updates, { ...before.updates, revision: before.updates.revision + 1 });
       assert.deepEqual(after.state.dictionaries.map(({ path, ...entry }) => entry),
         before.state.dictionaries.map(({ path, ...entry }) => entry));
       assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);

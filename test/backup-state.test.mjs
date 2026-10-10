@@ -201,6 +201,19 @@ test("restore prunes unavailable dictionary selections while retaining compatibl
   await assertBackupSnapshot(prepared.snapshot);
 });
 
+test("incompatible update settings keep the current schedule without blocking dictionary restore", async () => {
+  const current = snapshot();
+  for (const updates of [undefined, null, { revision: -1, schedule: "daily", lastCheckedAt: null },
+    { revision: 1, schedule: "future", lastCheckedAt: null }, { ...current.updates, futureOption: true }]) {
+    const archived = { ...snapshot(), updates };
+    const prepared = await prepareBackupSnapshot(current, archived);
+    assert.deepEqual(prepared.snapshot.updates, current.updates);
+    assert.deepEqual(prepared.snapshot.state, archived.state);
+    assert.match(prepared.warning, /update settings.*skipped/iu);
+    await assertBackupSnapshot(prepared.snapshot);
+  }
+});
+
 test("backup enforces managed custom metadata without imposing extra limits on ordinary titles", async () => {
   const value = snapshot();
   value.document.text = "猫,ねこ,cat";

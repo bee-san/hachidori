@@ -124,6 +124,7 @@ test("automatic backups remain selectable and retain dictionary roots when reade
   for (const options of [undefined, { revision: 1, futureOption: true }, { revision: 1, popupWidthPx: -1 }]) {
     const saved = record("incompatible", "2026-10-10T12:00:00.000Z");
     saved.snapshot.options = options;
+    saved.snapshot.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
     const valid = await validAutomaticBackups({ schemaVersion: 1, backups: [saved] });
     assert.equal(valid.corruptCount, 0);
     assert.deepEqual(valid.backups, [saved]);
