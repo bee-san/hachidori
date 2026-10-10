@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertBackupSnapshot, backupRevisions, restoredBackupSnapshot } from "../extension/backup-state.js";
+import { assertBackupSnapshot, backupRevisions, prepareBackupSnapshot, restoredBackupSnapshot } from "../extension/backup-state.js";
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_TITLE, customDictionarySemanticRevision,
   emptyCustomDictionaryDocument, parseCustomDictionary } from "../extension/custom-dictionary.js";
 
@@ -165,6 +165,40 @@ test("restore validation rejects malformed state, settings and inconsistent cust
     customLinks: [{ label: "Other", url: "https://other.example/%w" }],
   };
   await assert.rejects(assertBackupSnapshot(inconsistent));
+});
+
+test("restore keeps current reader settings when archived settings are missing, invalid or from another version", async () => {
+  const current = snapshot();
+  current.options = { revision: 21, popupTheme: "light", scanLength: 19,
+    frequencyDictionary: "Removed", kanjiClickDictionary: { kind: "tabGroup", id: "removed" } };
+  for (const options of [undefined, null, [], "settings", { popupTheme: "dark" },
+    { revision: -1 }, { revision: 2, futureOption: true }, { revision: 2, popupWidthPx: -1 },
+    { revision: 2, experimental: { futureFeature: true } }]) {
+    const archived = { ...snapshot(), options };
+    const untouched = structuredClone(archived);
+    const prepared = await prepareBackupSnapshot(current, archived);
+    assert.match(prepared.warning, /reader settings.*skipped/iu);
+    assert.deepEqual(prepared.snapshot.state, archived.state);
+    assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "light", scanLength: 19,
+      frequencyDictionary: "", kanjiClickDictionary: "" });
+    const restored = restoredBackupSnapshot(current, prepared.snapshot, []);
+    assert.equal(restored.options.revision, 22);
+    await assertBackupSnapshot(restored);
+    assert.deepEqual(archived, untouched, "preparation must not mutate the archived snapshot");
+  }
+  const invalidDictionaryState = { ...snapshot(), options: null };
+  invalidDictionaryState.state.schemaVersion = 2;
+  await assert.rejects(prepareBackupSnapshot(current, invalidDictionaryState), /dictionary state/u);
+});
+
+test("restore prunes unavailable dictionary selections while retaining compatible reader settings", async () => {
+  const archived = snapshot();
+  archived.options.frequencyDictionary = "Removed";
+  archived.options.kanjiClickDictionary = { kind: "tabGroup", id: "removed" };
+  const prepared = await prepareBackupSnapshot(snapshot(), archived);
+  assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark",
+    frequencyDictionary: "", kanjiClickDictionary: "" });
+  await assertBackupSnapshot(prepared.snapshot);
 });
 
 test("backup enforces managed custom metadata without imposing extra limits on ordinary titles", async () => {
