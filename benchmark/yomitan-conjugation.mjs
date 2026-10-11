@@ -29,12 +29,12 @@ function batch(runtime, queries, repeats) {
   return { usPerLookup: (performance.now() - start) * 1000 / (queries.length * repeats), totalResults };
 }
 try {
-  for (const { runtime } of runtimes) { batch(runtime, modern, 200); batch(runtime, historical, 20); }
+  for (const { runtime } of runtimes) { batch(runtime, modern, 1000); batch(runtime, historical, 20); }
   const results = { modern: { base: [], head: [] }, historical: { base: [], head: [] } };
   for (let round = 0; round < 7; round++) {
     for (const { label, runtime } of round % 2 ? [...runtimes].reverse() : runtimes) {
-      results.modern[label].push(batch(runtime, modern, 1000));
-      results.historical[label].push(batch(runtime, historical, 100));
+      results.modern[label].push(batch(runtime, modern, 10000));
+      results.historical[label].push(batch(runtime, historical, 500));
     }
   }
   console.log(JSON.stringify({ node: process.version, modern, historicalCount: historical.length, results }, null, 2));
