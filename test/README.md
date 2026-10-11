@@ -222,6 +222,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `toolbar` | The toolbar toggle and its revision conflicts. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d, written inline. |
+| `yomitan-conjugation` | All three real WASM runtimes against the 97 regression examples from Yomitan #2474 and #2501: historical kana conjugations, their ordered traces, modern forms, selected-dictionary lookup and combined kanji variants. |
 
 `anki_note_type_upstream_test.py` is the one Python test. The Anki note-type
 compatibility workflow runs it with

@@ -3501,6 +3501,16 @@ and in-flight dictionary commits when leaving Settings.
 
 ## Build outputs
 
+The engine's Japanese deinflector includes the historical kana rules from
+[Yomitan #2474](https://github.com/yomidevs/yomitan/pull/2474) and
+[#2501](https://github.com/yomidevs/yomitan/pull/2501). Forms such as 思ふ,
+思ひたい, 食べませう and してゐる resolve through the same part-of-speech
+conditions and conjugation traces as modern forms. Existing kanji variant
+normalization composes with these rules (讀みませう → 読む). This is suffix
+deinflection, not a general historical spelling converter: 思へる and 思ほう
+do not become 思う, and historical large つ spellings such as 買つてゐる
+are outside these upstream rules.
+
 `wasm/build.sh` produces three runtime variants from the same bindings:
 
 - `extension/vendor/hoshidicts-threaded.mjs` and `hoshidicts-threaded.wasm` for pthread WasmFS/direct OPFS;
