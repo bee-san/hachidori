@@ -74,31 +74,70 @@ function assertGroups(groups, dictionaries) {
   }
 }
 
-function validBackupReaderOptions(options) {
-  if (!options || typeof options !== "object" || Array.isArray(options)) return false;
+function projectBackupReaderSettings(settings) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return null;
+  const { revision, ...options } = settings;
+  if (!Number.isSafeInteger(revision) || revision < 0) return null;
   const { DEFAULT_OPTIONS, RETIRED_OPTION_KEYS } = globalThis.HDReaderOptions;
   const allowed = new Set([...Object.keys(DEFAULT_OPTIONS), ...RETIRED_OPTION_KEYS]);
-  if (Object.keys(options).some(key => !allowed.has(key))) return false;
+  if (Object.keys(options).some(key => !allowed.has(key))) return null;
+  // Each release writes its own complete flag set. Like the stored record, an
+  // archived one keeps its known flags, starts newer flags off and drops
+  // retired ones; a non-boolean flag remains invalid.
+  const { experimental } = options;
+  if (experimental && typeof experimental === "object" && !Array.isArray(experimental)
+      && Object.values(experimental).every(value => typeof value === "boolean")) {
+    options.experimental = globalThis.HDReaderOptions.normaliseExperimental(experimental);
+  }
   let projected;
   try {
     projected = globalThis.HDReaderOptions.validateOptionsPatch(options);
   } catch {
-    return false;
+    return null;
   }
   // A legacy backup may have only `customLinks`, and its singleton Anki
   // object has no `templates`. If the richer fields are present, however, they
   // must already be canonical instead of relying on migration to resolve two
   // conflicting representations.
   if (Object.hasOwn(options, "customButtons") && Object.hasOwn(options, "customLinks")
-      && !sameJsonValue(options.customLinks, projected.customLinks)) return false;
+      && !sameJsonValue(options.customLinks, projected.customLinks)) return null;
   if (options.anki && Object.hasOwn(options.anki, "templates")
-      && !sameJsonValue(options.anki, projected.anki)) return false;
-  return true;
+      && !sameJsonValue(options.anki, projected.anki)) return null;
+  return { ...projected, revision };
 }
 
-export async function assertBackupSnapshot(snapshot) {
+function validBackupUpdateSettings(settings) {
+  return Number.isSafeInteger(settings?.revision) && settings.revision >= 0
+    && sameJsonValue(settings, normaliseUpdateSettings(settings));
+}
+
+// Reader settings can change between releases without invalidating dictionary
+// files. Keep the local settings when the archived record cannot be imported;
+// prune selectors against the restored library before the exact storage CAS.
+export async function prepareBackupSnapshot(current, archived) {
+  await assertBackupSnapshot(archived, { allowInvalidSettings: true });
+  const compatible = projectBackupReaderSettings(archived.options);
+  const { normaliseDictionarySelections, projectStoredOptions } = globalThis.HDReaderOptions;
+  const projected = compatible ?? { ...projectStoredOptions(current.options), revision: backupRevisions(current).options };
+  const selected = normaliseDictionarySelections(projected, archived.state.dictionaries, archived.state.groups);
+  const warnings = [];
+  if (!compatible) warnings.push("Incompatible reader settings were skipped. Your current reader settings were kept.");
+  const updates = validBackupUpdateSettings(archived.updates) ? archived.updates : normaliseUpdateSettings(current.updates);
+  if (updates !== archived.updates) warnings.push("Incompatible update settings were skipped. Your current update schedule was kept.");
+  // A legacy clicked-kanji title migrates to `{ title, kind }`; only a
+  // selection that becomes Automatic was reset.
+  if (["frequencyDictionary", "kanjiClickDictionary"].some(key => projected[key] && !selected[key])) {
+    warnings.push("Unavailable dictionary selections were reset.");
+  }
+  return {
+    snapshot: { ...archived, options: selected, updates },
+    warning: warnings.length ? warnings.join(" ") : null,
+  };
+}
+
+export async function assertBackupSnapshot(snapshot, { allowInvalidSettings = false } = {}) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)
-      || ["state", "options", "document", "updates"].some(key =>
+      || ["state", "document"].some(key =>
         !Number.isSafeInteger(snapshot[key]?.revision) || snapshot[key].revision < 0)
       || snapshot.state?.schemaVersion !== 1 || !Array.isArray(snapshot.state.dictionaries)) {
     throw new Error("The backup contains invalid dictionary state.");
@@ -111,12 +150,10 @@ export async function assertBackupSnapshot(snapshot) {
   const semanticRevision = await customDictionarySemanticRevision(entries);
   if (document.semanticRevision !== semanticRevision) throw new Error("The backup custom source has invalid semantics.");
   assertCustomSourceState(snapshot.state.dictionaries, semanticRevision, entries.length);
-  const { revision, ...options } = snapshot.options ?? {};
-  if (!Number.isSafeInteger(revision) || revision < 0
-      || !validBackupReaderOptions(options)) {
+  if (!allowInvalidSettings && projectBackupReaderSettings(snapshot.options) === null) {
     throw new Error("The backup contains invalid reader settings.");
   }
-  if (!sameJsonValue(snapshot.updates, normaliseUpdateSettings(snapshot.updates))) {
+  if (!allowInvalidSettings && !validBackupUpdateSettings(snapshot.updates)) {
     throw new Error("The backup contains invalid update settings.");
   }
   // Absent from automatic snapshots taken before overrides existed.

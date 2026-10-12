@@ -12,6 +12,7 @@ export const BACKUP_CHROME_CHECKS = [
   "corrupt backup preparation preserves the working browser state and leaves no fresh generations",
   "closing Settings during backup preparation cancels staged generations without waiting for its reply",
   "a large binary payload survives restore and re-export through the browser engine",
+  "incompatible backup reader settings keep current settings while dictionaries restore in Chrome",
 ];
 
 export async function backupChromeScenarios({ browser, page, directory, check = (name, ok, detail) => assert.ok(ok, `${name}: ${detail}`) }) {
@@ -303,7 +304,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     await page.screenshot({ path: process.env.HACHIDORI_BACKUP_SCREENSHOT, fullPage: true });
   }
   await confirm();
-  const restored = await read();
+  let restored = await read();
   const notice = await page.$eval("#backup-status", element => element.textContent);
   const revisions = Object.keys(restored).every(key => restored[key].revision === edited[key].revision + 1);
   const comparable = snapshot => Object.fromEntries(Object.entries(snapshot).map(([key, value]) => {
@@ -323,6 +324,37 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   check(BACKUP_CHROME_CHECKS[7], restoredFile?.data.size === largeBytes.length
     && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes),
     JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size }));
+
+  const incompatibleSnapshot = structuredClone(parsed.snapshot);
+  incompatibleSnapshot.options = { revision: 1, popupWidthPx: -1, futureOption: true };
+  incompatibleSnapshot.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
+  const incompatibleArchive = await createBackupArchive(incompatibleSnapshot, parsed.files, parsed.lookupStatsRows);
+  const incompatiblePath = resolve(directory, "incompatible-settings-backup.zip");
+  writeFileSync(incompatiblePath, Buffer.from(await incompatibleArchive.arrayBuffer()));
+  const beforeIncompatible = restored;
+  await choose(incompatiblePath);
+  const compatibilityPreview = await page.$eval("#backup-status", element => element.textContent);
+  assert.match(compatibilityPreview, /reader settings.*skipped/iu);
+  assert.deepEqual(await read(), beforeIncompatible);
+  const evidence = process.env.HACHIDORI_BACKUP_COMPATIBILITY_SCREENSHOTS;
+  if (evidence) {
+    mkdirSync(evidence, { recursive: true });
+    await page.screenshot({ path: resolve(evidence, "preview.png"), fullPage: true });
+  }
+  await confirm();
+  restored = await read();
+  const compatibilityNotice = await page.$eval("#backup-status", element => element.textContent);
+  const compatibilityLookup = await page.evaluate(() =>
+    chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
+  check(BACKUP_CHROME_CHECKS[8], /Restored successfully.*reader settings.*skipped/iu.test(compatibilityNotice)
+    && JSON.stringify(restored.options) === JSON.stringify({ ...beforeIncompatible.options, revision: beforeIncompatible.options.revision + 1 })
+    && JSON.stringify(restored.updates) === JSON.stringify({ ...beforeIncompatible.updates, revision: beforeIncompatible.updates.revision + 1 })
+    && JSON.stringify(restored.state.dictionaries.map(({ path, ...dictionary }) => dictionary))
+      === JSON.stringify(beforeIncompatible.state.dictionaries.map(({ path, ...dictionary }) => dictionary))
+    && restored.state.dictionaries.every((dictionary, index) => dictionary.path !== beforeIncompatible.state.dictionaries[index].path)
+    && compatibilityLookup.ok && compatibilityLookup.results.length > 0,
+  JSON.stringify({ compatibilityPreview, compatibilityNotice, lookupOk: compatibilityLookup.ok }));
+  if (evidence) await page.screenshot({ path: resolve(evidence, "restored.png"), fullPage: true });
 
   // Flip a payload byte without changing the ZIP checksum or manifest.
   const corrupt = Buffer.from(bytes);

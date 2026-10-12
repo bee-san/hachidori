@@ -18,7 +18,7 @@ import { boundResponseFailure, responseFits, responseLimitError } from "./respon
 import { STARTUP_PAGE } from "./setup-state.js";
 
 const {
-  ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, hasCapability, normaliseOptions, projectStoredOptions,
+  ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
   validateOptionsPatch,
 } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
@@ -46,7 +46,6 @@ const OPTIONS_KEY = "options";
 const UPDATE_SETTINGS_KEY = "dictionaryUpdates";
 
 const DICTIONARY_STATE_SCHEMA_VERSION = 1;
-const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 
 function engineSender(sender) {
   return sender?.id === chrome.runtime.id && sender.url === chrome.runtime.getURL(OFFSCREEN_DOCUMENT);
@@ -154,43 +153,6 @@ async function readDictionaryStorage(includeCustomDocument = false, store = chro
       ? stored?.[CUSTOM_DICTIONARY_SOURCE_KEY] ?? null
       : undefined,
   };
-}
-
-// The stored clicked-kanji selection after a dictionary or group change: a
-// group keeps its stable ID through renames and membership edits and resets
-// only when the group is removed, like a removed or disabled dictionary does.
-function normaliseKanjiClickSelection(value, dictionaries, groups) {
-  const selection = typeof value === "string" ? { title: value, kind: "" } : value;
-  if (selection?.kind === "tabGroup") {
-    return groups.some((group) => group.id === selection.id) ? value : "";
-  }
-  if (!selection?.title) return value;
-  const selected = dictionaries.find((entry) => entry.title === selection.title);
-  let kind = selection.kind;
-  if (!KANJI_SELECTION_KINDS.has(kind)) {
-    kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
-  }
-  if (!selected || selected.enabled === false || !hasCapability(selected, kind)) return "";
-  return KANJI_SELECTION_KINDS.has(selection.kind) ? value : { title: selection.title, kind };
-}
-
-function normaliseDictionarySelections(value, dictionaries, groups = []) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const options = { ...value };
-  const selectedFrequency = dictionaries.find((entry) =>
-    entry.title === options.frequencyDictionary);
-  if (
-    options.frequencyDictionary
-    && (!selectedFrequency || selectedFrequency.enabled === false || !hasCapability(selectedFrequency, "freq"))
-  ) {
-    options.frequencyDictionary = "";
-  }
-  if (Object.hasOwn(options, "kanjiClickDictionary")) {
-    options.kanjiClickDictionary = normaliseKanjiClickSelection(options.kanjiClickDictionary, dictionaries, groups);
-  }
-  return options;
 }
 
 function assertDictionaryState(state) {

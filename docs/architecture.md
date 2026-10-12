@@ -209,6 +209,15 @@ filesystem read, validates the referenced files in place, and then uses the
 manual restore transaction and explicit replacement confirmation. Open Settings
 refreshes when the index changes and after a persisted page is restored.
 
+Manual and automatic restores validate dictionaries independently of reader
+settings. Missing, malformed or incompatible archived reader settings keep the
+current reader settings and show a warning in the preview and success message.
+Incompatible update settings likewise keep the current update schedule.
+Compatible settings still migrate through the existing stored-options projection.
+Dictionary selectors are pruned against the restored library before the same
+atomic complete-state commit. Incompatible reader settings do not hide a retained
+automatic backup or invalidate its protected dictionary roots.
+
 Linking clears the local automatic-backup alarm and suppresses snapshots of the
 host mirror while retaining the local index. Unlink restores the kept local
 state before reconciling local snapshots and scheduling again.

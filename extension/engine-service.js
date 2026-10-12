@@ -3185,13 +3185,14 @@ async function restoreBackup(message) {
     publishLoadedDictionaries(loadedCount);
     reloadError = null;
     await cleanupCommittedDictionaries();
-    let warning = reply.warning ?? null;
+    const notes = [prepared.settingsWarning, reply.warning];
     try {
       const cleanup = await ask("hd_lookup_stats_cleanup");
       if (!cleanup.ok) throw new Error(cleanup.error);
     } catch (error) {
-      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describeErrorMessageOrJson(error)}`].filter(Boolean).join("; ");
+      notes.push(`Old lookup statistics could not be cleaned up: ${describeErrorMessageOrJson(error)}`);
     }
+    const warning = notes.some(Boolean) ? ["Restored successfully.", ...notes].filter(Boolean).join(" ") : null;
     return { restored: true, dictionaryCount, warning };
   } catch (error) {
     if (error instanceof UnknownDictionaryStateCommitError) {
@@ -3300,7 +3301,7 @@ const HANDLERS = {
     }
     await discardPreparedBackup();
     const current = (await readBackupStorage(true)).snapshot;
-    const [{ openBackupArchive }, { assertBackupSnapshot }] = await Promise.all([
+    const [{ openBackupArchive }, { prepareBackupSnapshot }] = await Promise.all([
       import("./backup-archive.js"), import("./backup-state.js"),
     ]);
     if (typeof message.blobUrl !== "string" || !message.blobUrl.startsWith("blob:")) {
@@ -3309,7 +3310,8 @@ const HANDLERS = {
     const response = await fetch(message.blobUrl);
     if (!response.ok) throw new Error("Could not read the selected backup.");
     const prepared = await openBackupArchive(await response.blob());
-    await assertBackupSnapshot(prepared.snapshot);
+    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
+    prepared.snapshot = snapshot;
     const roots = [];
     try {
       const dictionaries = await stageBackupFiles(prepared, roots);
@@ -3325,8 +3327,9 @@ const HANDLERS = {
         warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
       }
       const token = message.token;
-      preparedBackup = { token, current, roots, dictionaries, snapshot: prepared.snapshot, lookupStatsRows: prepared.lookupStatsRows };
-      return { token, warning, createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
+      preparedBackup = { token, current, roots, dictionaries, snapshot, settingsWarning, lookupStatsRows: prepared.lookupStatsRows };
+      return { token, warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
+        createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
         customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
     } catch (error) {
       try { await restoreCommittedDictionaries(null, { publish: false }); }
@@ -3347,12 +3350,12 @@ const HANDLERS = {
     }
     await discardPreparedBackup();
     const current = (await readBackupStorage(true)).snapshot;
-    const [{ backup: prepared }, { assertBackupSnapshot }] = await Promise.all([
+    const [{ backup: prepared }, { prepareBackupSnapshot }] = await Promise.all([
       ask("hd_backup_auto_get", { id: message.id }),
       import("./backup-state.js"),
     ]);
     if (!prepared) throw new Error("This automatic backup is corrupt or no longer retained.");
-    await assertBackupSnapshot(prepared.snapshot);
+    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
     const dictionaries = prepared.snapshot.state.dictionaries;
     assertBackupDictionaryPaths(dictionaries);
     try {
@@ -3375,12 +3378,13 @@ const HANDLERS = {
         retained: true,
         roots: [],
         dictionaries,
-        snapshot: prepared.snapshot,
+        snapshot,
+        settingsWarning,
         lookupStatsRows: prepared.lookupStatsRows,
       };
       return {
         token,
-        warning,
+        warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
         createdAt: prepared.createdAt,
         dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
         customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length,

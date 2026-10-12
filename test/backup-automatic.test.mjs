@@ -120,6 +120,18 @@ test("a corrupt newest record does not hide a valid older backup or reset its ca
   assert.equal(automaticBackupDue(store, start + 2 * AUTOMATIC_BACKUP_INTERVAL_MS), true);
 });
 
+test("automatic backups remain selectable and retain dictionary roots when reader settings are incompatible", async () => {
+  for (const options of [undefined, { revision: 1, futureOption: true }, { revision: 1, popupWidthPx: -1 }]) {
+    const saved = record("incompatible", "2026-10-10T12:00:00.000Z");
+    saved.snapshot.options = options;
+    saved.snapshot.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
+    const valid = await validAutomaticBackups({ schemaVersion: 1, backups: [saved] });
+    assert.equal(valid.corruptCount, 0);
+    assert.deepEqual(valid.backups, [saved]);
+    assert.equal(valid.backups[0].snapshot.state.dictionaries[0].path, snapshot().state.dictionaries[0].path);
+  }
+});
+
 test("relative ages report actual past and future wall-clock differences", () => {
   const now = Date.parse("2026-09-18T12:00:00.000Z");
   assert.equal(formatAutomaticBackupAge("2026-09-18T09:00:00.000Z", now, "en"), "3 hours ago");
