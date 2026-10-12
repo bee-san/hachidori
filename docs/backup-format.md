@@ -32,6 +32,9 @@ list. Nothing is published until the replacement checkbox is selected and
 **Replace and restore** is pressed. This replaces the entire saved configuration,
 including empty/default values; it does not merge libraries. Cancel discards the
 prepared files. A concurrent saved edit requires preparing the backup again.
+Experimental feature switches saved by another version restore by name: known
+switches keep their saved values, newer ones start off and retired ones are
+dropped.
 If reader settings are missing, invalid or incompatible with this version,
 restore keeps your current reader settings and still restores the dictionaries.
 The preview and success message report the skipped settings. Dictionary

@@ -81,6 +81,14 @@ function projectBackupReaderSettings(settings) {
   const { DEFAULT_OPTIONS, RETIRED_OPTION_KEYS } = globalThis.HDReaderOptions;
   const allowed = new Set([...Object.keys(DEFAULT_OPTIONS), ...RETIRED_OPTION_KEYS]);
   if (Object.keys(options).some(key => !allowed.has(key))) return null;
+  // Each release writes its own complete flag set. Like the stored record, an
+  // archived one keeps its known flags, starts newer flags off and drops
+  // retired ones; a non-boolean flag remains invalid.
+  const { experimental } = options;
+  if (experimental && typeof experimental === "object" && !Array.isArray(experimental)
+      && Object.values(experimental).every(value => typeof value === "boolean")) {
+    options.experimental = globalThis.HDReaderOptions.normaliseExperimental(experimental);
+  }
   let projected;
   try {
     projected = globalThis.HDReaderOptions.validateOptionsPatch(options);
