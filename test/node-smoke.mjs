@@ -2282,6 +2282,7 @@ check('rebuilt WASM recognizes historical u-verbs, one-character stems and whole
       ['来る', 'くる', '', 'vk', 0, ['to come'], 2, ''],
       ['ござる', 'ござる', '', 'v5', 0, ['honorific to be'], 3, ''],
       ['偽ござる', 'にせござる', '', 'v5', 0, ['honorific suffix trap'], 4, ''],
+      ['読む', 'よむ', '', 'v5', 0, ['to read'], 5, ''],
     ],
   }));
   const report = hdwImport('/work/conjugation-parity.zip', '/dicts');
@@ -2295,6 +2296,22 @@ check('rebuilt WASM recognizes historical u-verbs, one-character stems and whole
   eq(lookup('来').results[0]?.term.expression, '来る', 'single-character continuative');
   eq(lookup('ございました').results[0]?.term.expression, 'ござる', 'chained honorific');
   ok(!lookup('偽ございます').results.some(result => result.term.expression === '偽ござる'), 'honorific must match a whole word');
+});
+
+// The engine's own Yomitan corpus covers each rule; these are the parts of the
+// lookup it cannot see: kanji variant normalization ahead of deinflection, and
+// the selected-dictionary path. The dictionary is the one imported above.
+check('historical conjugations compose with kanji variants, also in a selected dictionary, and skip excluded spellings', () => {
+  const path = '/dicts/yomitan-conjugation-parity';
+  const full = (results, source, expression) =>
+    results.some(result => result.matched === source && result.term.expression === expression);
+  for (const source of ['讀みませう', '讀んでゐる']) {
+    ok(full(lookup(source).results, source, '読む'), source);
+    ok(full(lookupDictionary(source, path).results, source, '読む'), source + ' in the selected dictionary');
+  }
+  // Yomitan #2474 excludes these spellings: a shorter prefix may still match,
+  // never the whole scanned form.
+  for (const source of ['思へる', '思ほう']) ok(!full(lookup(source).results, source, '思う'), source);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

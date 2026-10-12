@@ -1905,6 +1905,22 @@ own marker with `list-style-position: outside`, so the thin triangle hangs in th
 gutter. A dictionary's own scoped `styles.css` can restyle it; Bee's Ultimate
 Grammar Dictionary draws its own chevron on its per-source blocks this way.
 
+### Deinflection rules
+
+The engine's Japanese deinflector carries Yomitan's Japanese conjugation rules
+at [e7334a9](https://github.com/yomidevs/yomitan/blob/e7334a96106a6c74e6fa75bd33a5ea1219d92712/ext/js/language/ja/japanese-transforms.js)
+beside HoshiDicts' own auxiliary rules. They include the historical kana of
+[Yomitan #2474](https://github.com/yomidevs/yomitan/pull/2474) and
+[#2501](https://github.com/yomidevs/yomitan/pull/2501) (思ふ, 思ひたい, 食べませう,
+してゐる), the emphatic -やしない and -やしません, one-character continuative stems
+(来 → 来る) and honorifics that match only as a whole word (ございます → ござる).
+These forms resolve through the same part-of-speech conditions and traces as
+modern forms, and kanji variant normalization composes with them
+(讀みませう → 読む). This is suffix deinflection, not a general historical
+spelling converter: 思へる and 思ほう do not become 思う, and historical large
+つ spellings such as 買つてゐる are not covered. The engine's own test runs
+Yomitan's complete Japanese conjugation corpus.
+
 ### Deinflection explanation
 
 Each eligible term header has a native, initially closed `details` disclosure.
