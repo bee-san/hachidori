@@ -173,7 +173,7 @@ test("restore keeps current reader settings when archived settings are missing, 
     frequencyDictionary: "Removed", kanjiClickDictionary: { kind: "tabGroup", id: "removed" } };
   for (const options of [undefined, null, [], "settings", { popupTheme: "dark" },
     { revision: -1 }, { revision: 2, futureOption: true }, { revision: 2, popupWidthPx: -1 },
-    { revision: 2, experimental: { futureFeature: true } }]) {
+    { revision: 2, experimental: { googleDocs: "yes" } }]) {
     const archived = { ...snapshot(), options };
     const untouched = structuredClone(archived);
     const prepared = await prepareBackupSnapshot(current, archived);
@@ -189,6 +189,24 @@ test("restore keeps current reader settings when archived settings are missing, 
   const invalidDictionaryState = { ...snapshot(), options: null };
   invalidDictionaryState.state.schemaVersion = 2;
   await assert.rejects(prepareBackupSnapshot(current, invalidDictionaryState), /dictionary state/u);
+});
+
+test("an archived experimental record from another release migrates instead of skipping its settings", async () => {
+  const current = snapshot();
+  current.options = { revision: 21, popupTheme: "light" };
+  const archived = snapshot();
+  // Issue #551's version-2 record: two retired flags, explicit true and false
+  // values, and none of the flags added since.
+  archived.options = { revision: 3, popupTheme: "dark",
+    experimental: { themeStore: true, longKeyScan: true, mdxImport: false, googleDocs: false, smallerAnkiCards: true } };
+  const untouched = structuredClone(archived);
+  const prepared = await prepareBackupSnapshot(current, archived);
+  assert.equal(prepared.warning, null);
+  const restored = restoredBackupSnapshot(current, prepared.snapshot, []);
+  assert.deepEqual(restored.options, { revision: 22, popupTheme: "dark", experimental: {
+    ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, themeStore: true, googleDocs: false, smallerAnkiCards: true } });
+  await assertBackupSnapshot(restored);
+  assert.deepEqual(archived, untouched, "preparation must not mutate the archived snapshot");
 });
 
 test("restore prunes unavailable dictionary selections while retaining compatible reader settings", async () => {
