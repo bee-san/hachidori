@@ -1,0 +1,47 @@
+[
+  {
+    "label": "after",
+    "palette": "hachidori-dark",
+    "focused": true,
+    "popupHidden": false,
+    "state": "success",
+    "actionFocused": true,
+    "output": "Added note 1."
+  },
+  {
+    "label": "after",
+    "palette": "light",
+    "focused": true,
+    "popupHidden": false,
+    "state": "success",
+    "actionFocused": true,
+    "output": "Added note 2."
+  },
+  {
+    "label": "after",
+    "palette": "high-contrast",
+    "focused": true,
+    "popupHidden": false,
+    "state": "success",
+    "actionFocused": true,
+    "output": "Added note 3."
+  },
+  {
+    "label": "after",
+    "palette": "forced-colors-dark",
+    "focused": true,
+    "popupHidden": false,
+    "state": "success",
+    "actionFocused": true,
+    "output": "Added note 4."
+  },
+  {
+    "label": "after",
+    "palette": "forced-colors-light",
+    "focused": true,
+    "popupHidden": false,
+    "state": "success",
+    "actionFocused": true,
+    "output": "Added note 5."
+  }
+]

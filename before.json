@@ -1,0 +1,47 @@
+[
+  {
+    "label": "before",
+    "palette": "hachidori-dark",
+    "focused": true,
+    "popupHidden": true,
+    "state": null,
+    "actionFocused": null,
+    "output": null
+  },
+  {
+    "label": "before",
+    "palette": "light",
+    "focused": true,
+    "popupHidden": true,
+    "state": null,
+    "actionFocused": null,
+    "output": null
+  },
+  {
+    "label": "before",
+    "palette": "high-contrast",
+    "focused": true,
+    "popupHidden": true,
+    "state": null,
+    "actionFocused": null,
+    "output": null
+  },
+  {
+    "label": "before",
+    "palette": "forced-colors-dark",
+    "focused": true,
+    "popupHidden": true,
+    "state": null,
+    "actionFocused": null,
+    "output": null
+  },
+  {
+    "label": "before",
+    "palette": "forced-colors-light",
+    "focused": true,
+    "popupHidden": true,
+    "state": null,
+    "actionFocused": null,
+    "output": null
+  }
+]
