@@ -222,7 +222,6 @@ see [benchmark/README.md](../benchmark/README.md).
 | `toolbar` | The toolbar toggle and its revision conflicts. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d, written inline. |
-| `yomitan-conjugation` | All three real WASM runtimes against the 97 regression examples from Yomitan #2474 and #2501: historical kana conjugations, their ordered traces, modern forms, selected-dictionary lookup and combined kanji variants. |
 
 `anki_note_type_upstream_test.py` is the one Python test. The Anki note-type
 compatibility workflow runs it with
@@ -243,9 +242,13 @@ pinned/latest package commands and the schema-only boundary.
   regression, all four kinds, lookups by structure and value, kanji, styles,
   tags, media, error paths, reset, import staging, every on-disk layout,
   interrupted-install recovery, dictionary-scoped lookups, response and media
-  bounds, MDX import, definition order and `hdw_segment` against
-  `segmentation-reference.mjs`. Exits 0 on success, 1 on a failed check, 2 when
-  the wasm module has not been built. See [node-smoke details](#node-smoke-details).
+  bounds, MDX import, definition order, `hdw_segment` against
+  `segmentation-reference.mjs`, and the Yomitan conjugation rules through the
+  importer: historical kana, emphatic negatives, one-character stems,
+  whole-word honorifics, kanji variants and excluded spellings (the engine's
+  own test runs Yomitan's full corpus natively). Exits 0 on success, 1 on a
+  failed check, 2 when the wasm module has not been built. See
+  [node-smoke details](#node-smoke-details).
 - **`threaded-bridge-smoke.mjs`** imports the real offscreen bridge with
   controlled worker and fallback endpoints (through Node 22.15's
   `module.registerHooks`): the 128-request admission bound, responsive status,
