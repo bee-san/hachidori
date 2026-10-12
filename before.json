@@ -1,0 +1,197 @@
+[
+  {
+    "label": "before",
+    "palette": "hachidori-dark",
+    "idle": {
+      "state": "checking",
+      "disabled": true,
+      "ariaBusy": "true",
+      "ariaLabel": "Checking Anki card status",
+      "icon": "arrow-clockwise",
+      "focused": false,
+      "focusVisible": false,
+      "color": "color(srgb 0.576784 0.568471 0.598902)",
+      "borderColor": "rgb(168, 156, 228)",
+      "background": "color(srgb 0.188235 0.184314 0.231373 / 0.85)",
+      "iconContrast": 4.36,
+      "borderContrast": 5.51,
+      "clip": {
+        "x": 9,
+        "y": 49,
+        "width": 434,
+        "height": 81.59375
+      },
+      "button": {
+        "x": 323,
+        "y": 84.59375,
+        "width": 32,
+        "height": 32,
+        "top": 84.59375,
+        "right": 355,
+        "bottom": 116.59375,
+        "left": 323
+      }
+    },
+    "hoverBackground": "color(srgb 0.188235 0.184314 0.231373 / 0.85)",
+    "focused": {
+      "focused": false,
+      "focusVisible": false
+    }
+  },
+  {
+    "label": "before",
+    "palette": "light",
+    "idle": {
+      "state": "checking",
+      "disabled": true,
+      "ariaBusy": "true",
+      "ariaLabel": "Checking Anki card status",
+      "icon": "arrow-clockwise",
+      "focused": false,
+      "focusVisible": false,
+      "color": "color(srgb 0.492459 0.492552 0.499302)",
+      "borderColor": "oklch(0.45 0.24 277.023)",
+      "background": "color(srgb 0.973565 0.973743 0.97376 / 0.85)",
+      "iconContrast": 3.85,
+      "borderContrast": 7.9,
+      "clip": {
+        "x": 9,
+        "y": 49,
+        "width": 434,
+        "height": 81.59375
+      },
+      "button": {
+        "x": 323,
+        "y": 84.59375,
+        "width": 32,
+        "height": 32,
+        "top": 84.59375,
+        "right": 355,
+        "bottom": 116.59375,
+        "left": 323
+      }
+    },
+    "hoverBackground": "color(srgb 0.973565 0.973743 0.97376 / 0.85)",
+    "focused": {
+      "focused": false,
+      "focusVisible": false
+    }
+  },
+  {
+    "label": "before",
+    "palette": "high-contrast",
+    "idle": {
+      "state": "checking",
+      "disabled": true,
+      "ariaBusy": "true",
+      "ariaLabel": "Checking Anki card status",
+      "icon": "arrow-clockwise",
+      "focused": false,
+      "focusVisible": false,
+      "color": "rgb(207, 207, 207)",
+      "borderColor": "rgb(255, 224, 0)",
+      "background": "color(srgb 0.0784314 0.0784314 0.0784314 / 0.85)",
+      "iconContrast": 12.12,
+      "borderContrast": 14.31,
+      "clip": {
+        "x": 9,
+        "y": 49,
+        "width": 434,
+        "height": 81.59375
+      },
+      "button": {
+        "x": 323,
+        "y": 84.59375,
+        "width": 32,
+        "height": 32,
+        "top": 84.59375,
+        "right": 355,
+        "bottom": 116.59375,
+        "left": 323
+      }
+    },
+    "hoverBackground": "color(srgb 0.0784314 0.0784314 0.0784314 / 0.85)",
+    "focused": {
+      "focused": false,
+      "focusVisible": false
+    }
+  },
+  {
+    "label": "before",
+    "palette": "forced-colors-dark",
+    "idle": {
+      "state": "checking",
+      "disabled": true,
+      "ariaBusy": "true",
+      "ariaLabel": "Checking Anki card status",
+      "icon": "arrow-clockwise",
+      "focused": false,
+      "focusVisible": false,
+      "color": "rgb(63, 242, 63)",
+      "borderColor": "rgb(63, 242, 63)",
+      "background": "rgba(0, 0, 0, 0.85)",
+      "iconContrast": 13.98,
+      "borderContrast": 13.98,
+      "clip": {
+        "x": 9,
+        "y": 49,
+        "width": 434,
+        "height": 81.59375
+      },
+      "button": {
+        "x": 323,
+        "y": 84.59375,
+        "width": 32,
+        "height": 32,
+        "top": 84.59375,
+        "right": 355,
+        "bottom": 116.59375,
+        "left": 323
+      }
+    },
+    "hoverBackground": "rgba(0, 0, 0, 0.85)",
+    "focused": {
+      "focused": false,
+      "focusVisible": false
+    }
+  },
+  {
+    "label": "before",
+    "palette": "forced-colors-light",
+    "idle": {
+      "state": "checking",
+      "disabled": true,
+      "ariaBusy": "true",
+      "ariaLabel": "Checking Anki card status",
+      "icon": "arrow-clockwise",
+      "focused": false,
+      "focusVisible": false,
+      "color": "rgb(96, 0, 0)",
+      "borderColor": "rgb(96, 0, 0)",
+      "background": "rgba(255, 255, 255, 0)",
+      "iconContrast": 14.02,
+      "borderContrast": 14.02,
+      "clip": {
+        "x": 9,
+        "y": 49,
+        "width": 434,
+        "height": 81.59375
+      },
+      "button": {
+        "x": 323,
+        "y": 84.59375,
+        "width": 32,
+        "height": 32,
+        "top": 84.59375,
+        "right": 355,
+        "bottom": 116.59375,
+        "left": 323
+      }
+    },
+    "hoverBackground": "rgba(255, 255, 255, 0)",
+    "focused": {
+      "focused": false,
+      "focusVisible": false
+    }
+  }
+]
