@@ -3185,13 +3185,14 @@ async function restoreBackup(message) {
     publishLoadedDictionaries(loadedCount);
     reloadError = null;
     await cleanupCommittedDictionaries();
-    let warning = [prepared.settingsWarning && `Restored successfully. ${prepared.settingsWarning}`, reply.warning].filter(Boolean).join(" ") || null;
+    const notes = [prepared.settingsWarning, reply.warning];
     try {
       const cleanup = await ask("hd_lookup_stats_cleanup");
       if (!cleanup.ok) throw new Error(cleanup.error);
     } catch (error) {
-      warning = [warning, `Restored successfully; old lookup statistics could not be cleaned up: ${describeErrorMessageOrJson(error)}`].filter(Boolean).join("; ");
+      notes.push(`Old lookup statistics could not be cleaned up: ${describeErrorMessageOrJson(error)}`);
     }
+    const warning = notes.some(Boolean) ? ["Restored successfully.", ...notes].filter(Boolean).join(" ") : null;
     return { restored: true, dictionaryCount, warning };
   } catch (error) {
     if (error instanceof UnknownDictionaryStateCommitError) {
