@@ -143,13 +143,13 @@ automatic cadence, retention, shared real generations, malformed paths, schema
 failure, lost replies, storage failures, uncertain commits, corrupt-newest
 fallback, interrupted cleanup, disabled-package validation, damaged-installation
 recovery, incompatible reader settings and empty restores through real WASM.
-Nine shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise automatic relative ages,
-confirmation and a real oldest-retained-snapshot restore that brings back its
-saved retention count, plus the actual Chrome download,
-immutable preview/conflict, complete restore, corrupt-archive cleanup and actual
-page closure during staged preparation, dictionary restore with incompatible
-reader settings and a 16 MiB binary restore/re-export in
-both OPFS and IDBFS suites, followed by browser restart.
+Nine shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
+automatic relative ages, confirmation and a real oldest-retained-snapshot
+restore that brings back its saved retention count, plus the actual Chrome
+download, immutable preview/conflict, complete restore, corrupt-archive cleanup
+and actual page closure during staged preparation, dictionary restore with
+incompatible reader settings and a 16 MiB binary restore/re-export in both OPFS
+and IDBFS suites, followed by browser restart.
 
 ## Archive representation
 
