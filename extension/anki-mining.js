@@ -109,6 +109,7 @@ async function indexedDecision(prepared, duplicate, check) {
 }
 
 async function decision(prepared, request, duplicateIndex) {
+  if (request.allowDuplicate === true) return { state: "addable", canAdd: true, error: null };
   const { invoke, config } = prepared;
   const expression = request.term?.expression ?? request.expression;
   const source = await duplicateIndex.source(config);
@@ -136,7 +137,8 @@ async function decision(prepared, request, duplicateIndex) {
 // share one duplicate lookup and one add check.
 async function batchDecisions(entries, duplicateIndex) {
   const [{ prepared: { config, invoke } }] = entries;
-  if (config.duplicateBehavior === "overwrite" || await duplicateIndex.source(config) === null) {
+  if (entries.some(({ request }) => request.allowDuplicate === true)
+      || config.duplicateBehavior === "overwrite" || await duplicateIndex.source(config) === null) {
     return entries.map(({ prepared, request }) => () => decision(prepared, request, duplicateIndex));
   }
   const found = await duplicateIndex.lookupMany(config,
@@ -306,7 +308,8 @@ export function createAnkiMiningService({
         + `${template ? `: its template ${template} produced nothing for ${describeRequestTerm(request)}` : ""}. Anki requires it.`);
     }
     const note = { deckName: current.config.deck, modelName: current.config.model, fields,
-      options: ankiNoteOptions(current.config), tags: [...new Set(current.config.tags)] };
+      options: { ...ankiNoteOptions(current.config), ...(request.allowDuplicate === true ? { allowDuplicate: true } : {}) },
+      tags: [...new Set(current.config.tags)] };
     return { ...current, note, resources, firstField, invoke: invokeFor(current.config) };
   }
 

@@ -55,9 +55,9 @@ function assertChecking(item) {
   assert.deepEqual(buttonState(item), {
     state: "checking",
     icon: "arrow-clockwise",
-    disabled: true,
+    disabled: false,
     ariaBusy: "true",
-    ariaLabel: "Checking Anki card status",
+    ariaLabel: "Checking Anki card status — click to add anyway",
     action: "add",
   });
 }
@@ -241,11 +241,74 @@ test("a ready Anki action works while later rendered results are still checking"
   await until(() => laterChecks === 1);
   assert.equal(f.items[0].add.dataset.state, "ready");
   assert.equal(f.items[0].add.disabled, false, "later results must not block this ready action");
-  assert.equal(f.items[1].add.disabled, true);
-  assert.equal(f.items[2].add.disabled, true);
+  assert.equal(f.items[1].add.disabled, false);
+  assert.equal(f.items[2].add.disabled, false);
   f.items[0].add.click();
   await until(() => writes === 1);
   await until(() => f.items[0].add.dataset.state === "success");
+});
+
+test("clicking pending readiness adds once without waiting for the duplicate check", async t => {
+  for (const phase of ["hd_anki_view", "hd_anki_preflight"]) await t.test(phase, async t => {
+    const held = Promise.withResolvers();
+    t.after(() => held.resolve());
+    const writes = [], calls = [];
+    const f = fixture(t, handlesAnkiView(async (type, { request } = {}) => {
+      calls.push(type);
+      if (type === "hd_anki_submit") {
+        writes.push(request);
+        return { state: "added", noteId: 52 };
+      }
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_preflight" && request.allowDuplicate === true) {
+        return { state: "addable", canAdd: true, screenshot: true, clientSpeech: { sourceId: "speech" } };
+      }
+      if (type === "hd_anki_screenshot") return { token: "picture", filename: "picture.png" };
+      if (type === phase) await held.promise;
+      if (type === "hd_anki_view") return { state: "unknown", configKey: "current", cached: false };
+      return { state: "duplicate", canAdd: false, noteIds: [7] };
+    }));
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => calls.includes(phase));
+    assertChecking(f.items[0]);
+    f.items[0].add.click();
+    f.items[0].add.click();
+    await until(() => f.items[0].add.dataset.state === "success");
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].allowDuplicate, true);
+    assert.equal(writes[0].configKey, "current");
+    assert.deepEqual(writes[0].screenshot, { token: "picture", filename: "picture.png" });
+    assert.deepEqual(writes[0].clientSpeech, { sourceId: "speech" });
+    held.resolve();
+    await tick();
+    assert.equal(f.items[0].add.dataset.state, "success", "late duplicate replies keep the confirmed add");
+  });
+});
+
+test("a pointer click begun on the spinner still adds if the duplicate check finishes before click", async t => {
+  const held = Promise.withResolvers();
+  t.after(() => held.resolve());
+  const writes = [];
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { writes.push(request); return { state: "added", noteId: 52 }; }
+    if (type === "hd_anki_browse") throw new Error("the spinner click must add, not browse");
+    if (request.allowDuplicate === true) return { state: "addable", canAdd: true };
+    await held.promise;
+    return { state: "duplicate", canAdd: false, noteIds: [7] };
+  });
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  const button = f.items[0].add, window = button.ownerDocument.defaultView;
+  button.dispatchEvent(new window.MouseEvent("mousedown", { button: 0 }));
+  held.resolve();
+  await until(() => button.dataset.state === "view-existing");
+  button.dispatchEvent(new window.MouseEvent("click", { detail: 1 }));
+  await until(() => button.dataset.state === "success");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].allowDuplicate, true);
 });
 
 test("a warm cached View action skips Anki status and preflight", async t => {
@@ -421,7 +484,7 @@ test("successful Add remains successful after a refresh failure and a second cli
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   f.items[0].add.click();
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
@@ -456,7 +519,7 @@ test("a host-planned browser-speech request is carried only into the matching su
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
   assert.deepEqual(submitted.clientSpeech, clientSpeech);
@@ -479,7 +542,7 @@ test("late preflight cannot expose retired controls and an uncertain write opens
   pending = false;
   f.controller.bind([f.items[1]], f.context);
   held.resolve();
-  await until(() => f.items[1].add && !f.items[1].add.disabled);
+  await until(() => f.items[1].add && f.items[1].add.dataset.state !== "checking" && !f.items[1].add.disabled);
   assert.equal(f.items[0].control.hidden, true);
   assert.equal(f.items[0].add.hidden, true);
   assertChecking(f.items[0]);
@@ -509,7 +572,7 @@ test("refresh waits for a second pending submission without spinning on its busy
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   f.items[0].add.click();
   f.items[1].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
@@ -530,7 +593,7 @@ test("settings changes during submission preserve confirmed and uncertain outcom
     });
     f.controller.update(configured);
     f.controller.bind([f.items[0]], f.context);
-    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
     f.items[0].add.click();
     f.controller.update({ ...configured, anki: { ...configured.anki, duplicateBehavior: "new" } });
     held.resolve({ state, noteId: 42, warnings: [], error: "Check Anki before trying again." });
@@ -584,7 +647,7 @@ test("a reused primary action anchor binds the newly projected result and ignore
     const term = { expression, reading: "", glossaries: [{ dictionary: "New projection" }] };
     f.controller.bind([{ actions: f.items[0].actions, feedback: f.items[0].feedback, result: { term } }], f.context);
     held.resolve();
-    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
     assert.equal(previousButton.isConnected, false);
     assert.equal(f.items[0].feedback.querySelectorAll(".gsm-hoshidicts-anki-control").length, 1);
     assert.equal(f.items[0].add.getAttribute("aria-label"), "Mine to Anki");
@@ -614,7 +677,7 @@ test("a note that maps a screenshot captures one with the reader concealed and n
   });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
   // The picture is taken while the popup is hidden, before the note is written.
@@ -787,7 +850,7 @@ test("a submission Anki answers as a duplicate or invalid releases its screensho
     });
     f.controller.update(configured);
     f.controller.bind([f.items[0]], f.context);
-    await until(() => f.items[0].add && !f.items[0].add.disabled);
+    await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
     f.items[0].add.click();
     await until(() => calls.some(([type]) => type === "hd_anki_screenshot_discard"));
     await tick();
@@ -822,7 +885,7 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
   f.context.getRequest = result => ({ term: result.term, netflix });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  await until(() => f.items.every(item => item.add && item.add.dataset.state !== "checking" && !item.add.disabled));
   const mine = async index => {
     f.items[index].add.click();
     await until(() => f.items[index].add.dataset.state === "success");
@@ -848,7 +911,7 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
   netflix = { unavailable: "no-match" };
   recorded = async () => { throw new Error("must not record without a cue"); };
   f.controller.refresh(f.context.owner);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   assert.match(await mine(2), /Sentence audio: the hovered subtitle matched no line in Netflix's subtitle file\./u);
   assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
   assert.equal(recordings.length, 2);
@@ -869,7 +932,7 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "1", startMs: 0, endMs: 900 } } });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  await until(() => f.items.every(item => item.add && item.add.dataset.state !== "checking" && !item.add.disabled));
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
   assert.equal(f.items[0].output.textContent, "Added note 7. Sentence audio: The Netflix tab is no longer the active tab.");
@@ -879,7 +942,7 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   // sees the cue, so it flags neither sentenceAudio nor gif.
   decision = { state: "addable", canAdd: true, netflixLinked: true };
   f.controller.refresh(f.context.owner);
-  await until(() => f.items[1].add && !f.items[1].add.disabled);
+  await until(() => f.items[1].add && f.items[1].add.dataset.state !== "checking" && !f.items[1].add.disabled);
   f.items[1].add.click();
   await until(() => f.items[1].add.dataset.state === "success");
   assert.equal(f.items[1].output.textContent,
@@ -889,7 +952,7 @@ test("a recording failure, a linked browser and an unmapped marker never fail or
   // says nothing about sentence audio and the note is exactly as before.
   decision = { state: "addable", canAdd: true };
   f.controller.refresh(f.context.owner);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   f.items[2].add.click();
   await until(() => f.items[2].add.dataset.state === "success");
   assert.equal(f.items[2].output.textContent, "Added note 7.");
@@ -918,7 +981,7 @@ test("a Netflix note records its line's GIF, and a missing or failed GIF falls b
   f.context.getRequest = result => ({ term: result.term, netflix });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  await until(() => f.items.every(item => item.add && item.add.dataset.state !== "checking" && !item.add.disabled));
   const mine = async index => {
     f.items[index].add.click();
     await until(() => f.items[index].add.dataset.state === "success");
@@ -943,7 +1006,7 @@ test("a Netflix note records its line's GIF, and a missing or failed GIF falls b
   netflix = { unavailable: "no-match" };
   recorded = async () => { throw new Error("must not record without a cue"); };
   f.controller.refresh(f.context.owner);
-  await until(() => f.items[2].add && !f.items[2].add.disabled);
+  await until(() => f.items[2].add && f.items[2].add.dataset.state !== "checking" && !f.items[2].add.disabled);
   assert.equal(await mine(2),
     "Added note 21. Sentence audio and GIF: the hovered subtitle matched no line in Netflix's subtitle file.");
   assert.deepEqual([...submittedRequest.captureUnavailable].sort(), ["gif", "sentence-audio"]);
@@ -966,7 +1029,7 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items.every(item => item.add && !item.add.disabled));
+  await until(() => f.items.every(item => item.add && item.add.dataset.state !== "checking" && !item.add.disabled));
   const mine = async index => {
     f.items[index].add.click();
     await until(() => f.items[index].add.dataset.state === "success");
@@ -1007,7 +1070,7 @@ test("sentence audio the page cut from what was heard goes in beside a GIF that 
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
-  await until(() => f.items[0].add && !f.items[0].add.disabled);
+  await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
   assert.match(f.items[0].output.textContent, /^Added note 41\. GIF: Chrome has not let Hachidori record this tab yet\./u);

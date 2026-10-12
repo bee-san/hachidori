@@ -623,11 +623,6 @@ try {
   const loadingAnki = await waitForAnki(state => state?.state === "checking"
     && overlayAnkiCalls.filter(call => call.action === "canAddNotesWithErrorDetail").length > overlayPreflights);
   const loadingAnkiFocused = await popup.focusAnki();
-  const mutationsBefore = overlayAnkiCalls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length;
-  await popup.click(".gsm-hoshidicts-mine-button");
-  await settle(100);
-  const loadingAnkiInert = overlayAnkiCalls.filter(call => ["addNote", "guiBrowse"].includes(call.action)).length
-    === mutationsBefore;
   if (process.env.HACHIDORI_OVERLAY_ANKI_LOADING_SCREENSHOT) {
     const { x, y, width, height } = loadingAnki.popupRect;
     await tab.screenshot({ path: process.env.HACHIDORI_OVERLAY_ANKI_LOADING_SCREENSHOT,
@@ -650,17 +645,15 @@ try {
     ariaBusy: loadingAnki.ariaBusy,
     ariaLabel: loadingAnki.ariaLabel,
     focused: loadingAnkiFocused,
-    inert: loadingAnkiInert,
   }, {
     state: "checking",
     icon: "arrow-clockwise",
     action: "add",
-    disabled: true,
+    disabled: false,
     ariaBusy: "true",
-    ariaLabel: "Checking Anki card status",
-    focused: false,
-    inert: true,
-  }, "GSM overlay exposes the same disabled accessible Anki readiness action");
+    ariaLabel: "Checking Anki card status — click to add anyway",
+    focused: true,
+  }, "GSM overlay exposes the same enabled accessible Anki readiness action");
   assert.deepEqual({
     state: readyAnki.state,
     icon: readyAnki.icon,
@@ -679,7 +672,7 @@ try {
     focused: true,
   }, "GSM overlay resolves the readiness action to keyboard-focusable Add");
   console.log(`overlay Anki readiness ${JSON.stringify({ loading: loadingAnki, loadingAnkiFocused,
-    loadingAnkiInert, ready: readyAnki, readyAnkiFocused, actions: overlayAnkiCalls.map(call => call.action) })}`);
+    ready: readyAnki, readyAnkiFocused, actions: overlayAnkiCalls.map(call => call.action) })}`);
   await tab.keyboard.press("Escape");
   assert.equal(await popup.waitForHidden(), true);
   assert.deepEqual(await events(), ["shown", "hidden"]);

@@ -107,7 +107,7 @@ try {
   await hover();
   await tab.waitForFunction(() => {
     const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
-    return button && !button.hidden && !button.disabled;
+    return button && !button.hidden && button.dataset.state !== "checking" && !button.disabled;
   });
   await screenshot("default");
   await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
@@ -139,7 +139,7 @@ try {
   await hover();
   await tab.waitForFunction(() => {
     const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
-    return button && !button.hidden && !button.disabled;
+    return button && !button.hidden && button.dataset.state !== "checking" && !button.disabled;
   });
   const controls = await tab.evaluate(() => {
     const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");

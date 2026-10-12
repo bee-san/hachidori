@@ -1099,6 +1099,12 @@ async function keybindCase() {
     defaults.callbacks().onResultsRendered({ audioButtons: [{ button: audioButton, result: defaults.render().results[0] }],
       miningActions: [{ actions, feedback: null, result: defaults.render().results[0] }] });
     const added = press(defaults, "KeyE", "e", { altKey: true });
+    // A click on the pending spinner adds anyway; the keybind waits for the check.
+    mine.dataset.state = "checking";
+    const minedBeforePending = mined;
+    const pendingAdd = press(defaults, "KeyE", "e", { altKey: true });
+    const pendingSkipped = !pendingAdd && mined === minedBeforePending;
+    delete mine.dataset.state;
     // View notes only presses the Anki button while it opens Anki, never while it adds.
     const viewedAdd = press(defaults, "KeyV", "v", { altKey: true });
     const played = press(defaults, "KeyP", "p", { altKey: true }) && defaults.take("hd_audio_play") !== null;
@@ -1115,8 +1121,8 @@ async function keybindCase() {
     const escaped = press(defaults, "Escape", "Escape") === false && defaults.driver.snapshot().popupHidden;
     result["default keybinds navigate entries, mine, play and close through Yomitan's keys"] =
       (JSON.stringify(defaults.entryFocus().slice(0, 4)) === JSON.stringify([{ offset: 1 }, { offset: -3 }, "first", "last"])
-        && moved.every(Boolean) && !unmodified && added && mined >= 1 && !viewedAdd && played && escaped)
-      || { focus: defaults.entryFocus(), moved, unmodified, added, mined, viewedAdd, played, escaped };
+        && moved.every(Boolean) && !unmodified && added && mined >= 1 && pendingSkipped && !viewedAdd && played && escaped)
+      || { focus: defaults.entryFocus(), moved, unmodified, added, mined, pendingSkipped, viewedAdd, played, escaped };
   } finally {
     defaults.close();
   }

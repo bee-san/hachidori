@@ -130,6 +130,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     generation: 3,
     trace: [],
     configKey: "host-config",
+    allowDuplicate: true,
     templateId: "sentence",
     dictionaryIds: { A: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     // The reading page's address is note data, unlike an Anki endpoint.
@@ -163,6 +164,7 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
       trace: [],
       generation: 3,
       configKey: "host-config",
+      allowDuplicate: true,
       dictionaryIds: request.dictionaryIds,
       pageUrl: "https://example.com/novel/56/",
       templateId: "sentence",

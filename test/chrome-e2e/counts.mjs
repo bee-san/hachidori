@@ -757,7 +757,7 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     const ready = await (async () => {
       for (let attempt = 0; attempt < 100; attempt += 1) {
         const state = await popup.anki();
-        if (state?.controls?.[0]?.action === "add" && !state.controls[0].disabled) return state;
+        if (state?.controls?.[0]?.action === "add" && state.controls[0].state !== "checking" && !state.controls[0].disabled) return state;
         await new Promise(resolveWait => setTimeout(resolveWait, 50));
       }
       return popup.anki();

@@ -62,6 +62,39 @@ function fixture() {
     config: () => config, change(patch) { config = { ...config, ...patch }; } };
 }
 
+test("explicit add-anyway skips indexed and native duplicate checks without changing the saved policy", async t => {
+  for (const duplicateBehavior of ["prevent", "overwrite"]) for (const indexed of [true, false]) {
+    await t.test(`${duplicateBehavior}, indexed=${indexed}`, async () => {
+      const f = fixture();
+      f.change({ duplicateBehavior });
+      const duplicateIndex = {
+        ...f.dependencies.duplicateIndex,
+        source: async () => indexed ? { key: "test" } : null,
+        async lookup() { throw new Error("duplicate lookup must be bypassed"); },
+      };
+      const invoke = f.gateway.invoke;
+      const added = [];
+      f.gateway.invoke = async (action, params) => {
+        assert.ok(!["canAddNotesWithErrorDetail", "canAddNotes", "findNotes", "updateNoteFields"].includes(action),
+          `add-anyway unexpectedly called ${action}`);
+        if (action === "addNote") added.push(params.note);
+        return invoke(action, params);
+      };
+      const service = createAnkiMiningService({ ...f.dependencies, duplicateIndex });
+      const { configKey } = await service.status();
+      const request = { expression: "猫", configKey, allowDuplicate: true };
+      assert.equal((await service.preflight(request)).canAdd, true);
+      assert.equal((await service.submit(request)).state, "added");
+      assert.equal(added.length, 1);
+      assert.equal(added[0].options.allowDuplicate, true);
+      assert.equal(f.config().duplicateBehavior, duplicateBehavior);
+      await assert.rejects(service.submit({ ...request, configKey: "stale" }), /configuration changed/u);
+      await assert.rejects(service.submit({ ...request, expression: "" }), /first field.*empty/u);
+      assert.equal(added.length, 1, "configuration and field validity still protect the write");
+    });
+  }
+});
+
 test("mining readiness shares its short source-backed cache and skips Anki when no model is configured", async () => {
   const f = fixture();
   const [a, b] = await Promise.all([f.service.status(), f.service.status()]);
