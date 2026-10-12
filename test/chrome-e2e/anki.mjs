@@ -447,9 +447,14 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     control.preflightGate = Promise.withResolvers();
     // Add-anyway policy keeps this known word on the live readiness path.
     await configure(false, { duplicateBehavior: "new" });
-    await settled(state => state?.controls[0]?.state === "checking"
+    // A fresh popup, clicked with the pointer as a reader would: the keyboard
+    // View above moved focus out of the old popup, which then hides.
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    const pending = await settled(state => state?.controls[0]?.state === "checking"
       && calls.slice(forcedStart).some(call => call.action === "canAddNotesWithErrorDetail"));
-    await popup.click(".gsm-hoshidicts-mine-button");
+    const spinner = pending.controls[0].rect;
+    await tab.mouse.click(spinner.x + spinner.width / 2, spinner.y + spinner.height / 2);
     const forced = await settled(state => state?.controls[0]?.state === "success");
     const forcedCalls = calls.slice(forcedStart);
     const forcedAdd = forcedCalls.find(call => call.action === "addNote");
