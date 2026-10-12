@@ -124,8 +124,9 @@ export async function prepareBackupSnapshot(current, archived) {
   if (!compatible) warnings.push("Incompatible reader settings were skipped. Your current reader settings were kept.");
   const updates = validBackupUpdateSettings(archived.updates) ? archived.updates : normaliseUpdateSettings(current.updates);
   if (updates !== archived.updates) warnings.push("Incompatible update settings were skipped. Your current update schedule was kept.");
-  if (projected.frequencyDictionary !== selected.frequencyDictionary
-      || !sameJsonValue(projected.kanjiClickDictionary, selected.kanjiClickDictionary)) {
+  // A legacy clicked-kanji title migrates to `{ title, kind }`; only a
+  // selection that becomes Automatic was reset.
+  if (["frequencyDictionary", "kanjiClickDictionary"].some(key => projected[key] && !selected[key])) {
     warnings.push("Unavailable dictionary selections were reset.");
   }
   return {
