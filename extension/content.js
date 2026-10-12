@@ -2517,9 +2517,10 @@
   function onPopupFocusOut(event) {
     const target = event.target;
     window.queueMicrotask(() => {
-      // A redraw can remove the focused Note form. That is not departure
-      // from the refreshed popup; wait until removal/focus transfer settles.
-      if (target.isConnected && levels.some((level) => level.popup?.contains(target))) scheduleHide();
+      // A redraw can remove the focused Note form, and a control can disable
+      // itself while it works (an Anki action saving, Retry). Neither is
+      // departure from the popup; wait until removal/focus transfer settles.
+      if (target.isConnected && !target.disabled && levels.some((level) => level.popup?.contains(target))) scheduleHide();
       flushDictionaryPresentation();
     });
   }

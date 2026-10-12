@@ -540,6 +540,19 @@
       if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
       return checked.clientSpeech ? { ...checkedRequest, clientSpeech: checked.clientSpeech } : checkedRequest;
     }
+    // The action disables itself while it works, and Chrome then moves focus
+    // out of the popup. Pressed from the keyboard, it gets focus back once it
+    // is enabled again, unless the reader has focused something else since.
+    // A mouse press takes none back: focus in the popup would hold page hover.
+    function keyboardFocusReturn(control) {
+      if (!control.matches(":focus-visible")) return () => {};
+      return () => {
+        const document = control.ownerDocument;
+        const unfocused = (control.getRootNode().activeElement ?? document.body) === document.body
+          && document.activeElement === document.body;
+        if (unfocused && control.isConnected && !control.disabled) control.focus({ preventScroll: true });
+      };
+    }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
       const group = record.group, epoch = group.epoch;
@@ -549,6 +562,7 @@
         ? { ...baseRequest, clientSpeech: record.decision.clientSpeech }
         : baseRequest;
       if (record.add.dataset.state === "checking") request = { ...request, allowDuplicate: true };
+      const returnFocus = keyboardFocusReturn(record.add);
       record.pointerRequest = null;
       record.busy = true;
       record.needsCheck = false;
@@ -572,12 +586,13 @@
         await handleSubmissionFailure(record, error, writeSent, owns);
       } finally {
         record.busy = false;
-        if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); }
+        if (current(record)) { disabled(record); onChange(record.group.owner); refresh(record.group); returnFocus(); }
       }
     }
     // An unconfirmed write has no note ID, so Anki searches for the expression.
     async function browse(record) {
       if (!current(record) || record.add.disabled) return;
+      const returnFocus = keyboardFocusReturn(record.add);
       record.add.disabled = true;
       const noteIds = record.terminal ? record.noteIds : record.decision?.noteIds;
       try {
@@ -604,7 +619,7 @@
       }
       catch (error) { if (current(record)) setStatus(record, `Could not open Anki: ${error.message}`, "error"); }
       finally {
-        if (current(record)) { disabled(record); onChange(record.group.owner); }
+        if (current(record)) { disabled(record); onChange(record.group.owner); returnFocus(); }
       }
     }
     function controls(record) {
