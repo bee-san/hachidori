@@ -882,6 +882,7 @@ async function checkAnkiSettings(page, browser) {
       await session.detach();
     }
   };
+  let handedOn = false;
   try {
     const lazy = route.requests === 0;
     await showSettingsSection(page, "anki");
@@ -1261,6 +1262,7 @@ async function checkAnkiSettings(page, browser) {
     }
     await checkAnkiGlossaryExport(page);
     if (process.env.HACHIDORI_ANKI_SCREENSHOT) await page.screenshot({ path: process.env.HACHIDORI_ANKI_SCREENSHOT, fullPage: true });
+    handedOn = true;
   } finally {
     releaseA?.();
     await showSettingsSection(page, "lookup");
@@ -1274,6 +1276,9 @@ async function checkAnkiSettings(page, browser) {
     // Later layout checks also visit Anki. Their caller releases this mock
     // before worker-restart checks; tests must never contact the user's Anki.
     offline = true;
+    // A session left attached to the worker makes Chrome restart it as the
+    // same target, which the worker-restart checks cannot see.
+    if (!handedOn) await session.detach().catch(() => {});
   }
   return session;
 }

@@ -346,8 +346,14 @@ describe("Settings library", () => {
   });
 
   step("the first Settings frame", async () => {
-    await checkSettingsFirstFrameTheme(browser, settingsUrl, check, process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP);
-    await ankiSession.detach();
+    try {
+      await checkSettingsFirstFrameTheme(browser, settingsUrl, check, process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP);
+    } finally {
+      // Released even when the check throws: a session still attached to the
+      // worker makes Chrome restart it as the same target, so the later
+      // worker-restart checks never see their replacement.
+      await ankiSession?.detach();
+    }
   });
 
   step("the position input on a narrow page", async () => {
