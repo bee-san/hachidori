@@ -522,6 +522,24 @@
       refreshAll(); // Best-effort checks cannot turn a confirmed write into a retry.
       return true;
     }
+    // Add anyway: this note's media requirements without waiting for its
+    // duplicate lookup. The override belongs only to this submission; any
+    // other request is returned unchanged. Returns null once the popup no
+    // longer owns the record.
+    async function addAnywayRequest(record, request, owns) {
+      if (request.allowDuplicate !== true) return request;
+      let checkedRequest = request;
+      if (checkedRequest.configKey === null) {
+        const status = await send("hd_anki_status", { templateId: record.templateId });
+        if (!status.available) throw new Error(status.error || "Anki mining is unavailable.");
+        checkedRequest = { ...checkedRequest, configKey: status.configKey };
+      }
+      const checked = await send("hd_anki_preflight", { request: checkedRequest });
+      if (!owns()) return null;
+      record.decision = checked;
+      if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
+      return checked.clientSpeech ? { ...checkedRequest, clientSpeech: checked.clientSpeech } : checkedRequest;
+    }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
       const group = record.group, epoch = group.epoch;
@@ -539,20 +557,8 @@
       setStatus(record, "Saving to Anki…");
       let writeSent = false;
       try {
-        if (request.allowDuplicate === true) {
-          if (request.configKey === null) {
-            const status = await send("hd_anki_status", { templateId: record.templateId });
-            if (!status.available) throw new Error(status.error || "Anki mining is unavailable.");
-            request = { ...request, configKey: status.configKey };
-          }
-          // Obtain this note's media requirements without waiting for its
-          // duplicate lookup. The override belongs only to this submission.
-          const checked = await send("hd_anki_preflight", { request });
-          if (!owns()) return;
-          record.decision = checked;
-          if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
-          if (checked.clientSpeech) request = { ...request, clientSpeech: checked.clientSpeech };
-        }
+        request = await addAnywayRequest(record, request, owns);
+        if (request === null) return;
         const screenshotted = await prepareScreenshot(record, request, owns);
         const prepared = await prepareNetflixMedia(record, screenshotted, owns);
         if (owns()) setStatus(record, "Saving to Anki…");
