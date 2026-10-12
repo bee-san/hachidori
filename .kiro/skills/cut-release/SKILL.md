@@ -1,24 +1,33 @@
 ---
 name: cut-release
-description: Cut a Hachidori release end to end — bump both manifests on a bump/manifest-X.Y.Z branch, verify the release contract and packaging locally, open and merge the PR, write the GitHub release notes against the merge commit on main, push the bare version tag so release.yml packages, publishes assets and submits to the Chrome Web Store, then verify every artifact. Use when asked to release, ship, tag, or bump the version.
+description: Cut a Hachidori release end to end. On a release/X.Y.Z branch, bump the manifest and add docs/releases/X.Y.Z.md, verify the release contract and packaging locally, then open and squash-merge the PR. Push the bare version tag on the merge commit so release.yml packages the release, creates it from those notes and submits it to the Chrome Web Store, then verify every artifact. Use when asked to release, ship, tag, or bump the version.
 ---
 
 # Cut a Hachidori release
 
-Input: `$ARGUMENTS` — the new version (e.g. `0.1.7`). If omitted, propose
+Input: `$ARGUMENTS` is the new version (e.g. `0.3.2`). If it is omitted, propose
 the next patch version from `extension/manifest.json` and confirm with the
 user before doing anything.
 
-The release pipeline is `.github/workflows/release.yml`. It triggers on a
-pushed tag matching `[0-9]*` and runs package → publish → chrome-web-store.
-It refuses a tag whose name is not exactly `manifest.version`, whose commit
-is not on `origin/main`, or whose manifests/pins fail
-`scripts/check-release.mjs`. Everything below exists to make that push
-succeed the first time; a tag cannot be reused once its package has been
-submitted to the store (`docs/chrome-web-store.md`, "maintain").
+The release pipeline is `.github/workflows/release.yml`. A pushed tag matching
+`[0-9]*` triggers its three jobs:
 
-Never push to `main` directly (AGENTS.md working agreement). The version
-bump goes through a PR; only the tag is pushed by hand.
+1. **Package release** refuses a tag that isn't exactly `manifest.version`, a
+   tag whose commit is not on `origin/main`, and a manifest or pins that fail
+   `scripts/check-release.mjs`.
+2. **Publish GitHub release assets** creates the release with the notes from
+   `docs/releases/<tag>.md`. Without that file it falls back to generated notes
+   plus `.github/release-notes-header.md`. If a release already exists, the job
+   only uploads the assets.
+3. **Submit Chrome Web Store update** uploads the Chrome ZIP and submits it for
+   review.
+
+A tag cannot be reused once its package has been submitted to the store
+(`docs/chrome-web-store.md`, "maintain").
+
+Never push to `main` directly (AGENTS.md working agreement). The version bump
+and the notes go through a PR. Only the tag is pushed by hand, and only after
+the PR has merged.
 
 ## 0. Preflight
 
@@ -28,182 +37,181 @@ git status --porcelain                  # must be empty; packaging refuses a dir
 git submodule update --init --recursive
 gh auth status
 gh run list --workflow runtime-tests.yml --branch main --limit 1   # main must be green
-gh release view <prev>                  # know what the last release looked like
+gh release view <prev>                  # what the last release looked like
+gh run list --workflow release.yml --limit 1   # did the last store submission pass?
 node -p "require('./extension/manifest.json').version"           # current version
 ```
 
-Decide the version. Hachidori uses bare `X.Y.Z` tags (no `v`). Confirm
-`<version>` does not already exist as a tag or release:
-`git tag -l <version>; gh release view <version>` should both be empty.
+Hachidori uses bare `X.Y.Z` tags, with no `v`. Confirm `<version>` does not
+already exist: `git tag -l <version>` and `gh release view <version>` should
+both come back empty.
+
+If the last run's **Submit Chrome Web Store update** job failed, read its log
+before continuing. 0.3.0 got HTTP 400 "Your submission does not meet the
+requirements to be published in the store. Check the Developer Dashboard."
+Only the owner can resolve that, in the dashboard. Tell the user before you tag.
 
 Check whether the pinned Anki add-on release in `extension/anki-addon.js`
-needs to move with this release (see AGENTS.md → hachidori-anki). If it
-does, that is a separate PR that must land BEFORE the bump.
+should move with this release (see AGENTS.md → hachidori-anki). If it should,
+that is a separate PR that must land BEFORE the release PR.
 
-## 1. Bump branch
+## 1. Release branch
 
 ```sh
-git switch -c bump/manifest-<version> origin/main
+git switch -c release/<version> origin/main
 ```
 
-Edit the `"version"` field in BOTH `extension/manifest.json` and
-`extension/manifest.firefox.json` to `<version>`. Change nothing else
-(`check-release.mjs` fails if the two differ; the bump PR is the one place a
-two-line diff is the whole change).
+Change exactly two things:
 
-## 2. Verify the release contract locally
+- the `"version"` field of `extension/manifest.json`, set to `<version>`;
+- a new `docs/releases/<version>.md` with the release notes (step 2).
 
-Run exactly these and keep the outputs for the PR body:
+## 2. Write the release notes
+
+Write them in the shape of the previous file (`docs/releases/<prev>.md`):
+
+```
+# 🐦 Hachidori <version>
+
+<2–4 sentence summary a learner would care about>
+
+## <emoji> <Feature heading>
+<what changed for the reader, with Settings paths in bold> (#PR)
+
+## 📦 Downloads
+<the previous file's Downloads section, updated if the asset set changed>
+
+**Full changelog:** https://github.com/bee-san/hachidori/compare/<prev>...<version>
+```
+
+Source the list from `git log --oneline <prev>..origin/main`. `main` is
+squash-merged, so each commit is `Title (#n)`. Cite the PR in every bullet.
+Say what changed for the reader, not in the code.
+
+Check every user-facing claim against the shipped code before committing:
+
+- Run examples (lookups, conjugations) on the real runtime, as `node-smoke.mjs` does.
+- Copy labels and messages from `extension/settings.html` and the source.
+- State speed only as the measured result in the merged PR, with its range. "No slower" is a claim, not a measurement.
+
+## 3. Verify the release contract locally
 
 ```sh
 node scripts/check-release.mjs --tag <version>
-#   → "Hachidori <version>: Chrome <min> minimum, <cur> current; Firefox <min> minimum, <cur> current; tag <version>"
-node --test test/release-compatibility.test.mjs test/firefox-manifest.test.mjs
-git add extension/manifest.json extension/manifest.firefox.json
-git commit -m "release: set manifest version to <version>"
+#   → "Hachidori <version>: Chrome <min> minimum, <cur> current; tag <version>"
+node --test test/release-compatibility.test.mjs
+git add extension/manifest.json docs/releases/<version>.md
+git commit -m "release: prepare Hachidori <version>"
 python3 scripts/package-store.py --output-dir /tmp/hachidori-release-<version>
 ( cd /tmp/hachidori-release-<version> && sha256sum -c ./*-SHA256SUMS.txt )
-node scripts/verify-firefox-package.mjs /tmp/hachidori-release-<version>/*-firefox-unsigned.xpi
+unzip -p /tmp/hachidori-release-<version>/*-chrome.zip manifest.json \
+  | node -p "JSON.parse(require('fs').readFileSync(0)).version"      # <version>
 ```
 
-`package-store.py` reads committed objects only, so commit first. It should
-produce `*-chrome.zip`, `*-firefox-unsigned.xpi`, `*-source.zip`,
-`*-SHA256SUMS.txt`. Optionally load the extracted Chrome ZIP unpacked and
-hover a word once — this is the exact runtime that will be submitted.
+`package-store.py` reads committed objects only, so commit first. It produces
+`*-chrome.zip`, `*-source.zip` and `*-SHA256SUMS.txt`. If a runtime changed in
+this release, also check that the packaged `vendor/hoshidicts*.wasm` files are
+byte-identical to the committed ones.
 
-If anything fails, fix the root cause in a separate PR first (pins in
-`test/tooling/package.json`, `minimum_chrome_version`, Firefox
-`strict_min_version`…). Do not work around it in the bump PR.
+If anything fails, fix the root cause in a separate PR first: pins in
+`test/tooling/package.json`, `minimum_chrome_version`, and so on. Do not work
+around it in the release PR.
 
-## 3. Open and merge the bump PR
+## 4. Open and merge the release PR
 
 ```sh
-git push -u origin bump/manifest-<version>
-gh pr create --title "release: set manifest version to <version>" --body-file - <<'EOF'
-Bumps `extension/manifest.json` and `extension/manifest.firefox.json` to <version> for the release. No other changes.
-
-Verified locally on this commit:
-- `node scripts/check-release.mjs --tag <version>` → <paste output>
-- `node --test test/release-compatibility.test.mjs test/firefox-manifest.test.mjs` → <n>/<n>
-- `python3 scripts/package-store.py --output-dir …` → Chrome ZIP, Firefox XPI, source ZIP, SHA256SUMS; checksums verified; Firefox package verified
-
-After merge the GitHub release <version> is created against the merge commit with hand-written notes; the tag push runs `release.yml` (package → publish assets → Chrome Web Store submission).
-EOF
-gh pr checks --watch
+git push -u origin release/<version>
+gh pr create --title "Prepare Hachidori <version>" --body-file <body>
 ```
 
-Merge only when checks are green. Use a merge commit (previous releases were
-merge commits `Merge pull request #N from bee-san/bump/manifest-X.Y.Z`):
+In the body, list the changes the notes cover, the exact output of each step-3
+command, and the result of checking the notes' claims. If the last store
+submission failed, add a note for the owner.
+
+Before merging, pass the full merge gate from AGENTS.md: CI green for the exact
+head, a clean merge state, no unresolved threads, and SonarCloud with zero
+issues and hotspots for that head. Then squash-merge, as #557 (0.3.0) and #562
+(0.3.1) were:
 
 ```sh
-gh pr merge --merge --delete-branch
+gh pr merge <n> --squash --delete-branch
 git switch main && git pull --ff-only
 RELEASE_COMMIT=$(git rev-parse HEAD)
-git log -1 --format='%H %s' "$RELEASE_COMMIT"   # must be the bump merge commit
+git log -1 --format='%H %s' "$RELEASE_COMMIT"   # must be "release: prepare Hachidori <version> (#n)"
+node scripts/check-release.mjs --tag <version>
 ```
 
 Ask the user before merging unless they already said "release it".
 
-## 4. Write the release notes
+## 5. Tag and watch the workflow
 
-Draft `/tmp/release-notes-<version>.md` before tagging, in the shape of the
-previous release (`gh release view <prev> --json body --jq .body`):
-
-```
-# Hachidori <version>
-
-<2–4 sentence summary a learner would care about>
-
-## Highlights
-### <Feature>  … (#PR)
-## Settings / Reading / Anki / Under the hood
-- … (#PR)
-
-**Full Changelog**: https://github.com/bee-san/hachidori/compare/<prev>...<version>
-```
-
-Source the list from `gh pr list --state merged --base main --search
-"merged:><prev-release-date>"` and `git log <prev>..HEAD --merges`. Every
-bullet cites its PR. Say what changed for the reader, not the code. Keep
-`.github/release-notes-header.md` in mind: the workflow appends the package
-list only when it creates the release itself; when you create the release
-first, paste that header's "## Packages" block at the end of your notes so
-users still get the download explanation.
-
-Create the release against the merge commit BEFORE pushing the tag. Creating
-it with `--target` makes GitHub create the tag; the workflow then sees a
-release already exists and only uploads assets, preserving your notes:
+Tag the merge commit with a lightweight tag, as for 0.3.0 and 0.3.1:
 
 ```sh
-gh release create <version> --target "$RELEASE_COMMIT" \
-  --title "Hachidori <version>" --notes-file /tmp/release-notes-<version>.md
-git fetch origin --tags
-git rev-parse <version>^{commit}   # must equal $RELEASE_COMMIT
-```
-
-If you prefer to push the tag yourself instead:
-`git tag <version> "$RELEASE_COMMIT" && git push origin <version>` — then the
-workflow creates the release with `--generate-notes` and the header, and you
-edit the notes afterwards with `gh release edit <version> --notes-file …`.
-
-## 5. Watch the workflow
-
-```sh
+git tag <version> "$RELEASE_COMMIT"
+git rev-parse <version>^{commit}    # must equal $RELEASE_COMMIT
+git push origin refs/tags/<version>
 gh run list --workflow release.yml --limit 1
 gh run watch <run-id> --exit-status
 ```
 
-Three jobs must succeed: `Package release`, `Publish GitHub release assets`,
-`Submit Chrome Web Store update`. On failure read
-`gh run view <run-id> --log-failed`. Common causes and the fix:
+Do not create the release first. The publish job creates it from
+`docs/releases/<version>.md`. If you need to edit the notes after publication,
+merge the change to that file through a PR, then run
+`gh release edit <version> --notes-file docs/releases/<version>.md`.
 
-- "manifest.version is not a Chrome-compatible release version" / tag
-  mismatch → the bump PR was wrong; fix via a new PR and a NEW version.
-  Delete the unused tag/release only if the CWS job never ran.
-- "Published releases must point to a commit on main" → tag points at the
-  branch commit, not the merge commit. Delete and recreate the tag on
-  `$RELEASE_COMMIT` (allowed only because nothing was published).
-- Chrome Web Store step fails on auth → repo variables/secret
+All three jobs must succeed. On a failure, read
+`gh run view <run-id> --log-failed`. Common causes and fixes:
+
+- "manifest.version is not a Chrome-compatible release version", or a tag
+  mismatch: the release PR was wrong. Fix it in a new PR, with a NEW version.
+  Delete the unused tag or release only if the Chrome Web Store job never ran.
+- "Published releases must point to a commit on main": the tag points at the
+  branch commit instead of the merge commit. Delete it and recreate it on
+  `$RELEASE_COMMIT`. This is allowed only because nothing was published.
+- The Chrome Web Store step fails with HTTP 400 "does not meet the
+  requirements": the owner must resolve the item in the Developer Dashboard.
+- The Chrome Web Store step fails on auth: check the repo variables and secret
   (`CHROME_WEBSTORE_PUBLISHER_ID`, `CHROME_WEBSTORE_EXTENSION_ID`,
   `CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON`); see
-  `docs/chrome-web-store.md#publish-step-by-step`. Re-run with
-  `workflow_dispatch` (`ref=<version>`, `publish=true`) after fixing; the
-  release assets are idempotent (`--clobber`).
+  `docs/chrome-web-store.md#publish-step-by-step`.
+
+In either store case, re-run with `workflow_dispatch` (`ref=<version>`,
+`publish=true`) once it is fixed. The asset upload is idempotent (`--clobber`).
 
 ## 6. Verify the artifacts
 
 ```sh
-gh release view <version> --json assets,isDraft,body \
-  --jq '{isDraft,assets:[.assets[].name]}'
-```
-
-Expect exactly four assets named
-`hachidori-<version>-<12-char-sha>-{chrome.zip,firefox-unsigned.xpi,source.zip,SHA256SUMS.txt}`
-where the sha is the first 12 characters of `$RELEASE_COMMIT`, and
-`isDraft: false`. Download and check them:
-
-```sh
+gh release view <version> --json assets,isDraft --jq '{isDraft,assets:[.assets[].name]}'
+gh release view <version> --json body --jq .body | diff - docs/releases/<version>.md   # GitHub adds one trailing blank line
 gh release download <version> --dir /tmp/hd-<version> && cd /tmp/hd-<version>
 sha256sum -c ./*-SHA256SUMS.txt
-unzip -p *-chrome.zip manifest.json | node -p "JSON.parse(require('fs').readFileSync(0)).version"   # <version>
+unzip -p ./*-chrome.zip manifest.json | node -p "JSON.parse(require('fs').readFileSync(0)).version"   # <version>
 ```
 
-Chrome Web Store: the workflow uploads and submits for review with
-`DEFAULT_PUBLISH`. Confirm the item shows "Pending review" in the Developer
-Dashboard (the user has to look; you cannot). Google's review takes hours to
-days; the listing updates by itself on approval.
+Expect three assets named
+`hachidori-<version>-<12-char-sha>-{chrome.zip,source.zip,SHA256SUMS.txt}`,
+where the sha is the first 12 characters of `$RELEASE_COMMIT`, and
+`isDraft: false`.
+
+A successful store job means the package was uploaded and submitted for review
+with `DEFAULT_PUBLISH`. The user has to confirm "Pending review" in the
+Developer Dashboard; you cannot see it. Google's review takes hours to days,
+and the listing updates by itself on approval.
 
 ## 7. Report
 
-Tell the user: the release URL, the merge commit, the workflow run URL and
-its three job results, the four asset names with checksum verification
-result, and that the CWS submission is pending review. If notes were
-generated automatically, link them and ask whether they should be rewritten.
+Tell the user:
+
+- the release URL and the merge commit;
+- the workflow run URL and the result of each of its three jobs;
+- the three asset names and the checksum result;
+- that the store submission is pending review, or what blocked it.
 
 ## Do not
 
-- Do not tag a commit that is not the bump merge on `main`.
-- Do not bump one manifest without the other.
+- Do not tag a commit that is not the release PR's squash merge on `main`.
+- Do not create the GitHub release by hand before the tag is pushed.
 - Do not reuse or move a tag after the Chrome Web Store job has run.
-- Do not include unrelated changes in the bump PR.
+- Do not include unrelated changes in the release PR.
 - Do not `git push` to `main`.
