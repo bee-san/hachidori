@@ -216,6 +216,19 @@ test("restore prunes unavailable dictionary selections while retaining compatibl
   const prepared = await prepareBackupSnapshot(snapshot(), archived);
   assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark",
     frequencyDictionary: "", kanjiClickDictionary: "" });
+  assert.equal(prepared.warning, "Unavailable dictionary selections were reset.");
+  await assertBackupSnapshot(prepared.snapshot);
+});
+
+test("restore migrates a legacy clicked-kanji title without reporting a reset selection", async () => {
+  const archived = snapshot();
+  archived.state.dictionaries = [{ id: "jisho", title: "辞書", revision: "1", enabled: true, favorite: false,
+    displayName: null, termCount: 1, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0,
+    isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja" }];
+  archived.options.kanjiClickDictionary = "辞書";
+  const prepared = await prepareBackupSnapshot(snapshot(), archived);
+  assert.deepEqual(prepared.snapshot.options.kanjiClickDictionary, { title: "辞書", kind: "term" });
+  assert.equal(prepared.warning, null);
   await assertBackupSnapshot(prepared.snapshot);
 });
 
