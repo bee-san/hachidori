@@ -236,6 +236,19 @@
     if (configKey !== null && result.configKey !== configKey) return { configKey, changed: true };
     return { configKey: result.configKey, changed: false };
   }
+  // The action disables itself while it works, and Chrome then moves focus
+  // out of the popup. Pressed from the keyboard, it gets focus back once it
+  // is enabled again, unless the reader has focused something else since.
+  // A mouse press takes none back: focus in the popup would hold page hover.
+  function keyboardFocusReturn(control) {
+    if (!control.matches(":focus-visible")) return () => {};
+    return () => {
+      const document = control.ownerDocument;
+      const unfocused = (control.getRootNode().activeElement ?? document.body) === document.body
+        && document.activeElement === document.body;
+      if (unfocused && control.isConnected && !control.disabled) control.focus({ preventScroll: true });
+    };
+  }
   function createAnkiController({
     send,
     onChange,
@@ -539,19 +552,6 @@
       record.decision = checked;
       if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
       return checked.clientSpeech ? { ...checkedRequest, clientSpeech: checked.clientSpeech } : checkedRequest;
-    }
-    // The action disables itself while it works, and Chrome then moves focus
-    // out of the popup. Pressed from the keyboard, it gets focus back once it
-    // is enabled again, unless the reader has focused something else since.
-    // A mouse press takes none back: focus in the popup would hold page hover.
-    function keyboardFocusReturn(control) {
-      if (!control.matches(":focus-visible")) return () => {};
-      return () => {
-        const document = control.ownerDocument;
-        const unfocused = (control.getRootNode().activeElement ?? document.body) === document.body
-          && document.activeElement === document.body;
-        if (unfocused && control.isConnected && !control.disabled) control.focus({ preventScroll: true });
-      };
     }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
