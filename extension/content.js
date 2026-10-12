@@ -3841,9 +3841,10 @@
       case "addNote":
       case "viewNotes": {
         // The entry's own button: the lookup row may also hold a shown result's row.
+        // A click on the pending spinner adds anyway; Add note waits for the check.
         const state = action === "addNote" ? "add" : "view";
         return clickKeybindControl([...(level.entryMining?.[entry]?.actions.children ?? [])]
-          .find(child => child.matches(`.gsm-hoshidicts-mine-button[data-action="${state}"]`)));
+          .find(child => child.matches(`.gsm-hoshidicts-mine-button[data-action="${state}"]:not([data-state="checking"])`)));
       }
       case "playAudio":
       case "playAudioFromSource": {
