@@ -455,8 +455,7 @@ export function createView(options, enhanced = false) {
     }
   }
   function renderGroupTabs(dictionaries, context, notify = false) {
-    const allAndGroups = components.createDictionaryTabs(dictionaries, context).tabs.filter(item => item.key === "all" || item.groupId);
-    const descriptors = allAndGroups.length > 1 ? allAndGroups : [];
+    const descriptors = components.createDictionaryTabs(dictionaries, context).tabs.filter(item => item.key === "all" || item.groupId);
     const selectedGroup = tab?.groupId;
     const active = descriptors.find(item => item.groupId === selectedGroup) || descriptors[0];
     const previous = JSON.stringify(groupTabs.map(item => [item.groupId, item.label, [...item.dictionaries]]));

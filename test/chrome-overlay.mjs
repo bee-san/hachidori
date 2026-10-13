@@ -12,12 +12,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { buildTitledZip } from "./make-fixture.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXTENSION = resolve(ROOT, "extension");
@@ -88,6 +89,7 @@ const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>overl
 <span id="separator" style="position:absolute">
 </span>
 <p id="line2" style="position:absolute;pointer-events:none;left:0;top:0;width:100%;height:100%;margin:0;padding:0"></p>
+<p id="grammar-line" style="position:absolute;pointer-events:none;left:0;top:0;width:100%;height:100%;margin:0;padding:0"></p>
 <script>
   const box = (line, text, top) => Array.from(text).forEach((glyph, index) => {
     const span = document.createElement("span");
@@ -99,6 +101,7 @@ const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>overl
   });
   box("line", ${JSON.stringify(TEXT)}, 100);
   box("line2", "漢字", 200);
+  box("grammar-line", "階", 300);
   window.__hostEvents = [];
   for (const type of ["hachidori-popup-shown", "hachidori-popup-hidden"]) {
     window.addEventListener(type, () => window.__hostEvents.push(type.replace("hachidori-popup-", "")));
@@ -352,7 +355,13 @@ async function popupReader(page) {
     button?.focus();
     return button?.getRootNode().activeElement === button;
   }`);
-  return { anki, focusAnki, state, visible, waitForVisible, waitForHidden, click, rect, physicalTrace, trace };
+  const groups = () => call(`function () {
+    return {
+      tabs: [...this.querySelectorAll(".jl-tab")].map(node => [node.textContent, node.getAttribute("aria-pressed")]),
+      dictionaries: [...this.querySelectorAll(".jl-entry:not([hidden])")].map(node => node.dataset.dictionary),
+    };
+  }`);
+  return { anki, focusAnki, state, visible, waitForVisible, waitForHidden, click, rect, physicalTrace, trace, groups };
 }
 
 const overlayAnkiCalls = [];
@@ -995,6 +1004,67 @@ try {
   assert.equal(await popup.waitForHidden(), true);
   assert.deepEqual(await events(), ["hidden"]);
 
+  // A grammar group must not hide the vocabulary returned for the same glyph.
+  const vocabularyTitle = "Overlay JMdict", grammarTitle = "Overlay grammar";
+  for (const [title, definition] of [
+    [vocabularyTitle, "story; floor of a building"],
+    [grammarTitle, "Counter for floors"],
+  ]) {
+    const bytes = buildTitledZip(title, { terms: [["階", "かい", "", "", 0, [definition], 1, ""]] }).toString("base64");
+    const reply = await settings.evaluate(async ({ bytes, fileName }) => {
+      const blobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(bytes), character => character.charCodeAt(0))]));
+      try {
+        return await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import",
+          requestId: `overlay-group-${fileName}`, blobUrl, fileName });
+      } finally { URL.revokeObjectURL(blobUrl); }
+    }, { bytes, fileName: `${title}.zip` });
+    assert.ok(reply.ok && reply.report?.success, `overlay group fixture import: ${JSON.stringify(reply)}`);
+  }
+  const groupId = "overlay-grammar";
+  const writeGroups = groups => settings.evaluate(async requested => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    const groups = requested.map(group => ({ id: group.id, name: group.name, dictionaryIds: dictionaryState.dictionaries
+      .filter(dictionary => dictionary.title === group.dictionary).map(dictionary => dictionary.id) }));
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: dictionaryState.revision, dictionaries: dictionaryState.dictionaries, groups });
+    if (!reply.ok) throw new Error(reply.error);
+  }, groups);
+  await writeGroups([{ id: groupId, name: "Grammar", dictionary: grammarTitle }]);
+  await writeOptions({ popupTheme: "bee", lookupMode: "hover", definitionBlurCountEnabled: false });
+  await tab.bringToFront();
+  const grammarBox = await tab.$eval("#grammar-line .text-box", node => {
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return { x, y, width, height };
+  });
+  const hoverGrammar = async () => {
+    await tab.keyboard.press("Escape");
+    await tab.mouse.move(...away);
+    await tab.mouse.move(...middle(grammarBox));
+    assert.ok(await popup.waitForVisible(), "Bee opens a lookup for the boxed 階 glyph");
+  };
+  const captureGroup = async name => {
+    if (!process.env.HACHIDORI_OVERLAY_GROUP_SCREENSHOTS) return;
+    mkdirSync(process.env.HACHIDORI_OVERLAY_GROUP_SCREENSHOTS, { recursive: true });
+    await tab.screenshot({ path: resolve(process.env.HACHIDORI_OVERLAY_GROUP_SCREENSHOTS, `${name}.png`) });
+  };
+  await hoverGrammar();
+  assert.deepEqual(await popup.groups(), { tabs: [["All", "true"], ["Grammar", "false"]],
+    dictionaries: [vocabularyTitle, grammarTitle] }, "a fresh Bee overlay lookup shows vocabulary and grammar in All");
+  await captureGroup("bee-overlay-all");
+  assert.equal(await popup.click(`[data-group-id="${groupId}"]`), true);
+  assert.deepEqual(await popup.groups(), { tabs: [["All", "false"], ["Grammar", "true"]],
+    dictionaries: [grammarTitle] }, "Grammar filters only after the user selects it");
+  await captureGroup("bee-overlay-grammar");
+  assert.equal(await popup.click(".jl-tab"), true);
+  assert.deepEqual((await popup.groups()).dictionaries, [vocabularyTitle, grammarTitle], "All restores the vocabulary without another lookup");
+  await popup.click(`[data-group-id="${groupId}"]`);
+  await hoverGrammar();
+  assert.equal((await popup.groups()).tabs[0][1], "true", "a new lookup resets a previous Grammar selection to All");
+  await writeGroups([]);
+  await hoverGrammar();
+  assert.deepEqual(await popup.groups(), { tabs: [["All", "true"]], dictionaries: [vocabularyTitle, grammarTitle] },
+    "All remains available without any configured groups");
+  console.log("Bee overlay group regression: All, Grammar, restored vocabulary, fresh lookup and no groups passed");
   passed = true;
   console.log("overlay mode selects boxed glyphs by drag, offers the pencil for unknown text and keeps the host window claimed");
 } finally {
