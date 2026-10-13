@@ -198,6 +198,7 @@ jobs:
     env:
       HACHIDORI_ALLOW_NO_SANDBOX: '1'
       HACHIDORI_IMPORT_SCREENSHOT: ${{ github.workspace }}/test/tmp/ci/dictionary-import-error.png
+      HACHIDORI_OVERLAY_GROUP_SCREENSHOTS: ${{ github.workspace }}/test/tmp/ci/bee-groups
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -227,6 +228,12 @@ jobs:
           path: |
             test/tmp/popup-scale/*.png
             test/tmp/ci/dictionary-import-error.png
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.suite == 'chrome-overlay'
+        with:
+          name: bee-overlay-groups
+          path: test/tmp/ci/bee-groups/*.png
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: matrix.suite == 'chrome-theme-contrast'

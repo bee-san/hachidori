@@ -240,11 +240,12 @@ test("Bee keeps All results accessible alongside named groups and restores an ex
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2, "See links with null selection show all dictionaries");
   f.popup.querySelector(".jl-tab").focus();
   f.view.updateDictionaryPresentation({ ...beeContext, dictionaryTabGroups: [] });
-  assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0);
-  assert.equal(f.popup.ownerDocument.activeElement, f.popup.querySelector(".jl-entry"),
-    "removing the last group retains deliberate focus in a visible result");
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All"]);
+  assert.equal(f.popup.ownerDocument.activeElement, f.popup.querySelector(".jl-tab"),
+    "removing the last group retains deliberate focus on All");
   f.view.renderResults([beeResult], { query: "食べる" });
-  assert.equal(f.popup.querySelectorAll(".jl-tab").length, 0, "ungrouped dictionaries never become tabs");
+  assert.deepEqual([...f.popup.querySelectorAll(".jl-tab")].map(node => node.textContent), ["All"],
+    "All always exists; ungrouped dictionaries never become tabs");
   assert.equal(f.popup.querySelectorAll('.jl-entry:not([hidden])').length, 2);
 });
 

@@ -12,8 +12,8 @@ have an underline and keyboard focus has a visible violet outline.
 
 - **Group tabs:** All shows every result, followed by configured groups with
   results in their saved order. A group filters existing blocks in place and
-  audio, mining and keyboard actions follow its visible dictionaries. Without
-  matching groups, all results appear without a tab row. The Design preview
+  audio, mining and keyboard actions follow its visible dictionaries. All is
+  always available and selected for a fresh lookup, even without matching groups. The Design preview
   labels its fallback groups Sample definitions and Sample examples. Back
   restores an explicitly selected group; See links start in All. Presentation
   changes preserve deliberate tab focus.
