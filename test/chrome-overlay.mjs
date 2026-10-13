@@ -1016,8 +1016,11 @@ try {
   });
   await showSection(settings, "add-dictionaries");
   await (await settings.$("#import-file")).uploadFile(...archives);
-  await settings.waitForFunction(() => document.getElementById("import-state").textContent.trim()
-    === "Finished 2 of 2 archives — 2 imported, 0 failed.", { timeout: 120_000 });
+  await settings.waitForFunction(async titles => {
+    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
+    return !document.getElementById("import-file").disabled
+      && titles.every(title => dictionaryState.dictionaries.some(dictionary => dictionary.title === title));
+  }, { timeout: 120_000 }, [vocabularyTitle, grammarTitle]);
   const groupId = "overlay-grammar";
   const writeGroups = groups => settings.evaluate(async requested => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
