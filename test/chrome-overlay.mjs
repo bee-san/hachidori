@@ -1014,7 +1014,8 @@ try {
     const reply = await settings.evaluate(async ({ bytes, fileName }) => {
       const blobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(bytes), character => character.charCodeAt(0))]));
       try {
-        return await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import", blobUrl, fileName });
+        return await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import",
+          requestId: `overlay-group-${fileName}`, blobUrl, fileName });
       } finally { URL.revokeObjectURL(blobUrl); }
     }, { bytes, fileName: `${title}.zip` });
     assert.ok(reply.ok && reply.report?.success, `overlay group fixture import: ${JSON.stringify(reply)}`);
