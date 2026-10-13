@@ -1,63 +1,22 @@
 ---
 name: Bug report or feature request
-about: Report a problem or explain how a change would benefit the creator as a Japanese learner.
+about: Describe your problem and ideal solution.
 ---
 
-Complete every section. Incomplete issues are closed automatically. Write "Not applicable" and say why if a section truly does not apply.
+Complete every section. Incomplete issues are closed automatically. If a section does not apply, say why.
 
-## Problem
+## What is your problem?
 
-<!--
-Describe one concrete situation where the current behavior gets in the way of reading or learning Japanese.
+<!-- Describe what happens. Include steps or a screenshot if helpful. -->
 
-For a bug: the exact steps that reproduce it, what you did, and what happened instead of what you expected. Paste error text verbatim, including the exact words of any message Hachidori showed.
+## Debug log
 
-For a feature: the exact moment in your reading where the current behavior interrupts you, and what you do today to work around it.
--->
+<!-- Attach the file from Settings → Advanced → Troubleshooting → Get debug info. For a feature request or if you cannot get a log, say so. -->
 
-## Expected behavior
+## Why is it a problem?
 
-<!--
-What should happen instead, precisely enough that a change could be tested against it.
+<!-- Explain how it affects your reading or use of Hachidori. -->
 
-If another tool (Yomitan, Anki, a reader app) already behaves the way you expect, name it and describe exactly what it does differently. Do not just link to it.
--->
+## What is your ideal solution?
 
-## Environment
-
-<!--
-For a bug, attach the debug info file: Settings → Advanced → Troubleshooting → Get debug info. It records the version, browser, memory use, recent errors, installed dictionaries and every setting, with your AnkiConnect API key removed and your personal dictionary, lookup history and Anki notes left out. Then fill in what the file cannot show, such as the website and steps:
-
-- Hachidori version (chrome://extensions → Hachidori → Details) and whether it is the Chrome Web Store build, a GitHub release, or built from source
-- Browser and version, and operating system
-- Where it happens: the website, app, or texthooker page. Say whether it also happens on a plain page such as Wikipedia
-- Dictionaries involved (name and which one is active in the popup) and any custom CSS
-- For Anki problems: Anki version, whether you connect through Hachidori Relay or AnkiConnect, the note type, and the field mapping you use
-- Settings you changed from the defaults that are related to the problem
--->
-
-## Evidence
-
-<!--
-Attach what shows the problem rather than describing it:
-
-- Screenshots or a short screen recording of the popup, the settings page, or the Anki card. For rendering problems include both what you see and what it should look like
-- Console errors: the extension service worker console (chrome://extensions → Hachidori → "service worker") and the page console (F12). Paste the text, not only a picture
-- The exact Japanese text, sentence, or URL where it happens so it can be reproduced with the same input
-- For Anki problems: the fields Hachidori submitted and what Anki saved, and whether any add-on rewrites those fields
-- An exported settings backup (Settings → Backup & restore) if the problem depends on your configuration
--->
-
-## Benefit to the creator
-
-<!--
-Put yourself in the creator's shoes: how would this help them as someone who mainly reads visual novels and manga? Give a specific before-and-after example from a reading session, not a general statement.
--->
-
-## Proposed solution and alternatives
-
-<!--
-What is the smallest change that would solve the problem? Explain what existing features, settings, or workarounds you already tried and why they are insufficient.
-
-Describe any extra settings, dependencies, or maintenance this would add, and why the benefit justifies that complexity. If you are not sure whether this is a bug in Hachidori or a problem with your setup, say what you checked to rule out your setup.
--->
+<!-- Describe what you would like to happen instead. -->
