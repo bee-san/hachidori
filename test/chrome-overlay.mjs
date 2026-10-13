@@ -1031,7 +1031,7 @@ try {
     if (!reply.ok) throw new Error(reply.error);
   }, groups);
   await writeGroups([{ id: groupId, name: "Grammar", dictionary: grammarTitle }]);
-  await writeOptions({ popupTheme: "bee", lookupMode: "hover" });
+  await writeOptions({ popupTheme: "bee", lookupMode: "hover", definitionBlurCountEnabled: false });
   await tab.bringToFront();
   const grammarBox = await tab.$eval("#grammar-line .text-box", node => {
     const { x, y, width, height } = node.getBoundingClientRect();
