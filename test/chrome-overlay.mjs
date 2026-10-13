@@ -1006,21 +1006,19 @@ try {
 
   // A grammar group must not hide the vocabulary returned for the same glyph.
   const vocabularyTitle = "Overlay JMdict", grammarTitle = "Overlay grammar";
-  const archives = [
+  for (const [title, definition] of [
     [vocabularyTitle, "story; floor of a building"],
     [grammarTitle, "Counter for floors"],
-  ].map(([title, definition], index) => {
-    const path = resolve(TEST_EXTENSION, `overlay-group-${index}.zip`);
-    writeFileSync(path, buildTitledZip(title, { terms: [["階", "かい", "", "", 0, [definition], 1, ""]] }));
-    return path;
-  });
-  await showSection(settings, "add-dictionaries");
-  await (await settings.$("#import-file")).uploadFile(...archives);
-  await settings.waitForFunction(async titles => {
-    const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
-    return !document.getElementById("import-file").disabled
-      && titles.every(title => dictionaryState.dictionaries.some(dictionary => dictionary.title === title));
-  }, { timeout: 120_000 }, [vocabularyTitle, grammarTitle]);
+  ]) {
+    const bytes = buildTitledZip(title, { terms: [["階", "かい", "", "", 0, [definition], 1, ""]] }).toString("base64");
+    const reply = await settings.evaluate(async ({ bytes, fileName }) => {
+      const blobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(bytes), character => character.charCodeAt(0))]));
+      try {
+        return await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_import", blobUrl, fileName });
+      } finally { URL.revokeObjectURL(blobUrl); }
+    }, { bytes, fileName: `${title}.zip` });
+    assert.ok(reply.ok && reply.report?.success, `overlay group fixture import: ${JSON.stringify(reply)}`);
+  }
   const groupId = "overlay-grammar";
   const writeGroups = groups => settings.evaluate(async requested => {
     const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
