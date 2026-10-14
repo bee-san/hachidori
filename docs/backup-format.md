@@ -27,6 +27,16 @@ blob URL are tracked in session storage, surviving service-worker restarts;
 completion or interruption releases the URL. Those temporary records are not
 backup content.
 
+With direct OPFS the archive is an OPFS file under `.hdw-backup-files/`. Export
+reads each dictionary file as it writes the archive there, and Chrome downloads
+that file; a chosen backup is copied there and restored from it in place.
+Neither is held in memory or in browser Blob storage. Version 0.3.0 assembled
+the archive from Blobs, about twice the library's size; once that exceeded what
+Chrome could keep in memory or page to disk, the Blob broke and Chrome failed
+the download as **Check internet connection** (#577). Releasing an export, or
+finishing a preparation, removes its file, and the engine's start removes any
+that a closed browser left. IDBFS hosts keep the Blob path.
+
 Choosing a backup validates and stages it before showing its date and dictionary
 list. Nothing is published until the replacement checkbox is selected and
 **Replace and restore** is pressed. This replaces the entire saved configuration,
@@ -182,7 +192,10 @@ The lazy backup module uses zip.js 2.11.2, vendored from commit
 `09a4776c6baf40f3e2aa0c7c66199f6aa3ebdefc927e83dcaf1dfffd432f9bac`).
 It runs in the existing engine context with additional workers disabled. Only
 stored, unencrypted regular files are part of this format, so neither external
-codecs nor an additional WebAssembly binary are needed. Export and extraction
-use a zip.js `Writer` that snapshots each output chunk into a Blob, avoiding the
-`BlobWriter` Response-stream sink and a single archive-sized typed array.
+codecs nor an additional WebAssembly binary are needed. Export reads each file
+in zip.js chunks and writes to the OPFS file, or on IDBFS to a zip.js `Writer`
+that snapshots each output chunk into a Blob, avoiding the `BlobWriter`
+Response-stream sink and a single archive-sized typed array. Extraction checks
+each stored entry's CRC32 without keeping its bytes and then slices the entry
+from the archive itself.
 This is not a GSM or general-purpose ZIP importer.

@@ -67,6 +67,27 @@ test("restore reads existing large backups without Response stream-to-blob consu
   assert.deepEqual(await prepared.files[0].data.arrayBuffer(), await largeFile.data.arrayBuffer());
 });
 
+// Direct OPFS reads each dictionary file as the archive is written and streams
+// the archive into an OPFS file (#577): the same bytes as the Blob export.
+test("an export from files read on demand into a writable stream is the same archive", async () => {
+  const createdAt = "2026-09-07T00:00:00.000Z";
+  const archived = [...files, { ...largeFile, path: "dictionaries/0/large.bin" }];
+  const reads = [];
+  const onDemand = archived.map(({ path, data }) => ({ path, data: {
+    size: data.size,
+    async readUint8Array(offset, length) {
+      reads.push(path);
+      return new Uint8Array(await data.slice(offset, offset + length).arrayBuffer());
+    },
+  } }));
+  const chunks = [];
+  await createBackupArchive(snapshot, onDemand, lookupStatsRows, createdAt,
+    new WritableStream({ write(chunk) { chunks.push(chunk); } }));
+  const expected = await createBackupArchive(snapshot, archived, lookupStatsRows, createdAt);
+  assert.ok(Buffer.from(await new Blob(chunks).arrayBuffer()).equals(Buffer.from(await expected.arrayBuffer())));
+  assert.ok(reads.filter(path => path === "dictionaries/0/large.bin").length > 1, "a large file is read in chunks");
+});
+
 test("backup and restore preserve empty payload files and an empty library", async () => {
   const emptySnapshot = { state: { dictionaries: [] }, lookupStats: { generation: null, revision: 0 } };
   const prepared = await openBackupArchive(await createBackupArchive(emptySnapshot, [], []));

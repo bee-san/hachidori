@@ -61,6 +61,9 @@ const IMPORT_ZIP = "/.hdw-archive.zip";
 // to that stem when the header has no title.
 const IMPORT_MDX_DIR = "/.hdw-mdx";
 const OPFS_IMPORT_ZIP = `${DICT_ROOT}/.hdw-archive.zip`;
+// The OPFS root directory (/dicts in WasmFS) that holds an exported backup
+// until Chrome has downloaded it, and a chosen one while it is restored.
+const BACKUP_FILE_DIRECTORY = ".hdw-backup-files";
 
 // Index into this array is the `kind` argument of hdw_add_dict.
 const KINDS = ["term", "freq", "pitch", "kanji"];
@@ -1711,6 +1714,10 @@ async function boot() {
       } catch {
         // No archive was left by an interrupted import.
       }
+      // Backup files a closed browser left behind.
+      await navigator.storage.getDirectory()
+        .then(root => root.removeEntry(BACKUP_FILE_DIRECTORY, { recursive: true }))
+        .catch(() => {});
     }
     ready = true;
   } catch (error) {
@@ -3030,9 +3037,39 @@ async function saveCustomDictionary(snapshot, source) {
 }
 
 let preparedBackup = null;
-const backupUrls = new Set();
+// Exported archive URLs, each with the name of its temporary OPFS file or null.
+const backupUrls = new Map();
 const dictionaryDownloads = new Map();
 let dictionaryDownloadCounter = 0;
+
+// On direct OPFS a backup archive is an OPFS file: an export is written into
+// one that Chrome downloads, and a chosen backup is copied into one that the
+// restore reads in place. Neither is held in memory or browser Blob storage,
+// whose limits broke large backups (#577). A file is removed once its export
+// is released or its restore prepared; the engine's start removes any a
+// closed browser left.
+async function backupFileDirectory(create = false) {
+  return (await navigator.storage.getDirectory()).getDirectoryHandle(BACKUP_FILE_DIRECTORY, { create });
+}
+
+async function writeBackupFile(write) {
+  const directory = await backupFileDirectory(true);
+  const name = `${globalThis.crypto.randomUUID()}.zip`;
+  const handle = await directory.getFileHandle(name, { create: true });
+  const output = await handle.createWritable();
+  try {
+    await write(output);
+    return { name, file: await handle.getFile() };
+  } catch (error) {
+    await output.abort().catch(() => {});
+    await directory.removeEntry(name).catch(() => {});
+    throw error;
+  }
+}
+
+async function removeBackupFile(name) {
+  await (await backupFileDirectory()).removeEntry(name);
+}
 
 async function readBackupStorage(raw = false) {
   const reply = await ask(raw ? "hd_backup_base_read" : "hd_backup_read");
@@ -3040,30 +3077,32 @@ async function readBackupStorage(raw = false) {
   return reply;
 }
 
-function backupFileBlob(path, size) {
+// A dictionary file for an archive. A Blob-backed IDBFS file is already that
+// Blob (only the classic FS has the node to ask; WasmFS has no lookupPath).
+// Any other file is read as the archive is written: copying the library into
+// Blobs first held it twice in browser Blob storage and broke large exports
+// (#577).
+function backupFileData(path, size) {
   const FS = engine.FS;
-  // A Blob-backed IDBFS file is already the Blob the archive needs. Only the
-  // classic FS has the node to ask; WasmFS has no lookupPath.
   if (storageBackend === "idbfs") {
     const { blob } = FS.lookupPath(path).node;
     if (blob instanceof Blob && blob.size === size) return blob;
   }
-  const input = FS.open(path, "r");
-  const parts = [];
-  try {
-    let offset = 0;
-    while (offset < size) {
-      // Transfer-sized chunks, not a limit on files or archive size.
-      const bytes = new Uint8Array(Math.min(64 * 1024, size - offset));
-      const read = FS.read(input, bytes, 0, bytes.length);
-      if (read !== bytes.length) throw new Error(`Could not read the complete dictionary file: ${path}`);
-      parts.push(new Blob([bytes]));
-      offset += read;
-    }
-    return new Blob(parts);
-  } finally {
-    FS.close(input);
-  }
+  return {
+    size,
+    readUint8Array(offset, length) {
+      const input = FS.open(path, "r");
+      try {
+        const bytes = new Uint8Array(length);
+        if (FS.read(input, bytes, 0, length, offset) !== length) {
+          throw new Error(`Could not read the complete dictionary file: ${path}`);
+        }
+        return bytes;
+      } finally {
+        FS.close(input);
+      }
+    },
+  };
 }
 
 function collectBackupFiles(root, prefix, assertPath, output) {
@@ -3075,7 +3114,7 @@ function collectBackupFiles(root, prefix, assertPath, output) {
     const absolute = `${root}/${name}`;
     const stat = FS.lstat(absolute);
     if (isDirectory(stat)) collectBackupFiles(absolute, path, assertPath, output);
-    else if ((stat.mode & 0o170000) === 0o100000) output.push({ path, data: backupFileBlob(absolute, stat.size) });
+    else if ((stat.mode & 0o170000) === 0o100000) output.push({ path, data: backupFileData(absolute, stat.size) });
     else throw new Error(`Dictionary generation contains a non-file entry: ${path}`);
   }
 }
@@ -3231,14 +3270,20 @@ const HANDLERS = {
       if (dictionaryRoot(dictionary) === null) throw new Error("Cannot back up an invalid dictionary path.");
       collectBackupFiles(dictionary.path, `dictionaries/${index}`, assertBackupPath, files);
     }
-    const archive = await createBackupArchive(snapshot, files, lookupStatsRows);
-    const blobUrl = URL.createObjectURL(archive);
-    backupUrls.add(blobUrl);
-    return { blobUrl, size: archive.size };
+    const exported = storageBackend === "opfs"
+      ? await writeBackupFile(output => createBackupArchive(snapshot, files, lookupStatsRows, undefined, output))
+      : { name: null, file: await createBackupArchive(snapshot, files, lookupStatsRows) };
+    const blobUrl = URL.createObjectURL(exported.file);
+    backupUrls.set(blobUrl, exported.name);
+    return { blobUrl, size: exported.file.size };
   },
 
-  hd_backup_release(message) {
-    if (backupUrls.delete(message.blobUrl)) URL.revokeObjectURL(message.blobUrl);
+  async hd_backup_release(message) {
+    if (!backupUrls.has(message.blobUrl)) return {};
+    const name = backupUrls.get(message.blobUrl);
+    backupUrls.delete(message.blobUrl);
+    URL.revokeObjectURL(message.blobUrl);
+    if (name !== null) await removeBackupFile(name);
     return {};
   },
 
@@ -3309,34 +3354,40 @@ const HANDLERS = {
     }
     const response = await fetch(message.blobUrl);
     if (!response.ok) throw new Error("Could not read the selected backup.");
-    const prepared = await openBackupArchive(await response.blob());
-    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
-    prepared.snapshot = snapshot;
-    const roots = [];
+    // On direct OPFS the restore reads its own OPFS copy in place.
+    const copy = storageBackend === "opfs" ? await writeBackupFile(output => response.body.pipeTo(output)) : null;
     try {
-      const dictionaries = await stageBackupFiles(prepared, roots);
-      loadDictionaries(dictionaries);
-      let warning = null;
+      const prepared = await openBackupArchive(copy?.file ?? await response.blob());
+      const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
+      prepared.snapshot = snapshot;
+      const roots = [];
       try {
-        await restoreCommittedDictionaries(null, { publish: false });
-        if (loadFailures.length > 0) {
-          warning = "Some current dictionaries cannot be loaded. This validated backup can replace them.";
+        const dictionaries = await stageBackupFiles(prepared, roots);
+        loadDictionaries(dictionaries);
+        let warning = null;
+        try {
+          await restoreCommittedDictionaries(null, { publish: false });
+          if (loadFailures.length > 0) {
+            warning = "Some current dictionaries cannot be loaded. This validated backup can replace them.";
+          }
+        } catch (error) {
+          reloadError = asError(error);
+          warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
         }
+        const token = message.token;
+        preparedBackup = { token, current, roots, dictionaries, snapshot, settingsWarning, lookupStatsRows: prepared.lookupStatsRows };
+        return { token, warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
+          createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
+          customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
       } catch (error) {
-        reloadError = asError(error);
-        warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
+        try { await restoreCommittedDictionaries(null, { publish: false }); }
+        catch (restoreError) { reloadError = asError(restoreError); }
+        // Prepare never publishes these paths, even when the old state is broken.
+        await discardGenerations(roots);
+        throw error;
       }
-      const token = message.token;
-      preparedBackup = { token, current, roots, dictionaries, snapshot, settingsWarning, lookupStatsRows: prepared.lookupStatsRows };
-      return { token, warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
-        createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
-        customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
-    } catch (error) {
-      try { await restoreCommittedDictionaries(null, { publish: false }); }
-      catch (restoreError) { reloadError = asError(restoreError); }
-      // Prepare never publishes these paths, even when the old state is broken.
-      await discardGenerations(roots);
-      throw error;
+    } finally {
+      if (copy) await removeBackupFile(copy.name).catch(() => {});
     }
   },
 

@@ -52,6 +52,18 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
       };
     });
   }, (await status()).storageBackend);
+  // On direct OPFS an export or a chosen backup is an OPFS file only until it
+  // is downloaded or prepared (#577); IDBFS never creates the directory.
+  const backupFiles = () => page.evaluate(async () => {
+    const names = [];
+    try {
+      const root = await navigator.storage.getDirectory();
+      for await (const name of (await root.getDirectoryHandle(".hdw-backup-files")).keys()) names.push(name);
+    } catch (error) {
+      if (error?.name !== "NotFoundError") throw error;
+    }
+    return names;
+  });
   const choose = async path => {
     await (await page.$("#backup-file")).uploadFile(path);
     await page.waitForFunction(() => !document.getElementById("backup-preview").hidden
@@ -271,8 +283,10 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const downloaded = await download();
   const bytes = readFileSync(downloaded.filename);
   const parsed = await openBackupArchive(new Blob([bytes]));
+  const filesAfterDownload = await backupFiles();
   check(BACKUP_CHROME_CHECKS[2], JSON.stringify(parsed.snapshot) === JSON.stringify(before)
-    && parsed.files.some(file => file.path.endsWith("/media.bin")), JSON.stringify({ size: bytes.length, files: parsed.files.length }));
+    && parsed.files.some(file => file.path.endsWith("/media.bin")) && filesAfterDownload.length === 0,
+  JSON.stringify({ size: bytes.length, files: parsed.files.length, filesAfterDownload }));
 
   const generation = (await status()).generation;
   const largePath = "dictionaries/0/media/backup-大容量.bin";
@@ -321,9 +335,10 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
 
   const reexported = await openBackupArchive(new Blob([readFileSync((await download()).filename)]));
   const restoredFile = reexported.files.find(file => file.path === largePath);
+  const filesAfterRestore = await backupFiles();
   check(BACKUP_CHROME_CHECKS[7], restoredFile?.data.size === largeBytes.length
-    && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes),
-    JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size }));
+    && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes) && filesAfterRestore.length === 0,
+    JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size, filesAfterRestore }));
 
   const incompatibleSnapshot = structuredClone(parsed.snapshot);
   incompatibleSnapshot.options = { revision: 1, popupWidthPx: -1, futureOption: true };

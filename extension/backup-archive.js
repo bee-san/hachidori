@@ -65,15 +65,18 @@ function assertFileList(files) {
   }
 }
 
-export async function createBackupArchive(snapshot, files, lookupStatsRows, createdAt = new Date().toISOString()) {
+// Each file's data is a Blob or a zip.js reader ({ size, readUint8Array }) read
+// while the archive is written. `output` is a Writer or a WritableStream.
+export async function createBackupArchive(snapshot, files, lookupStatsRows, createdAt = new Date().toISOString(),
+  output = new BackupBlobWriter("application/zip")) {
   const entries = files.map(({ path, data }) => ({ path, size: data.size }));
   assertFileList(entries);
   assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
   const manifest = { format: "hachidori-backup", version: 3, createdAt, snapshot, lookupStatsRows, files: entries };
   /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
-  const writer = new ZipWriter(new BackupBlobWriter("application/zip"), ZIP_OPTIONS);
+  const writer = new ZipWriter(output, ZIP_OPTIONS);
   await writer.add(MANIFEST, new BlobReader(new Blob([JSON.stringify(manifest)])));
-  for (const file of files) await writer.add(file.path, new BlobReader(file.data));
+  for (const { path, data } of files) await writer.add(path, data instanceof Blob ? new BlobReader(data) : data);
   return writer.close();
 }
 
@@ -88,10 +91,20 @@ function assertRegularEntry(entry) {
   }
 }
 
-function readEntry(entry) {
-  return entry.getData(new BackupBlobWriter(), {
+function readEntry(entry, writer = new BackupBlobWriter()) {
+  return entry.getData(writer, {
     useWebWorkers: false, checkSignature: true, checkOverlappingEntry: true, checkAmbiguity: true,
   });
+}
+
+// A stored entry is a range of the archive. zip.js checks its CRC without
+// keeping the bytes, then the range is sliced from the archive itself, so a
+// restore never copies the backup into memory or Blob storage (#577).
+async function entryData(archive, entry) {
+  await readEntry(entry, new Writer());
+  const header = new DataView(await archive.slice(entry.offset, entry.offset + 30).arrayBuffer());
+  const start = entry.offset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
+  return archive.slice(start, start + entry.uncompressedSize);
 }
 
 // A supported manifest's snapshot and statistics rows in the current shape:
@@ -136,7 +149,7 @@ export async function openBackupArchive(blob) {
       const entry = byPath.get(file.path);
       if (!entry) throw new Error(`The backup is missing ${file.path}`);
       if (entry.uncompressedSize !== file.size) throw new Error(`Incorrect backup file size: ${file.path}`);
-      const data = await readEntry(entry);
+      const data = await entryData(blob, entry);
       if (data.size !== file.size) throw new Error(`Incorrect extracted backup file size: ${file.path}`);
       files.push({ path: file.path, data });
     }
