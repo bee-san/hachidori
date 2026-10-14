@@ -15,9 +15,6 @@ import { dictionaryImportMatches, dictionaryImportTarget } from "./dictionary-im
 export const UPLOAD_CHUNK_BYTES = 1024 * 1024;
 // An upload with no chunk for this long is abandoned.
 export const UPLOAD_IDLE_MS = 2 * 60 * 1000;
-// The engine refuses an import while another dictionary change runs; the
-// upload then stays open so the sender can commit it again.
-export const ENGINE_BUSY_CODE = "engine-mutating";
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 
@@ -124,22 +121,15 @@ export function createUploadHost({
       throw new Error(`The dictionary upload ended after ${session.received} of ${session.size} bytes. Import it again.`);
     }
     // From here the import belongs to the engine; a disconnect cannot cancel it.
+    // The engine waits out any change already running, so the bytes are
+    // needed only until it answers.
     sessions.delete(token);
     clearTimer(session.timer);
-    let reply;
     try {
-      reply = await importUpload(token, { fileName: session.fileName, replace: session.replace });
-    } catch (error) {
-      void Promise.resolve(store.discard(token)).catch(() => {});
-      throw error;
-    }
-    if (reply?.errorCode === ENGINE_BUSY_CODE) {
-      sessions.set(token, session);
-      arm(token, session);
-    } else {
+      return await importUpload(token, { fileName: session.fileName, replace: session.replace });
+    } finally {
       void Promise.resolve(store.discard(token)).catch(() => {});
     }
-    return reply;
   }
 
   return {

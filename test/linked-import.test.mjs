@@ -125,15 +125,14 @@ test("the sender slices a Blob into ordered chunks and aborts after a refusal", 
   assert.deepEqual(sent, ["hd_import_begin", "hd_import_chunk", "hd_import_abort"]);
 });
 
-test("a commit refused while the engine is busy keeps the upload for another commit", async () => {
-  const busy = { type: "hd_import_result", ok: false, error: "the dictionary engine is busy mutating", errorCode: "engine-mutating" };
-  const { host, imports, discarded } = fixture({ importReplies: [busy] });
+test("a commit ends the upload once the engine answers, whatever it answers", async () => {
+  const failed = { type: "hd_import_result", ok: false, error: "the archive could not be read", errorCode: "import-failed" };
+  const { host, imports, discarded } = fixture({ importReplies: [failed] });
   const { token } = host.begin({ fileName: "characters.zip", size: 2, replace: true }, "remote:a");
   await host.chunk({ token, offset: 0, data: base64("PK") }, "remote:a");
-  assert.equal((await host.commit({ token }, "remote:a")).errorCode, "engine-mutating");
-  assert.deepEqual(discarded, []);
-  assert.equal((await host.commit({ token }, "remote:a")).report.success, true);
-  assert.deepEqual(imports.map(entry => entry.bytes), [[...Buffer.from("PK")], [...Buffer.from("PK")]]);
+  assert.equal((await host.commit({ token }, "remote:a")).errorCode, "import-failed");
+  assert.deepEqual(imports.map(entry => entry.bytes), [[...Buffer.from("PK")]]);
   assert.deepEqual(discarded, [token]);
   assert.equal(host.size(), 0);
+  await assert.rejects(host.commit({ token }, "remote:a"), /no longer open/u);
 });
