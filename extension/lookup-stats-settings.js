@@ -117,7 +117,7 @@ async function resetLookupCounts() {
     if (!reply.ok) throw new Error(reply.error || "the lookup counts could not be reset");
     setSectionStatus("lookup-counts-reset-status", "Lookup counts reset.", "ready", true);
   } catch (error) {
-    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describeErrorOrJson(error)}`, "error");
+    setSectionStatus("lookup-counts-reset-status", `Could not reset lookup counts: ${describeErrorOrJson(error)}`, "error", false, error);
   } finally {
     resettingLookupCounts = false;
     renderLookupCountsReset();

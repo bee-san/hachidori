@@ -43,7 +43,9 @@ function fixture(t, initial = {}) {
   window.eval(extension("dictionary-group-state.js"));
   for (const [file, exports] of [
     ["recommended-install-client.js", ["createRecommendedInstallClient"]],
-    ["settings-dom.js", ["applyPageTheme", "setStatusOutput"]],
+    ["debug-log.js", ["DEBUG_LOG", "captureDebugLog", "captureDocumentActions", "formatDebugErrorReport",
+      "openDebugLogStore", "recordUserError"]],
+    ["settings-dom.js", ["applyPageTheme", "setStatusOutput", "showErrorCopy"]],
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],
     ["theme-store.js", ["createThemeStore"]],

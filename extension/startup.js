@@ -19,14 +19,20 @@ import {
   formatSeconds,
 } from "./dictionary-progress.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
-import { applyPageTheme } from "./settings-dom.js";
+import { applyPageTheme, showErrorCopy } from "./settings-dom.js";
 import { describeErrorMessage } from "./error-text.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
 import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { findLocalAudioSource } from "./local-audio-source.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
 import { createPracticeView, practiceReadiness } from "./startup-practice.js";
+
+// Settings → Advanced → Get debug info includes what went wrong during setup.
+captureDocumentActions(document, captureDebugLog(window, {
+  context: "startup", store: openDebugLogStore(window.indexedDB),
+}));
 
 const WORKER_TARGET = "hoshidicts-worker";
 const SETUP_TARGET = "hachidori-setup";
@@ -84,7 +90,7 @@ let practice;
 const installation = createRecommendedInstallClient({
   send: sourceIds => send("hd_setup_install", { sourceIds }, SETUP_TARGET),
   onChange() { if (!saving) render(); },
-  onError(error) { setStatus(`Could not start dictionary installation: ${describeErrorMessage(error)}`, "error"); },
+  onError(error) { setStatus(`Could not start dictionary installation: ${describeErrorMessage(error)}`, "error", error); },
 });
 
 function element(id) {
@@ -138,10 +144,13 @@ function adoptOptions(value) {
   return true;
 }
 
-function setStatus(message, tone = "") {
+function setStatus(message, tone = "", error = null) {
   const status = element("setup-status");
+  const shown = status.textContent === message && status.classList.contains("is-error");
   status.textContent = message;
   status.classList.toggle("is-error", tone === "error");
+  if (tone !== "error") showErrorCopy(status, null);
+  else if (!shown) showErrorCopy(status, recordUserError(window, status.id, message, error));
 }
 
 function paragraph(text, className = "hint") {
@@ -538,7 +547,7 @@ function requestAnkiSetup() {
     if (ankiOutcomeRecorded()) return;
     ankiFailed = true;
     stopAnkiProgress();
-    setStatus(`Could not check Anki: ${describeErrorMessage(error)}`, "error");
+    setStatus(`Could not check Anki: ${describeErrorMessage(error)}`, "error", error);
   }).finally(() => {
     ankiRequest = null;
     render();
@@ -692,7 +701,7 @@ function loadReader() {
     (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
   ).then(() => globalThis.HDReaderReady).catch((error) => {
     // The persistent practice controller also exposes its recovery link.
-    setStatus(`The lookup exercise could not start: ${describeErrorMessage(error)}`, "error");
+    setStatus(`The lookup exercise could not start: ${describeErrorMessage(error)}`, "error", error);
     throw error;
   });
   return readerLoading;
@@ -853,7 +862,7 @@ async function useSharedHachidori() {
     if (!reply.ok) throw new Error(reply.error || "the link did not complete");
   } catch (error) {
     saving = false;
-    setStatus(`Could not use that Hachidori: ${describeErrorMessage(error)}`, "error");
+    setStatus(`Could not use that Hachidori: ${describeErrorMessage(error)}`, "error", error);
     render();
     return;
   }
@@ -1016,7 +1025,7 @@ async function advance(stage, { continued = false } = {}) {
     setStatus("");
     advanced = true;
   } catch (error) {
-    setStatus(`Could not save setup progress: ${describeErrorMessage(error)}`, "error");
+    setStatus(`Could not save setup progress: ${describeErrorMessage(error)}`, "error", error);
   } finally {
     saving = false;
     render();

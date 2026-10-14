@@ -903,7 +903,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
     .replace(/^export\s+/gmu, "");
   const memorySettings = readFileSync(resolve(EXTENSION, "memory-settings.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
-  const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, "");
+  const settingsDom = readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const ankiTemplates = readFileSync(resolve(EXTENSION, "anki-templates.js"), "utf8")
@@ -1099,7 +1100,9 @@ async function navigateSettingsSection(window, id) {
 
 function loadStartupScript(window) {
   window.canDiscoverSharingHost = canDiscoverSharingHost;
-  window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8").replace(/^export\s+/gmu, ""));
+  window.eval(readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, ""));
+  window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, ""));
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const readerOptions = readFileSync(resolve(EXTENSION, "reader-options.js"), "utf8");
   const localAudioSource = readFileSync(resolve(EXTENSION, "local-audio-source.js"), "utf8")
@@ -1123,7 +1126,7 @@ function loadStartupScript(window) {
     .replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
-    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol|error-text)\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol|error-text|debug-log)\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
