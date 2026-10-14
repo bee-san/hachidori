@@ -14,6 +14,7 @@ import {
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
 import { readDictionaryArchiveIdentity } from "./dictionary-import-archive.js";
+import { IMPORT_ATTEMPTS, importWithRetries } from "./dictionary-import-attempts.js";
 import { dictionaryImportError } from "./dictionary-import-errors.js";
 import {
   describeRevisionComparison,
@@ -23,12 +24,14 @@ import {
 } from "./dictionary-import.js";
 import {
   element, numberFormat, recommendedInstallation, refreshStatus, send, setSectionStatus, sharingLinkedAddress,
-  syncNavigationStatus,
+  syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
 import { dictionaries, reloadDictionaries, setControlsDisabled } from "./library-settings.js";
 
 let importing = false; // NOSONAR: shared with the other Settings modules
 let installingRecommended = false; // NOSONAR: shared with the other Settings modules
+// The running batch's Cancel: it ends a wait at once and starts no further import.
+let importAbort = null;
 let renderedInstallRun = null;
 let importProgress;
 let importDragDepth = 0;
@@ -211,14 +214,13 @@ async function importFile(file, index, total, request = {}, label = file.name) {
 
   // The decision happens before this URL exists, so Cancel cannot start a
   // native import, create a generation, or mutate persistent storage.
-  const started = Date.now();
   // A linked browser sends the archive to the host, which applies the same
   // choice against its own library (the one mirrored here).
   if (sharingLinkedAddress !== null) {
     return importArchive(() => uploadDictionary({
       blob: file, fileName: file.name, replace: importDecision.action === "replace",
       send: (type, fields) => send(type, fields, LINKED_IMPORT_TARGET),
-    }), index, total, label, started);
+    }), index, total, label);
   }
   const blobUrl = URL.createObjectURL(file);
   try {
@@ -227,7 +229,7 @@ async function importFile(file, index, total, request = {}, label = file.name) {
       fileName: file.name,
       ...request,
       importDecision,
-    }), index, total, label, started);
+    }), index, total, label);
   } finally {
     // The offscreen document has read the bytes by now; holding the URL any
     // longer just pins the file.
@@ -235,45 +237,104 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   }
 }
 
-async function importArchive(runImport, index, total, label, started) {
-  const tick = () => {
-    const elapsed = elapsedSince(started);
-    setImportState(
-      `Importing ${label} (${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`,
-      "busy",
-    );
-    updateImportResult(index, { text: `Importing… ${elapsed} elapsed`, progress: { value: null } });
-  };
-  tick();
-  const ticker = setInterval(tick, 1000);
+// Why an attempt failed, from the engine's reply or the request's own error.
+function failureReason({ reply, error }, label) {
+  if (reply === undefined) return dictionaryImportError(error, label, "requesting the import").message;
+  return dictionaryImportError(reply.error || reply.report?.error || "The engine gave no reason.", label,
+    "importing the dictionary").message;
+}
 
-  try {
-    const reply = await runImport();
-    const report = reply.report ?? {};
-    if (reply.ok && report.success) {
-      // What an MDX import left out. Notes never turn a success into a
-      // failure: the dictionary is installed and counts as imported.
-      const notes = mdxImportNotes(report, numberFormat);
-      updateImportResult(index, {
-        text: `Imported ${report.title} in ${importDuration(started)}: ${summariseReport(report)}.`,
-        tone: "ok",
-        notes,
-      });
-      return notes.length > 0 ? "imported-with-notes" : "imported";
+// Imports one archive once the engine is free, retrying a failed attempt
+// (dictionary-import-attempts.js). The row says whether it is waiting for
+// another change, importing or about to retry.
+async function importArchive(runImport, index, total, label) {
+  const { signal } = importAbort;
+  // Until the first status poll says whether this archive waits or imports.
+  let phase = "starting";
+  let attempt = 1;
+  let retryText = "";
+  let since = Date.now();
+  let firstAttemptAt = since;
+  const tick = () => {
+    if (phase === "starting") return;
+    const elapsed = elapsedSince(since);
+    const position = `(${index + 1} of ${total}) — ${index} of ${total} complete — ${elapsed} elapsed`;
+    if (phase === "waiting") {
+      setImportState(`Waiting to import ${label} ${position}`, "busy");
+      updateImportResult(index, { text: `Waiting for the previous import to finish… ${elapsed} elapsed`,
+        progress: { value: null } });
+      return;
     }
-    const reason = dictionaryImportError(reply.error || report.error || "The engine gave no reason.", label, "importing the dictionary").message;
-    updateImportResult(index, {
-      text: `Failed after ${importDuration(started)}: ${reason}`,
-      tone: "error",
+    setImportState(signal.aborted ? `Cancelling after ${label} finishes importing — ${elapsed} elapsed`
+      : `Importing ${label} ${position}`, "busy");
+    const text = phase === "retrying" ? retryText
+      : `Importing${attempt > 1 ? ` (attempt ${attempt} of ${IMPORT_ATTEMPTS})` : ""}… ${elapsed} elapsed`;
+    updateImportResult(index, { text, progress: { value: null } });
+  };
+  const ticker = setInterval(tick, 1000);
+  signal.addEventListener("abort", tick);
+
+  let outcome;
+  try {
+    outcome = await importWithRetries({
+      attempt: runImport,
+      readStatus: () => send("hd_status"),
+      readRevision: async () => {
+        const reply = await send("hd_state_read", {}, WORKER_TARGET);
+        if (!reply.ok) throw new Error(reply.error || "the dictionary state could not be read");
+        return reply.state?.revision ?? 0;
+      },
+      signal,
+      onWait: () => {
+        if (phase === "waiting") return;
+        phase = "waiting";
+        since = Date.now();
+        tick();
+      },
+      onAttempt: (number) => {
+        phase = "importing";
+        attempt = number;
+        since = Date.now();
+        if (number === 1) firstAttemptAt = since;
+        tick();
+      },
+      onRetry: (number, failure) => {
+        phase = "retrying";
+        retryText = `Attempt ${number} of ${IMPORT_ATTEMPTS} failed: ${failureReason(failure, label)} Retrying…`;
+        tick();
+      },
     });
   } catch (error) {
-    updateImportResult(index, {
-      text: `Failed after ${importDuration(started)}: ${dictionaryImportError(error, label, "requesting the import").message}`,
-      tone: "error",
-    });
+    // Nothing was attempted: the wait was cancelled or the engine stayed busy.
+    if (signal.aborted) {
+      updateImportResult(index, { text: "Cancelled before import." });
+      return "cancelled";
+    }
+    updateImportResult(index, { text: `Failed before import: ${error?.message ?? String(error)}`, tone: "error" });
+    return "failed";
   } finally {
     clearInterval(ticker);
+    signal.removeEventListener("abort", tick);
   }
+
+  if (outcome.ok) {
+    const { report } = outcome.reply;
+    // What an MDX import left out. Notes never turn a success into a
+    // failure: the dictionary is installed and counts as imported.
+    const notes = mdxImportNotes(report, numberFormat);
+    updateImportResult(index, {
+      text: `Imported ${report.title} in ${importDuration(since)}: ${summariseReport(report)}.`,
+      tone: "ok",
+      notes,
+    });
+    return notes.length > 0 ? "imported-with-notes" : "imported";
+  }
+  const duration = importDuration(firstAttemptAt);
+  updateImportResult(index, {
+    text: `Failed after ${outcome.attempts > 1 ? `${outcome.attempts} attempts in ${duration}` : duration}: `
+      + failureReason(outcome, label),
+    tone: "error",
+  });
   return "failed";
 }
 
@@ -315,7 +376,10 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
     return;
   }
   importing = true;
+  importAbort = new AbortController();
+  const { signal } = importAbort;
   setControlsDisabled(true);
+  element("import-cancel").hidden = false;
   clearImportResults();
   setImportEntries(items.map((item, index) => ({
     id: String(index),
@@ -327,6 +391,12 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   let cancelled = 0;
   try {
     for (const [index, item] of items.entries()) {
+      // Cancel lets an import that has started finish, then starts no other.
+      if (signal.aborted) {
+        updateImportResult(index, { text: "Cancelled before import." });
+        cancelled += 1;
+        continue;
+      }
       let outcome;
       try {
         outcome = await importOne(item, index, items.length); // NOSONAR: each import reviews and commits the state left by the previous item
@@ -357,13 +427,17 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
       `${failed} failed`,
     ].join(", ");
     setImportState(
-      `Finished ${items.length} of ${items.length} ${itemLabel} — ${outcomes}.`,
+      signal.aborted
+        ? `Import cancelled — ${outcomes}.`
+        : `Finished ${items.length} of ${items.length} ${itemLabel} — ${outcomes}.`,
       failed === 0 ? "ready" : "error",
     );
     await reloadDictionaries();
     await refreshStatus();
   } finally {
     importing = false;
+    importAbort = null;
+    element("import-cancel").hidden = true;
     syncNavigationStatus("import-state");
     setControlsDisabled(false);
   }
@@ -404,14 +478,13 @@ function groupImportFiles(files) {
 
 async function importMdx(item, index, total) {
   const { file, resources } = item;
-  const started = Date.now();
   const urls = [file, ...resources].map((entry) => URL.createObjectURL(entry));
   try {
     return await importArchive(() => send("hd_import", {
       blobUrl: urls[0],
       fileName: file.name,
       resources: resources.map((resource, position) => ({ fileName: resource.name, blobUrl: urls[position + 1] })),
-    }), index, total, file.name, started);
+    }), index, total, file.name);
   } finally {
     for (const url of urls) URL.revokeObjectURL(url);
   }
@@ -510,6 +583,7 @@ function attachImportHandlers() {
       void runImports(picked);
     }
   });
+  element("import-cancel").addEventListener("click", () => importAbort?.abort());
   bindImportDropZone(file);
 }
 
