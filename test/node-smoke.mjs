@@ -1595,6 +1595,96 @@ check('definitions sort by score within each dictionary, keeping ties, tags and 
   }
 });
 
+G('dictionary priority breaks a reading tie (#575)');
+
+check('a surface frequency that ties two readings yields to the caller dictionary order', () => {
+  // Issue #575: 神原 reads かんばら (JP Wikipedia Proper Nouns, VNDB Names: the
+  // user's top dictionaries) and かみはら (Pixiv: the bottom one). A corpus
+  // frequency such as CC100 is keyed by the surface form, so it hands both
+  // readings the same value; the frequency comparison is a tie. Before the fix
+  // the tie fell through to an arbitrary order and Pixiv's かみはら could sort
+  // first; now the reading from the higher-priority dictionary wins, matching
+  // what the user set and what Yomitan shows.
+  const WIKI = 'reading-tie-wikipedia';
+  const PIXIV = 'reading-tie-pixiv';
+  const FREQ = 'reading-tie-surface-frequency';
+  const termPaths = [`/dicts/${WIKI}`, `/dicts/${PIXIV}`];
+  const freqPath = `/dicts/${FREQ}`;
+  const archives = [
+    [WIKI, buildTitledZip(WIKI, { terms: [['神原', 'かんばら', 'fam', '', 0, ['Kanbara (surname)'], 1, '']] })],
+    [PIXIV, buildTitledZip(PIXIV, { terms: [['神原', 'かみはら', '', '', 0, ['A Japanese surname.'], 1, '']] })],
+    // A reading-less surface frequency: one rank for 神原, so both readings read
+    // it. frequencyMode rank-based means Auto and Ascending both sort ascending.
+    [FREQ, buildTitledZip(FREQ, {
+      banks: false,
+      frequencyMode: 'rank-based',
+      termMeta: [['神原', 'freq', { value: 8988, displayValue: '8988' }]],
+    })],
+  ];
+  for (const [title, bytes] of archives) {
+    const zipPath = `/work/${title}.zip`;
+    M.FS.writeFile(zipPath, bytes);
+    ok(hdwImport(zipPath, '/dicts').success, lastError());
+  }
+  const readings = (options) => lookup('神原', 32, 16, options).results.map((r) => r.term.reading);
+  const ascending = JSON.stringify({ frequencyDictionary: FREQ, frequencyOrder: 'ascending', primaryReading: '' });
+  for (const paged of [0, 1]) {
+    reset();
+    termPaths.forEach((path) => eq(addDict(path, 0, paged), 1, lastError()));
+    eq(addDict(freqPath, 1, paged), 1, lastError());
+    eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify(termPaths)]), 1, lastError());
+
+    // The user's own setting: an explicit ascending sort by the surface
+    // frequency. The tie resolves to the top dictionary's reading.
+    same(readings(ascending), ['かんばら', 'かみはら'], `ascending surface frequency, paged=${paged}`);
+    // Auto consults every frequency dictionary and ties the same way.
+    same(readings(AUTO_OPTIONS), ['かんばら', 'かみはら'], `auto, paged=${paged}`);
+
+    // Reversing the caller's dictionary order reverses the tie, so the order is
+    // the dictionaries' and not a fixed reading or insertion order.
+    eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify([...termPaths].reverse())]), 1, lastError());
+    same(readings(ascending), ['かみはら', 'かんばら'], `reversed priority, paged=${paged}`);
+  }
+});
+
+check('a frequency that separates the readings still outranks dictionary order', () => {
+  // The dictionary-order tie-break sits below frequency, as it does in Yomitan.
+  // When the selected frequency genuinely distinguishes the readings, it still
+  // decides: a per-reading frequency keeps the more common reading first even
+  // though its dictionary is lower priority. Only a tie defers to priority.
+  const TOP = 'reading-sep-top';
+  const BOTTOM = 'reading-sep-bottom';
+  const FREQ = 'reading-sep-frequency';
+  const termPaths = [`/dicts/${TOP}`, `/dicts/${BOTTOM}`];
+  const archives = [
+    [TOP, buildTitledZip(TOP, { terms: [['神原', 'かんばら', 'fam', '', 0, ['top-priority reading'], 1, '']] })],
+    [BOTTOM, buildTitledZip(BOTTOM, { terms: [['神原', 'かみはら', '', '', 0, ['bottom-priority reading'], 1, '']] })],
+    [FREQ, buildTitledZip(FREQ, {
+      banks: false,
+      frequencyMode: 'rank-based',
+      termMeta: [
+        ['神原', 'freq', { reading: 'かみはら', frequency: { value: 100, displayValue: '100' } }],
+        ['神原', 'freq', { reading: 'かんばら', frequency: { value: 90000, displayValue: '90000' } }],
+      ],
+    })],
+  ];
+  for (const [title, bytes] of archives) {
+    const zipPath = `/work/${title}.zip`;
+    M.FS.writeFile(zipPath, bytes);
+    ok(hdwImport(zipPath, '/dicts').success, lastError());
+  }
+  reset();
+  termPaths.forEach((path) => eq(addDict(path, 0, 0), 1, lastError()));
+  eq(addDict(`/dicts/${FREQ}`, 1, 0), 1, lastError());
+  eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify(termPaths)]), 1, lastError());
+  const options = JSON.stringify({ frequencyDictionary: FREQ, frequencyOrder: 'ascending', primaryReading: '' });
+  same(
+    lookup('神原', 32, 16, options).results.map((r) => r.term.reading),
+    ['かみはら', 'かんばら'],
+    'a per-reading frequency keeps the more common reading first across dictionary order',
+  );
+});
+
 G('long keys beyond the scan length');
 
 const LONG_KEY_DIR = `/dicts/${LONG_KEY_TITLE}`;
