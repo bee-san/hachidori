@@ -593,7 +593,13 @@ describe("engine: library state", () => {
       [occurrenceTitle, "ascending", ["あ", "い", "う"]],
       [occurrenceTitle, "descending", ["う", "い", "あ"]],
       [occurrenceTitle, "disabled", ["あ", "い", "う"]],
-      [occurrenceTitle, "auto", ["い", "あ", "う"]],
+      // Auto (no single sort dictionary) goes straight to dictionary order, as
+      // Yomitan does with no sort frequency dictionary (#575). Both dictionaries
+      // carry every reading, so dictionary order ties and term score decides:
+      // あ (30) → い (20) → う (10). It no longer consults a frequency list, so
+      // it matches disabled here rather than the rank dictionary's ascending
+      // order.
+      [occurrenceTitle, "auto", ["あ", "い", "う"]],
     ]) {
       for (const maxResults of [1, 3]) {
         const ranked = await request("hd_lookup", {
