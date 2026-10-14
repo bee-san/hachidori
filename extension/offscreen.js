@@ -13,12 +13,13 @@ import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js"
 import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
-import { captureDebugLog, readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure } from "./debug-log.js";
 import { describeError } from "./error-text.js";
 
-// Settings → Advanced → Get debug info reads this document's recent warnings,
-// errors and failed replies, and the engine worker's (debug-log.js).
-captureDebugLog(globalThis, { context: "offscreen" });
+// Settings → Advanced → Get debug info reads this document's warnings, errors
+// and failed replies, and the engine worker's, from the extension's debug log
+// ring (debug-log.js).
+captureDebugLog(globalThis, { context: "offscreen", store: openDebugLogStore(globalThis.indexedDB) });
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";

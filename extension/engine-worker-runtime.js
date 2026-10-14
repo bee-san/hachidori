@@ -16,7 +16,7 @@ import {
   startEngine,
 } from "./engine-service.js";
 import { boundResponseFailure } from "./response-limits.js";
-import { captureDebugLog } from "./debug-log.js";
+import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeError } from "./error-text.js";
 
 let nextHostRequestId = 0;
@@ -99,7 +99,10 @@ function importInIsolatedWorker(request) {
 }
 
 export function startEngineWorker({ createHoshidicts, storageBackend, threaded = true }) {
-  captureDebugLog(globalThis, { context: "engine-worker" });
+  // A worker has no chrome.runtime to name the version its entries carry; the
+  // manifest is read only once something is written.
+  captureDebugLog(globalThis, { context: "engine-worker", store: openDebugLogStore(globalThis.indexedDB),
+    version: async () => (await (await fetch(new URL("./manifest.json", import.meta.url))).json()).version });
   // offscreen.js picks the name; see engine-recycler.js. The single-thread
   // build has no pool or import threading for Low memory mode to reduce, and
   // keeps resident entries like the document engine.

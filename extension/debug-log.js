@@ -1,53 +1,354 @@
-// Recent warnings and errors for Settings → Advanced → Get debug info. Each
-// extension context (service worker, offscreen document, engine worker,
-// Settings) installs one capture on its global: console.warn/error, uncaught
-// errors and unhandled rejections are kept as text, and request failures that
-// are answered rather than logged can be added with record(). Nothing is sent
-// anywhere; the debug report reads each context's entries on request.
+// The debug log behind Settings → Advanced → Troubleshooting → Get debug info.
 //
-// The log is a ring of the newest DEBUG_LOG_LIMIT entries, each message cut to
-// DEBUG_LOG_MESSAGE_LIMIT characters, so a burst of failures (every hover while
-// the engine is down) cannot grow a context's memory or the service worker's
-// session-storage copy without bound.
+// Each extension context (service worker, offscreen document, engine worker,
+// Settings, the startup page, the toolbar) installs one capture on its global
+// as it starts. console.warn/error, uncaught errors, unhandled rejections and
+// fetches that fail without a response are recorded as they happen; answered
+// request failures are added with recordDebugFailure(), the errors a page shows
+// the reader with recordUserError(), and what the reader did on a page (the
+// control pressed or changed, the section opened: names, never values) by
+// captureDocumentActions(). Content scripts forward theirs to the service
+// worker (debug-log-content.js), which keeps them like its own.
+//
+// Every context keeps its newest DEBUG_LOG_LIMIT entries in memory and appends
+// each entry, in short batches, to one IndexedDB ring the extension's contexts
+// share. The ring keeps the newest DEBUG_LOG_MAX_EVENTS entries within
+// DEBUG_LOG_MAX_BYTES, so an error from before Settings was opened, reloaded
+// or the browser restarted is still in the report. Identical entries in a row
+// are kept once, with a count and the time of the last one.
+//
+// Nothing is sent anywhere: the report reads the ring and each live context's
+// entries on request. Every entry is redacted before it is kept
+// (redactDebugText): credentials, the sign-in, query and fragment of web
+// addresses, data: URL payloads, and any Japanese text, which is how
+// looked-up text and dictionary content would appear in a message.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const DEBUG_LOG = Symbol.for("hachidori.debugLog");
 export const DEBUG_LOG_LIMIT = 200;
 export const DEBUG_LOG_MESSAGE_LIMIT = 4000;
-export const DEBUG_LOG_SESSION_KEY = "debugLog";
+export const DEBUG_LOG_DATABASE = "hachidori-debug-log";
+export const DEBUG_LOG_MAX_EVENTS = 5000;
+export const DEBUG_LOG_MAX_BYTES = 2 * 1024 * 1024;
+// How long an entry waits for others to share its write.
+export const DEBUG_LOG_FLUSH_MS = 100;
+export const REDACTED = "[redacted]";
+export const REDACTED_JAPANESE = "[ja]";
+
+// Settings keys and message fields that hold a credential.
+export const SECRET_KEY = /api.?key|token|secret|password/iu;
+const SECRET_FIELD = new RegExp(`(["']?[\\w-]*(?:${SECRET_KEY.source})[\\w-]*["']?\\s*[:=]\\s*)("[^"]*"|'[^']*'|[^\\s"',;&}]+)`, "giu");
+const AUTHORIZATION = /\b(Bearer|Basic)\s+[\w.~+/=-]+/gu;
+const WEB_ADDRESS = /\b(?:https?|wss?|ftp|file):\/\/[^\s"'<>`]+/giu;
+const DATA_URL = /\bdata:([^,\s"'<>`]*),[^\s"'<>`)]*/giu;
+// Percent-encoded non-ASCII text in an address path.
+const ENCODED_TEXT = /(?:%[89a-f][\da-f])+/giu;
+const JAPANESE_TEXT = /[\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Han}]+/gu;
+
+// Replace every non-empty string under a credential-like key, at any depth.
+// An empty value stays empty so the report still shows it was never set.
+export function redactSecrets(value) {
+  if (Array.isArray(value)) return value.map(redactSecrets);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
+    SECRET_KEY.test(key) && typeof entry === "string" && entry !== "" ? REDACTED : redactSecrets(entry)]));
+}
+
+// A web address keeps its scheme, host and path; sign-in details, query and
+// fragment are removed, and a local file keeps none of its path.
+function redactWebAddress(match) {
+  const [, address, trailing] = /^(.*?)([).,;:]*)$/su.exec(match);
+  let url;
+  try {
+    url = new URL(address);
+  } catch {
+    return `${REDACTED}${trailing}`;
+  }
+  if (url.protocol === "file:") return `file:///${REDACTED}${trailing}`;
+  const signIn = url.username || url.password ? `${REDACTED}@` : "";
+  return `${url.protocol}//${signIn}${url.host}${url.pathname.replace(ENCODED_TEXT, REDACTED)}`
+    + `${url.search ? `?${REDACTED}` : ""}${url.hash ? `#${REDACTED}` : ""}${trailing}`;
+}
+
+export function redactDebugText(value) {
+  const text = String(value).slice(0, 2 * DEBUG_LOG_MESSAGE_LIMIT)
+    .replace(DATA_URL, (_match, type) => `data:${type},${REDACTED}`)
+    .replace(WEB_ADDRESS, redactWebAddress)
+    .replace(AUTHORIZATION, `$1 ${REDACTED}`)
+    .replace(SECRET_FIELD, (_match, name, value) => `${name}${/^["']/u.test(value) ? `"${REDACTED}"` : REDACTED}`)
+    .replace(JAPANESE_TEXT, REDACTED_JAPANESE);
+  return text.length > DEBUG_LOG_MESSAGE_LIMIT ? `${text.slice(0, DEBUG_LOG_MESSAGE_LIMIT)}…` : text;
+}
+
+// An Error, a DOMException, or an error from another realm.
+function errorLike(value) {
+  return value instanceof Error
+    || (value !== null && typeof value === "object" && typeof value.message === "string" && typeof value.stack === "string");
+}
 
 function formatPart(value) {
-  if (value instanceof Error) return value.stack || `${value.name}: ${value.message}`;
+  if (errorLike(value)) return `${value.name || "Error"}: ${value.message}`;
   if (typeof value === "string") return value;
   try {
-    return JSON.stringify(value) ?? String(value);
+    return JSON.stringify(redactSecrets(value)) ?? String(value);
   } catch {
     return String(value);
   }
 }
 
-export function formatDebugLogMessage(parts) {
-  const message = parts.map(formatPart).join(" ");
-  return message.length > DEBUG_LOG_MESSAGE_LIMIT ? `${message.slice(0, DEBUG_LOG_MESSAGE_LIMIT)}…` : message;
+function describeCause(cause, depth = 0) {
+  if (cause === undefined || cause === null || depth === 3) return "";
+  if (!errorLike(cause)) return formatPart(cause);
+  const deeper = describeCause(cause.cause, depth + 1);
+  return `${cause.stack || formatPart(cause)}${deeper ? `\nCaused by: ${deeper}` : ""}`;
 }
 
-// `persist(entries)` (the service worker's session storage) is called after
-// each new entry. `restore()` reads back what a restarted worker persisted;
-// those entries are placed before any recorded meanwhile, and nothing is
-// persisted until they are, so a restart cannot overwrite them.
-export function captureDebugLog(scope, { context, now = () => Date.now(), persist = null, restore = null }) {
+// The stack, cause chain and error code of `error`, unredacted.
+function errorDetails(error) {
+  if (!errorLike(error)) return {};
+  const code = error.code ?? error.errorCode;
+  return { stack: error.stack, cause: describeCause(error.cause),
+    code: typeof code === "string" || typeof code === "number" ? code : null };
+}
+
+// One kept entry. `where` names the page element that showed it; `stack`,
+// `cause` and `code` come from `error`, or as text from a content script.
+// Each text field is redacted, and only the fields that are set are kept.
+export function debugLogEntry({ at, session, n, context, version = null, level, message, where = null,
+  detail = null, error = null, stack = null, cause = null, code = null }) {
+  const entry = { at, session, n, context, version, level, message: redactDebugText(message) };
+  const fields = { where, detail, stack, cause, code, ...errorDetails(error) };
+  for (const [field, value] of Object.entries(fields)) {
+    if (value !== null && value !== undefined && value !== "") entry[field] = redactDebugText(value);
+  }
+  return entry;
+}
+
+function newSessionId(scope) {
+  const crypto = scope.crypto ?? globalThis.crypto;
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 12);
+}
+
+/* ------------------------------------------------------------ the ring */
+
+const EVENTS = "events";
+const META = "meta";
+const TOTALS = "totals";
+
+function settled(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function committed(transaction) {
+  const done = new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error ?? new Error("the debug log transaction was aborted"));
+  });
+  // A request that fails first is what write() reports.
+  done.catch(() => {});
+  return done;
+}
+
+// Delete the oldest records until the ring is within both limits.
+function prune(events, totals, maxEvents, maxBytes) {
+  if (totals.count <= maxEvents && totals.bytes <= maxBytes) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const cursor = events.openCursor();
+    cursor.onerror = () => reject(cursor.error);
+    cursor.onsuccess = () => {
+      const oldest = cursor.result;
+      if (oldest === null) {
+        Object.assign(totals, { count: 0, bytes: 0 });
+        resolve();
+        return;
+      }
+      if (totals.count <= maxEvents && totals.bytes <= maxBytes) {
+        resolve();
+        return;
+      }
+      totals.count -= 1;
+      totals.bytes -= oldest.value?.bytes ?? 0;
+      oldest.delete();
+      oldest.continue();
+    };
+  });
+}
+
+// The extension origin's ring. A record's `bytes` is its JSON size; the meta
+// store keeps the count and byte total that one transaction updates with the
+// records, so concurrent writers from several contexts keep it exact.
+export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEvents = DEBUG_LOG_MAX_EVENTS,
+  maxBytes = DEBUG_LOG_MAX_BYTES } = {}) {
+  let database = null;
+
+  function open() {
+    database ??= new Promise((resolve, reject) => {
+      const opening = indexedDB.open(name, 1);
+      opening.onupgradeneeded = () => {
+        opening.result.createObjectStore(EVENTS, { autoIncrement: true });
+        opening.result.createObjectStore(META);
+      };
+      opening.onsuccess = () => {
+        const opened = opening.result;
+        opened.onversionchange = () => {
+          opened.close();
+          database = null;
+        };
+        resolve(opened);
+      };
+      opening.onerror = () => reject(opening.error);
+    }).catch((error) => {
+      database = null;
+      throw error;
+    });
+    return database;
+  }
+
+  // `ops` are { record, key }: a record to add, or to put at `key` if that
+  // record is still kept. Resolves to each record's key.
+  async function write(ops) {
+    const transaction = (await open()).transaction([EVENTS, META], "readwrite");
+    const done = committed(transaction);
+    const events = transaction.objectStore(EVENTS);
+    const meta = transaction.objectStore(META);
+    const totals = { count: 0, bytes: 0, ...await settled(meta.get(TOTALS)) };
+    const keys = [];
+    for (const { record, key } of ops) {
+      const kept = key === undefined ? undefined : await settled(events.get(key));
+      if (kept === undefined) {
+        keys.push(await settled(events.add(record)));
+        totals.count += 1;
+        totals.bytes += record.bytes;
+      } else {
+        events.put(record, key);
+        keys.push(key);
+        totals.bytes += record.bytes - (kept.bytes ?? 0);
+      }
+    }
+    await prune(events, totals, maxEvents, maxBytes);
+    meta.put(totals, TOTALS);
+    await done;
+    return keys;
+  }
+
+  // Every kept record, oldest first, with the totals.
+  async function read() {
+    const transaction = (await open()).transaction([EVENTS, META], "readonly");
+    const [records, totals] = await Promise.all([
+      settled(transaction.objectStore(EVENTS).getAll()),
+      settled(transaction.objectStore(META).get(TOTALS)),
+    ]);
+    return { records, totals: { count: 0, bytes: 0, ...totals }, maxEvents, maxBytes };
+  }
+
+  return { name, write, read };
+}
+
+const jsonBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+
+function storedRecord(entry) {
+  const { key, ...record } = entry;
+  record.bytes = 0;
+  record.bytes = jsonBytes(record);
+  return record;
+}
+
+/* ------------------------------------------------------------ capture */
+
+const sameEntry = (left, right) => left.level === right.level && left.message === right.message
+  && left.where === right.where && left.stack === right.stack;
+
+// `store` is openDebugLogStore()'s ring, or null to keep entries in memory
+// only. `version` is the extension's, or a function that resolves it where
+// the manifest cannot be read synchronously.
+export function captureDebugLog(scope, { context, store = null, now = () => Date.now(),
+  version = scope.chrome?.runtime?.getManifest?.()?.version ?? null, session = newSessionId(scope) }) {
   if (scope[DEBUG_LOG]) return scope[DEBUG_LOG];
-  let entries = [];
   const startedAt = new Date(now()).toISOString();
-  const restored = restore === null ? Promise.resolve() : Promise.resolve().then(restore).then(
-    previous => { if (Array.isArray(previous)) entries = [...previous, ...entries].slice(-DEBUG_LOG_LIMIT); },
-    () => {});
-  let persisted = restored;
+  const entries = [];
+  const unsaved = new Set();
+  const persistence = { saved: 0, error: store === null ? "not persisted in this context" : null };
+  let count = 0;
+  let last = null;
+  let timer = null;
+  let writing = Promise.resolve();
+  let resolvedVersion = typeof version === "function" ? null : version;
+  let versionRead = typeof version === "function" ? null : Promise.resolve(version);
+
+  function keep(entry, save = true) {
+    entries.push(entry);
+    if (entries.length > DEBUG_LOG_LIMIT) entries.splice(0, entries.length - DEBUG_LOG_LIMIT);
+    last = entry;
+    if (save) schedule(entry);
+    return entry;
+  }
+
+  function add(level, message, fields = {}, save = true) {
+    count += 1;
+    const entry = debugLogEntry({ at: new Date(now()).toISOString(), session, n: count, context,
+      version: resolvedVersion, level, message, ...fields });
+    if (last !== null && sameEntry(last, entry)) {
+      last.repeat = (last.repeat ?? 1) + 1;
+      last.lastAt = entry.at;
+      count -= 1;
+      if (save) schedule(last);
+      return last;
+    }
+    return keep(entry, save);
+  }
+
+  function schedule(entry) {
+    if (store === null) return;
+    unsaved.add(entry);
+    timer ??= setTimeout(flush, DEBUG_LOG_FLUSH_MS);
+  }
+
+  async function save() {
+    if (unsaved.size === 0) return;
+    const batch = [...unsaved];
+    unsaved.clear();
+    try {
+      versionRead ??= Promise.resolve().then(version).catch(() => null);
+      resolvedVersion = await versionRead;
+      for (const entry of batch) entry.version ??= resolvedVersion;
+      const keys = await store.write(batch.map(entry => ({ key: entry.key, record: storedRecord(entry) })));
+      batch.forEach((entry, index) => { entry.key = keys[index]; });
+      persistence.saved += batch.length;
+      persistence.error = null;
+    } catch (error) {
+      // Still in memory: the next write retries them.
+      for (const entry of batch) if (entries.includes(entry)) unsaved.add(entry);
+      const description = error?.message || String(error);
+      if (persistence.error !== description) {
+        persistence.error = description;
+        add("debug-log", `the debug log could not be saved: ${description}`, {}, false);
+      }
+    }
+  }
+
+  function flush() {
+    clearTimeout(timer);
+    timer = null;
+    writing = writing.then(save);
+    return writing;
+  }
 
   function record(level, ...parts) {
-    entries.push({ at: new Date(now()).toISOString(), context, level, message: formatDebugLogMessage(parts) });
-    if (entries.length > DEBUG_LOG_LIMIT) entries.splice(0, entries.length - DEBUG_LOG_LIMIT);
-    if (persist) persisted = persisted.then(() => persist(entries.slice())).catch(() => {});
+    const error = parts.find(errorLike) ?? null;
+    return add(level, parts.map(formatPart).join(" "), { error });
+  }
+
+  // `message` as the page showed it, with the error behind it.
+  function recordUserError(where, message, error = null, detail = null) {
+    return add("user-error", message, { where, error, detail });
+  }
+
+  function recordAction(name) {
+    return add("action", name);
   }
 
   const console = scope.console;
@@ -60,26 +361,95 @@ export function captureDebugLog(scope, { context, now = () => Date.now(), persis
   }
   scope.addEventListener?.("error", event => record("uncaught", event.error ?? event.message));
   scope.addEventListener?.("unhandledrejection", event => record("unhandledrejection", event.reason));
+  // A page about to unload writes what is waiting.
+  scope.addEventListener?.("pagehide", () => flush());
+  const fetch = scope.fetch;
+  if (typeof fetch === "function") {
+    scope.fetch = function capturedFetch(input, init) {
+      return fetch.call(scope, input, init).catch((error) => {
+        if (error?.name !== "AbortError") {
+          record("failed-fetch", `${init?.method ?? input?.method ?? "GET"} ${typeof input === "string" ? input : input?.url ?? String(input)}:`, error);
+        }
+        throw error;
+      });
+    };
+  }
 
-  const log = { context, startedAt, record, entries: async () => { await restored; return entries.slice(); } };
+  const log = {
+    context, session, startedAt, record, recordUserError, recordAction, flush,
+    entries: () => entries.map(({ key, ...entry }) => entry),
+    status: () => ({ context, session, startedAt, version: resolvedVersion, saved: persistence.saved,
+      unsaved: unsaved.size, error: persistence.error }),
+  };
   scope[DEBUG_LOG] = log;
   return log;
 }
 
-// The service worker restarts often; its log survives that in session storage
-// (cleared when the browser closes) so the entries before a restart remain.
-export function captureWorkerDebugLog(scope, session) {
-  return captureDebugLog(scope, { context: "service-worker",
-    restore: async () => (await session.get(DEBUG_LOG_SESSION_KEY))[DEBUG_LOG_SESSION_KEY],
-    persist: entries => session.set({ [DEBUG_LOG_SESSION_KEY]: entries }) });
-}
-
+// This context's entries, written to the ring first so a report that reads
+// the ring next finds them there.
 export async function readDebugLog(scope) {
   const log = scope[DEBUG_LOG];
-  return log ? { context: log.context, startedAt: log.startedAt, entries: await log.entries() } : { context: null, entries: [] };
+  if (!log) return { context: null, entries: [] };
+  await log.flush();
+  return { ...log.status(), entries: log.entries() };
 }
 
 // Add an answered request failure to this context's log, if it has one.
 export function recordDebugFailure(scope, type, error) {
   scope[DEBUG_LOG]?.record("failed-request", `${type}:`, error);
+}
+
+// Add an error the page shows the reader; returns the kept entry.
+export function recordUserError(scope, where, message, error = null, detail = null) {
+  return scope[DEBUG_LOG]?.recordUserError(where, message, error, detail) ?? null;
+}
+
+/* ------------------------------------------------------------ the reader's actions */
+
+const ACTION_TARGETS = "button, a[href], summary, [role='button'], [role='tab'], [role='menuitem']";
+
+// A control by its id, or by its tag and first class inside the nearest
+// element with an id. Never its text or value.
+export function debugActionTarget(element) {
+  if (element.id) return `#${element.id}`;
+  const name = `${element.localName}${element.classList?.[0] ? `.${element.classList[0]}` : ""}`;
+  const owner = element.parentElement?.closest("[id]");
+  return owner ? `${name} in #${owner.id}` : name;
+}
+
+export function captureDocumentActions(document, log) {
+  const view = document.defaultView;
+  document.addEventListener("click", (event) => {
+    const target = event.target?.closest?.(ACTION_TARGETS);
+    if (target) log.recordAction(`click ${debugActionTarget(target)}`);
+  }, { capture: true, passive: true });
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!target?.matches?.("input, select, textarea")) return;
+    const files = target.type === "file" ? ` (${target.files?.length ?? 0} files)` : "";
+    log.recordAction(`change ${debugActionTarget(target)}${files}`);
+  }, { capture: true, passive: true });
+  view.addEventListener("hashchange", () => log.recordAction(`navigate ${view.location.hash || "#"}`));
+  log.recordAction(`open ${view.location.pathname.split("/").pop()}${view.location.hash}`);
+}
+
+// What "Copy error details" puts on the clipboard: the error as the page
+// showed it, its stack and cause, and what this page did before it.
+export function formatDebugErrorReport(log, entry, { userAgent = "", before = 12 } = {}) {
+  const kept = log.entries();
+  const index = kept.findIndex(item => item.n === entry.n);
+  const earlier = (index < 0 ? [] : kept.slice(Math.max(0, index - before), index))
+    .map(item => `  ${item.at.slice(11, 23)} ${item.level === "action" ? "" : `${item.level}: `}${item.message}`
+      + `${item.repeat ? ` (×${item.repeat})` : ""}`);
+  return [
+    `Hachidori ${entry.version ?? "(unknown version)"} · ${log.context} · session ${entry.session}`,
+    `${entry.at}${entry.where ? ` · ${entry.where}` : ""}`,
+    entry.message,
+    ...(entry.detail ? [entry.detail] : []),
+    ...(entry.code ? [`Code: ${entry.code}`] : []),
+    ...(entry.stack ? [entry.stack] : []),
+    ...(entry.cause ? [`Caused by: ${entry.cause}`] : []),
+    ...(earlier.length ? ["Before this, on this page:", ...earlier] : []),
+    ...(userAgent ? [`Browser: ${userAgent}`] : []),
+  ].join("\n");
 }
