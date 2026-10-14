@@ -28,7 +28,8 @@ const { config } = require("./package.json");
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const EXTENSION = resolve(ROOT, "extension");
 const ARCHIVES = resolve(ROOT, "test/tmp/bulk-import");
-const PROFILE = resolve(tmpdir(), `hachidori-bulk-import-profile-${process.pid}`);
+// Named like chrome-e2e's own profile, so CI's failure upload collects it.
+const PROFILE = resolve(tmpdir(), `hachidori-e2e-profile-bulk-import-${process.pid}`);
 
 const BATCH = 50;
 // The archives the report saw fail after 0.0 seconds, as frequency lists.
