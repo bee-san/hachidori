@@ -411,10 +411,11 @@ export async function backupEngineScenarios({
   check("restore publishes all six values and statistics rows once before superseded-generation cleanup", true);
 
   for (const automatic of [false, true]) {
-    const incompatible = structuredClone(parsed.snapshot);
-    incompatible.options = { revision: 1, popupWidthPx: -1, futureOption: true };
-    incompatible.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
     const before = await read();
+    const incompatible = structuredClone(parsed.snapshot);
+    // The current settings plus one this version cannot read and one it does not know.
+    incompatible.options = { ...before.options, showLookupCounts: "yes", futureOption: true };
+    incompatible.updates = { ...before.updates, schedule: "future" };
     let url;
     try {
       let preparation;
@@ -430,20 +431,20 @@ export async function backupEngineScenarios({
         url = URL.createObjectURL(await createBackupArchive(incompatible, parsed.files, parsed.lookupStatsRows));
         preparation = await prepare(url);
       }
-      assert.match(preparation.warning, /reader settings.*skipped/iu);
+      assert.equal(preparation.warning, null);
       assert.deepEqual(await read(), before, "preparation preserves the committed settings and dictionaries");
       const result = await accepted("hd_backup_restore", { token: preparation.token });
-      assert.match(result.warning, /Restored successfully.*reader settings.*skipped/iu);
+      assert.equal(result.warning, null);
       const after = await read();
-      assert.deepEqual(after.options, { ...before.options, revision: before.options.revision + 1 });
-      assert.deepEqual(after.updates, { ...before.updates, revision: before.updates.revision + 1 });
+      assert.deepEqual(after.options, { ...before.options, showLookupCounts: true, revision: before.options.revision + 1 });
+      assert.deepEqual(after.updates, { ...before.updates, schedule: "off", revision: before.updates.revision + 1 });
       assert.deepEqual(after.state.dictionaries.map(({ path, ...entry }) => entry),
         before.state.dictionaries.map(({ path, ...entry }) => entry));
       assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);
     } finally { if (url) URL.revokeObjectURL(url); }
   }
   await pageChrome.storage.local.set({ automaticBackups: { schemaVersion: 1, backups: [] } });
-  check("manual and automatic restores import dictionaries with incompatible reader settings and keep current settings", true);
+  check("manual and automatic restores import dictionaries and readable settings, skipping settings this version cannot read", true);
 
   for (const edit of ["options", "document", "updates", "state", "lookupStats", "wordStatusOverrides"]) {
     const pending = await prepare(exported.blobUrl);
@@ -451,7 +452,7 @@ export async function backupEngineScenarios({
     if (edit === "options") await sendWorker("hd_options_write", { baseRevision: base.options.revision, options: { scanLength: base.options.scanLength + 1 } });
     if (edit === "document") await accepted("hd_custom_append", { entry: { term: "犬", reading: "いぬ", definition: "dog" } });
     if (edit === "updates") await pageChrome.runtime.sendMessage({ target: "hachidori-updates", type: "hd_updates_schedule",
-      baseRevision: base.updates.revision, schedule: "off" });
+      baseRevision: base.updates.revision, schedule: base.updates.schedule === "off" ? "daily" : "off" });
     if (edit === "state") await sendWorker("hd_state_cas", { baseRevision: base.state.revision,
       dictionaries: base.state.dictionaries, groups: [] });
     if (edit === "lookupStats") await sendWorker("hd_lookup_stats_record", { term: "猫", reading: "ねこ" });

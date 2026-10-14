@@ -111,27 +111,22 @@ function validBackupUpdateSettings(settings) {
     && sameJsonValue(settings, normaliseUpdateSettings(settings));
 }
 
-// Reader settings can change between releases without invalidating dictionary
-// files. Keep the local settings when the archived record cannot be imported;
-// prune selectors against the restored library before the exact storage CAS.
-export async function prepareBackupSnapshot(current, archived) {
+// A backup from any version restores its dictionaries. Its settings are read
+// one by one like a stored record: a setting this version does not know or
+// cannot read is skipped, and one the backup lacks keeps its default (#577).
+// Selectors are pruned against the restored library before the storage CAS.
+export async function prepareBackupSnapshot(archived) {
   await assertBackupSnapshot(archived, { allowInvalidSettings: true });
-  const compatible = projectBackupReaderSettings(archived.options);
   const { normaliseDictionarySelections, projectStoredOptions } = globalThis.HDReaderOptions;
-  const projected = compatible ?? { ...projectStoredOptions(current.options), revision: backupRevisions(current).options };
-  const selected = normaliseDictionarySelections(projected, archived.state.dictionaries, archived.state.groups);
-  const warnings = [];
-  if (!compatible) warnings.push("Incompatible reader settings were skipped. Your current reader settings were kept.");
-  const updates = validBackupUpdateSettings(archived.updates) ? archived.updates : normaliseUpdateSettings(current.updates);
-  if (updates !== archived.updates) warnings.push("Incompatible update settings were skipped. Your current update schedule was kept.");
+  const projected = projectStoredOptions(archived.options);
+  const options = normaliseDictionarySelections(projected, archived.state.dictionaries, archived.state.groups);
   // A legacy clicked-kanji title migrates to `{ title, kind }`; only a
   // selection that becomes Automatic was reset.
-  if (["frequencyDictionary", "kanjiClickDictionary"].some(key => projected[key] && !selected[key])) {
-    warnings.push("Unavailable dictionary selections were reset.");
-  }
+  const reset = ["frequencyDictionary", "kanjiClickDictionary"].some(key => projected[key] && !options[key]);
   return {
-    snapshot: { ...archived, options: selected, updates },
-    warning: warnings.length ? warnings.join(" ") : null,
+    snapshot: { ...archived, options: { ...options, revision: backupRevisions(archived).options },
+      updates: normaliseUpdateSettings(archived.updates) },
+    warning: reset ? "Unavailable dictionary selections were reset." : null,
   };
 }
 

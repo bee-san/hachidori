@@ -167,28 +167,31 @@ test("restore validation rejects malformed state, settings and inconsistent cust
   await assert.rejects(assertBackupSnapshot(inconsistent));
 });
 
-test("restore keeps current reader settings when archived settings are missing, invalid or from another version", async () => {
+test("restore reads each archived setting it can and skips settings that are missing, invalid or from another version", async () => {
   const current = snapshot();
-  current.options = { revision: 21, popupTheme: "light", scanLength: 19,
-    frequencyDictionary: "Removed", kanjiClickDictionary: { kind: "tabGroup", id: "removed" } };
-  for (const options of [undefined, null, [], "settings", { popupTheme: "dark" },
-    { revision: -1 }, { revision: 2, futureOption: true }, { revision: 2, popupWidthPx: -1 },
-    { revision: 2, experimental: { googleDocs: "yes" } }]) {
+  current.options = { revision: 21, popupTheme: "light", scanLength: 19 };
+  const { DEFAULT_OPTIONS } = globalThis.HDReaderOptions;
+  for (const [options, expected] of [[undefined, {}], [null, {}], [[], {}], ["settings", {}],
+    [{ popupTheme: "dark" }, { popupTheme: "dark" }], [{ revision: -1 }, {}], [{ revision: 2, futureOption: true }, {}],
+    [{ revision: 2, popupWidthPx: -1, scanLength: 20 }, { popupWidthPx: 280, scanLength: 20 }],
+    [{ revision: 2, experimental: { googleDocs: "yes" } }, { experimental: DEFAULT_OPTIONS.experimental }]]) {
     const archived = { ...snapshot(), options };
     const untouched = structuredClone(archived);
-    const prepared = await prepareBackupSnapshot(current, archived);
-    assert.match(prepared.warning, /reader settings.*skipped/iu);
+    const prepared = await prepareBackupSnapshot(archived);
+    assert.equal(prepared.warning, null);
     assert.deepEqual(prepared.snapshot.state, archived.state);
-    assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "light", scanLength: 19,
-      frequencyDictionary: "", kanjiClickDictionary: "" });
+    const { revision, ...restoredOptions } = prepared.snapshot.options;
+    assert.deepEqual(restoredOptions, expected, JSON.stringify(options));
+    assert.ok(Number.isSafeInteger(revision));
+    await assertBackupSnapshot(prepared.snapshot);
     const restored = restoredBackupSnapshot(current, prepared.snapshot, []);
-    assert.equal(restored.options.revision, 22);
+    assert.deepEqual(restored.options, { ...expected, revision: 22 });
     await assertBackupSnapshot(restored);
     assert.deepEqual(archived, untouched, "preparation must not mutate the archived snapshot");
   }
   const invalidDictionaryState = { ...snapshot(), options: null };
   invalidDictionaryState.state.schemaVersion = 2;
-  await assert.rejects(prepareBackupSnapshot(current, invalidDictionaryState), /dictionary state/u);
+  await assert.rejects(prepareBackupSnapshot(invalidDictionaryState), /dictionary state/u);
 });
 
 test("an archived experimental record from another release migrates instead of skipping its settings", async () => {
@@ -200,7 +203,7 @@ test("an archived experimental record from another release migrates instead of s
   archived.options = { revision: 3, popupTheme: "dark",
     experimental: { themeStore: true, longKeyScan: true, mdxImport: false, googleDocs: false, smallerAnkiCards: true } };
   const untouched = structuredClone(archived);
-  const prepared = await prepareBackupSnapshot(current, archived);
+  const prepared = await prepareBackupSnapshot(archived);
   assert.equal(prepared.warning, null);
   const restored = restoredBackupSnapshot(current, prepared.snapshot, []);
   assert.deepEqual(restored.options, { revision: 22, popupTheme: "dark", experimental: {
@@ -213,7 +216,7 @@ test("restore prunes unavailable dictionary selections while retaining compatibl
   const archived = snapshot();
   archived.options.frequencyDictionary = "Removed";
   archived.options.kanjiClickDictionary = { kind: "tabGroup", id: "removed" };
-  const prepared = await prepareBackupSnapshot(snapshot(), archived);
+  const prepared = await prepareBackupSnapshot(archived);
   assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark",
     frequencyDictionary: "", kanjiClickDictionary: "" });
   assert.equal(prepared.warning, "Unavailable dictionary selections were reset.");
@@ -226,21 +229,23 @@ test("restore migrates a legacy clicked-kanji title without reporting a reset se
     displayName: null, termCount: 1, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, mediaCount: 0,
     isUpdatable: false, indexUrl: null, downloadUrl: null, language: "ja" }];
   archived.options.kanjiClickDictionary = "辞書";
-  const prepared = await prepareBackupSnapshot(snapshot(), archived);
+  const prepared = await prepareBackupSnapshot(archived);
   assert.deepEqual(prepared.snapshot.options.kanjiClickDictionary, { title: "辞書", kind: "term" });
   assert.equal(prepared.warning, null);
   await assertBackupSnapshot(prepared.snapshot);
 });
 
-test("incompatible update settings keep the current schedule without blocking dictionary restore", async () => {
-  const current = snapshot();
-  for (const updates of [undefined, null, { revision: -1, schedule: "daily", lastCheckedAt: null },
-    { revision: 1, schedule: "future", lastCheckedAt: null }, { ...current.updates, futureOption: true }]) {
+test("update settings this version cannot read are skipped without blocking dictionary restore", async () => {
+  for (const [updates, expected] of [[undefined, { revision: 0, schedule: "off", lastCheckedAt: null }],
+    [null, { revision: 0, schedule: "off", lastCheckedAt: null }],
+    [{ revision: -1, schedule: "daily", lastCheckedAt: null }, { revision: 0, schedule: "daily", lastCheckedAt: null }],
+    [{ revision: 1, schedule: "future", lastCheckedAt: null }, { revision: 1, schedule: "off", lastCheckedAt: null }],
+    [{ ...snapshot().updates, futureOption: true }, snapshot().updates]]) {
     const archived = { ...snapshot(), updates };
-    const prepared = await prepareBackupSnapshot(current, archived);
-    assert.deepEqual(prepared.snapshot.updates, current.updates);
+    const prepared = await prepareBackupSnapshot(archived);
+    assert.deepEqual(prepared.snapshot.updates, expected);
     assert.deepEqual(prepared.snapshot.state, archived.state);
-    assert.match(prepared.warning, /update settings.*skipped/iu);
+    assert.equal(prepared.warning, null);
     await assertBackupSnapshot(prepared.snapshot);
   }
 });

@@ -115,23 +115,6 @@ test("backup ZIP64 preserves snapshot, UTF-8 paths and binary files", async () =
   await reader.close();
 });
 
-test("older backups discard retired corpus options and preserve standalone reader settings", async () => {
-  const archived = {
-    state: { schemaVersion: 1, revision: 8, dictionaries: [], groups: [] },
-    document: emptyCustomDictionaryDocument(),
-    options: { revision: 21, popupTheme: "dark", showLookupCounts: true,
-      corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:55000" },
-    updates: { revision: 4, schedule: "daily", lastCheckedAt: null },
-    lookupStats: { generation: "archived", revision: 3 },
-  };
-  const prepared = await openBackupArchive(await createBackupArchive(archived, [], lookupStatsRows));
-  assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark", showLookupCounts: true });
-  assert.deepEqual(prepared.lookupStatsRows, lookupStatsRows);
-  await assertBackupSnapshot(prepared.snapshot);
-  prepared.snapshot.options.unknown = true;
-  await assert.rejects(assertBackupSnapshot(prepared.snapshot));
-});
-
 async function rewrite(archive, change) {
   const reader = new ZipReader(new BlobReader(archive), zipOptions);
   const writer = new ZipWriter(new BlobWriter(), zipOptions);
@@ -143,25 +126,32 @@ async function rewrite(archive, change) {
   return writer.close();
 }
 
-test("archive versions 1, 2 and 3 restore with incompatible reader settings", async () => {
+test("a backup from any version restores the settings this version can read and skips the rest", async () => {
   const current = {
     state: { schemaVersion: 1, revision: 1, dictionaries: [], groups: [] },
     document: emptyCustomDictionaryDocument(), options: { revision: 3, popupTheme: "light" },
     updates: { revision: 1, schedule: "off", lastCheckedAt: null },
     lookupStats: { generation: "archived", revision: 0 },
   };
-  const archive = await createBackupArchive({ ...current, options: { revision: 1, futureOption: true } }, [], []);
-  for (const version of [1, 2, 3]) {
+  // A known setting, one with a value this version cannot read, one it does
+  // not know, and the retired external corpus integration.
+  const archive = await createBackupArchive({ ...current, options: { revision: 21, popupTheme: "dark",
+    showLookupCounts: "yes", futureOption: true, corpusSeenEnabled: true, corpusSeenUrl: "http://127.0.0.1:55000" },
+  updates: { revision: 4, schedule: "future", lastCheckedAt: null } }, [], []);
+  for (const version of [1, 2, 3, 4]) {
     const legacy = await rewrite(archive, async (path, data) => {
       const manifest = JSON.parse(await data.text());
       return { path, data: new Blob([JSON.stringify({ ...manifest, version })]) };
     });
     const archived = await openBackupArchive(legacy);
-    const prepared = await prepareBackupSnapshot(current, archived.snapshot);
-    assert.match(prepared.warning, /reader settings.*skipped/iu);
-    assert.deepEqual(prepared.snapshot.options, current.options);
+    const prepared = await prepareBackupSnapshot(archived.snapshot);
+    assert.equal(prepared.warning, null);
+    assert.deepEqual(prepared.snapshot.options, { revision: 21, popupTheme: "dark", showLookupCounts: true });
+    assert.deepEqual(prepared.snapshot.updates, { revision: 4, schedule: "off", lastCheckedAt: null });
     await assertBackupSnapshot(prepared.snapshot);
   }
+  // A snapshot written or committed by this version is still exact.
+  await assert.rejects(assertBackupSnapshot({ ...current, options: { revision: 1, futureOption: true } }));
 });
 
 test("backup validation rejects missing, unlisted, unsafe and non-file payloads", async () => {
@@ -196,7 +186,7 @@ test("backup validation checks file CRC and the exact declared sizes", async () 
   await assert.rejects(openBackupArchive(wrongSize), /size/u);
 });
 
-test("version 1 restores empty statistics, version 2 requires them, and version 3 adds word status overrides", async () => {
+test("version 1 and unreadable statistics restore none, newer versions are read, and version 3 adds word status overrides", async () => {
   const overrides = { revision: 2, known: ["猫"], ignored: ["さん"] };
   const archive = await createBackupArchive({ ...snapshot, wordStatusOverrides: overrides }, files, lookupStatsRows);
   assert.deepEqual((await openBackupArchive(archive)).snapshot.wordStatusOverrides, overrides);
@@ -217,7 +207,14 @@ test("version 1 restores empty statistics, version 2 requires them, and version 
   assert.deepEqual(version2.snapshot.wordStatusOverrides, { revision: 0, known: [], ignored: [] });
   assert.deepEqual(version2.lookupStatsRows, lookupStatsRows);
   for (const edit of [manifest => { delete manifest.lookupStatsRows; },
-    manifest => { delete manifest.snapshot.lookupStats; }, manifest => { manifest.version = 4; }]) {
-    await assert.rejects(openBackupArchive(await editManifest(edit)));
+    manifest => { delete manifest.snapshot.lookupStats; }, manifest => { manifest.lookupStatsRows[0].lookupCount = -1; }]) {
+    const unreadable = await openBackupArchive(await editManifest(edit));
+    assert.deepEqual([unreadable.snapshot.lookupStats, unreadable.lookupStatsRows], [{ generation: null, revision: 0 }, []]);
+    assert.equal(unreadable.files.length, files.length);
+  }
+  const newer = await openBackupArchive(await editManifest(manifest => { manifest.version = 4; }));
+  assert.deepEqual([newer.snapshot.wordStatusOverrides, newer.lookupStatsRows], [overrides, lookupStatsRows]);
+  for (const version of [0, "3", null]) {
+    await assert.rejects(openBackupArchive(await editManifest(manifest => { manifest.version = version; })), /supported/u);
   }
 });

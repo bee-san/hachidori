@@ -3358,7 +3358,7 @@ const HANDLERS = {
     const copy = storageBackend === "opfs" ? await writeBackupFile(output => response.body.pipeTo(output)) : null;
     try {
       const prepared = await openBackupArchive(copy?.file ?? await response.blob());
-      const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
+      const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(prepared.snapshot);
       prepared.snapshot = snapshot;
       const roots = [];
       try {
@@ -3406,7 +3406,7 @@ const HANDLERS = {
       import("./backup-state.js"),
     ]);
     if (!prepared) throw new Error("This automatic backup is corrupt or no longer retained.");
-    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(current, prepared.snapshot);
+    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(prepared.snapshot);
     const dictionaries = prepared.snapshot.state.dictionaries;
     assertBackupDictionaryPaths(dictionaries);
     try {

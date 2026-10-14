@@ -107,20 +107,23 @@ async function entryData(archive, entry) {
   return archive.slice(start, start + entry.uncompressedSize);
 }
 
-// A supported manifest's snapshot and statistics rows in the current shape:
-// version 1 has no lookup statistics, and versions 1 and 2 no words marked as
-// known or ignored. Older backups also include the retired external corpus
-// integration; only those fields are dropped before the complete snapshot
-// contract validates the restore.
+// A manifest's snapshot and statistics rows in the current shape. Version 1
+// has no lookup statistics and versions 1 and 2 no words marked as known or
+// ignored; statistics or marked words this version cannot read are skipped
+// the same way (#577). prepareBackupSnapshot reads the settings.
 function currentSnapshot(manifest) {
-  let { snapshot } = manifest;
-  if (manifest.version === 1) snapshot = { ...snapshot, lookupStats: emptyLookupStats() };
-  if (manifest.version < 3) {
-    snapshot = { ...snapshot, wordStatusOverrides: globalThis.HDWordStatusOverrides.emptyWordStatusOverrides() };
+  const { emptyWordStatusOverrides, normaliseWordStatusOverrides } = globalThis.HDWordStatusOverrides;
+  const snapshot = { ...manifest.snapshot };
+  if (manifest.version < 3) snapshot.wordStatusOverrides = emptyWordStatusOverrides();
+  else if (snapshot.wordStatusOverrides !== undefined) {
+    snapshot.wordStatusOverrides = normaliseWordStatusOverrides(snapshot.wordStatusOverrides);
   }
-  delete snapshot?.options?.corpusSeenEnabled;
-  delete snapshot?.options?.corpusSeenUrl;
-  return { snapshot, lookupStatsRows: manifest.version === 1 ? [] : manifest.lookupStatsRows };
+  try {
+    assertLookupStatsRows(snapshot.lookupStats, manifest.lookupStatsRows);
+    return { snapshot, lookupStatsRows: manifest.lookupStatsRows };
+  } catch {
+    return { snapshot: { ...snapshot, lookupStats: emptyLookupStats() }, lookupStatsRows: [] };
+  }
 }
 
 export async function openBackupArchive(blob) {
@@ -136,12 +139,12 @@ export async function openBackupArchive(blob) {
     const manifestEntry = byPath.get(MANIFEST);
     if (!manifestEntry) throw new Error("The selected archive is not a Hachidori backup.");
     const manifest = JSON.parse(await (await readEntry(manifestEntry)).text());
-    if (manifest?.format !== "hachidori-backup" || ![1, 2, 3].includes(manifest.version)
+    // Any version: a newer one is read like this one, skipping what it added.
+    if (manifest?.format !== "hachidori-backup" || !Number.isSafeInteger(manifest.version) || manifest.version < 1
         || typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
       throw new Error("The selected archive is not a supported Hachidori backup.");
     }
     const { snapshot, lookupStatsRows } = currentSnapshot(manifest);
-    assertLookupStatsRows(snapshot?.lookupStats, lookupStatsRows);
     assertFileList(manifest.files);
     if (entries.length !== manifest.files.length + 1) throw new Error("The backup contains unlisted or missing files.");
     const files = [];
