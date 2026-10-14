@@ -63,7 +63,7 @@ export async function waitForEngine({
       throw new Error(`The dictionary engine was still busy after ${Math.round(timeoutMs / 60_000)} minutes.`);
     }
     onWait(waited);
-    await wait(Math.min(delay, timeoutMs - waited), signal);
+    await wait(Math.min(delay, timeoutMs - waited), signal); // NOSONAR: each poll backs off before the next
   }
 }
 

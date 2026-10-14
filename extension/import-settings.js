@@ -267,8 +267,8 @@ async function importArchive(runImport, index, total, label) {
     }
     setImportState(signal.aborted ? `Cancelling after ${label} finishes importing — ${elapsed} elapsed`
       : `Importing ${label} ${position}`, "busy");
-    const text = phase === "retrying" ? retryText
-      : `Importing${attempt > 1 ? ` (attempt ${attempt} of ${IMPORT_ATTEMPTS})` : ""}… ${elapsed} elapsed`;
+    const attemptLabel = attempt > 1 ? ` (attempt ${attempt} of ${IMPORT_ATTEMPTS})` : "";
+    const text = phase === "retrying" ? retryText : `Importing${attemptLabel}… ${elapsed} elapsed`;
     updateImportResult(index, { text, progress: { value: null } });
   };
   const ticker = setInterval(tick, 1000);
@@ -330,9 +330,9 @@ async function importArchive(runImport, index, total, label) {
     return notes.length > 0 ? "imported-with-notes" : "imported";
   }
   const duration = importDuration(firstAttemptAt);
+  const spent = outcome.attempts > 1 ? `${outcome.attempts} attempts in ${duration}` : duration;
   updateImportResult(index, {
-    text: `Failed after ${outcome.attempts > 1 ? `${outcome.attempts} attempts in ${duration}` : duration}: `
-      + failureReason(outcome, label),
+    text: `Failed after ${spent}: ${failureReason(outcome, label)}`,
     tone: "error",
   });
   return "failed";
@@ -369,6 +369,25 @@ function renderRecommendedInstallation() {
     setImportState(`Installing recommended dictionaries — ${complete} of ${total} complete. You can close this page.`, "busy");
   }
   renderRecommendedActions();
+}
+
+// The batch's last line. #import-state is the polite live region, so it
+// announces the notes.
+function batchSummary({ total, imported, withNotes, cancelled, aborted, singular, plural }) {
+  const failed = total - imported - cancelled;
+  const itemLabel = total === 1 ? singular : plural;
+  const importedLabel = withNotes === 0
+    ? `${imported} imported`
+    : `${imported} imported (${withNotes} with notes)`;
+  const outcomes = [
+    importedLabel,
+    ...(cancelled === 0 ? [] : [`${cancelled} cancelled`]),
+    `${failed} failed`,
+  ].join(", ");
+  return {
+    text: aborted ? `Import cancelled — ${outcomes}.` : `Finished ${total} of ${total} ${itemLabel} — ${outcomes}.`,
+    tone: failed === 0 ? "ready" : "error",
+  };
 }
 
 async function runImportBatch(items, importOne, singular, plural, describeItem) {
@@ -415,23 +434,9 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
         await reloadDictionaries(); // NOSONAR: the next archive is checked against the state this one committed
       } else if (outcome === "cancelled") cancelled += 1;
     }
-    const failed = items.length - imported - cancelled;
-    const itemLabel = items.length === 1 ? singular : plural;
-    // #import-state is the polite live region, so it announces the notes.
-    const importedLabel = withNotes === 0
-      ? `${imported} imported`
-      : `${imported} imported (${withNotes} with notes)`;
-    const outcomes = [
-      importedLabel,
-      ...(cancelled === 0 ? [] : [`${cancelled} cancelled`]),
-      `${failed} failed`,
-    ].join(", ");
-    setImportState(
-      signal.aborted
-        ? `Import cancelled — ${outcomes}.`
-        : `Finished ${items.length} of ${items.length} ${itemLabel} — ${outcomes}.`,
-      failed === 0 ? "ready" : "error",
-    );
+    const { text, tone } = batchSummary({ total: items.length, imported, withNotes, cancelled,
+      aborted: signal.aborted, singular, plural });
+    setImportState(text, tone);
     await reloadDictionaries();
     await refreshStatus();
   } finally {
