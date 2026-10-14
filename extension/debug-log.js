@@ -35,7 +35,7 @@ export const REDACTED_JAPANESE = "[ja]";
 
 // Settings keys and message fields that hold a credential.
 const SECRET_KEY = /api.?key|token|secret|password/iu;
-const SECRET_FIELD = new RegExp(`(["']?[\\w-]*(?:${SECRET_KEY.source})[\\w-]*["']?\\s*[:=]\\s*)("[^"]*"|'[^']*'|[^\\s"',;&}]+)`, "giu");
+const SECRET_FIELD = new RegExp(String.raw`(["']?[\w-]*(?:${SECRET_KEY.source})[\w-]*["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s"',;&}]+)`, "giu");
 const AUTHORIZATION = /\b(Bearer|Basic)\s+[\w.~+/=-]+/gu;
 const WEB_ADDRESS = /\b(?:https?|wss?|ftp|file):\/\/[^\s"'<>`]+/giu;
 const DATA_URL = /\bdata:([^,\s"'<>`]*),[^\s"'<>`)]*/giu;
@@ -55,17 +55,26 @@ export function redactSecrets(value) {
 // A web address keeps its scheme, host and path; sign-in details, query and
 // fragment are removed, and a local file keeps none of its path.
 function redactWebAddress(match) {
-  const [, address, trailing] = /^(.*?)([).,;:]*)$/su.exec(match);
+  // Punctuation that ends a sentence or a stack frame is not part of it.
+  let end = match.length;
+  while (end > 0 && ").,;:".includes(match[end - 1])) end -= 1;
+  const trailing = match.slice(end);
   let url;
   try {
-    url = new URL(address);
+    url = new URL(match.slice(0, end));
   } catch {
-    return `${REDACTED}${trailing}`;
+    return REDACTED + trailing;
   }
   if (url.protocol === "file:") return `file:///${REDACTED}${trailing}`;
-  const signIn = url.username || url.password ? `${REDACTED}@` : "";
-  return `${url.protocol}//${signIn}${url.host}${url.pathname.replace(ENCODED_TEXT, REDACTED)}`
-    + `${url.search ? `?${REDACTED}` : ""}${url.hash ? `#${REDACTED}` : ""}${trailing}`;
+  const signIn = url.username || url.password ? REDACTED + "@" : "";
+  const query = url.search ? "?" + REDACTED : "";
+  const fragment = url.hash ? "#" + REDACTED : "";
+  return `${url.protocol}//${signIn}${url.host}${url.pathname.replace(ENCODED_TEXT, REDACTED)}${query}${fragment}${trailing}`;
+}
+
+// A quoted credential stays quoted.
+function redactSecretField(_match, name, value) {
+  return name + (/^["']/u.test(value) ? `"${REDACTED}"` : REDACTED);
 }
 
 export function redactDebugText(value) {
@@ -73,7 +82,7 @@ export function redactDebugText(value) {
     .replace(DATA_URL, (_match, type) => `data:${type},${REDACTED}`)
     .replace(WEB_ADDRESS, redactWebAddress)
     .replace(AUTHORIZATION, `$1 ${REDACTED}`)
-    .replace(SECRET_FIELD, (_match, name, value) => `${name}${/^["']/u.test(value) ? `"${REDACTED}"` : REDACTED}`)
+    .replace(SECRET_FIELD, redactSecretField)
     .replace(JAPANESE_TEXT, REDACTED_JAPANESE);
   return text.length > DEBUG_LOG_MESSAGE_LIMIT ? `${text.slice(0, DEBUG_LOG_MESSAGE_LIMIT)}…` : text;
 }
@@ -98,7 +107,8 @@ function describeCause(cause, depth = 0) {
   if (cause === undefined || cause === null || depth === 3) return "";
   if (!errorLike(cause)) return formatPart(cause);
   const deeper = describeCause(cause.cause, depth + 1);
-  return `${cause.stack || formatPart(cause)}${deeper ? `\nCaused by: ${deeper}` : ""}`;
+  const described = cause.stack || formatPart(cause);
+  return deeper ? `${described}\nCaused by: ${deeper}` : described;
 }
 
 // The stack, cause chain and error code of `error`, unredacted.
@@ -424,7 +434,7 @@ const ACTION_TARGETS = "button, a[href], summary, [role='button'], [role='tab'],
 // element with an id. Never its text or value.
 function debugActionTarget(element) {
   if (element.id) return `#${element.id}`;
-  const name = `${element.localName}${element.classList?.[0] ? `.${element.classList[0]}` : ""}`;
+  const name = element.classList?.[0] ? `${element.localName}.${element.classList[0]}` : element.localName;
   const owner = element.parentElement?.closest("[id]");
   return owner ? `${name} in #${owner.id}` : name;
 }
@@ -450,12 +460,14 @@ export function captureDocumentActions(document, log) {
 export function formatDebugErrorReport(log, entry, { userAgent = "", before = 12 } = {}) {
   const kept = log.entries();
   const index = kept.findIndex(item => item.n === entry.n);
-  const earlier = (index < 0 ? [] : kept.slice(Math.max(0, index - before), index))
-    .map(item => `  ${item.at.slice(11, 23)} ${item.level === "action" ? "" : `${item.level}: `}${item.message}`
-      + `${item.repeat ? ` (×${item.repeat})` : ""}`);
+  const earlier = (index < 0 ? [] : kept.slice(Math.max(0, index - before), index)).map((item) => {
+    const level = item.level === "action" ? "" : item.level + ": ";
+    const repeat = item.repeat ? ` (×${item.repeat})` : "";
+    return `  ${item.at.slice(11, 23)} ${level}${item.message}${repeat}`;
+  });
   return [
     `Hachidori ${entry.version ?? "(unknown version)"} · ${log.context} · session ${entry.session}`,
-    `${entry.at}${entry.where ? ` · ${entry.where}` : ""}`,
+    entry.where ? `${entry.at} · ${entry.where}` : entry.at,
     entry.message,
     ...(entry.detail ? [entry.detail] : []),
     ...(entry.code ? [`Code: ${entry.code}`] : []),
