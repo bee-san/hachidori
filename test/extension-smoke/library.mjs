@@ -1373,9 +1373,10 @@ describe("Settings library", () => {
         && settingsBatch.controlsRestored === true
         && settingsBatch.cancelHidden === true
         // Per archive one status poll before its first attempt and one library
-        // read, plus one of each per retry; two polls found the engine held.
-        // Then a reload after each success, the final reload and status.
-        && settingsBatch.stateReads === 8
+        // read beside it, plus one of each per retry; two polls found the engine
+        // held, so that archive read the library again after the wait. Then a
+        // reload after each success, the final reload and status.
+        && settingsBatch.stateReads === 9
         && settingsBatch.statusReads === 8,
       JSON.stringify(settingsBatch),
     );

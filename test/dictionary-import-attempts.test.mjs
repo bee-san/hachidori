@@ -174,6 +174,25 @@ test("an import is not retried once the library changed, so it cannot run twice"
   assert.deepEqual(unreadable.calls, [1], "an unreadable library is not retried either");
 });
 
+test("the library is read beside the first status poll, and again after waiting for another change", async () => {
+  // Idle: one read, made while the status poll is in flight.
+  const reads = [];
+  const idle = await importWithRetries({ ...statuses(IDLE), ...fakeTime(), ...importer(IMPORTED),
+    readRevision: async () => { reads.push("read"); return 4; } });
+  assert.equal(idle.ok, true);
+  assert.equal(reads.length, 1);
+
+  // Another tab's import commits while this one waits: the revision read after
+  // the wait is the one a retry compares with, so the retry still happens.
+  const revisions = [4, 5, 5];
+  const imports = importer(FAILED, IMPORTED);
+  const outcome = await importWithRetries({ ...statuses(MUTATING, IDLE), ...fakeTime(), ...imports,
+    readRevision: async () => revisions.shift() });
+  assert.deepEqual(outcome, { ok: true, reply: IMPORTED, attempts: 2 });
+  assert.deepEqual(imports.calls, [1, 2]);
+  assert.deepEqual(revisions, []);
+});
+
 test("cancelling before the first attempt imports nothing; cancelling a retry reports the failure", async () => {
   const before = new AbortController();
   const untried = importer(IMPORTED);

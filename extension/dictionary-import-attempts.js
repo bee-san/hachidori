@@ -83,12 +83,16 @@ async function tryImport(attempt, number) {
 // `{ ok, reply | error, attempts }` for the last one. Rejects only when the first
 // wait is cancelled or times out, before anything was attempted.
 export async function importWithRetries({
-  attempt, readRevision, onAttempt = () => {}, onRetry = () => {}, signal, wait = sleep, ...engine
+  attempt, readRevision, onAttempt = () => {}, onRetry = () => {}, onWait = () => {}, signal, wait = sleep, ...engine
 }) {
-  const turn = () => waitForEngine({ ...engine, signal, wait });
+  let waited = false;
+  const turn = () => waitForEngine({ ...engine, signal, wait, onWait: (ms) => { waited = true; onWait(ms); } });
   const revision = () => readRevision().catch(() => null);
+  // Read beside the first status poll, and again only if the engine made this
+  // import wait: a change that committed meanwhile must not cost the retry.
+  const early = revision();
   await turn();
-  const before = await revision();
+  const before = waited ? await revision() : await early;
   for (let number = 1; ; number += 1) {
     onAttempt(number);
     const outcome = { ...await tryImport(attempt, number), attempts: number };
