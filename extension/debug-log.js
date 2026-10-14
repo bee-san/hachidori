@@ -11,8 +11,9 @@
 // worker (debug-log-content.js), which keeps them like its own.
 //
 // Every context keeps its newest DEBUG_LOG_LIMIT entries in memory and appends
-// each entry, in short batches, to one IndexedDB ring the extension's contexts
-// share. The ring keeps the newest DEBUG_LOG_MAX_EVENTS entries within
+// them to one IndexedDB ring the extension's contexts share, in one
+// transaction for what each task recorded (and for whatever arrived while the
+// previous write was running). The ring keeps the newest DEBUG_LOG_MAX_EVENTS entries within
 // DEBUG_LOG_MAX_BYTES, so an error from before Settings was opened, reloaded
 // or the browser restarted is still in the report. Identical entries in a row
 // are kept once, with a count and the time of the last one.
@@ -30,8 +31,6 @@ export const DEBUG_LOG_MESSAGE_LIMIT = 4000;
 export const DEBUG_LOG_DATABASE = "hachidori-debug-log";
 export const DEBUG_LOG_MAX_EVENTS = 5000;
 export const DEBUG_LOG_MAX_BYTES = 2 * 1024 * 1024;
-// How long an entry waits for others to share its write.
-export const DEBUG_LOG_FLUSH_MS = 100;
 export const REDACTED = "[redacted]";
 export const REDACTED_JAPANESE = "[ja]";
 
@@ -262,11 +261,20 @@ function storedRecord(entry) {
 const sameEntry = (left, right) => left.level === right.level && left.message === right.message
   && left.where === right.where && left.stack === right.stack;
 
+// The extension's version. An offscreen document and a dedicated worker have
+// no chrome.runtime.getManifest; they read the manifest once something is
+// written.
+function manifestVersion(scope) {
+  const manifest = scope.chrome?.runtime?.getManifest?.();
+  if (manifest) return manifest.version;
+  if (typeof scope.fetch !== "function" || !scope.location) return null;
+  return async () => (await (await scope.fetch(new URL("/manifest.json", scope.location.href))).json()).version;
+}
+
 // `store` is openDebugLogStore()'s ring, or null to keep entries in memory
-// only. `version` is the extension's, or a function that resolves it where
-// the manifest cannot be read synchronously.
+// only. `version` is the extension's, or a function that resolves it.
 export function captureDebugLog(scope, { context, store = null, now = () => Date.now(),
-  version = scope.chrome?.runtime?.getManifest?.()?.version ?? null, session = newSessionId(scope) }) {
+  version = manifestVersion(scope), session = newSessionId(scope) }) {
   if (scope[DEBUG_LOG]) return scope[DEBUG_LOG];
   const startedAt = new Date(now()).toISOString();
   const entries = [];
@@ -274,7 +282,7 @@ export function captureDebugLog(scope, { context, store = null, now = () => Date
   const persistence = { saved: 0, error: store === null ? "not persisted in this context" : null };
   let count = 0;
   let last = null;
-  let timer = null;
+  let queued = false;
   let writing = Promise.resolve();
   let resolvedVersion = typeof version === "function" ? null : version;
   let versionRead = typeof version === "function" ? null : Promise.resolve(version);
@@ -304,7 +312,15 @@ export function captureDebugLog(scope, { context, store = null, now = () => Date
   function schedule(entry) {
     if (store === null) return;
     unsaved.add(entry);
-    timer ??= setTimeout(flush, DEBUG_LOG_FLUSH_MS);
+    if (queued) return;
+    queued = true;
+    // Once the current task has recorded what it will: a reload or a crash
+    // moments later must not lose it, and a timer would wait out the
+    // throttling of a hidden page.
+    void Promise.resolve().then(() => {
+      queued = false;
+      return flush();
+    });
   }
 
   async function save() {
@@ -331,8 +347,6 @@ export function captureDebugLog(scope, { context, store = null, now = () => Date
   }
 
   function flush() {
-    clearTimeout(timer);
-    timer = null;
     writing = writing.then(save);
     return writing;
   }

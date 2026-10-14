@@ -43,6 +43,7 @@ import "./chrome-e2e/restart.mjs";
 import "./chrome-e2e/memory.mjs";
 import "./chrome-e2e/media.mjs";
 import "./chrome-e2e/file-access.mjs";
+import "./chrome-e2e/debug-log.mjs";
 import { markCompleteSuite } from "./chrome-e2e/harness.mjs";
 
 markCompleteSuite();
