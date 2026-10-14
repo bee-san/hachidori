@@ -345,7 +345,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   // and update field it does not know, as a newer version could write them.
   const beforeIncompatible = restored;
   const incompatibleSnapshot = structuredClone(parsed.snapshot);
-  incompatibleSnapshot.options = { ...beforeIncompatible.options, maxResults: "many", futureOption: true };
+  incompatibleSnapshot.options = { ...beforeIncompatible.options, showLookupCounts: "yes", futureOption: true };
   incompatibleSnapshot.updates = { ...beforeIncompatible.updates, futureOption: true };
   const incompatibleArchive = await createBackupArchive(incompatibleSnapshot, parsed.files, parsed.lookupStatsRows);
   const incompatiblePath = resolve(directory, "incompatible-settings-backup.zip");
@@ -366,7 +366,7 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
     chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
   check(BACKUP_CHROME_CHECKS[8], compatibilityNotice === "Restored successfully."
     && isDeepStrictEqual(restored.options,
-      { ...beforeIncompatible.options, maxResults: 32, revision: beforeIncompatible.options.revision + 1 })
+      { ...beforeIncompatible.options, showLookupCounts: true, revision: beforeIncompatible.options.revision + 1 })
     && isDeepStrictEqual(restored.updates,
       { ...beforeIncompatible.updates, revision: beforeIncompatible.updates.revision + 1 })
     && JSON.stringify(restored.state.dictionaries.map(({ path, ...dictionary }) => dictionary))
