@@ -3279,11 +3279,11 @@ const HANDLERS = {
   },
 
   async hd_backup_release(message) {
-    if (!backupUrls.has(message.blobUrl)) return {};
     const name = backupUrls.get(message.blobUrl);
-    backupUrls.delete(message.blobUrl);
-    URL.revokeObjectURL(message.blobUrl);
-    if (name !== null) await removeBackupFile(name);
+    if (backupUrls.delete(message.blobUrl)) {
+      URL.revokeObjectURL(message.blobUrl);
+      if (name !== null) await removeBackupFile(name);
+    }
     return {};
   },
 

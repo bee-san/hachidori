@@ -30,12 +30,12 @@ backup content.
 With direct OPFS the archive is an OPFS file under `.hdw-backup-files/`. Export
 reads each dictionary file as it writes the archive there, and Chrome downloads
 that file; a chosen backup is copied there and restored from it in place.
-Neither is held in memory or in browser Blob storage. Version 0.3.0 assembled
-the archive from Blobs, about twice the library's size; once that exceeded what
-Chrome could keep in memory or page to disk, the Blob broke and Chrome failed
-the download as **Check internet connection** (#577). Releasing an export, or
-finishing a preparation, removes its file, and the engine's start removes any
-that a closed browser left. IDBFS hosts keep the Blob path.
+Neither is held in memory or in browser Blob storage. Earlier versions
+assembled the archive from Blobs, about twice the library's size; once that
+exceeded what Chrome could keep in memory or page to disk, the Blob broke and
+Chrome failed the download as **Check internet connection** (#577). Releasing
+an export, or finishing a preparation, removes its file, and the engine's start
+removes any that a closed browser left. IDBFS hosts keep the Blob path.
 
 Choosing a backup validates and stages it before showing its date and dictionary
 list. Nothing is published until the replacement checkbox is selected and
