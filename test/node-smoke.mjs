@@ -1608,8 +1608,15 @@ check('a surface frequency that ties two readings yields to the caller dictionar
   const WIKI = 'reading-tie-wikipedia';
   const PIXIV = 'reading-tie-pixiv';
   const FREQ = 'reading-tie-surface-frequency';
+  // A per-reading frequency that ranks かみはら (the bottom dictionary's reading)
+  // the more common one. Auto must ignore it and still follow dictionary order,
+  // the way Yomitan does with no sort frequency dictionary; an explicit sort on
+  // it would instead float かみはら. It is never set as the dict order, so it
+  // only takes part when Auto or an explicit sort would consult it.
+  const AUTOFREQ = 'reading-tie-auto-frequency';
   const termPaths = [`/dicts/${WIKI}`, `/dicts/${PIXIV}`];
   const freqPath = `/dicts/${FREQ}`;
+  const autoFreqPath = `/dicts/${AUTOFREQ}`;
   const archives = [
     [WIKI, buildTitledZip(WIKI, { terms: [['神原', 'かんばら', 'fam', '', 0, ['Kanbara (surname)'], 1, '']] })],
     [PIXIV, buildTitledZip(PIXIV, { terms: [['神原', 'かみはら', '', '', 0, ['A Japanese surname.'], 1, '']] })],
@@ -1620,6 +1627,14 @@ check('a surface frequency that ties two readings yields to the caller dictionar
       frequencyMode: 'rank-based',
       termMeta: [['神原', 'freq', { value: 8988, displayValue: '8988' }]],
     })],
+    [AUTOFREQ, buildTitledZip(AUTOFREQ, {
+      banks: false,
+      frequencyMode: 'rank-based',
+      termMeta: [
+        ['神原', 'freq', { reading: 'かみはら', frequency: { value: 100, displayValue: '100' } }],
+        ['神原', 'freq', { reading: 'かんばら', frequency: { value: 90000, displayValue: '90000' } }],
+      ],
+    })],
   ];
   for (const [title, bytes] of archives) {
     const zipPath = `/work/${title}.zip`;
@@ -1628,22 +1643,32 @@ check('a surface frequency that ties two readings yields to the caller dictionar
   }
   const readings = (options) => lookup('神原', 32, 16, options).results.map((r) => r.term.reading);
   const ascending = JSON.stringify({ frequencyDictionary: FREQ, frequencyOrder: 'ascending', primaryReading: '' });
+  const autoAscending = JSON.stringify({ frequencyDictionary: AUTOFREQ, frequencyOrder: 'ascending', primaryReading: '' });
   for (const paged of [0, 1]) {
     reset();
     termPaths.forEach((path) => eq(addDict(path, 0, paged), 1, lastError()));
     eq(addDict(freqPath, 1, paged), 1, lastError());
+    eq(addDict(autoFreqPath, 1, paged), 1, lastError());
     eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify(termPaths)]), 1, lastError());
 
     // The user's own setting: an explicit ascending sort by the surface
     // frequency. The tie resolves to the top dictionary's reading.
     same(readings(ascending), ['かんばら', 'かみはら'], `ascending surface frequency, paged=${paged}`);
-    // Auto consults every frequency dictionary and ties the same way.
+    // Auto (no single sort dictionary) goes straight to dictionary order, as
+    // Yomitan does with no sort frequency dictionary. It does not consult the
+    // per-reading frequency, so かんばら (the top dictionary) stays first even
+    // though that frequency ranks かみはら the more common reading.
     same(readings(AUTO_OPTIONS), ['かんばら', 'かみはら'], `auto, paged=${paged}`);
+    // Proof Auto ignores frequency: an explicit ascending sort on the same
+    // per-reading frequency floats かみはら instead, the opposite order.
+    same(readings(autoAscending), ['かみはら', 'かんばら'], `explicit per-reading frequency, paged=${paged}`);
 
     // Reversing the caller's dictionary order reverses the tie, so the order is
-    // the dictionaries' and not a fixed reading or insertion order.
+    // the dictionaries' and not a fixed reading or insertion order. Both the
+    // user's surface-frequency sort and Auto follow it.
     eq(call('hdw_set_dict_order', 'number', ['string'], [JSON.stringify([...termPaths].reverse())]), 1, lastError());
     same(readings(ascending), ['かみはら', 'かんばら'], `reversed priority, paged=${paged}`);
+    same(readings(AUTO_OPTIONS), ['かみはら', 'かんばら'], `reversed priority auto, paged=${paged}`);
   }
 });
 
