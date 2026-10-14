@@ -118,6 +118,27 @@ function send(type, requestId) {
   return request(type, requestId).promise;
 }
 
+// A request a held dictionary change blocks neither fails nor reaches the
+// engine: it waits for its turn (#578).
+async function waitsTurn(type, requestId, posted = () => engine.messages.map(({ message }) => message)) {
+  const entry = request(type, requestId);
+  await tick();
+  assert.equal(entry.responses.length, 0, `${requestId} waits instead of failing busy`);
+  assert.equal(posted().some((message) => message?.requestId === requestId), false, `${requestId} waits outside the engine`);
+  return entry;
+}
+
+// Answers a waiting request once the bridge has admitted it to the worker.
+async function answer(entry, requestId, worker = engine) {
+  await tick();
+  const message = worker.messages.find((candidate) => candidate.message?.requestId === requestId);
+  assert.ok(message, `${requestId} reaches the engine once the change before it settles`);
+  worker.emit("message", { channel: "engine-response", id: message.id,
+    response: { type: `${message.message.type}_result`, requestId, ok: true } });
+  assert.equal((await entry.promise).ok, true);
+  assert.equal(entry.responses.length, 1, `${requestId} is answered once`);
+}
+
 const startup = Array.from({ length: 129 }, (_, index) => request("hd_lookup", `lookup-${index}`));
 await tick();
 assert.equal(startup[128].responses.length, 1, "admit before awaiting engine selection");
@@ -219,7 +240,7 @@ engine.emit("message", {
   response: { type: "hd_lookup_result", requestId: "lookup-during-staging", ok: true, results: [] },
 });
 assert.equal((await stagedLookup.promise).ok, true);
-assert.match((await send("hd_remove", "remove-during-staging")).error, /busy mutating/);
+const removeDuringStaging = await waitsTurn("hd_remove", "remove-during-staging");
 engine.emit("message", {
   channel: "engine-progress",
   progress: {
@@ -270,13 +291,19 @@ engine.emit("message", {
   response: { type: "hd_lookup_result", requestId: "lookup-during-isolated-install", ok: true, results: [] },
 });
 assert.equal((await isolatedInstallLookup.promise).ok, true);
-assert.match((await send("hd_remove", "remove-during-isolated-install")).error, /busy mutating/);
+const removeDuringInstall = await waitsTurn("hd_remove", "remove-during-isolated-install");
 engine.emit("message", {
   channel: "engine-response",
   id: stagedImportMessage.id,
   response: { type: "hd_import_result", requestId: "staged-import", ok: true },
 });
 assert.equal((await stagedImport.promise).ok, true);
+// The import's release admits the first removal; the second waits behind it.
+await tick();
+assert.equal(engine.messages.some(({ message }) => message?.requestId === "remove-during-isolated-install"), false,
+  "the second waiting removal stays queued behind the first");
+await answer(removeDuringStaging, "remove-during-staging");
+await answer(removeDuringInstall, "remove-during-isolated-install");
 const idleStatus = request("hd_status", "status-after-import");
 await tick();
 const idleStatusMessage = engine.messages.at(-1);
@@ -317,12 +344,16 @@ assert.deepEqual(engine.messages.at(-1), {
 assert.match((await send("hd_lookup", "lookup-during-install")).error, /busy mutating/);
 assert.deepEqual((await send("hd_status", "status-during-memory-install")).updating,
   { id: "replaced-b", phase: "installing", fallback: "memory" });
+// The import's handover from its read lock to the exclusive one keeps a later
+// import waiting rather than letting it in or failing it.
+const afterMemoryImport = await waitsTurn("hd_import", "after-memory-import");
 engine.emit("message", {
   channel: "engine-response",
   id: memoryImportMessage.id,
   response: { type: "hd_import_result", requestId: "memory-import", ok: true },
 });
 assert.equal((await memoryImport.promise).ok, true);
+await answer(afterMemoryImport, "after-memory-import");
 
 const mutationTypes = [
   "hd_apply_state",
@@ -347,6 +378,7 @@ for (const [index, type] of mutationTypes.entries()) {
   const status = await send("hd_status", `status-during-${type}`);
   assert.equal(status.ok, true);
   assert.equal(status.loading, true);
+  assert.equal(status.mutating, true);
   assert.equal(status.threaded, true);
   assert.equal(status.storageBackend, "opfs");
 
@@ -364,13 +396,7 @@ for (const [index, type] of mutationTypes.entries()) {
       assert.ok(Buffer.byteLength(JSON.stringify(oversizedId)) <= limit);
     }
   }
-  assert.deepEqual(await send("hd_remove", `remove-during-${type}`), {
-    type: "hd_remove_result",
-    requestId: `remove-during-${type}`,
-    ok: false,
-    error: "the dictionary engine is busy mutating",
-    errorCode: "engine-mutating",
-  });
+  const removal = await waitsTurn("hd_remove", `remove-during-${type}`);
 
   engine.emit("message", {
     channel: "engine-response",
@@ -378,7 +404,54 @@ for (const [index, type] of mutationTypes.entries()) {
     response: { type: `${type}_result`, requestId, ok: true },
   });
   assert.equal((await mutating).ok, true);
+  await answer(removal, `remove-during-${type}`);
 }
+
+// #578: imports and changes from every context take turns. Each waits for the
+// one before it in arrival order instead of failing busy, and is answered once;
+// status and reads keep answering meanwhile.
+const turns = [
+  ["hd_import", "turn-import-1"],
+  ["hd_import", "turn-import-2"],
+  ["hd_backup_auto_cleanup", "turn-cleanup"],
+  ["hd_custom_append", "turn-append"],
+  ["hd_apply_state", "turn-apply"],
+  ["hd_import", "turn-import-3"],
+];
+const turnEntries = turns.map(([type, requestId]) => request(type, requestId));
+await tick();
+const admittedTurns = () => engine.messages.map(({ message }) => message?.requestId)
+  .filter((requestId) => String(requestId).startsWith("turn-"));
+assert.deepEqual(admittedTurns(), ["turn-import-1"], "only the first change reaches the engine");
+assert.ok(turnEntries.every((entry) => entry.responses.length === 0), "the later changes wait instead of failing busy");
+const turnStatus = await send("hd_status", "status-during-turns");
+assert.equal(turnStatus.mutating, true, "status reports the held lock while changes wait");
+const turnLookup = request("hd_lookup", "lookup-during-turns");
+await tick();
+assert.equal(engine.messages.at(-1).message.requestId, "lookup-during-turns", "a lookup does not queue behind waiting changes");
+engine.emit("message", { channel: "engine-response", id: engine.messages.at(-1).id,
+  response: { type: "hd_lookup_result", requestId: "lookup-during-turns", ok: true, results: [] } });
+assert.equal((await turnLookup.promise).ok, true);
+for (const [index, [, requestId]] of turns.entries()) {
+  assert.deepEqual(admittedTurns(), turns.slice(0, index + 1).map(([, id]) => id), `${requestId} is admitted in arrival order`);
+  await answer(turnEntries[index], requestId);
+}
+const turnIdle = request("hd_status", "status-after-turns");
+await tick();
+assert.equal(engine.messages.at(-1).message.type, "hd_status", "the bridge is idle once every turn has run");
+engine.emit("message", { channel: "engine-response", id: engine.messages.at(-1).id,
+  response: { type: "hd_status_result", requestId: "status-after-turns", ok: true, ready: true, loading: false } });
+assert.equal((await turnIdle.promise).mutating, false, "an engine status also carries the bridge's lock");
+
+// A waiting request holds its payload, so it counts against the admission
+// bound: the holder and 127 waiters fill the 128 slots.
+const boundHolder = request("hd_import", "bound-holder");
+await tick();
+const boundWaiters = Array.from({ length: 127 }, (_, index) => request("hd_remove", `bound-${index}`));
+await tick();
+assert.match((await send("hd_remove", "bound-overflow")).error, /queue is full/);
+await answer(boundHolder, "bound-holder");
+for (const [index, entry] of boundWaiters.entries()) await answer(entry, `bound-${index}`);
 
 const appending = request("hd_custom_append", "concurrent-custom-append");
 await tick();
@@ -391,11 +464,14 @@ assert.equal(lookupDuringAppendMessage.message.type, "hd_lookup", "lookups reach
 engine.emit("message", { channel: "engine-response", id: lookupDuringAppendMessage.id,
   response: { type: "hd_lookup_result", requestId: "lookup-during-custom-append", ok: true, results: [] } });
 assert.equal((await lookupDuringAppend.promise).ok, true);
-assert.match((await send("hd_remove", "remove-during-custom-append")).error, /busy mutating/);
-assert.match((await send("hd_backup_release", "release-during-custom-append")).error, /busy mutating/);
+const removeDuringAppend = await waitsTurn("hd_remove", "remove-during-custom-append");
+const releaseDuringAppend = await waitsTurn("hd_backup_release", "release-during-custom-append");
 engine.emit("message", { channel: "engine-response", id: appendMessage.id,
   response: { type: "hd_custom_append_result", requestId: "concurrent-custom-append", ok: true } });
 assert.equal((await appending.promise).ok, true);
+// A release may run beside the removal's mutation, so both are admitted.
+await answer(removeDuringAppend, "remove-during-custom-append");
+await answer(releaseDuringAppend, "release-during-custom-append");
 
 engine.dispatchError = new Error("test dispatch failure");
 const failedDispatch = request("hd_custom_append", "failed-dispatch");
@@ -414,15 +490,19 @@ assert.equal(failedDispatch.responses.length, 1);
 const beforeFailure = request("hd_lookup", "before-worker-failure");
 const failedMutation = request("hd_remove", "worker-failure-mutation");
 await tick();
+const waitingAtFailure = await waitsTurn("hd_import", "waiting-at-worker-failure");
 engine.emit("messageerror");
 assert.match((await beforeFailure.promise).error, /unreadable message/);
 assert.match((await failedMutation.promise).error, /unreadable message/);
+assert.match((await waitingAtFailure.promise).error, /unreadable message/, "a waiting change fails with the engine");
 engine.emit("message", {
   channel: "engine-response", id: engine.messages.at(-1).id,
   response: { type: "hd_remove_result", ok: true },
 });
 assert.equal(beforeFailure.responses.length, 1);
 assert.equal(failedMutation.responses.length, 1, "late worker replies cannot settle twice");
+assert.equal(waitingAtFailure.responses.length, 1);
+assert.equal(engine.messages.some(({ message }) => message?.requestId === "waiting-at-worker-failure"), false);
 assert.match((await send("hd_status", "failed-worker-status")).error, /unreadable message/);
 
 FakeWorker.creationError = new Error("test engine selection failure");
@@ -646,7 +726,17 @@ try {
   localRequests[1].resolve({ type: "hd_lookup_result", requestId: "local-staged-lookup", ok: true });
   localRequests.splice(1, 1);
   assert.equal((await localStagedLookup.promise).ok, true);
-  assert.match((await send("hd_remove", "local-remove-during-staging")).error, /busy mutating/);
+  const localPosted = () => localRequests.map(({ message }) => message);
+  const localAnswer = async (entry, requestId) => {
+    await tick();
+    const index = localRequests.findIndex(({ message }) => message.requestId === requestId);
+    assert.ok(index >= 0, `${requestId} reaches the local engine once the change before it settles`);
+    const [admitted] = localRequests.splice(index, 1);
+    admitted.resolve({ type: `${admitted.message.type}_result`, requestId, ok: true });
+    assert.equal((await entry.promise).ok, true);
+    assert.equal(entry.responses.length, 1);
+  };
+  const localRemoveDuringStaging = await waitsTurn("hd_remove", "local-remove-during-staging", localPosted);
   localReportProgress({
     requestId: "local-staged-import",
     phase: "installing",
@@ -663,6 +753,7 @@ try {
     ok: true,
   });
   assert.equal((await localImport.promise).ok, true);
+  await localAnswer(localRemoveDuringStaging, "local-remove-during-staging");
 
   for (const fails of [false, true]) {
     statusError = fails ? "test reload failure" : null;
@@ -685,12 +776,14 @@ try {
     assert.equal(lookupEntry.message.type, "hd_lookup");
     lookupEntry.resolve({ type: "hd_lookup_result", requestId: "local-busy-lookup", ok: true });
     assert.equal((await localBusyLookup.promise).ok, true);
-    assert.match((await send("hd_remove", "local-busy-remove")).error, /busy mutating/);
+    const localBusyRemove = await waitsTurn("hd_remove", `local-busy-remove-${fails}`, localPosted);
     const entry = localRequests.shift();
     if (fails) entry.reject(new Error("test local failure"));
     else entry.resolve({ type: "hd_custom_append_result", ok: true });
     assert.equal((await mutation.promise).ok, !fails);
     assert.equal(mutation.responses.length, 1);
+    // A failed change releases the engine to the next one all the same.
+    await localAnswer(localBusyRemove, `local-busy-remove-${fails}`);
   }
   statusError = null;
   const restoredStatus = await send("hd_status", "local-restored-status");
