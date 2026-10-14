@@ -146,8 +146,8 @@ test("a thrown request is a failed attempt and is retried", async () => {
   assert.deepEqual(outcome, { ok: true, reply: IMPORTED, attempts: 2 });
 });
 
-test("memory and storage failures are not retried", async () => {
-  for (const errorCode of ["import-memory", "import-storage-full"]) {
+test("memory, storage and engine start failures are not retried", async () => {
+  for (const errorCode of ["import-memory", "import-storage-full", "engine-start-failed"]) {
     const imports = importer({ ...FAILED, errorCode });
     const outcome = await importWithRetries({ ...statuses(IDLE), ...fakeTime(), ...imports, readRevision: async () => 4 });
     assert.equal(outcome.attempts, 1, errorCode);

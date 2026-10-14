@@ -17,8 +17,9 @@ export const ENGINE_POLL_MS = 250;
 export const ENGINE_POLL_MAX_MS = 2000;
 export const RETRY_DELAY_MS = 500;
 // Another attempt cannot help: the engine has already retried a memory failure
-// with reduced memory, and a full disk stays full.
-const FINAL_ERROR_CODES = new Set(["import-memory", "import-storage-full"]);
+// with reduced memory, a full disk stays full, and the bridge latches an engine
+// that failed to start.
+const FINAL_ERROR_CODES = new Set(["import-memory", "import-storage-full", "engine-start-failed"]);
 
 // Resolves after `ms`, or rejects with the signal's reason once it aborts.
 export function sleep(ms, signal) {
