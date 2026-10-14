@@ -76,7 +76,9 @@ export async function createBackupArchive(snapshot, files, lookupStatsRows, crea
   /** @type {{add(name: string, reader: object): Promise<unknown>, close(): Promise<Blob>}} */
   const writer = new ZipWriter(output, ZIP_OPTIONS);
   await writer.add(MANIFEST, new BlobReader(new Blob([JSON.stringify(manifest)])));
-  for (const { path, data } of files) await writer.add(path, data instanceof Blob ? new BlobReader(data) : data);
+  for (const { path, data } of files) {
+    await writer.add(path, data instanceof Blob ? new BlobReader(data) : data); // NOSONAR: entries stream into one archive in order
+  }
   return writer.close();
 }
 
@@ -152,7 +154,7 @@ export async function openBackupArchive(blob) {
       const entry = byPath.get(file.path);
       if (!entry) throw new Error(`The backup is missing ${file.path}`);
       if (entry.uncompressedSize !== file.size) throw new Error(`Incorrect backup file size: ${file.path}`);
-      const data = await entryData(blob, entry);
+      const data = await entryData(blob, entry); // NOSONAR: one entry's CRC is checked at a time
       if (data.size !== file.size) throw new Error(`Incorrect extracted backup file size: ${file.path}`);
       files.push({ path: file.path, data });
     }
