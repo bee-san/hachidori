@@ -7,16 +7,15 @@
 // request failures are added with recordDebugFailure(), the errors a page shows
 // the reader with recordUserError(), and what the reader did on a page (the
 // control pressed or changed, the section opened: names, never values) by
-// captureDocumentActions(). Content scripts forward theirs to the service
-// worker (debug-log-content.js), which keeps them like its own.
+// captureDocumentActions(). Content scripts on web pages are not captured.
 //
 // Every context keeps its newest DEBUG_LOG_LIMIT entries in memory and appends
 // them to one IndexedDB ring the extension's contexts share, in one
-// transaction for what each task recorded (and for whatever arrived while the
-// previous write was running). The ring keeps the newest DEBUG_LOG_MAX_EVENTS entries within
-// DEBUG_LOG_MAX_BYTES, so an error from before Settings was opened, reloaded
-// or the browser restarted is still in the report. Identical entries in a row
-// are kept once, with a count and the time of the last one.
+// transaction for what each task recorded (and whatever arrived while the
+// previous write ran). The ring keeps the newest DEBUG_LOG_MAX_ENTRIES entries
+// within DEBUG_LOG_MAX_BYTES, so an error from before Settings was opened,
+// reloaded or the browser restarted is still in the report. Identical entries
+// in a row are kept once, with a count and the time of the last one.
 //
 // Nothing is sent anywhere: the report reads the ring and each live context's
 // entries on request. Every entry is redacted before it is kept
@@ -29,13 +28,13 @@ export const DEBUG_LOG = Symbol.for("hachidori.debugLog");
 export const DEBUG_LOG_LIMIT = 200;
 export const DEBUG_LOG_MESSAGE_LIMIT = 4000;
 export const DEBUG_LOG_DATABASE = "hachidori-debug-log";
-export const DEBUG_LOG_MAX_EVENTS = 5000;
+export const DEBUG_LOG_MAX_ENTRIES = 5000;
 export const DEBUG_LOG_MAX_BYTES = 2 * 1024 * 1024;
 export const REDACTED = "[redacted]";
 export const REDACTED_JAPANESE = "[ja]";
 
 // Settings keys and message fields that hold a credential.
-export const SECRET_KEY = /api.?key|token|secret|password/iu;
+const SECRET_KEY = /api.?key|token|secret|password/iu;
 const SECRET_FIELD = new RegExp(`(["']?[\\w-]*(?:${SECRET_KEY.source})[\\w-]*["']?\\s*[:=]\\s*)("[^"]*"|'[^']*'|[^\\s"',;&}]+)`, "giu");
 const AUTHORIZATION = /\b(Bearer|Basic)\s+[\w.~+/=-]+/gu;
 const WEB_ADDRESS = /\b(?:https?|wss?|ftp|file):\/\/[^\s"'<>`]+/giu;
@@ -110,13 +109,13 @@ function errorDetails(error) {
     code: typeof code === "string" || typeof code === "number" ? code : null };
 }
 
-// One kept entry. `where` names the page element that showed it; `stack`,
-// `cause` and `code` come from `error`, or as text from a content script.
-// Each text field is redacted, and only the fields that are set are kept.
-export function debugLogEntry({ at, session, n, context, version = null, level, message, where = null,
-  detail = null, error = null, stack = null, cause = null, code = null }) {
+// One kept entry. `where` names the page element that showed it; the stack,
+// cause and code come from `error`. Each text field is redacted, and only the
+// fields that are set are kept.
+function debugLogEntry({ at, session, n, context, version, level, message, where = null, detail = null,
+  error = null }) {
   const entry = { at, session, n, context, version, level, message: redactDebugText(message) };
-  const fields = { where, detail, stack, cause, code, ...errorDetails(error) };
+  const fields = { where, detail, ...errorDetails(error) };
   for (const [field, value] of Object.entries(fields)) {
     if (value !== null && value !== undefined && value !== "") entry[field] = redactDebugText(value);
   }
@@ -153,8 +152,8 @@ function committed(transaction) {
 }
 
 // Delete the oldest records until the ring is within both limits.
-function prune(events, totals, maxEvents, maxBytes) {
-  if (totals.count <= maxEvents && totals.bytes <= maxBytes) return Promise.resolve();
+function prune(events, totals, maxEntries, maxBytes) {
+  if (totals.count <= maxEntries && totals.bytes <= maxBytes) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const cursor = events.openCursor();
     cursor.onerror = () => reject(cursor.error);
@@ -165,7 +164,7 @@ function prune(events, totals, maxEvents, maxBytes) {
         resolve();
         return;
       }
-      if (totals.count <= maxEvents && totals.bytes <= maxBytes) {
+      if (totals.count <= maxEntries && totals.bytes <= maxBytes) {
         resolve();
         return;
       }
@@ -180,7 +179,7 @@ function prune(events, totals, maxEvents, maxBytes) {
 // The extension origin's ring. A record's `bytes` is its JSON size; the meta
 // store keeps the count and byte total that one transaction updates with the
 // records, so concurrent writers from several contexts keep it exact.
-export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEvents = DEBUG_LOG_MAX_EVENTS,
+export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEntries = DEBUG_LOG_MAX_ENTRIES,
   maxBytes = DEBUG_LOG_MAX_BYTES } = {}) {
   let database = null;
 
@@ -226,7 +225,7 @@ export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEve
       totals.bytes += record.bytes - (kept[index].bytes ?? 0);
       return key;
     }));
-    await prune(events, totals, maxEvents, maxBytes);
+    await prune(events, totals, maxEntries, maxBytes);
     meta.put(totals, TOTALS);
     await done;
     return keys;
@@ -239,7 +238,7 @@ export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEve
       settled(transaction.objectStore(EVENTS).getAll()),
       settled(transaction.objectStore(META).get(TOTALS)),
     ]);
-    return { records, totals: { count: 0, bytes: 0, ...totals }, maxEvents, maxBytes };
+    return { records, totals: { count: 0, bytes: 0, ...totals }, maxEntries, maxBytes };
   }
 
   return { name, write, read };
@@ -380,7 +379,8 @@ export function captureDebugLog(scope, { context, store = null, now = () => Date
     scope.fetch = function capturedFetch(input, init) {
       return fetch.call(scope, input, init).catch((error) => {
         if (error?.name !== "AbortError") {
-          record("failed-fetch", `${init?.method ?? input?.method ?? "GET"} ${typeof input === "string" ? input : input?.url ?? String(input)}:`, error);
+          const method = init?.method ?? input?.method ?? "GET";
+          record("failed-fetch", `${method} ${typeof input === "string" ? input : input?.url ?? String(input)}:`, error);
         }
         throw error;
       });
@@ -422,7 +422,7 @@ const ACTION_TARGETS = "button, a[href], summary, [role='button'], [role='tab'],
 
 // A control by its id, or by its tag and first class inside the nearest
 // element with an id. Never its text or value.
-export function debugActionTarget(element) {
+function debugActionTarget(element) {
   if (element.id) return `#${element.id}`;
   const name = `${element.localName}${element.classList?.[0] ? `.${element.classList[0]}` : ""}`;
   const owner = element.parentElement?.closest("[id]");

@@ -151,7 +151,7 @@ describe("debug log", () => {
   step("the debug log ring stays within its limits", async () => {
     const settings = await openSettings("advanced");
     const ring = await settings.evaluate(async () => {
-      const { DEBUG_LOG_MAX_BYTES, DEBUG_LOG_MAX_EVENTS, openDebugLogStore } = await import(chrome.runtime.getURL("debug-log.js"));
+      const { DEBUG_LOG_MAX_BYTES, DEBUG_LOG_MAX_ENTRIES, openDebugLogStore } = await import(chrome.runtime.getURL("debug-log.js"));
       const name = "hachidori-debug-log-limit-check";
       const record = (index, padding = "") => {
         const value = { at: new Date(index).toISOString(), session: "limit", n: index, context: "settings", version: null,
@@ -177,7 +177,7 @@ describe("debug log", () => {
       const real = await openDebugLogStore(indexedDB).read();
       const sum = records => records.reduce((total, entry) => total + entry.bytes, 0);
       return {
-        limits: [DEBUG_LOG_MAX_EVENTS, DEBUG_LOG_MAX_BYTES],
+        limits: [DEBUG_LOG_MAX_ENTRIES, DEBUG_LOG_MAX_BYTES],
         counted: { records: counted.records.length, totals: counted.totals, first: counted.records[0].message,
           last: counted.records.at(-1).message },
         sized: { records: sized.records.length, totals: sized.totals, sum: sum(sized.records), last: sized.records.at(-1).message.slice(0, 11) },

@@ -236,7 +236,7 @@ export function assembleDebugLog(stored, live) {
   return {
     database: DEBUG_LOG_DATABASE,
     stored: stored.error ? { error: stored.error }
-      : { entries: stored.totals.count, bytes: stored.totals.bytes, maxEntries: stored.maxEvents, maxBytes: stored.maxBytes },
+      : { entries: stored.totals.count, bytes: stored.totals.bytes, maxEntries: stored.maxEntries, maxBytes: stored.maxBytes },
     contexts,
     sessions: [...sessions.values()],
     entries: ordered,

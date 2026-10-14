@@ -295,14 +295,14 @@ test("the ring keeps the newest entries within its entry and byte limits across 
   const indexedDB = fakeIndexedDB();
   const writers = ["service-worker", "offscreen", "settings"].map((context) => {
     const global = scope();
-    captureDebugLog(global, { context, session: context, store: openDebugLogStore(indexedDB, { maxEvents: 10 }) });
+    captureDebugLog(global, { context, session: context, store: openDebugLogStore(indexedDB, { maxEntries: 10 }) });
     return global;
   });
   for (let round = 0; round < 6; round += 1) {
     writers.forEach((global, index) => global.console.warn(`round ${round} writer ${index}`));
     await Promise.all(writers.map(global => readDebugLog(global)));
   }
-  const kept = await openDebugLogStore(indexedDB, { maxEvents: 10 }).read();
+  const kept = await openDebugLogStore(indexedDB, { maxEntries: 10 }).read();
   assert.equal(kept.records.length, 10);
   assert.equal(kept.totals.count, 10);
   // 18 entries from three writers; the oldest eight are gone.
