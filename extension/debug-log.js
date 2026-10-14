@@ -215,19 +215,17 @@ export function openDebugLogStore(indexedDB, { name = DEBUG_LOG_DATABASE, maxEve
     const events = transaction.objectStore(EVENTS);
     const meta = transaction.objectStore(META);
     const totals = { count: 0, bytes: 0, ...await settled(meta.get(TOTALS)) };
-    const keys = [];
-    for (const { record, key } of ops) {
-      const kept = key === undefined ? undefined : await settled(events.get(key));
-      if (kept === undefined) {
-        keys.push(await settled(events.add(record)));
+    const kept = await Promise.all(ops.map(({ key }) => key === undefined ? undefined : settled(events.get(key))));
+    const keys = await Promise.all(ops.map(({ record, key }, index) => {
+      if (kept[index] === undefined) {
         totals.count += 1;
         totals.bytes += record.bytes;
-      } else {
-        events.put(record, key);
-        keys.push(key);
-        totals.bytes += record.bytes - (kept.bytes ?? 0);
+        return settled(events.add(record));
       }
-    }
+      events.put(record, key);
+      totals.bytes += record.bytes - (kept[index].bytes ?? 0);
+      return key;
+    }));
     await prune(events, totals, maxEvents, maxBytes);
     meta.put(totals, TOTALS);
     await done;
