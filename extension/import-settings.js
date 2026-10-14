@@ -437,9 +437,12 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   } finally {
     importing = false;
     importAbort = null;
+    const cancelFocused = document.activeElement === element("import-cancel");
     element("import-cancel").hidden = true;
     syncNavigationStatus("import-state");
     setControlsDisabled(false);
+    // Hiding the focused Cancel would drop keyboard focus to the page.
+    if (cancelFocused) element("import-file").focus();
   }
 }
 

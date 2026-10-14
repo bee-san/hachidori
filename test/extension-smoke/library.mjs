@@ -250,12 +250,14 @@ async function settingsBatchCancelStage() {
     pick(["one.zip", "two.zip", "three.zip"]);
     await until(() => imports.length === 1, "the first import");
     const cancelShown = el("import-cancel").hidden === false;
+    el("import-cancel").focus();
     el("import-cancel").click();
     const cancelling = el("import-state").textContent;
     releaseImport();
     await until(() => !el("import-file").disabled, "the cancelled batch to finish");
     const inFlight = { imports: [...imports], rows: rows(), state: el("import-state").textContent,
-      cancelHiddenBefore, cancelShown, cancelling, cancelHidden: el("import-cancel").hidden };
+      cancelHiddenBefore, cancelShown, cancelling, cancelHidden: el("import-cancel").hidden,
+      focus: window.document.activeElement?.id ?? null };
 
     engineBusy = true;
     pick(["four.zip", "five.zip"]);
@@ -1397,7 +1399,8 @@ describe("Settings library", () => {
         && /^Imported one in \d+(?:\.\d)? seconds: 1 term\.$/u.test(inFlight.rows[0])
         && JSON.stringify(inFlight.rows.slice(1)) === JSON.stringify(["Cancelled before import.", "Cancelled before import."])
         && inFlight.state === "Import cancelled — 1 imported, 2 cancelled, 0 failed."
-        && inFlight.cancelHidden === true,
+        && inFlight.cancelHidden === true
+        && inFlight.focus === "import-file",
       JSON.stringify(inFlight),
     );
     check(
