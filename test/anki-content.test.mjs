@@ -311,6 +311,37 @@ test("a pointer click begun on the spinner still adds if the duplicate check fin
   assert.equal(writes[0].allowDuplicate, true);
 });
 
+test("a keyboard-focused action gets focus back after it saves, unless the reader focused something else", async t => {
+  for (const elsewhere of [false, true]) {
+    const held = Promise.withResolvers();
+    t.after(() => held.resolve());
+    const f = fixture(t, async type => {
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_submit") { await held.promise; return { state: "added", noteId: 7 }; }
+      return { state: "addable", canAdd: true };
+    });
+    f.controller.update(configured);
+    f.controller.bind([f.items[0]], f.context);
+    await until(() => f.items[0].add?.dataset.state === "ready");
+    const button = f.items[0].add, document = button.ownerDocument;
+    // jsdom has no keyboard-focus heuristics; Chrome matches :focus-visible
+    // on a button activated from the keyboard.
+    const matches = button.matches.bind(button);
+    button.matches = selector => selector === ":focus-visible" || matches(selector);
+    button.focus();
+    button.click();
+    await until(() => button.disabled);
+    // Chrome moves focus off a control that disables itself, to the body.
+    // jsdom's blur() ignores a disabled control, so take focus off it this way.
+    const input = document.body.appendChild(document.createElement("input"));
+    input.focus();
+    if (!elsewhere) input.blur();
+    held.resolve();
+    await until(() => button.dataset.state === "success");
+    assert.equal(document.activeElement, elsewhere ? input : button, `focused elsewhere: ${elsewhere}`);
+  }
+});
+
 test("a warm cached View action skips Anki status and preflight", async t => {
   const calls = [];
   const browse = [];

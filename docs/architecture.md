@@ -2132,6 +2132,9 @@ There is no document-wide observer, polling or per-image observer.
 Keyboard focus inside the popup cancels hover dismissal, while genuine focus
 departure rearms it. Focusout waits for removal/focus transfer to settle so
 replacing a focused Note form cannot schedule dismissal of its refreshed result.
+A control that disables itself while it works, such as an Anki action or the
+lookup failure's Retry, loses focus without the reader leaving, so its
+focusout schedules no dismissal either.
 Escape, outside clicks and a new lookup still explicitly dismiss or replace the
 view. Real-WASM and Chrome checks import genuine AVIF and SVG resources and
 verify exact bytes, MIME types, decoded dimensions and preview source reuse.
@@ -2638,6 +2641,11 @@ without a duplicate lookup, and the write sends `allowDuplicate: true` to Anki.
 Configuration, dictionary generation and field checks still apply. Late
 readiness replies cannot replace an in-progress or confirmed submission.
 Otherwise it resolves to Add or the green View in Anki book action.
+An action disables itself while it saves or opens Anki. Pressed from the
+keyboard, it keeps the popup open and gets focus back once it is enabled
+again, unless focus has moved elsewhere, so Enter can then open the note it
+added. A mouse press takes no focus back, because focus inside the popup
+holds page hover.
 Missing Template IDs remain visible as disabled errors and send no Anki
 request.
 The content controller preflights each Template's rendered candidates in one

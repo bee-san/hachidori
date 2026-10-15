@@ -104,6 +104,14 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       options: { experimental: { ...HDReaderOptions.normaliseOptions(options).experimental, ...flags } } });
     if (!reply.ok) throw new Error(reply.error);
   }, flags);
+  // Writes a reader-options patch and returns the options it replaced.
+  const writeOptions = patch => settings.evaluate(async patch => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+      options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+    return HDReaderOptions.normaliseOptions(options);
+  }, patch);
   const operation = (type, request) => settings.evaluate(async ({ type, request }) => {
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-anki", type, requestId: "anki-browser-test", request });
     if (!reply.ok) throw new Error(reply.error);
@@ -301,7 +309,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         && deferredActions.lastIndexOf("storeMediaFile") > deferredActions.lastIndexOf("addNote")
         && deferredActions.lastIndexOf("updateNoteFields") > deferredActions.lastIndexOf("storeMediaFile"),
       JSON.stringify({ deferredAdded, deferredNote, deferredFilename, filename, actions: deferredActions.slice(deferredActions.lastIndexOf("addNote") - 3) }));
-    await checkAnkiReader(tab, popup, configure, calls, notes, files, control);
+    await checkAnkiReader(tab, popup, configure, calls, notes, files, control, writeOptions);
   } finally {
     await settings.evaluate(async original => {
       const { options } = await chrome.storage.local.get("options");
@@ -321,7 +329,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
   }
 }
 
-async function checkAnkiReader(tab, popup, configure, calls, notes, files, control) {
+async function checkAnkiReader(tab, popup, configure, calls, notes, files, control, writeOptions) {
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
   async function settled(predicate, read = () => popup.anki()) {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -467,6 +475,45 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
       JSON.stringify({ forced, forcedCalls, noteCount, notes: notes.size }));
     control.preflightGate.resolve();
     control.preflightGate = null;
+    // A keyboard press on Add disables the focused action while it saves, and
+    // Chrome moves focus out of the popup. That is not leaving the popup:
+    // with no hide delay a departure would close it at once. It stays, and
+    // the action gets keyboard focus back for its View in Anki. A mouse click
+    // takes no focus back, so the next page hover is not held by the popup.
+    const { popupHideDelayMs } = await writeOptions({ popupHideDelayMs: 0 });
+    // A first field of its own makes each Add below a new note.
+    const distinct = suffix => configure(false, { fieldTemplates: { Front: template(`{expression} ${suffix}`),
+      Back: template("{glossary}"), Audio: template("") } });
+    const keyboard = {};
+    try {
+      await distinct("keyboard");
+      await tab.keyboard.press("Escape");
+      await hoverForPopup(tab, popup, "#verb");
+      const ready = await settled(state => state?.controls[0] && state.controls[0].state !== "checking" && !state.controls[0].disabled);
+      const addsBefore = calls.filter(call => call.action === "addNote").length;
+      keyboard.focused = await popup.focusAnki();
+      await tab.keyboard.press("Enter");
+      keyboard.saved = await settled(state => state?.controls[0]?.state === "success").catch(() => popup.anki());
+      if (process.env.HACHIDORI_ANKI_KEYBOARD_SCREENSHOT) {
+        const { x, y, width, height } = ready.rect;
+        await tab.screenshot({ path: process.env.HACHIDORI_ANKI_KEYBOARD_SCREENSHOT, clip: { x, y, width, height } });
+      }
+      await distinct("mouse");
+      await tab.keyboard.press("Escape");
+      await hoverForPopup(tab, popup, "#verb");
+      const clickable = await settled(state => state?.controls[0] && state.controls[0].state !== "checking" && !state.controls[0].disabled);
+      const target = clickable.controls[0].rect;
+      await tab.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
+      keyboard.clicked = await settled(state => state?.controls[0]?.state === "success").catch(() => popup.anki());
+      keyboard.adds = calls.filter(call => call.action === "addNote").length - addsBefore;
+    } finally {
+      await writeOptions({ popupHideDelayMs });
+    }
+    check("a keyboard Add keeps the popup open and returns focus to its action, and a mouse click does not",
+      keyboard.focused && !keyboard.saved.hidden && keyboard.saved.controls[0]?.state === "success" && keyboard.saved.controls[0].focused
+        && !keyboard.clicked.hidden && keyboard.clicked.controls[0]?.state === "success" && !keyboard.clicked.controls[0].focused
+        && keyboard.adds === 2,
+      JSON.stringify(keyboard));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
     await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
   } finally {
