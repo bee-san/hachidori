@@ -78,9 +78,14 @@ function renderUpdateList(busy) {
   }
   const available = availableUpdates().length;
   const failed = entries.filter(entry => entry.lastUpdateCheck.error || entry.lastUpdateCheck.status === "check-failed").length;
-  element("update-list-summary").textContent = entries.length > 0
-    ? `${available} ${available === 1 ? "update" : "updates"} available${failed ? ` · ${failed} failed` : ""}.`
-    : "No available updates. Check now to check dictionaries with an update source.";
+  const summary = element("update-list-summary");
+  if (entries.length === 0) {
+    summary.textContent = "No available updates. Check now to check dictionaries with an update source.";
+  } else {
+    const updatesLabel = available === 1 ? "update" : "updates";
+    const failures = failed ? ` · ${failed} failed` : "";
+    summary.textContent = `${available} ${updatesLabel} available${failures}.`;
+  }
   entries.forEach((entry, index) => {
     let row = rows.get(entry.id);
     if (!row) {
@@ -95,12 +100,16 @@ function renderUpdateList(busy) {
     row.querySelector(".update-dictionary-title").textContent = dictionaryLabel(entry);
     const check = entry.lastUpdateCheck;
     const revisions = row.querySelector(".update-dictionary-revisions");
-    revisions.textContent = `Installed: ${entry.revision}${check.remoteRevision ? ` → Available: ${check.remoteRevision}` : ""}`;
+    const remote = check.remoteRevision ? ` → Available: ${check.remoteRevision}` : "";
+    revisions.textContent = `Installed: ${entry.revision}${remote}`;
     renderDictionaryUpdateStatus(row, entry);
     const action = row.querySelector(".update-dictionary-action");
     const checking = check.status === "check-failed";
     row.dataset.updateType = checking ? "hd_updates_check" : "hd_updates_install";
-    action.textContent = checking ? "Check again" : check.error ? "Retry update" : "Update";
+    let label = "Update";
+    if (checking) label = "Check again";
+    else if (check.error) label = "Retry update";
+    action.textContent = label;
     action.setAttribute("aria-label", `${action.textContent} ${dictionaryLabel(entry)}`);
     action.disabled = busy || lastEngineStatus?.updating?.id === entry.id;
   });
