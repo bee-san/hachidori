@@ -44,7 +44,7 @@ jobs:
           python-version: '3.13.2'
       - run: npm ci --prefix test/tooling
       - run: npm --prefix test/tooling test
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: node-failure
@@ -64,7 +64,7 @@ jobs:
           cache-dependency-path: test/tooling/package-lock.json
       - run: npm ci --prefix test/tooling
       - run: npm --prefix test/tooling run test:smoke
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: smoke-failure
@@ -112,7 +112,7 @@ jobs:
           export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
           node benchmark/run.mjs --config benchmark/pixiv-full.json --output test/tmp/ci/pixiv-full --allow-no-sandbox
           node benchmark/low-memory-mode.mjs --archive "$HACHIDORI_BENCH_DATA/Pixiv_2026-10-05.zip" --text 'ピクシブ' --lookups 2 --samples 1 --output test/tmp/ci/pixiv-full/low-memory.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: pixiv-full-import
@@ -155,7 +155,7 @@ jobs:
             (root / ('sonar-' + name + '.json')).write_text(json.dumps(result, indent=2))
             print(name + ': ' + json.dumps(result))
           PY
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: sonar-findings
@@ -221,7 +221,7 @@ jobs:
           npm --prefix test/tooling run install:chrome
           sudo "$(command -v node)" test/run.mjs install-chrome --install-deps
       - run: node test/run.mjs ${{ matrix.suite }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.suite == 'chrome-e2e'
         with:
           name: popup-scale-screenshots
@@ -229,13 +229,13 @@ jobs:
             test/tmp/popup-scale/*.png
             test/tmp/ci/dictionary-import-error.png
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.suite == 'chrome-overlay'
         with:
           name: bee-overlay-groups
           path: test/tmp/ci/bee-groups/*.png
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.suite == 'chrome-theme-contrast'
         with:
           name: theme-contrast-filmstrip
@@ -243,7 +243,7 @@ jobs:
             test/tmp/ci/theme-contrast.png
             test/tmp/ci/theme-contrast.json
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: ${{ matrix.suite }}-failure
@@ -290,7 +290,7 @@ jobs:
           sudo env "HACHIDORI_CHROME_BUILD=$HACHIDORI_CHROME_BUILD" \
             "$(command -v node)" test/run.mjs install-chrome --install-deps
       - run: node test/run.mjs chrome-e2e
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: chrome-minimum-failure
