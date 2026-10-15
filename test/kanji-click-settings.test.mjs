@@ -103,6 +103,10 @@ test("a saved group keeps a focused chooser through rerenders and resets when th
   const { window, select, choices, state } = fixture(t, { kind: "tabGroup", id: GROUP.id });
   assert.equal(select.value, GROUP_VALUE);
   const groupOption = select.querySelector(`option[value='${GROUP_VALUE}']`);
+  // The chooser is on Design. A browser focuses a rendered control only (jsdom
+  // too, since 30.1.2), so show its section, as opening Design does; this
+  // fixture loads only what the chooser needs, not Design's own controllers.
+  window.document.getElementById("design").hidden = false;
   select.focus();
   window.adoptState(state(3, [{ ...GROUP, name: "Kanji sources" }]));
   assert.equal(select.querySelector(`option[value='${GROUP_VALUE}']`), groupOption, "a focused chooser is not rebuilt");

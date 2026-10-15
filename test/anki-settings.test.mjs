@@ -12,9 +12,17 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+// The controllers' controls are in Settings → Anki, which the page shows only
+// while it is open. A browser focuses a rendered control only (jsdom too, since
+// 30.1.2), so the fixtures show that section, as opening it does.
+function showAnkiSection(window) {
+  window.document.getElementById("anki").hidden = false;
+}
+
 function fixture(t, capabilities, readOwnerKey = () => "", readExperimental = undefined) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
+  showAnkiSection(window);
   window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
   let config = window.HDReaderOptions.normaliseOptions({}).anki;
   const edits = [], sent = [];
@@ -626,6 +634,7 @@ function templateFixture(t, { send: sendRequest } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
+  showAnkiSection(window);
   window.eval(readFileSync(new URL("../extension/reader-options.js", import.meta.url), "utf8"));
   const base = window.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
   const first = { ...base, id: "default", name: "Word card", model: "Basic", deck: "Words",
