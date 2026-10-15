@@ -3,8 +3,6 @@ import test from "node:test";
 import { RECOMMENDED_DICTIONARIES } from "../extension/recommended-dictionaries.js";
 import { SETUP_EVENTS_TARGET, createSetupInstaller, requestedSetupSources } from "../extension/setup-installer.js";
 
-const BUSY = "the dictionary engine is busy mutating";
-
 function harness({ installed = [], statuses = null, imports = {}, recordFailures = 0 } = {}) {
   const log = { dispatched: [], asked: [], recorded: [], broadcast: [] };
   let failingRecords = recordFailures;
@@ -24,7 +22,6 @@ function harness({ installed = [], statuses = null, imports = {}, recordFailures
       }
       const behaviour = imports[message.sourceId] ?? { seconds: 2 };
       if (behaviour.hold) await new Promise((resolve) => releases.set(message.sourceId, resolve));
-      if (behaviour.busy && behaviour.busy-- > 0) return { type: "hd_import_result", requestId: message.requestId, ok: false, error: BUSY };
       clock += (behaviour.downloadSeconds ?? 0) * 1000;
       if (behaviour.error) return { type: "hd_import_result", requestId: message.requestId, ok: false, error: behaviour.error };
       installer.progress({ requestId: message.requestId, phase: "installing", receivedBytes: 4096, totalBytes: 4096 });
@@ -173,16 +170,16 @@ test("the installer waits for a ready, idle engine and queues behind another mut
     { ok: true, ready: false, loading: true },
     { ok: true, ready: true, loading: true },
     { ok: true, ready: true, loading: false },
-    { ok: true, ready: true, loading: false },
   ];
-  const { installer, log } = harness({ statuses, imports: { jiten: { busy: 1, seconds: 1 } } });
+  const { installer, log } = harness({ statuses, imports: { jiten: { seconds: 1 } } });
   installer.attach(["jiten"]);
   await untilFinished(installer);
   const imports = log.dispatched.filter((message) => message.type === "hd_import");
-  assert.equal(imports.length, 2);
+  assert.equal(imports.length, 1);
   assert.equal(installer.snapshot().entries[0].phase, "installed");
   assert.equal(log.recorded[0].outcomes.jiten.status, "installed");
-  assert.ok(log.dispatched.filter((message) => message.type === "hd_status").length >= 4);
+  // Starting, then held by another change, then idle: the import waits for all three.
+  assert.equal(log.dispatched.filter((message) => message.type === "hd_status").length, 3);
 });
 
 test("an outcome record is resent until the worker answers, and the entry settles only then", async () => {

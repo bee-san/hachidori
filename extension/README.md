@@ -156,7 +156,9 @@ the service worker and both engine runtimes run the same code.
   saved theme before the first paint, ahead of the `settings.js` module;
   `library-settings.js` (Dictionaries → Dictionaries: the rows, their order,
   selection and bulk actions, the revision-checked commit queue and removal),
-  `import-settings.js` (Add dictionaries and the recommended installer),
+  `import-settings.js` (Add dictionaries and the recommended installer, with
+  `dictionary-import-attempts.js` deciding when an import waits for the engine
+  and when it is retried),
   `update-settings.js` (Updates), `custom-dictionary-settings.js` (Personal
   dictionary), `lookup-stats-settings.js` (Reading's lookup counts and
   definition blur) and `option-settings.js` (the other option controls and

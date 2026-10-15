@@ -113,9 +113,8 @@ archive itself:
    fewer bytes as base64, in order from offset 0, and answers `{received}`.
    A chunk at any other offset ends the upload.
 3. `hd_import_commit` `{token}` imports the archive and answers the same
-   `report` or `error` a local import does. While another dictionary change runs, it
-   answers `errorCode: "engine-mutating"` and keeps the upload, so commit the
-   same token again.
+   `report` or `error` a local import does. While another dictionary change runs,
+   the import waits for it rather than failing. The upload ends with the reply.
 4. `hd_import_abort` `{token}` drops an upload. The host also drops one after
    two minutes without a chunk and when its browser disconnects.
 

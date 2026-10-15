@@ -70,14 +70,18 @@ reloads cannot race each other.
 The offscreen bridge reserves one of its existing 128 pending-request slots
 before awaiting capability selection or fallback module loading. The same
 admission and mutation lock cover both backends: while a mutation is pending,
-other non-status requests fail busy. A saturated or mutating bridge answers
+reads fail busy at once, so a hover never waits out an import, and every other
+request it blocks (an import, a library change, a cleanup) waits in arrival
+order and is admitted as the lock is released (#578). A waiting request counts
+against the 128 slots. A saturated or mutating bridge answers
 status from its last-known snapshot; before backend selection this snapshot
-reports loading without claiming a storage backend. Normal status requests
+reports loading without claiming a storage backend. Every status reply carries
+`mutating`, whether a change holds the lock. Normal status requests
 still reach the engine, including its reload recovery path.
 
 Replies, local handler failures, and thrown worker dispatches release their slot
 and mutation lock through one settlement path. Engine startup or worker failure
-settles every admitted request once; a late worker reply cannot settle it again.
+settles every admitted or waiting request once; a late worker reply cannot settle it again.
 There is no mutation deadline: a slow custom append must not appear failed while
 it can still commit. This admission limit is a transport bound, not a dictionary,
 archive, source-document, or background-storage-queue limit.
@@ -118,6 +122,16 @@ Settings row uses to say *Updating…*.
 
 Multiple selected local archives remain separate transactions. Settings runs
 them sequentially, keeps an outcome for each file, and continues after a failure.
+Before each one it waits while the engine starts or another change holds it
+(an automatic backup's generation cleanup, another tab's import, a managed
+update), polling `hd_status` with a backoff from 250 ms to 2 s for up to 30
+minutes; the row says *Waiting for the previous import to finish…* meanwhile
+(`dictionary-import-attempts.js`). A failed attempt is retried after that wait,
+up to three attempts, but only while the library revision is unchanged: an
+import whose reply was lost after it committed never runs twice. Memory, full
+storage and engine-start failures are not retried. **Cancel import** ends a
+wait at once and starts no further archive; an import the engine has begun
+finishes and keeps its outcome.
 Staging checks the returned memory mapping before copying archive bytes, and a
 cleanup failure cannot replace the original write error. Native exceptions from
 filesystem calls are decoded with the module's exception helpers; their storage

@@ -49,20 +49,10 @@ const MUTATION_TYPES = new Set([
 ]);
 const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
 const POLL_TYPES = new Set(["hd_status", "hd_memory"]);
-const IMPORT_READ_TYPES = new Set([
-  "hd_debug_log",
-  "hd_lookup",
-  "hd_lookup_dictionary",
-  "hd_segment",
-  "hd_kanji",
-  "hd_styles",
-  "hd_media",
-  "hd_memory",
-  "hd_backup_release",
-  "hd_api_dictionary_read",
-  "hd_api_dictionary_close",
-]);
-const STAGED_MUTATION_READ_TYPES = new Set([
+// Reads answer from the committed dictionaries, so they run beside an import's
+// download and a staged mutation. A mutation that holds the engine refuses them
+// at once: a hover must not wait out an import.
+const READ_TYPES = new Set([
   "hd_debug_log",
   "hd_lookup",
   "hd_lookup_dictionary",
@@ -74,6 +64,7 @@ const STAGED_MUTATION_READ_TYPES = new Set([
   "hd_api_dictionary_read",
   "hd_api_dictionary_close",
 ]);
+const IMPORT_READ_TYPES = new Set([...READ_TYPES, "hd_backup_release"]);
 
 function supportsSharedWasmMemory() {
   if (globalThis.crossOriginIsolated !== true
@@ -114,6 +105,10 @@ let lastEngineStatus = {
   generation: 0,
 };
 const pending = new Map();
+// Requests a held dictionary change blocks, other than reads, wait here in
+// arrival order and are admitted as it releases the engine: one import or
+// change never makes the next one fail (#578).
+const waiting = [];
 // Engine-side state one request leaves for a later one to consume: a prepared
 // backup, an exported archive URL, a dictionary download. A worker restart
 // would lose it, so the recycler waits until it is released.
@@ -208,8 +203,12 @@ function finishRequest(id, response) {
       failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
       generation: Number(response.generation) || 0,
     };
+    // The engine cannot see the bridge's lock; Settings waits on it.
+    request.sendResponse({ ...response, mutating: mutating() });
+  } else {
+    request.sendResponse(response);
   }
-  request.sendResponse(response);
+  if (mutated) admitWaiting();
 }
 
 function adoptEngineProgress(progress) {
@@ -247,6 +246,7 @@ function failEngine(error) {
   for (const [id, request] of pending) {
     finishRequest(id, failedResponse(request.message, engineError, "engine-start-failed"));
   }
+  admitWaiting();
 }
 
 function probeDirectOpfs() {
@@ -430,57 +430,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Admission and the mutation lock are shared by relayed runtime requests and the
-// first-run installer, so both see one engine queue.
-function dispatchEngine(message, sendResponse) {
-  if (engineError !== null) {
-    sendResponse(failedResponse(message, engineError, "engine-start-failed"));
-    return;
-  }
-  if (message.type === "hd_status"
-      && (activeMutationRequestId !== null
-        || activeStagedMutationRequestId !== null
-        || activeImportRequestId !== null
-        || pending.size >= MAX_PENDING_REQUESTS)) {
-    sendResponse({
-      type: "hd_status_result",
-      requestId: message.requestId ?? null,
-      ...lastEngineStatus,
-      loading: activeMutationRequestId !== null
-        || activeStagedMutationRequestId !== null
-        || activeImportRequestId !== null
-        || lastEngineStatus.loading,
-      updating: updatingStatus(),
-    });
-    return;
-  }
-  const activeMutation = pending.get(activeMutationRequestId)?.message;
-  const cancelsBackup = message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
-  if (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup) {
-    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
-    return;
-  }
-  if (activeStagedMutationRequestId !== null
-      && !STAGED_MUTATION_READ_TYPES.has(message.type)
-      && message.type !== "hd_status") {
-    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
-    return;
-  }
-  if (activeImportRequestId !== null && !IMPORT_READ_TYPES.has(message.type)) {
-    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
-    return;
-  }
-  // One serialized download release and one token-scoped backup cancellation
-  // must fit even if ordinary requests occupy all 128 slots. The cancellation
-  // remains queued behind the active mutation and takes over its lock.
-  const cleanupSlots = message.type === "hd_backup_release"
-    ? 1 + Number(activeMutation?.type === "hd_backup_cancel") : 2 * Number(cancelsBackup);
-  const limit = MAX_PENDING_REQUESTS + cleanupSlots;
-  if (pending.size >= limit) {
-    sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
-    return;
-  }
+// Whether an import, mutation or staged mutation holds the engine lock.
+function mutating() {
+  return activeMutationRequestId !== null || activeStagedMutationRequestId !== null || activeImportRequestId !== null;
+}
 
+function cancelsBackup(message) {
+  return message.type === "hd_backup_cancel" && typeof message.token === "string" && message.token !== "";
+}
+
+// Whether the held lock keeps `message` from the engine for now. A token-scoped
+// backup cancellation is admitted behind the active mutation and takes over its
+// lock.
+function blocked(message) {
+  return (activeMutationRequestId !== null && message.type !== "hd_backup_release" && !cancelsBackup(message))
+    || (activeStagedMutationRequestId !== null && !READ_TYPES.has(message.type))
+    || (activeImportRequestId !== null && !IMPORT_READ_TYPES.has(message.type));
+}
+
+function admit(message, sendResponse) {
   // Reserve before engine selection or module loading can retain the payload.
   const id = ++nextRequestId;
   pending.set(id, { message, sendResponse });
@@ -497,6 +465,53 @@ function dispatchEngine(message, sendResponse) {
     worker.postMessage({ channel: "engine-request", id, message });
     return undefined;
   }).catch((error) => finishRequest(id, failedResponse(message, describeError(error), "engine-start-failed")));
+}
+
+// Admits waiting requests in arrival order until the next one is blocked again.
+function admitWaiting() {
+  while (waiting.length > 0 && (engineError !== null || !blocked(waiting[0].message))) {
+    const { message, sendResponse } = waiting.shift();
+    if (engineError === null) admit(message, sendResponse);
+    else sendResponse(failedResponse(message, engineError, "engine-start-failed"));
+  }
+}
+
+// Admission and the mutation lock are shared by relayed runtime requests and the
+// first-run installer, so both see one engine queue.
+function dispatchEngine(message, sendResponse) {
+  if (engineError !== null) {
+    sendResponse(failedResponse(message, engineError, "engine-start-failed"));
+    return;
+  }
+  if (message.type === "hd_status" && (mutating() || pending.size >= MAX_PENDING_REQUESTS)) {
+    sendResponse({
+      type: "hd_status_result",
+      requestId: message.requestId ?? null,
+      ...lastEngineStatus,
+      loading: mutating() || lastEngineStatus.loading,
+      mutating: mutating(),
+      updating: updatingStatus(),
+    });
+    return;
+  }
+  const isBlocked = blocked(message);
+  if (isBlocked && READ_TYPES.has(message.type)) {
+    sendResponse(failedResponse(message, "the dictionary engine is busy mutating", "engine-mutating"));
+    return;
+  }
+  // One serialized download release and one token-scoped backup cancellation
+  // must fit even if ordinary requests occupy all 128 slots. The cancellation
+  // remains queued behind the active mutation and takes over its lock. A
+  // waiting request holds its payload too, so it counts against the bound.
+  const activeMutation = pending.get(activeMutationRequestId)?.message;
+  const cleanupSlots = message.type === "hd_backup_release"
+    ? 1 + Number(activeMutation?.type === "hd_backup_cancel") : 2 * Number(cancelsBackup(message));
+  if (pending.size + waiting.length >= MAX_PENDING_REQUESTS + cleanupSlots) {
+    sendResponse(failedResponse(message, "the dictionary engine request queue is full"));
+    return;
+  }
+  if (isBlocked) waiting.push({ message, sendResponse });
+  else admit(message, sendResponse);
 }
 
 // The engine worker and its pthreads: the isolates that share the engine heap.

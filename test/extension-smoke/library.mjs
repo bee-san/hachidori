@@ -36,11 +36,11 @@ async function settingsBatchImportStage() {
   });
   const { window } = dom;
   const state = { schemaVersion: 1, revision: 0, dictionaries: [] };
-  const importReplies = [
-    { ok: true, report: { success: true, title: "First", termCount: 1 } },
-    { ok: false, error: "broken archive", report: { success: false, error: "broken archive" } },
-    { ok: true, report: { success: true, title: "First", termCount: 2 } },
-  ];
+  const importReplies = {
+    "first.zip": { ok: true, report: { success: true, title: "First", termCount: 1 } },
+    "broken.zip": { ok: false, error: "broken archive", report: { success: false, error: "broken archive" } },
+    "replacement.zip": { ok: true, report: { success: true, title: "First", termCount: 2 } },
+  };
   const importRequests = [];
   const createdUrls = [];
   const revokedUrls = [];
@@ -48,6 +48,11 @@ async function settingsBatchImportStage() {
   let maxActiveImports = 0;
   let stateReads = 0;
   let statusReads = 0;
+  // Status polls still to report a change holding the engine, as an automatic
+  // backup's cleanup would right after the first import, and what the page
+  // showed at each poll.
+  let busyPolls = 0;
+  const waitingViews = [];
 
   window.URL.createObjectURL = (file) => {
     const url = `blob:settings-batch/${createdUrls.length}-${file.name}`;
@@ -71,7 +76,15 @@ async function settingsBatchImportStage() {
         }
         if (message.type === "hd_status") {
           statusReads += 1;
-          return { ok: true, ready: true, loading: false, dictionaryCount: 0 };
+          if (busyPolls > 0) {
+            busyPolls -= 1;
+            waitingViews.push({
+              state: window.document.getElementById("import-state")?.textContent ?? "",
+              row: window.document.querySelectorAll("#import-progress .setup-dictionary-status")[1]?.textContent ?? "",
+            });
+            return { ok: true, ready: true, loading: true, mutating: true, dictionaryCount: 0 };
+          }
+          return { ok: true, ready: true, loading: false, mutating: false, dictionaryCount: 0 };
         }
         if (message.type === "hd_options_write") {
           return { ok: true, options: structuredClone(message.options) };
@@ -79,7 +92,6 @@ async function settingsBatchImportStage() {
         if (message.type === "hd_import") {
           activeImports += 1;
           maxActiveImports = Math.max(maxActiveImports, activeImports);
-          const index = importRequests.length;
           importRequests.push({
             fileName: message.fileName,
             state: window.document.getElementById("import-state")?.textContent ?? "",
@@ -89,7 +101,8 @@ async function settingsBatchImportStage() {
           });
           await new Promise((done) => window.setTimeout(done, 0));
           activeImports -= 1;
-          return importReplies[index];
+          if (message.fileName === "first.zip") busyPolls = 2;
+          return importReplies[message.fileName];
         }
         throw new Error(`unexpected settings batch request ${message.type}`);
       },
@@ -133,8 +146,8 @@ async function settingsBatchImportStage() {
   const dropPrevented = dispatch("drop");
   const cleared = !zone.classList.contains("is-dragging");
 
-  const batchDeadline = Date.now() + 2000;
-  while ((importRequests.length < files.length || input.disabled) && Date.now() < batchDeadline) {
+  const batchDeadline = Date.now() + 10_000;
+  while ((importRequests.length < 5 || input.disabled) && Date.now() < batchDeadline) {
     await new Promise((done) => window.setTimeout(done, 5));
   }
   const outcomes = [...window.document.querySelectorAll("#import-progress .setup-dictionary")].map((item) => ({
@@ -154,13 +167,109 @@ async function settingsBatchImportStage() {
     createdUrls,
     revokedUrls,
     outcomes,
+    waitingViews,
     finalState: window.document.getElementById("import-state")?.textContent ?? "",
     controlsRestored: input.disabled === false,
+    cancelHidden: window.document.getElementById("import-cancel")?.hidden === true,
     stateReads,
     statusReads,
   };
   dom.window.close();
   return result;
+}
+
+// Cancel (#578): an import the engine has started finishes and keeps its
+// outcome, nothing after it starts, and a wait for the engine ends at once.
+async function settingsBatchCancelStage() {
+  const jsdom = await loadJsdom();
+  if (jsdom === null) {
+    return null;
+  }
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: `${EXTENSION_ORIGIN}/settings.html#add-dictionaries`,
+  });
+  const { window } = dom;
+  const imports = [];
+  let releaseImport = null;
+  let engineBusy = false;
+  window.URL.createObjectURL = (file) => `blob:settings-cancel/${file.name}`;
+  window.URL.revokeObjectURL = () => {};
+  window.__readDictionaryArchiveIdentity = async (file) => ({
+    title: file.name.replace(/\.zip$/u, ""), revision: "1", indexUrl: null, downloadUrl: null,
+  });
+  window.chrome = {
+    runtime: {
+      id: "hachidorisettingscancelsmoke",
+      async sendMessage(message) {
+        if (message.type === "hd_state_read") return { ok: true, state: { schemaVersion: 1, revision: 0, dictionaries: [] } };
+        if (message.type === "hd_status") {
+          return { ok: true, ready: true, loading: engineBusy, mutating: engineBusy, dictionaryCount: 0 };
+        }
+        if (message.type === "hd_options_write") return { ok: true, options: structuredClone(message.options) };
+        if (message.type === "hd_import") {
+          imports.push(message.fileName);
+          await new Promise((done) => { releaseImport = done; });
+          return { ok: true, report: { success: true, title: message.fileName.replace(/\.zip$/u, ""), termCount: 1 } };
+        }
+        throw new Error(`unexpected settings cancel request ${message.type}`);
+      },
+    },
+    storage: {
+      local: {
+        async get() {
+          return { options: { kanjiClickDictionary: "" } };
+        },
+      },
+      onChanged: { addListener() {} },
+    },
+  };
+  loadSettingsScript(window);
+  const el = (id) => window.document.getElementById(id);
+  const rows = () => [...window.document.querySelectorAll("#import-progress .setup-dictionary-status")]
+    .map((status) => status.textContent);
+  const until = async (predicate, what) => {
+    const deadline = Date.now() + 5000;
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((done) => window.setTimeout(done, 5));
+    }
+  };
+  const pick = (names) => {
+    const input = el("import-file");
+    Object.defineProperty(input, "files", { configurable: true,
+      value: names.map((name) => new window.File([name], name, { type: "application/zip" })) });
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  };
+  try {
+    await until(() => el("engine-status")?.textContent?.startsWith("Ready"), "Settings to be ready");
+    const cancelHiddenBefore = el("import-cancel").hidden;
+
+    pick(["one.zip", "two.zip", "three.zip"]);
+    await until(() => imports.length === 1, "the first import");
+    const cancelShown = el("import-cancel").hidden === false;
+    el("import-cancel").focus();
+    el("import-cancel").click();
+    const cancelling = el("import-state").textContent;
+    releaseImport();
+    await until(() => !el("import-file").disabled, "the cancelled batch to finish");
+    const inFlight = { imports: [...imports], rows: rows(), state: el("import-state").textContent,
+      cancelHiddenBefore, cancelShown, cancelling, cancelHidden: el("import-cancel").hidden,
+      focus: window.document.activeElement?.id ?? null };
+
+    engineBusy = true;
+    pick(["four.zip", "five.zip"]);
+    await until(() => rows()[0]?.startsWith("Waiting for the previous import to finish"), "the wait for the engine");
+    const waitingState = el("import-state").textContent;
+    el("import-cancel").click();
+    await until(() => !el("import-file").disabled, "the cancelled wait to finish");
+    const waiting = { imports: [...imports], rows: rows(), state: el("import-state").textContent, waitingState };
+    return { inFlight, waiting };
+  } finally {
+    dom.window.close();
+  }
 }
 
 // A dropped batch groups each .mdx with the
@@ -1233,6 +1342,8 @@ describe("Settings library", () => {
 
   test("Settings batch import", async () => {
     const settingsBatch = await settingsBatchImportStage();
+    // The broken archive is attempted three times; each request belongs to its row.
+    const requestRows = [0, 1, 1, 1, 2];
     check(
       "settings imports dropped archives sequentially through the shared progress rows and retains each timed outcome",
       settingsBatch?.multiple === true
@@ -1240,13 +1351,14 @@ describe("Settings library", () => {
         && Object.values(settingsBatch.drop ?? {}).every(Boolean)
         && settingsBatch.sharedRows === true
         && JSON.stringify(settingsBatch.importRequests?.map(({ fileName }) => fileName))
-          === JSON.stringify(["first.zip", "broken.zip", "replacement.zip"])
+          === JSON.stringify(["first.zip", "broken.zip", "broken.zip", "broken.zip", "replacement.zip"])
         && settingsBatch.importRequests?.every(({ state, completed }, index) =>
-          state.includes(`${index + 1} of 3`)
-            && state.includes(`${index} of 3 complete`)
-            && completed === index)
+          state.includes(`${requestRows[index] + 1} of 3`)
+            && state.includes(`${requestRows[index]} of 3 complete`)
+            && completed === requestRows[index])
         && settingsBatch.maxActiveImports === 1
         && JSON.stringify(settingsBatch.revokedUrls) === JSON.stringify(settingsBatch.createdUrls)
+        && settingsBatch.createdUrls.length === 3
         && JSON.stringify(settingsBatch.outcomes?.map(({ error }) => error))
           === JSON.stringify([false, true, false])
         && JSON.stringify(settingsBatch.outcomes?.map(({ name }) => name))
@@ -1254,13 +1366,51 @@ describe("Settings library", () => {
         && settingsBatch.outcomes.every(({ text, trackHidden }) =>
           /\d+(?:\.\d)? seconds/u.test(text) && trackHidden)
         && settingsBatch.outcomes[0].text.includes("Imported First")
+        && settingsBatch.outcomes[1].text.startsWith("Failed after 3 attempts in ")
         && settingsBatch.outcomes[1].text.includes("broken archive")
         && settingsBatch.outcomes[2].text.includes("Imported First")
         && settingsBatch.finalState === "Finished 3 of 3 archives — 2 imported, 1 failed."
         && settingsBatch.controlsRestored === true
-        && settingsBatch.stateReads === 3
-        && settingsBatch.statusReads === 1,
+        && settingsBatch.cancelHidden === true
+        // Per archive one status poll before its first attempt and one library
+        // read beside it, plus one of each per retry; two polls found the engine
+        // held, so that archive read the library again after the wait. Then a
+        // reload after each success, the final reload and status.
+        && settingsBatch.stateReads === 9
+        && settingsBatch.statusReads === 8,
       JSON.stringify(settingsBatch),
+    );
+    check(
+      "an archive that meets another change waits for it, saying so, instead of failing (#578)",
+      settingsBatch?.waitingViews?.length === 2
+        && settingsBatch.waitingViews[1].row.startsWith("Waiting for the previous import to finish… ")
+        && settingsBatch.waitingViews[1].state.startsWith("Waiting to import broken.zip (2 of 3) — 1 of 3 complete — "),
+      JSON.stringify(settingsBatch?.waitingViews),
+    );
+  });
+
+  test("Settings batch import cancel", async () => {
+    const cancel = await settingsBatchCancelStage();
+    const { inFlight, waiting } = cancel ?? {};
+    check(
+      "Cancel lets the import in progress finish and starts no later archive",
+      inFlight?.cancelHiddenBefore === true && inFlight.cancelShown === true
+        && inFlight.cancelling.startsWith("Cancelling after one.zip finishes importing — ")
+        && JSON.stringify(inFlight.imports) === JSON.stringify(["one.zip"])
+        && /^Imported one in \d+(?:\.\d)? seconds: 1 term\.$/u.test(inFlight.rows[0])
+        && JSON.stringify(inFlight.rows.slice(1)) === JSON.stringify(["Cancelled before import.", "Cancelled before import."])
+        && inFlight.state === "Import cancelled — 1 imported, 2 cancelled, 0 failed."
+        && inFlight.cancelHidden === true
+        && inFlight.focus === "import-file",
+      JSON.stringify(inFlight),
+    );
+    check(
+      "Cancel ends a wait for the engine at once and imports nothing",
+      waiting?.waitingState.startsWith("Waiting to import four.zip (1 of 2) — 0 of 2 complete — ")
+        && JSON.stringify(waiting.imports) === JSON.stringify(["one.zip"])
+        && JSON.stringify(waiting.rows) === JSON.stringify(["Cancelled before import.", "Cancelled before import."])
+        && waiting.state === "Import cancelled — 0 imported, 2 cancelled, 0 failed.",
+      JSON.stringify(waiting),
     );
   });
 
