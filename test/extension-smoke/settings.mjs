@@ -309,6 +309,17 @@ async function settingsFrequencyStage() {
     while (!predicate() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 5));
     if (!predicate()) throw new Error("Frequency Settings did not reach its expected state");
   }
+  // This stage edits Reading and Design controls. Settings shows one section at
+  // a time, and a browser focuses a rendered control only (jsdom too, since
+  // 30.1.2), so open the control's section first, as a reader does.
+  async function focusIn(control) {
+    const section = control.closest("main > section");
+    if (section.hidden) {
+      window.location.hash = `#${section.id}`;
+      await until(() => !section.hidden);
+    }
+    control.focus();
+  }
   async function edit(name, value) {
     const count = writes.length;
     field(name).value = value;
@@ -347,7 +358,7 @@ async function settingsFrequencyStage() {
       && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
 
     const chooser = field("dictionary");
-    chooser.focus();
+    await focusIn(chooser);
     chooser.value = "Rank";
     chooser.dispatchEvent(new window.Event("input", { bubbles: true }));
     const beforeUnavailableChoice = writes.length;
@@ -367,7 +378,7 @@ async function settingsFrequencyStage() {
     emitDictionaries({ frequencyCount: 3 });
     const baseRevision = storedOptions.revision;
     const select = field("dictionary");
-    select.focus();
+    await focusIn(select);
     select.value = "Occurrence";
     select.dispatchEvent(new window.Event("input", { bubbles: true }));
     emitOptions({ frequencyDictionary: "Unknown mode", frequencyOrder: "ascending" });
@@ -397,7 +408,7 @@ async function settingsFrequencyStage() {
     await editControl(snippets, "6");
     await editControl(preferred, "Rank");
     const beforePresentation = writes.length;
-    preferred.focus();
+    await focusIn(preferred);
     const choice = preferred.selectedOptions[0];
     emitDictionaries({ enabled: false, displayName: "Dormant source" });
     const focusedChoice = preferred.selectedOptions[0] === choice && preferred.value === "Rank";
@@ -411,7 +422,7 @@ async function settingsFrequencyStage() {
     const offKept = snippets.disabled && preferred.disabled && snippets.value === "6" && preferred.value === "Rank"
       && JSON.stringify(writes.at(-1).options) === JSON.stringify({ showCompactDefinitionSummary: false });
     await editControl(summaryToggle, true);
-    preferred.focus();
+    await focusIn(preferred);
     preferred.value = "Occurrence";
     preferred.dispatchEvent(new window.Event("input", { bubbles: true }));
     const summaryRevision = storedOptions.revision;
@@ -425,7 +436,7 @@ async function settingsFrequencyStage() {
     window.document.getElementById("options-use-saved").click();
     const disabledAfterBlur = preferred.disabled;
     await editControl(summaryToggle, true);
-    snippets.focus();
+    await focusIn(snippets);
     snippets.value = "4";
     snippets.dispatchEvent(new window.Event("input", { bubbles: true }));
     const countRevision = storedOptions.revision;
@@ -453,7 +464,7 @@ async function settingsFrequencyStage() {
       await editControl(imageSource, JSON.stringify(supplier));
       const dictionarySaved = JSON.stringify(writes.at(-1).options) === JSON.stringify({ popupImageSource: supplier });
       const beforeNames = writes.length;
-      imageSource.focus();
+      await focusIn(imageSource);
       const focusedOption = imageSource.selectedOptions[0];
       emitImageState({ dictionaries: state.dictionaries.map(dictionary => dictionary.id === "pictures"
         ? { ...dictionary, displayName: "Picture book", enabled: false } : dictionary),
@@ -472,7 +483,7 @@ async function settingsFrequencyStage() {
       emitImageState({ dictionaries: state.dictionaries.filter(dictionary => dictionary.id !== "pictures"), groups: [] });
       const missingGroupKept = imageSource.value === JSON.stringify(group)
         && imageSource.selectedOptions[0].textContent.includes("unavailable") && writes.length === beforeRemoval;
-      imageSource.focus();
+      await focusIn(imageSource);
       const desiredSource = { kind: "dictionary", title: "Rank" };
       imageSource.value = JSON.stringify(desiredSource);
       imageSource.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -584,7 +595,7 @@ async function settingsFrequencyStage() {
           external: { definitionBlurReveal: "hover" }, key: "definitionBlurDelayMs", saved: 2500, restore: ["opt-blur-reveal", "timed"] },
       ]) {
         const focusedControl = blurControl(control);
-        focusedControl.focus();
+        await focusIn(focusedControl);
         focusedControl.value = draft;
         focusedControl.dispatchEvent(new window.Event("input", { bubbles: true }));
         const focusedRevision = storedOptions.revision;
@@ -601,7 +612,7 @@ async function settingsFrequencyStage() {
       await editControl(countBlur, false);
       await editControl(frequencyBlur, true);
       const focusedFrequencyThreshold = blurControl("opt-blur-frequency-threshold");
-      focusedFrequencyThreshold.focus();
+      await focusIn(focusedFrequencyThreshold);
       focusedFrequencyThreshold.value = "12000";
       focusedFrequencyThreshold.dispatchEvent(new window.Event("input", { bubbles: true }));
       const frequencyRevision = storedOptions.revision;
@@ -650,7 +661,7 @@ async function settingsFrequencyStage() {
       await editControl(furiganaStyle, "overline");
       metadataDetails.push(!furiganaStyle.disabled
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ pitchAccentFuriganaStyle: "overline" }));
-      furiganaStyle.focus();
+      await focusIn(furiganaStyle);
       emitOptions({ pitchAccentFuriganaStyle: "contour", showPitchAccentFurigana: false });
       metadataDetails.push(furiganaStyle.value === "overline" && !furiganaStyle.disabled);
       furiganaStyle.blur();
@@ -659,13 +670,13 @@ async function settingsFrequencyStage() {
       emitDictionaries({ pitchCount: 2 });
       await editControl(pitch, "Rank");
       metadataDetails.push(writes.at(-1).options.pitchAccentFuriganaDictionary === "Rank");
-      pitch.focus();
+      await focusIn(pitch);
       const focused = pitch.selectedOptions[0];
       emitDictionaries({ enabled: false, displayName: "Pitch source" });
       metadataDetails.push(pitch.selectedOptions[0] === focused);
       pitch.blur();
       metadataDetails.push(pitch.value === "Rank" && pitch.selectedOptions[0].textContent.includes("Pitch source (disabled)"));
-      pitch.focus();
+      await focusIn(pitch);
       pitch.value = "";
       pitch.dispatchEvent(new window.Event("input", { bubbles: true }));
       const revision = storedOptions.revision;

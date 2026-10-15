@@ -118,6 +118,10 @@ function fixture(t) {
 
 test("button editor creates link and Anki actions, then edits, reorders and deletes them with stable IDs", t => {
   const f = fixture(t);
+  // The editor is on Design, and the reorder steps below check where keyboard
+  // focus lands. A browser focuses a rendered control only (jsdom too, since
+  // 30.1.2), so show the section, as opening Design does.
+  f.el("design").hidden = false;
   assert.equal(f.el("custom-button-empty").hidden, false);
   f.addLink("Jisho", "https://jisho.org/search/%w");
   f.addAnki("Mine sentence", "sentence");
