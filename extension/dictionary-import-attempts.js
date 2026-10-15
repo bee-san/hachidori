@@ -93,6 +93,9 @@ export async function importWithRetries({
   const early = revision();
   await turn();
   const before = waited ? await revision() : await early;
+  // A Cancel pressed while the poll that found the engine free, or the revision
+  // read, was in flight starts nothing either.
+  if (signal?.aborted) throw signal.reason;
   for (let number = 1; ; number += 1) {
     onAttempt(number);
     const outcome = { ...await tryImport(attempt, number), attempts: number };
@@ -108,6 +111,7 @@ export async function importWithRetries({
     }
     // A library that changed meanwhile may already hold this import, or have
     // made its decision stale; installing beside a title would even commit twice.
-    if (before === null || await revision() !== before) return outcome;
+    // A Cancel pressed during that poll or read starts no retry.
+    if (before === null || await revision() !== before || signal?.aborted) return outcome;
   }
 }

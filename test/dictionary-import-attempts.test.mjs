@@ -208,3 +208,29 @@ test("cancelling before the first attempt imports nothing; cancelling a retry re
   assert.deepEqual(outcome, { ok: false, reply: FAILED, attempts: 1 });
   assert.deepEqual(failing.calls, [1]);
 });
+
+test("a Cancel pressed while the poll or the library read before an attempt is in flight starts nothing", async () => {
+  // The poll that finds the engine free answers after the reader pressed Cancel.
+  const first = new AbortController();
+  const untried = importer(IMPORTED);
+  await assert.rejects(importWithRetries({ ...untried, readRevision: async () => 4, signal: first.signal,
+    readStatus: async () => { first.abort(); return IDLE; } }), { name: "AbortError" });
+  assert.deepEqual(untried.calls, []);
+
+  // Cancel during the library read that follows a wait for another change.
+  const read = new AbortController();
+  const afterWait = importer(IMPORTED);
+  let reads = 0;
+  await assert.rejects(importWithRetries({ ...fakeTime(), ...statuses(MUTATING, IDLE), ...afterWait, signal: read.signal,
+    readRevision: async () => { reads += 1; if (reads === 2) read.abort(); return 4; } }), { name: "AbortError" });
+  assert.deepEqual(afterWait.calls, []);
+
+  // Cancel during the poll before a retry: the failed attempt is the outcome.
+  const retry = new AbortController();
+  const failing = importer(FAILED, IMPORTED);
+  let polls = 0;
+  const outcome = await importWithRetries({ ...fakeTime(), ...failing, readRevision: async () => 4, signal: retry.signal,
+    readStatus: async () => { polls += 1; if (polls === 2) retry.abort(); return IDLE; } });
+  assert.deepEqual(outcome, { ok: false, reply: FAILED, attempts: 1 });
+  assert.deepEqual(failing.calls, [1]);
+});
