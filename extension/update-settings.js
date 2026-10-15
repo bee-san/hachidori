@@ -36,8 +36,8 @@ function adoptUpdateSettings(value) {
   return true;
 }
 
-function setUpdateState(message, tone = "") {
-  setSectionStatus("update-state", message, tone, tone === "ready");
+function setUpdateState(message, tone = "", error = null) {
+  setSectionStatus("update-state", message, tone, tone === "ready", error);
 }
 
 function isUpdateCheckable(dictionary) {
@@ -278,7 +278,7 @@ async function runManagedUpdate(type, dictionaryIds = null) {
     const summary = updateOutcomeSummary(type, reply.outcomes ?? [], labels);
     setUpdateState(summary.message, summary.tone);
   } catch (error) {
-    setUpdateState(`Dictionary updates failed: ${describeErrorOrJson(error)}`, "error");
+    setUpdateState(`Dictionary updates failed: ${describeErrorOrJson(error)}`, "error", error);
   } finally {
     updating = false;
     syncNavigationStatus("update-state");
@@ -319,7 +319,7 @@ async function flushUpdateSchedule() {
       const stored = await chrome.storage.local.get("dictionaryUpdates");
       adoptUpdateSettings(stored.dictionaryUpdates);
     } catch { /* Keep the draft even if the committed state cannot be read. */ }
-    setUpdateState(`Could not save the schedule: ${describeErrorOrJson(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error");
+    setUpdateState(`Could not save the schedule: ${describeErrorOrJson(error)} Current schedule: ${updateSettings.schedule}. Your draft is retained.`, "error", error);
   } finally {
     savingSchedule = null;
     renderUpdateControls();

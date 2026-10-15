@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 14 September 2026.
+Last updated: 14 October 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -206,6 +206,30 @@ backup only to a location you trust. Hachidori does not upload backups to a clou
 service. You control any later sharing or syncing of
 that file. Delete downloaded backups and already-created Anki notes/media
 separately; uninstalling Hachidori does not remove them.
+
+## Debug log
+
+To help with bug reports, Hachidori keeps a debug log in this browser profile:
+warnings and errors from its own pages and background contexts, requests that
+failed, network requests that failed without a response, the error messages
+Settings, the startup page and the toolbar showed you, and the actions you took
+on those pages, recorded by name only (for example "click #backup-export",
+"change #import-file (1 files)" or "navigate #backup"; never what you typed or
+chose). Each entry has its time, the extension version and a random session
+identifier for the page or background context that wrote it. Before an entry is
+kept, credentials such as API keys, tokens and passwords are replaced with
+`[redacted]`; a web address in a message keeps only its site and path, without
+sign-in details, query or fragment, and a local file address keeps none of its
+path; `data:` payloads are removed; and all Japanese text, which is how
+looked-up words, sentences and dictionary content would appear, is replaced
+with `[ja]`. The log does not list the pages you read.
+
+The log keeps the newest 5,000 entries within 2 MB, survives reloads and
+browser restarts, and is removed when you uninstall Hachidori. It is never sent
+anywhere. **Settings → Advanced → Troubleshooting → Get debug info** puts it in
+the file you download, and **Copy error details** next to an error copies that
+error and the actions before it to your clipboard; you choose whether to share
+either.
 
 ## Limited use and contact
 

@@ -21,13 +21,13 @@ import { createThemeStore } from "./theme-store.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { collectDebugInfo, debugInfoBlob, debugInfoFilename } from "./debug-info.js";
-import { captureDebugLog } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
 import { createLocalFileAccessController } from "./local-file-access.js";
 import { createSettingsSearch } from "./settings-search.js";
-import { setStatusOutput } from "./settings-dom.js";
+import { setStatusOutput, showErrorCopy } from "./settings-dom.js";
 import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomButtonSettings } from "./custom-button-settings.js";
@@ -59,6 +59,12 @@ import {
   attachOptionHandlers, flushOptionsUntilIdle, optionsEditRevision, pendingOptions, renderOptions,
   renderThemeChoices, renderWordHighlightControls, savingOptions, writeOptions,
 } from "./option-settings.js";
+
+// Get debug info includes this page's warnings and errors, the errors it shows
+// and what was pressed, changed and opened, from this visit and earlier ones.
+captureDocumentActions(document, captureDebugLog(window, {
+  context: "settings", store: openDebugLogStore(window.indexedDB),
+}));
 
 const TARGET = "hoshidicts-offscreen";
 const WORKER_TARGET = "hoshidicts-worker";
@@ -159,7 +165,7 @@ const nameDrafts = createDictionaryNameDrafts({
 const recommendedInstallation = createRecommendedInstallClient({
   send: sourceIds => send("hd_setup_install", { sourceIds }, "hachidori-setup"),
   onChange: renderRecommendedInstallation,
-  onError(error) { setImportState(`Could not observe dictionary installation: ${describeErrorOrJson(error)}`, "error"); },
+  onError(error) { setImportState(`Could not observe dictionary installation: ${describeErrorOrJson(error)}`, "error", error); },
 });
 let statusTimer = null;
 let lastEngineStatus = null; // NOSONAR: shared with the other Settings modules
@@ -274,9 +280,10 @@ function syncNavigationStatus(id) {
   renderNavigationStatuses();
 }
 
-function setSectionStatus(id, message, tone, completed = false) {
+// `error` is the failure an error message describes, for the debug log.
+function setSectionStatus(id, message, tone, completed = false, error = null) {
   const output = element(id);
-  setStatusOutput(output, message, tone);
+  setStatusOutput(output, message, tone, error);
   if (completed && SECTION_STATUSES[id].section !== activeSection) unseenSectionCompletions.add(id);
   syncNavigationStatus(id);
 }
@@ -450,7 +457,7 @@ async function downloadDebugInfo() {
     downloadBlob(document, debugInfoBlob(report), debugInfoFilename(new Date(report.generatedAt)));
     setSectionStatus("debug-info-status", "Debug info downloaded.", "ready", true);
   } catch (error) {
-    setSectionStatus("debug-info-status", `Could not collect debug info: ${describeErrorOrJson(error)}`, "error");
+    setSectionStatus("debug-info-status", `Could not collect debug info: ${describeErrorOrJson(error)}`, "error", false, error);
   } finally {
     button.disabled = false;
   }
@@ -569,7 +576,7 @@ function updateBackupSettings() {
       }
     },
     setBusy(value) { backingUp = value; setControlsDisabled(importing); },
-    status: (message, tone, completed) => setSectionStatus("backup-status", message, tone, completed),
+    status: (message, tone, completed, error) => setSectionStatus("backup-status", message, tone, completed, error),
     async refresh() {
       const stored = await chrome.storage.local.get(["options", "dictionaryUpdates", CUSTOM_DICTIONARY_SOURCE_KEY]);
       adoptOptions(stored.options);
@@ -715,12 +722,18 @@ async function send(type, fields = {}, target = TARGET) {
   return reply;
 }
 
-function setStatus(message, tone, failures = []) {
+function setStatus(message, tone, failures = [], error = null) {
   const status = element("engine-status");
+  const shown = status.textContent === message && status.classList.contains("is-error");
   status.textContent = message;
   status.classList.toggle("is-error", tone === "error");
   status.classList.toggle("is-ready", tone === "ready");
   renderStatusFailures(failures);
+  if (tone !== "error") showErrorCopy(status, null);
+  else if (!shown) {
+    const detail = failures.map(failure => `${failure.title}: ${failure.error}`).join("\n");
+    showErrorCopy(status, recordUserError(window, status.id, message, error, detail), element("engine-status-failures"));
+  }
 }
 
 // One entry per package the engine could not load, its title and raw load error
@@ -770,7 +783,7 @@ async function refreshStatus() {
     // or the offscreen document can be recreated faster than background.js's
     // retries. Keep polling, or one blip freezes this line on a stale error while
     // the engine finishes booting and every lookup works.
-    setStatus(`Cannot reach the engine: ${describeErrorOrJson(error)}`, "error");
+    setStatus(`Cannot reach the engine: ${describeErrorOrJson(error)}`, "error", [], error);
     scheduleStatusPoll(STATUS_RETRY_MS);
     return;
   }
@@ -926,8 +939,6 @@ function renderMiningCapabilityHelp() {
 }
 
 async function start() {
-  // Get debug info includes this page's own recent warnings and errors.
-  captureDebugLog(window, { context: "settings" });
   configureBrowserUi();
   renderMiningCapabilityHelp();
   element("custom-buttons-settings").disabled = false;

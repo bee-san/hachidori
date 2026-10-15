@@ -702,6 +702,10 @@ button.ghost:disabled {
   cursor: default;
   opacity: 0.6;
 }
+/* Beside the error it copies, or below it in a column or grid. */
+button.copy-error-details {
+  width: fit-content;
+}
 button.danger {
   color: var(--error);
 }

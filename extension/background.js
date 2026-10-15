@@ -27,7 +27,7 @@ import {
   NETFLIX_TARGET, NETFLIX_RECORDER_PORT, NETFLIX_WATCH_URL, adoptNetflixRecorder, handleNetflixRequest,
 } from "./background-netflix.js";
 import { extensionApi as chrome } from "./browser-api.js";
-import { captureWorkerDebugLog } from "./debug-log.js";
+import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import "./reader-options.js";
 import { ANKI_INDEX_KEY } from "./anki-index-cache.js";
@@ -64,9 +64,10 @@ import { applyNetflixFlag } from "./netflix.js";
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-// Settings → Advanced → Get debug info reads this worker's recent warnings,
-// errors and failed replies (debug-log.js).
-captureWorkerDebugLog(globalThis, chrome.storage.session);
+// Settings → Advanced → Get debug info reads this worker's warnings, errors and
+// failed replies, kept across its restarts in the extension's debug log ring
+// (debug-log.js).
+captureDebugLog(globalThis, { context: "service-worker", store: openDebugLogStore(globalThis.indexedDB) });
 
 // The overlay host (Electron 43) exposes chrome.alarms, and create()/get()
 // even record the alarm, but onAlarm never dispatches to the worker; a host

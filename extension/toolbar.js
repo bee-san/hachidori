@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+
+// Settings → Advanced → Get debug info includes what failed here.
+captureDocumentActions(document, captureDebugLog(window, {
+  context: "toolbar", store: openDebugLogStore(window.indexedDB),
+}));
 
 const { activationLabel, normaliseOptions } = globalThis.HDReaderOptions;
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
@@ -33,6 +39,7 @@ function render() {
 function showError(error) {
   elements["toolbar-error"].textContent = error instanceof Error ? error.message : String(error);
   elements["toolbar-error"].hidden = false;
+  recordUserError(window, "toolbar-error", elements["toolbar-error"].textContent, error);
 }
 
 async function send(type, fields = {}, target = "hoshidicts-worker") {

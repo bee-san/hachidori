@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectDebugInfo, debugInfoBlob, debugInfoFilename, listOpfs, REDACTED } from "../extension/debug-info.js";
+import { collectDebugInfo, debugInfoBlob, debugInfoFilename, listOpfs } from "../extension/debug-info.js";
+import { REDACTED } from "../extension/debug-log.js";
 
 const STORED = {
   options: { revision: 3, lowMemoryMode: true, anki: { url: "http://127.0.0.1:8765", apiKey: "hunter2" },
@@ -44,7 +45,8 @@ function host({ fail = new Set() } = {}) {
     hd_status: { ok: true, ready: true, dictionaryCount: 2, storageBackend: "opfs", threaded: true },
     hd_memory: { ok: true, heapBytes: 1024, dictionaries: [] },
     hd_memory_total: { ok: true, bytes: 2048 },
-    hd_debug_log: { ok: true, logs: [{ context: "offscreen", entries: [{ level: "warn", message: "hoshidicts: direct OPFS is unavailable" }] }] },
+    hd_debug_log: { ok: true, logs: [{ context: "offscreen", session: "o1", entries: [{ at: "2026-10-06T09:00:00.000Z",
+      session: "o1", n: 1, context: "offscreen", version: "1.2.3", level: "warn", message: "hoshidicts: direct OPFS is unavailable" }] }] },
     hd_sharing_status: { ok: true, sharing: { enabled: false } },
     hd_anki_status: { ok: true, available: false, error: "Choose an Anki note type in Settings." },
     hd_state_read: { ok: true, state: { dictionaries: [{ id: "a", title: "Jitendex", enabled: true }] } },
@@ -52,7 +54,7 @@ function host({ fail = new Set() } = {}) {
   const send = async (type, fields, target = "offscreen") => {
     sent.push({ type, target });
     if (fail.has(type)) throw new Error("the extension's service worker did not reply");
-    if (type === "hd_debug_log" && target === "worker") return { ok: true, log: { context: "service-worker", entries: [] } };
+    if (type === "hd_debug_log" && target === "worker") return { ok: true, log: { context: "service-worker", session: "w1", entries: [] } };
     if (type === "hd_memory_total" && fail.has("hang")) return new Promise(() => {});
     return replies[type];
   };
@@ -75,8 +77,12 @@ test("the debug report carries version, engine, dictionaries and settings withou
   assert.equal(report.extension.fileSchemeAccess, false);
   assert.equal(report.extension.alarms[0].scheduledAt, "2026-10-07T00:00:00.000Z");
   assert.equal(report.extension.manifest.version, "1.2.3");
-  assert.equal(report.logs.engine.logs[0].entries[0].message, "hoshidicts: direct OPFS is unavailable");
-  assert.equal(report.logs.serviceWorker.log.context, "service-worker");
+  assert.deepEqual(report.debugLog.entries.map(entry => entry.message), ["hoshidicts: direct OPFS is unavailable"]);
+  assert.deepEqual(report.debugLog.contexts.map(({ probe, context }) => [probe, context]),
+    [["serviceWorker", "service-worker"], ["engine", "offscreen"], ["settings", null]]);
+  assert.deepEqual(report.debugLog.sessions.map(({ session, context, live }) => [session, context, live]), [["o1", "offscreen", true]]);
+  assert.ok(report.debugLog.stored.error, "a host without IndexedDB reports the ring as unreadable, not fatal");
+  assert.equal(report.schemaVersion, 2);
   assert.equal(report.services.anki.error, "Choose an Anki note type in Settings.");
   assert.deepEqual(sent.filter(message => ["hd_sharing_status", "hd_anki_status"].includes(message.type)).map(message => message.target),
     ["sharing", "anki"]);

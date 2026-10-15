@@ -562,10 +562,10 @@ export function createAnkiSettingsController({
     if (element("anki-refresh").disabled !== loading) element("anki-refresh").disabled = loading;
   }
 
-  function setupStatus(message, tone) {
+  function setupStatus(message, tone, error = null) {
     const status = element("anki-setup-status");
     status.hidden = message === "";
-    setStatusOutput(status, message, tone);
+    setStatusOutput(status, message, tone, error);
   }
 
   function syncOwner() {
@@ -612,7 +612,7 @@ export function createAnkiSettingsController({
       }
     } catch (error) {
       if (sequence !== setupRequestSequence || requestOwner !== String(readOwnerKey() ?? "")) return;
-      setupStatus(error.message, "error");
+      setupStatus(error.message, "error", error);
     } finally {
       if (sequence === setupRequestSequence && requestOwner === String(readOwnerKey() ?? "")) {
         findingSetup = false;

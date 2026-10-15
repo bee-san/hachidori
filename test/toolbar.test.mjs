@@ -31,6 +31,8 @@ async function toolbar(stored = {}) {
     document: { querySelectorAll: () => [...nodes.values()] },
     window: { close: () => { closed++; }, addEventListener() {} },
     setInterval() { return 1; }, clearInterval() {},
+    // The debug log's own capture is tested in debug-log.test.mjs.
+    captureDebugLog: () => ({}), captureDocumentActions() {}, openDebugLogStore() {}, recordUserError() {},
     chrome: {
       storage: {
         local: { async get() { return { options: stored }; } },
@@ -58,7 +60,8 @@ async function toolbar(stored = {}) {
   vm.runInContext(optionsSource, context);
   const script = source
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
-    .replace('import "./reader-options.js";', "");
+    .replace('import "./reader-options.js";', "")
+    .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "");
   await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,

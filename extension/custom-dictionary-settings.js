@@ -27,8 +27,8 @@ let customSaving = false; // NOSONAR: shared with the other Settings modules
 let customDraftStale = false;
 let customDraftNewline = "\n";
 
-function setCustomDictionaryStatus(message, tone = "", completed = false) {
-  setSectionStatus("custom-dictionary-status", message, tone, completed);
+function setCustomDictionaryStatus(message, tone = "", completed = false, error = null) {
+  setSectionStatus("custom-dictionary-status", message, tone, completed, error);
 }
 
 function renderCustomDictionaryErrors(errors) {
@@ -151,7 +151,7 @@ async function loadCustomDictionarySource() {
     resetCustomDictionaryDraft(customDocument);
     setCustomDictionaryStatus(`Loaded source revision ${customDocument.revision}.`, "ready", true);
   } catch (error) {
-    setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describeErrorOrJson(error)}`, "error");
+    setCustomDictionaryStatus(`Could not load the custom dictionary source: ${describeErrorOrJson(error)}`, "error", false, error);
   } finally {
     customLoading = false;
     syncNavigationStatus("custom-dictionary-status");
@@ -241,7 +241,7 @@ async function saveCustomDictionarySource(event) {
       );
     }
   } catch (error) {
-    setCustomDictionaryStatus(`Could not save the custom dictionary: ${describeErrorOrJson(error)}`, "error");
+    setCustomDictionaryStatus(`Could not save the custom dictionary: ${describeErrorOrJson(error)}`, "error", false, error);
   } finally {
     customSaving = false;
     syncNavigationStatus("custom-dictionary-status");
@@ -280,7 +280,7 @@ function handleCustomDictionarySourceChange(change) {
   try {
     adoptCustomDictionaryDocument(change.newValue);
   } catch (error) {
-    setCustomDictionaryStatus(`Could not read the changed custom dictionary source: ${describeErrorOrJson(error)}`, "error");
+    setCustomDictionaryStatus(`Could not read the changed custom dictionary source: ${describeErrorOrJson(error)}`, "error", false, error);
   }
 }
 

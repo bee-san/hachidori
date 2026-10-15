@@ -5,7 +5,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { applyPageTheme, setStatusOutput } from "../extension/settings-dom.js";
+import { applyPageTheme, setStatusOutput, showErrorCopy } from "../extension/settings-dom.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -31,6 +31,29 @@ test("status outputs switch one semantic tone at a time without repeating unchan
   assert.equal(output.className, "");
   setStatusOutput(output, "AnkiConnect returned HTTP 503.", "error");
   assert.deepEqual([...output.classList], ["is-error"]);
+  dom.window.close();
+});
+
+test("a focused Copy error details hands keyboard focus to its status when the error clears", () => {
+  const dom = new JSDOM("<main><output id=\"status\" aria-live=\"polite\"></output><button id=\"other\">Other</button></main>",
+    { pretendToBeVisual: true });
+  const { document } = dom.window;
+  const output = document.getElementById("status");
+  showErrorCopy(output, { message: "Cannot reach the engine" });
+  const copy = output.nextElementSibling;
+  assert.equal(copy.textContent, "Copy error details");
+  copy.focus();
+  assert.equal(document.activeElement, copy);
+  showErrorCopy(output, null);
+  assert.equal(copy.hidden, true);
+  assert.equal(document.activeElement, output, "focus moves to the status, not the page");
+  assert.equal(output.getAttribute("tabindex"), "-1", "the status takes focus without joining the tab order");
+
+  // Focus elsewhere stays where the reader put it.
+  showErrorCopy(output, { message: "Cannot reach the engine" });
+  document.getElementById("other").focus();
+  showErrorCopy(output, null);
+  assert.equal(document.activeElement, document.getElementById("other"));
   dom.window.close();
 });
 

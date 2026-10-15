@@ -189,7 +189,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
 | `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
 | `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option. |
-| `debug-info`, `debug-log` | The debug report's contents without reader content; the log keeps the newest entries. |
+| `debug-info`, `debug-log` | The debug report's contents without reader content; the log's capture, redaction, named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
 | `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
 | `dictionary-import`, `dictionary-import-errors` | Revision comparison, MDX loss-count notes, and mmap/writeback failures that cleanup cannot hide. |
 | `dictionary-import-attempts` | A Settings import's turn at the engine (#578): it waits while the engine starts or a change holds it, polling with backoff up to a 30-minute timeout, and Cancel ends the wait at once; a failed attempt is retried up to three times, never after the library changed and never for memory, storage or engine-start failures. |
@@ -372,6 +372,7 @@ Its steps run in this order, in one profile:
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
 | `restart.mjs` | Backups and atomic replacement in Chrome, then `SIGKILL` and a relaunch on the same profile: settings, counts, setup, the library, OPFS and lookups survive; removal. |
 | `memory.mjs`, `media.mjs`, `file-access.mjs` | Low memory mode, the RAM default, entry and hash storage; lookup bounds, deep structured content and dictionary media; saved-page setup with Chrome's file access. |
+| `debug-log.mjs` | The debug log: a failed import is in Get debug info after Settings reloads, with the actions before it, and **Copy error details** copies it; credentials, address queries and Japanese text never reach IndexedDB or the report; the ring holds 5,000 entries within 2 MiB; a service-worker failure survives `SIGKILL` and a relaunch. |
 
 #### The profile
 

@@ -39,7 +39,7 @@ export function createBackupSettingsController({
       status(message, "");
       await operation();
     } catch (error) {
-      status(error.message || String(error), "error");
+      status(error.message || String(error), "error", false, error);
     } finally {
       busy = false;
       setBusy(false);

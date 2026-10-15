@@ -840,7 +840,7 @@ async function commitDictionaryStateChange(update, reloadEngine, baseState = dic
     reorderReuseHint = false;
     dictionaryCommitFailed = true;
     dictionaryReorderEpoch += 1;
-    setStatus(`Dictionary change was not saved: ${describeErrorOrJson(error)}`, "error");
+    setStatus(`Dictionary change was not saved: ${describeErrorOrJson(error)}`, "error", [], error);
     return { ok: false, error: describeErrorOrJson(error) };
   }
 }
@@ -982,8 +982,8 @@ function countLabel(count, singular, plural) {
   return `${numberFormat.format(count)} ${count === 1 ? singular : plural}`;
 }
 
-function setLibraryResetStatus(message, tone = "", completed = false) {
-  setSectionStatus("library-reset-status", message, tone, completed);
+function setLibraryResetStatus(message, tone = "", completed = false, error = null) {
+  setSectionStatus("library-reset-status", message, tone, completed, error);
 }
 
 function removeAllConfirmation(count, personal, erasePersonal) {
@@ -1065,7 +1065,7 @@ async function removeAllDictionaries() {
     const succeeded = failures.length === 0 && personalOutcome?.erased !== false;
     setLibraryResetStatus(messages.join(" "), succeeded ? "ready" : "error", succeeded);
   } catch (error) {
-    setLibraryResetStatus(`Could not remove the dictionaries: ${describeErrorOrJson(error)}`, "error");
+    setLibraryResetStatus(`Could not remove the dictionaries: ${describeErrorOrJson(error)}`, "error", false, error);
   } finally {
     removing = false;
     setControlsDisabled(importing);
@@ -1090,7 +1090,7 @@ async function reloadDictionaries() {
     }
     adoptDictionaryState(reply.state);
   } catch (error) {
-    setStatus(`Could not read the dictionary list: ${describeErrorOrJson(error)}`, "error");
+    setStatus(`Could not read the dictionary list: ${describeErrorOrJson(error)}`, "error", [], error);
     return false;
   }
   renderDictionaryState();
@@ -1177,7 +1177,7 @@ function handleDictionaryStateChange(change) {
   try {
     adopted = adoptDictionaryState(change.newValue);
   } catch (error) {
-    setStatus(describeErrorOrJson(error), "error");
+    setStatus(describeErrorOrJson(error), "error", [], error);
     return false;
   }
   if (adopted) {

@@ -16,6 +16,7 @@ import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recomm
 import { readDictionaryArchiveIdentity } from "./dictionary-import-archive.js";
 import { IMPORT_ATTEMPTS, importWithRetries } from "./dictionary-import-attempts.js";
 import { dictionaryImportError } from "./dictionary-import-errors.js";
+import { recordUserError } from "./debug-log.js";
 import {
   describeRevisionComparison,
   dictionaryImportMatches,
@@ -36,8 +37,8 @@ let renderedInstallRun = null;
 let importProgress;
 let importDragDepth = 0;
 
-function setImportState(message, tone) {
-  setSectionStatus("import-state", message, tone, tone === "ready");
+function setImportState(message, tone, error = null) {
+  setSectionStatus("import-state", message, tone, tone === "ready", error);
 }
 
 function clearImportResults() {
@@ -59,8 +60,10 @@ function setImportEntries(entries) {
   importProgressView().setEntries(entries);
 }
 
-function updateImportResult(index, state) {
+// A failed row is kept in the debug log as the reader sees it, with `error`.
+function updateImportResult(index, state, error = null) {
   importProgressView().update(String(index), state);
+  if (state.tone === "error") recordUserError(window, "import-progress", state.text, error);
 }
 
 function importDuration(started) {
@@ -188,10 +191,8 @@ async function importFile(file, index, total, request = {}, label = file.name) {
   try {
     identity = await readDictionaryArchiveIdentity(file);
   } catch (error) {
-    updateImportResult(index, {
-      text: `Failed before import: ${dictionaryImportError(error, file.name, "reading dictionary metadata").message}`,
-      tone: "error",
-    });
+    const failure = dictionaryImportError(error, file.name, "reading dictionary metadata");
+    updateImportResult(index, { text: `Failed before import: ${failure.message}`, tone: "error" }, failure);
     return "failed";
   }
 
@@ -310,7 +311,8 @@ async function importArchive(runImport, index, total, label) {
       updateImportResult(index, { text: "Cancelled before import." });
       return "cancelled";
     }
-    updateImportResult(index, { text: `Failed before import: ${error?.message ?? String(error)}`, tone: "error" });
+    updateImportResult(index, { text: `Failed before import: ${error?.message ?? String(error)}`, tone: "error" },
+      error);
     return "failed";
   } finally {
     clearInterval(ticker);
@@ -331,10 +333,12 @@ async function importArchive(runImport, index, total, label) {
   }
   const duration = importDuration(firstAttemptAt);
   const spent = outcome.attempts > 1 ? `${outcome.attempts} attempts in ${duration}` : duration;
+  // A request that threw keeps its Error in the debug log; an engine reply has none.
+  const thrown = outcome.reply === undefined ? dictionaryImportError(outcome.error, label, "requesting the import") : null;
   updateImportResult(index, {
     text: `Failed after ${spent}: ${failureReason(outcome, label)}`,
     tone: "error",
-  });
+  }, thrown);
   return "failed";
 }
 
@@ -420,10 +424,8 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
       try {
         outcome = await importOne(item, index, items.length); // NOSONAR: each import reviews and commits the state left by the previous item
       } catch (error) {
-        updateImportResult(index, {
-          text: dictionaryImportError(error, describeItem(item).name, "preparing the import").message,
-          tone: "error",
-        });
+        const failure = dictionaryImportError(error, describeItem(item).name, "preparing the import");
+        updateImportResult(index, { text: failure.message, tone: "error" }, failure);
         continue;
       }
       if (outcome === "imported" || outcome === "imported-with-notes") {
