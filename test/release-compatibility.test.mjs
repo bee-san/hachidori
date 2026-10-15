@@ -95,7 +95,7 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /elif gh release view "\$RELEASE_TAG"[\s\S]*gh release upload "\$RELEASE_TAG"[\s\S]*--clobber[\s\S]*else\n[\s\S]*gh release create/u);
   assert.match(workflow, /Release tag \$RELEASE_TAG points to \$tag_commit/u);
   assert.match(workflow, /actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/u);
-  assert.match(workflow, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
+  assert.match(workflow, /actions\/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333/u);
   assert.match(
     workflow,
     /chrome-web-store:[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish[\s\S]*needs: \[package, publish\]/u,
