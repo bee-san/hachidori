@@ -27,26 +27,33 @@ blob URL are tracked in session storage, surviving service-worker restarts;
 completion or interruption releases the URL. Those temporary records are not
 backup content.
 
+With direct OPFS the archive is an OPFS file under `.hdw-backup-files/`. Export
+reads each dictionary file as it writes the archive there, and Chrome downloads
+that file; a chosen backup is copied there and restored from it in place.
+Neither is held in memory or in browser Blob storage. Earlier versions
+assembled the archive from Blobs, about twice the library's size; once that
+exceeded what Chrome could keep in memory or page to disk, the Blob broke and
+Chrome failed the download as **Check internet connection** (#577). Releasing
+an export, or finishing a preparation, removes its file, and the engine's start
+removes any that a closed browser left. IDBFS hosts keep the Blob path.
+
 Choosing a backup validates and stages it before showing its date and dictionary
 list. Nothing is published until the replacement checkbox is selected and
 **Replace and restore** is pressed. This replaces the entire saved configuration,
 including empty/default values; it does not merge libraries. Cancel discards the
 prepared files. A concurrent saved edit requires preparing the backup again.
-Experimental feature switches saved by another version restore by name: known
-switches keep their saved values, newer ones start off and retired ones are
-dropped.
-If reader settings are missing, invalid or incompatible with this version,
-restore keeps your current reader settings and still restores the dictionaries.
-The preview and success message report the skipped settings. Dictionary
-selections that are unavailable in the restored library are reset.
-Incompatible update settings also keep your current update schedule.
+A backup made by any Hachidori version restores its dictionaries. Its settings
+are read one by one, the way a stored record is: a setting this version does
+not know or cannot read is skipped, and one the backup does not have keeps its
+default. Experimental feature switches restore by name: known switches keep
+their saved values, newer ones start off and retired ones are dropped. Lookup
+statistics this version cannot read are skipped too. Dictionary selections that
+are unavailable in the restored library are reset.
 Unsaved Settings drafts must be saved or discarded before starting an operation.
 Leaving Settings cancels its preparation using an ID allocated before the
 request starts. The background retires delayed/retrying preparation requests;
 the engine queues token-scoped cleanup even behind another active mutation.
 Cleanup does not depend on the closed page receiving a preparation reply.
-
-![Dictionaries restored while incompatible reader and update settings are skipped](assets/backup-incompatible-settings.png)
 
 ## Automatic snapshots
 
@@ -142,13 +149,15 @@ sink, existing ZIP64 compatibility, and empty payloads.
 automatic cadence, retention, shared real generations, malformed paths, schema
 failure, lost replies, storage failures, uncertain commits, corrupt-newest
 fallback, interrupted cleanup, disabled-package validation, damaged-installation
-recovery, incompatible reader settings and empty restores through real WASM.
+recovery, unreadable settings and empty restores through real WASM. It also
+restores the archives the 0.1.1 and 0.3.0 releases exported, in
+`test/data/backups/`, and restores this version's export of each again.
 Nine shared browser assertions in `test/chrome-backup-scenarios.mjs` exercise
 automatic relative ages, confirmation and a real oldest-retained-snapshot
 restore that brings back its saved retention count, plus the actual Chrome
 download, immutable preview/conflict, complete restore, corrupt-archive cleanup
 and actual page closure during staged preparation, dictionary restore with
-incompatible reader settings and a 16 MiB binary restore/re-export in both OPFS
+unreadable settings and a 16 MiB binary restore/re-export in both OPFS
 and IDBFS suites, followed by browser restart.
 
 ## Archive representation
@@ -161,12 +170,14 @@ than classic ZIP's representation. `hachidori-backup.json` identifies format
 exact file list with sizes. Payload names are `dictionaries/<ordinal>/<relative
 file path>`; paths from a backup are never used as live generation paths.
 Version 1 archives remain readable and restore an empty statistics collection,
-not the current browser's unrelated history. Version 2 requires a valid
-descriptor and canonical, unique term/reading rows. Version 3 adds the snapshot's
+not the current browser's unrelated history. Version 2 adds a descriptor and
+canonical, unique term/reading rows; statistics that are missing or cannot be
+read restore empty in the same way. Version 3 adds the snapshot's
 `wordStatusOverrides`, `{ revision, known, ignored }` with each headword under one
 status; versions 1 and 2 restore none, as does an automatic snapshot taken
 before it existed. A one-dictionary archive from the relay's download carries
-none either.
+none either. A newer version's archive is read as version 3, skipping what it
+added.
 
 Every entry's CRC32, declared size, path and ZIP headers are validated before
 restore. CRC32 detects accidental corruption, not authenticity: only restore
@@ -182,7 +193,10 @@ The lazy backup module uses zip.js 2.11.2, vendored from commit
 `09a4776c6baf40f3e2aa0c7c66199f6aa3ebdefc927e83dcaf1dfffd432f9bac`).
 It runs in the existing engine context with additional workers disabled. Only
 stored, unencrypted regular files are part of this format, so neither external
-codecs nor an additional WebAssembly binary are needed. Export and extraction
-use a zip.js `Writer` that snapshots each output chunk into a Blob, avoiding the
-`BlobWriter` Response-stream sink and a single archive-sized typed array.
+codecs nor an additional WebAssembly binary are needed. Export reads each file
+in zip.js chunks and writes to the OPFS file, or on IDBFS to a zip.js `Writer`
+that snapshots each output chunk into a Blob, avoiding the `BlobWriter`
+Response-stream sink and a single archive-sized typed array. Extraction checks
+each stored entry's CRC32 without keeping its bytes and then slices the entry
+from the archive itself.
 This is not a GSM or general-purpose ZIP importer.

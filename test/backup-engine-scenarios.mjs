@@ -1,5 +1,6 @@
 // Focused complete-restore scenarios through the real engine and background.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { TRAINED_TERMS, buildRecommendedZip, buildTitledZip, makePng } from "./make-fixture.mjs";
 import {
   AUTOMATIC_BACKUP_INTERVAL_MS,
@@ -410,10 +411,11 @@ export async function backupEngineScenarios({
   check("restore publishes all six values and statistics rows once before superseded-generation cleanup", true);
 
   for (const automatic of [false, true]) {
-    const incompatible = structuredClone(parsed.snapshot);
-    incompatible.options = { revision: 1, popupWidthPx: -1, futureOption: true };
-    incompatible.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
     const before = await read();
+    const incompatible = structuredClone(parsed.snapshot);
+    // The current settings plus one this version cannot read and one it does not know.
+    incompatible.options = { ...before.options, showLookupCounts: "yes", futureOption: true };
+    incompatible.updates = { ...before.updates, schedule: "future" };
     let url;
     try {
       let preparation;
@@ -429,20 +431,20 @@ export async function backupEngineScenarios({
         url = URL.createObjectURL(await createBackupArchive(incompatible, parsed.files, parsed.lookupStatsRows));
         preparation = await prepare(url);
       }
-      assert.match(preparation.warning, /reader settings.*skipped/iu);
+      assert.equal(preparation.warning, null);
       assert.deepEqual(await read(), before, "preparation preserves the committed settings and dictionaries");
       const result = await accepted("hd_backup_restore", { token: preparation.token });
-      assert.match(result.warning, /Restored successfully.*reader settings.*skipped/iu);
+      assert.equal(result.warning, null);
       const after = await read();
-      assert.deepEqual(after.options, { ...before.options, revision: before.options.revision + 1 });
-      assert.deepEqual(after.updates, { ...before.updates, revision: before.updates.revision + 1 });
+      assert.deepEqual(after.options, { ...before.options, showLookupCounts: true, revision: before.options.revision + 1 });
+      assert.deepEqual(after.updates, { ...before.updates, schedule: "off", revision: before.updates.revision + 1 });
       assert.deepEqual(after.state.dictionaries.map(({ path, ...entry }) => entry),
         before.state.dictionaries.map(({ path, ...entry }) => entry));
       assert.ok((await accepted("hd_lookup", { text: "猫" })).results.length > 0);
     } finally { if (url) URL.revokeObjectURL(url); }
   }
   await pageChrome.storage.local.set({ automaticBackups: { schemaVersion: 1, backups: [] } });
-  check("manual and automatic restores import dictionaries with incompatible reader settings and keep current settings", true);
+  check("manual and automatic restores import dictionaries and readable settings, skipping settings this version cannot read", true);
 
   for (const edit of ["options", "document", "updates", "state", "lookupStats", "wordStatusOverrides"]) {
     const pending = await prepare(exported.blobUrl);
@@ -450,7 +452,7 @@ export async function backupEngineScenarios({
     if (edit === "options") await sendWorker("hd_options_write", { baseRevision: base.options.revision, options: { scanLength: base.options.scanLength + 1 } });
     if (edit === "document") await accepted("hd_custom_append", { entry: { term: "犬", reading: "いぬ", definition: "dog" } });
     if (edit === "updates") await pageChrome.runtime.sendMessage({ target: "hachidori-updates", type: "hd_updates_schedule",
-      baseRevision: base.updates.revision, schedule: "off" });
+      baseRevision: base.updates.revision, schedule: base.updates.schedule === "off" ? "daily" : "off" });
     if (edit === "state") await sendWorker("hd_state_cas", { baseRevision: base.state.revision,
       dictionaries: base.state.dictionaries, groups: [] });
     if (edit === "lookupStats") await sendWorker("hd_lookup_stats_record", { term: "猫", reading: "ねこ" });
@@ -615,6 +617,47 @@ export async function backupEngineScenarios({
     }
   }
   check("backup preserves local-only source descriptors and complete managed sources without changing update eligibility", true);
+
+  // Archives the 0.1.1 and 0.3.0 releases exported (manifest versions 2 and 3,
+  // native generations _3 and _5): each restores, and this version's export of
+  // the result restores the same library and settings again.
+  const withoutPaths = snapshot => ({
+    dictionaries: snapshot.state.dictionaries.map(({ path, ...entry }) => entry),
+    groups: snapshot.state.groups,
+    options: { ...snapshot.options, revision: 0 },
+    text: snapshot.document.text,
+    schedule: snapshot.updates.schedule,
+    wordStatusOverrides: { ...snapshot.wordStatusOverrides, revision: 0 },
+  });
+  for (const release of ["0.1.1", "0.3.0"]) {
+    const url = URL.createObjectURL(new Blob([readFileSync(new URL(`data/backups/hachidori-${release}.zip`, import.meta.url))]));
+    let reexported;
+    try {
+      const preview = await prepare(url);
+      assert.deepEqual(preview.dictionaries, [{ title: "Hachidori Custom Dictionary", enabled: true },
+        { title: "hachidori-fixture", enabled: true }], release);
+      assert.equal(preview.warning, null, release);
+      await accepted("hd_backup_restore", { token: preview.token });
+      const restored = await read();
+      assert.deepEqual(Object.fromEntries(["scanLength", "maxResults", "popupTheme", "popupWidthPx", "showPopupAudioButton"]
+        .map(key => [key, restored.options[key]])),
+      { scanLength: 20, maxResults: 40, popupTheme: "dark", popupWidthPx: 640, showPopupAudioButton: false }, release);
+      assert.deepEqual(restored.state.groups.map(({ name, dictionaryIds }) => [name, dictionaryIds.length]), [["Study", 1]], release);
+      assert.equal(restored.updates.schedule, "weekly", release);
+      assert.deepEqual((await readRows()).map(({ term, lookupCount }) => [term, lookupCount]), [["食べる", 2]], release);
+      assert.deepEqual(restored.wordStatusOverrides.known, release === "0.3.0" ? ["猫"] : [], release);
+      assert.ok((await accepted("hd_lookup", { text: "食べたかった" })).results.length > 0, release);
+      assert.match(JSON.stringify(await accepted("hd_lookup", { text: "猫" })), /personal note/u, release);
+      reexported = await accepted("hd_backup_export");
+      await restore(reexported.blobUrl);
+      assert.deepEqual(withoutPaths(await read()), withoutPaths(restored), release);
+      assert.deepEqual((await readRows()).map(({ term, lookupCount }) => [term, lookupCount]), [["食べる", 2]], release);
+    } finally {
+      URL.revokeObjectURL(url);
+      if (reexported) await accepted("hd_backup_release", { blobUrl: reexported.blobUrl });
+    }
+  }
+  check("backups exported by 0.1.1 and 0.3.0 restore, then round-trip through this version's export", true);
 
   await restore(initial.blobUrl);
   await accepted("hd_backup_release", { blobUrl: exported.blobUrl });

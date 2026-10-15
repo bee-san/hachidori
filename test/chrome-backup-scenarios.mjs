@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { createBackupArchive, openBackupArchive } from "../extension/backup-archive.js";
 
 export const BACKUP_CHROME_CHECKS = [
@@ -12,7 +13,7 @@ export const BACKUP_CHROME_CHECKS = [
   "corrupt backup preparation preserves the working browser state and leaves no fresh generations",
   "closing Settings during backup preparation cancels staged generations without waiting for its reply",
   "a large binary payload survives restore and re-export through the browser engine",
-  "incompatible backup reader settings keep current settings while dictionaries restore in Chrome",
+  "a backup's unreadable settings are skipped while its dictionaries and readable settings restore in Chrome",
 ];
 
 export async function backupChromeScenarios({ browser, page, directory, check = (name, ok, detail) => assert.ok(ok, `${name}: ${detail}`) }) {
@@ -52,6 +53,18 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
       };
     });
   }, (await status()).storageBackend);
+  // On direct OPFS an export or a chosen backup is an OPFS file only until it
+  // is downloaded or prepared (#577); IDBFS never creates the directory.
+  const backupFiles = () => page.evaluate(async () => {
+    const names = [];
+    try {
+      const root = await navigator.storage.getDirectory();
+      for await (const name of (await root.getDirectoryHandle(".hdw-backup-files")).keys()) names.push(name);
+    } catch (error) {
+      if (error?.name !== "NotFoundError") throw error;
+    }
+    return names;
+  });
   const choose = async path => {
     await (await page.$("#backup-file")).uploadFile(path);
     await page.waitForFunction(() => !document.getElementById("backup-preview").hidden
@@ -271,8 +284,10 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const downloaded = await download();
   const bytes = readFileSync(downloaded.filename);
   const parsed = await openBackupArchive(new Blob([bytes]));
+  const filesAfterDownload = await backupFiles();
   check(BACKUP_CHROME_CHECKS[2], JSON.stringify(parsed.snapshot) === JSON.stringify(before)
-    && parsed.files.some(file => file.path.endsWith("/media.bin")), JSON.stringify({ size: bytes.length, files: parsed.files.length }));
+    && parsed.files.some(file => file.path.endsWith("/media.bin")) && filesAfterDownload.length === 0,
+  JSON.stringify({ size: bytes.length, files: parsed.files.length, filesAfterDownload }));
 
   const generation = (await status()).generation;
   const largePath = "dictionaries/0/media/backup-大容量.bin";
@@ -321,20 +336,23 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
 
   const reexported = await openBackupArchive(new Blob([readFileSync((await download()).filename)]));
   const restoredFile = reexported.files.find(file => file.path === largePath);
+  const filesAfterRestore = await backupFiles();
   check(BACKUP_CHROME_CHECKS[7], restoredFile?.data.size === largeBytes.length
-    && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes),
-    JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size }));
+    && Buffer.from(await restoredFile.data.arrayBuffer()).equals(largeBytes) && filesAfterRestore.length === 0,
+    JSON.stringify({ expectedSize: largeBytes.length, restoredSize: restoredFile?.data.size, filesAfterRestore }));
 
+  // The current settings plus a value this version cannot read and a setting
+  // and update field it does not know, as a newer version could write them.
+  const beforeIncompatible = restored;
   const incompatibleSnapshot = structuredClone(parsed.snapshot);
-  incompatibleSnapshot.options = { revision: 1, popupWidthPx: -1, futureOption: true };
-  incompatibleSnapshot.updates = { revision: 1, schedule: "future", lastCheckedAt: null };
+  incompatibleSnapshot.options = { ...beforeIncompatible.options, showLookupCounts: "yes", futureOption: true };
+  incompatibleSnapshot.updates = { ...beforeIncompatible.updates, futureOption: true };
   const incompatibleArchive = await createBackupArchive(incompatibleSnapshot, parsed.files, parsed.lookupStatsRows);
   const incompatiblePath = resolve(directory, "incompatible-settings-backup.zip");
   writeFileSync(incompatiblePath, Buffer.from(await incompatibleArchive.arrayBuffer()));
-  const beforeIncompatible = restored;
   await choose(incompatiblePath);
   const compatibilityPreview = await page.$eval("#backup-status", element => element.textContent);
-  assert.match(compatibilityPreview, /reader settings.*skipped/iu);
+  assert.match(compatibilityPreview, /^Backup checked\. Nothing has been replaced\.$/u);
   assert.deepEqual(await read(), beforeIncompatible);
   const evidence = process.env.HACHIDORI_BACKUP_COMPATIBILITY_SCREENSHOTS;
   if (evidence) {
@@ -346,9 +364,11 @@ export async function backupChromeScenarios({ browser, page, directory, check = 
   const compatibilityNotice = await page.$eval("#backup-status", element => element.textContent);
   const compatibilityLookup = await page.evaluate(() =>
     chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_lookup", text: "食べたかった" }));
-  check(BACKUP_CHROME_CHECKS[8], /Restored successfully.*reader settings.*skipped/iu.test(compatibilityNotice)
-    && JSON.stringify(restored.options) === JSON.stringify({ ...beforeIncompatible.options, revision: beforeIncompatible.options.revision + 1 })
-    && JSON.stringify(restored.updates) === JSON.stringify({ ...beforeIncompatible.updates, revision: beforeIncompatible.updates.revision + 1 })
+  check(BACKUP_CHROME_CHECKS[8], compatibilityNotice === "Restored successfully."
+    && isDeepStrictEqual(restored.options,
+      { ...beforeIncompatible.options, showLookupCounts: true, revision: beforeIncompatible.options.revision + 1 })
+    && isDeepStrictEqual(restored.updates,
+      { ...beforeIncompatible.updates, revision: beforeIncompatible.updates.revision + 1 })
     && JSON.stringify(restored.state.dictionaries.map(({ path, ...dictionary }) => dictionary))
       === JSON.stringify(beforeIncompatible.state.dictionaries.map(({ path, ...dictionary }) => dictionary))
     && restored.state.dictionaries.every((dictionary, index) => dictionary.path !== beforeIncompatible.state.dictionaries[index].path)

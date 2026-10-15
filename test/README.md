@@ -266,7 +266,10 @@ pinned/latest package commands and the schema-only boundary.
   `test/legacy/` (`.hoshidicts_3` and `_4` directories written by the engine at
   hoshidicts `1ec66fe`), `test/mdict/` (copies of Hoshidicts' MDict fixtures,
   committed because the smoke suites run without the submodule) and
-  `test/data/` are fixture data.
+  `test/data/` are fixture data. `test/data/backups/` holds the backups the
+  0.1.1 and 0.3.0 releases exported from a fresh profile with the fixture, a
+  personal entry, a group, a weekly schedule, five changed settings and a
+  lookup count (and on 0.3.0 a word marked as known).
 
 ### `extension-smoke.mjs`
 
