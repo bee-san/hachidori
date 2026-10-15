@@ -526,7 +526,111 @@ async function settingsManagedUpdatesStage() {
   return result;
 }
 
+async function settingsUpdateListStage() {
+  const { JSDOM } = await loadJsdom();
+  let state = { schemaVersion: 1, revision: 1, groups: [], dictionaries: [
+    ...["first", "second", "broken", "current"].map(id => genericPackage({
+      id, title: `${id} dictionary`, displayName: id === "second" ? "My disabled dictionary" : null,
+      enabled: id !== "second", isUpdatable: true,
+      indexUrl: `https://example.test/${id}.json`, downloadUrl: `https://example.test/${id}.zip`,
+      lastUpdateCheck: { checkedAt: "2026-09-04T10:00:00Z", remoteRevision: "test-2",
+        status: id === "broken" ? "check-failed" : id === "current" ? "up-to-date" : "update-available",
+        error: id === "broken" ? "update index request failed with HTTP 503" : null },
+    })),
+    genericPackage({ id: "local", title: "Local archive" }),
+  ] };
+  const settings = { revision: 1, schedule: "off", lastCheckedAt: "2026-09-04T10:00:00Z" };
+  const requests = [];
+  let listener, held, failSecond = true;
+  const open = async () => {
+    const dom = new JSDOM(readFileSync(resolve(EXTENSION, "settings.html"), "utf8"), {
+      pretendToBeVisual: true, runScripts: "outside-only", url: `${EXTENSION_ORIGIN}/settings.html#updates`,
+    });
+    dom.window.chrome = {
+      runtime: { id: "updatelist", async sendMessage(message) {
+        if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
+        if (message.type === "hd_status") return { ok: true, ready: true, dictionaryCount: 4 };
+        if (!["hd_updates_install", "hd_updates_check"].includes(message.type)) return { ok: true };
+        requests.push(structuredClone(message));
+        if (held) await held.promise;
+        const outcomes = message.dictionaryIds.map(id => {
+          const entry = state.dictionaries.find(entry => entry.id === id);
+          const error = id === "second" && failSecond ? "archive request failed with HTTP 502" : null;
+          const checking = message.type === "hd_updates_check";
+          entry.lastUpdateCheck = { ...entry.lastUpdateCheck, error,
+            status: error || checking ? "update-available" : "up-to-date" };
+          if (!error && !checking) entry.revision = "test-2";
+          return { id, status: error || checking ? "update-available" : "updated", error };
+        });
+        state = { ...state, revision: state.revision + 1 };
+        listener({ dictionaryState: { newValue: structuredClone(state) } }, "local");
+        return { ok: true, outcomes, settings };
+      } },
+      storage: { local: { async get() { return { dictionaryUpdates: settings }; } },
+        onChanged: { addListener(value) { listener = value; } } },
+    };
+    loadSettingsScript(dom.window);
+    const until = Date.now() + 2000;
+    while (!dom.window.document.getElementById("update-dictionary-list").children.length && Date.now() < until) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    return dom;
+  };
+  let dom = await open();
+  const el = id => dom.window.document.getElementById(id);
+  const rows = () => [...el("update-dictionary-list").children];
+  const row = id => rows().find(row => row.dataset.dictionaryId === id);
+  const settle = async () => {
+    const until = Date.now() + 2000;
+    while (el("update-check-now").disabled && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5));
+  };
+  check("Updates lists available dictionaries and failed checks with names, revisions and scoped actions",
+    rows().map(row => row.dataset.dictionaryId).join(",") === "first,second,broken"
+      && row("second").textContent.includes("My disabled dictionary")
+      && row("second").textContent.includes("Installed: test-1 → Available: test-2")
+      && row("broken").textContent.includes("HTTP 503")
+      && row("broken").querySelector("button").textContent === "Check again");
+  const firstAction = row("first").querySelector("button");
+  firstAction.focus();
+  listener({ dictionaryUpdates: { newValue: { ...settings, revision: 2 } } }, "local");
+  check("update list refreshes retain keyboard focus on existing controls", dom.window.document.activeElement === firstAction);
+  held = Promise.withResolvers();
+  el("update-all").click();
+  check("Update all selects only available updates, including disabled dictionaries, and blocks repeat actions",
+    requests.at(-1)?.dictionaryIds.join(",") === "first,second"
+      && rows().every(row => row.querySelector("button").disabled) && el("update-all").disabled);
+  held.resolve();
+  held = null;
+  await settle();
+  check("partial update failures name the dictionary and error, keep retry available and remove successful updates",
+    row("first") === undefined && row("second").textContent.includes("HTTP 502")
+      && row("second").querySelector(".dict-update-status").classList.contains("is-error")
+      && row("second").querySelector("button").textContent === "Retry update"
+      && el("update-state").textContent.includes("My disabled dictionary: archive request failed with HTTP 502"));
+  dom.window.close();
+  dom = await open();
+  check("Updates restores persisted failures when Settings reopens", row("second").textContent.includes("HTTP 502")
+    && row("broken").textContent.includes("HTTP 503"));
+  failSecond = false;
+  row("second").querySelector("button").click();
+  await settle();
+  check("an individual retry updates only that dictionary and clears its failure",
+    requests.at(-1)?.type === "hd_updates_install" && requests.at(-1)?.dictionaryIds.join(",") === "second"
+      && row("second") === undefined && state.dictionaries.find(entry => entry.id === "second").enabled === false);
+  row("broken").querySelector("button").click();
+  await settle();
+  check("Check again retries only the failed index without installing",
+    requests.at(-1)?.type === "hd_updates_check" && requests.at(-1)?.dictionaryIds.join(",") === "broken"
+      && row("broken").querySelector("button").textContent === "Update");
+  row("broken").querySelector("button").click();
+  await settle();
+  check("Updates has an empty state and disables Update all when no updates remain", rows().length === 0
+    && el("update-all").disabled && el("update-list-summary").textContent.includes("No available updates"));
+  dom.window.close();
+}
+
 describe("managed updates", () => {
+  test("Settings update list and partial failures", settingsUpdateListStage);
   test("managed update schedule", async () => {
     await managedScheduleStage();
   });

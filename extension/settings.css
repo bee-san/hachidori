@@ -1041,12 +1041,20 @@ input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
   border-top: 1px solid var(--border);
 }
 .dict-list,
+.update-dictionary-list,
 .dict-group-list,
 .dict-group-members,
 .experimental-list {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+.update-dictionary-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.update-dictionary-list .dict-update-status {
+  margin: 6px 0 0;
 }
 /* One separator idiom for every list on the page: the list owns the top and
    bottom rule, and each row after the first owns the rule above it. A list in a

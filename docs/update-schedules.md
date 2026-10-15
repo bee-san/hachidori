@@ -15,6 +15,14 @@ time and only records availability; manual installation remains explicit.
 Automatic due checks install available updates using the existing generation
 transaction and preserve the working generation on failure.
 
+Updates lists dictionaries with available updates and failed checks, including
+the installed and available revisions. Use **Update** on a row to install only
+that dictionary, or **Update all** to install every available update, including
+disabled dictionaries. Each failed update keeps its error and **Retry update**
+action in the list; failed checks offer **Check again**. These details survive
+reopening Settings, including failures from automatic updates. A manual run's
+summary also names each failed dictionary and its error.
+
 One nonperiodic Chrome alarm targets the earliest due package. Package changes,
 schedule edits, completed checks, restore and worker startup reconcile it. An
 already-due alarm is retained instead of repeatedly postponing delivery. Every

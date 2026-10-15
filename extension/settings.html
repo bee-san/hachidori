@@ -322,7 +322,7 @@
                   id="update-all"
                   disabled
                 >
-                  Install updates
+                  Update all
                 </button>
               </div>
             </div>
@@ -337,7 +337,23 @@
             <button type="button" class="ghost" id="update-schedule-retry">Retry my schedule</button>
             <button type="button" class="ghost" id="update-schedule-discard">Use current schedule</button>
           </div>
+          <div class="lookup-group">
+            <h2>Dictionary updates</h2>
+            <p class="field-hint" id="update-list-summary">Check now to find available updates.</p>
+            <ul class="update-dictionary-list" id="update-dictionary-list" aria-label="Available dictionary updates and failures"></ul>
+          </div>
         </section>
+
+        <template id="update-dictionary-template">
+          <li class="setting-row">
+            <div class="setting-text">
+              <p class="field-label update-dictionary-title"></p>
+              <p class="field-hint update-dictionary-revisions"></p>
+              <p class="dict-update-status"></p>
+            </div>
+            <button type="button" class="ghost update-dictionary-action"></button>
+          </li>
+        </template>
 
         <section
           class="card"
