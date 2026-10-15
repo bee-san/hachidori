@@ -65,7 +65,14 @@ export function showErrorCopy(output, entry, anchor = output) {
     errorCopies.set(output, copy);
   }
   copy.entry = entry;
-  copy.button.hidden = entry === null;
+  const hide = entry === null;
+  // Hiding the focused button would drop keyboard focus to the page. Give it to
+  // the status the button described, which now says what changed.
+  if (hide && !copy.button.hidden && copy.button.ownerDocument.activeElement === copy.button) {
+    if (!output.hasAttribute("tabindex")) output.tabIndex = -1;
+    output.focus({ preventScroll: true });
+  }
+  copy.button.hidden = hide;
 }
 
 // An error is kept in the page's debug log once, when it is first shown;
