@@ -3207,7 +3207,11 @@ because Netflix's subtitle layer covers the player and may not receive pointer
 events. The bounds include the gap between a box's lines; a layer with no line
 showing has no text and so no bounds. Entering a line while the `<video>` plays
 sends the page a `pause` command, which it carries out through Netflix's player
-API like the replay, never by writing `currentTime`. The pause holds while the
+API like the replay. If that private session cannot be identified, hover pause
+uses the watch video's native `pause()`/`play()` methods; replay and seeking still
+require the exact Netflix session. Neither pause path writes `currentTime`.
+Opening a lookup without a subtitle hover (for example, a selection or keyboard
+lookup) starts the same pause. The pause holds while the
 pointer stays on the line or the reader's popup is shown (from
 `hachidori-popup-shown` to `hachidori-popup-hidden` on `window`, which nested
 popups share), and leaving both sends `resume`. A `play` or `seeking` event on

@@ -328,9 +328,12 @@
   // Hovering a subtitle pauses and resumes through the player like the replay,
   // which owns the player until it has restored the viewer's state.
   function pauseOrResume(type) {
-    const player = netflixPlayer();
     const video = mainVideo();
-    if (replaying || player === null || video === null) return;
+    if (replaying || video === null || !WATCH_PATH.test(location.pathname)) return;
+    // Hover needs only play/pause, not the private seek API replay requires.
+    // If Netflix's session metadata is unavailable, control the watch video's
+    // native media methods instead of silently ignoring the command.
+    const player = netflixPlayer() ?? video;
     try {
       if (type === "pause") pause(player, video);
       else play(player, video).catch(() => {});

@@ -481,7 +481,9 @@ These run separately:
   left-button drags on native subtitle text in a synthetic Netflix page. It
   checks both axes, player-click suppression, caret lookup at the moved text,
   replacement layers, viewport bounds, switching off/on, and page reload. It
-  writes `test/tmp/ci/netflix-subtitle-drag.png`; no Netflix service is contacted.
+  also plays a real canvas-backed video through the production page command
+  listener without Netflix's private API, checking hover/lookup pause and resume.
+  It writes `test/tmp/ci/netflix-subtitle-drag.png`; no Netflix service is contacted.
 - **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
   headless Chrome records tab audio as silence), mines a fixture page served at
   a Netflix watch address into a fake AnkiConnect. Request interception serves

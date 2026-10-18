@@ -443,8 +443,15 @@
         release();
         return;
       }
+      pauseIfPlaying();
+    }
+
+    // A keyboard/selection lookup can open without the pointer ever entering
+    // the native subtitle bounds. It needs the same pause as a subtitle hover.
+    function pauseIfPlaying() {
+      if (!hoverPause || sync() === null || held || recordings > 0) return;
       const video = mainVideo();
-      if (held || recordings > 0 || video === null || video.paused) return;
+      if (video === null || video.paused) return;
       held = true;
       command({ type: "pause" });
     }
@@ -494,7 +501,13 @@
       event.stopImmediatePropagation();
     }, true);
     for (const type of ["play", "seeking", "seeked"]) document.addEventListener(type, videoChanged, true);
-    window.addEventListener(POPUP_SHOWN_EVENT, () => { popupOpen = true; });
+    window.addEventListener(POPUP_SHOWN_EVENT, () => {
+      if (popupOpen) return;
+      popupOpen = true;
+      // If the viewer played on while still hovering, opening its popup does
+      // not undo that choice. A lookup with no subtitle hover pauses afresh.
+      if (!hovering) pauseIfPlaying();
+    });
     window.addEventListener(POPUP_HIDDEN_EVENT, () => {
       popupOpen = false;
       release();

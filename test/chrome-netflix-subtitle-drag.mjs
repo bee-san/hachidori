@@ -29,7 +29,7 @@ try {
     <div class="player-timedtext-text-container"><span>朝ごはんを</span><br><span id="word">食べたかった</span></div>
     </div></div><script>window.playerClicks=0;document.addEventListener("click",()=>window.playerClicks++);</script>` }));
   await page.goto("https://www.netflix.com/watch/81000001");
-  for (const file of ["netflix-subtitles.js", "netflix-content.js"]) {
+  for (const file of ["netflix-page.js", "netflix-subtitles.js", "netflix-content.js"]) {
     await page.addScriptTag({ content: readFileSync(resolve(root, "extension", file), "utf8") });
   }
   await page.evaluate(() => HDNetflix.setSubtitleDragging(true));
@@ -46,6 +46,27 @@ try {
     await page.mouse.up();
   };
   const initial = await box();
+  // Real HTML media playback with no Netflix private API: these checks must
+  // exercise the page command listener, not a fake that handles pause itself.
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    const video = document.querySelector("video");
+    video.style.display = "none";
+    video.muted = true;
+    video.srcObject = canvas.captureStream(1);
+    canvas.getContext("2d").fillRect(0, 0, canvas.width, canvas.height);
+    await video.play();
+    HDNetflix.setHoverPause(true);
+  });
+  await page.mouse.move(initial.x + initial.width / 2, initial.y + initial.height / 2);
+  assert.equal(await page.$eval("video", video => video.paused), true, "hover pauses real playback without a private player API");
+  await page.mouse.move(20, 650);
+  await page.waitForFunction(() => !document.querySelector("video").paused);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("hachidori-popup-shown")));
+  assert.equal(await page.$eval("video", video => video.paused), true, "a lookup without a subtitle hover pauses playback");
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("hachidori-popup-hidden")));
+  await page.waitForFunction(() => !document.querySelector("video").paused);
+  await page.evaluate(() => HDNetflix.setHoverPause(false));
   await drag(initial, -180, -260);
   const moved = await box();
   assert.equal(moved.x, initial.x - 180, "the native subtitle moves horizontally");
@@ -76,7 +97,7 @@ try {
   assert.equal((await box()).y, clamped.y, "switching back on remembers the session offset");
   await page.reload();
   assert.deepEqual(await box(), initial, "reloading starts with Netflix's own position");
-  console.log("PASS: native drag, player click, caret lookup, replacement layers, bounds, switch and reload");
+  console.log("PASS: real hover/lookup pause and resume, native drag, player click, caret lookup, replacement layers, bounds, switch and reload");
 } finally {
   await browser.close();
 }
