@@ -50,6 +50,10 @@
     // What the viewer hears, kept while content.js has the switch on.
     let lineAudio = null;
     const range = document.createRange();
+    let dragStyle = null;
+    let subtitleOffset = { x: 0, y: 0 };
+    let subtitleDrag = null;
+    let subtitleClick = false;
 
     const command = message => {
       document.dispatchEvent(new window.CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
@@ -349,20 +353,73 @@
     // events, so a hovered line is found by geometry: within the bounds of a
     // subtitle box's text, which also span the gap between its lines. A layer
     // with no line showing has no text, so no bounds.
-    function overSubtitle(x, y) {
+    function subtitleAt(x, y) {
       for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
-        const rects = [];
+        let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
         const walker = document.createTreeWalker(box, SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           range.selectNodeContents(node);
-          rects.push(...range.getClientRects());
+          for (const rect of range.getClientRects()) {
+            left = Math.min(left, rect.left);
+            right = Math.max(right, rect.right);
+            top = Math.min(top, rect.top);
+            bottom = Math.max(bottom, rect.bottom);
+          }
         }
-        if (x >= Math.min(...rects.map(rect => rect.left)) && x <= Math.max(...rects.map(rect => rect.right))
-            && y >= Math.min(...rects.map(rect => rect.top)) && y <= Math.max(...rects.map(rect => rect.bottom))) {
-          return true;
-        }
+        if (x >= left && x <= right && y >= top && y <= bottom) return { left, right, top, bottom };
       }
-      return false;
+      return null;
+    }
+
+    // A stylesheet moves the native layer, including new lines/layers Netflix
+    // creates, without overwriting its own inline positioning or transforms.
+    // Offsets belong to this page session; switching the feature off restores
+    // Netflix's layout and switching it back on keeps the chosen position.
+    function setSubtitleDragging(enabled) {
+      if (enabled === true) {
+        if (dragStyle) return;
+        dragStyle = document.createElement("style");
+        dragStyle.textContent = `.player-timedtext { translate: ${subtitleOffset.x}px ${subtitleOffset.y}px !important; }
+          .player-timedtext .player-timedtext-text-container { cursor: grab !important; user-select: none !important; pointer-events: auto !important; }`;
+        document.documentElement.append(dragStyle);
+      } else {
+        dragStyle?.remove();
+        dragStyle = null;
+        subtitleDrag = null;
+        subtitleClick = false;
+      }
+    }
+
+    function startSubtitleDrag(event) {
+      if (event.button === 0) subtitleClick = false;
+      if (!dragStyle || event.button !== 0 || sync() === null
+          || !event.target.closest?.(".player-timedtext")) return;
+      const rect = subtitleAt(event.clientX, event.clientY);
+      if (!rect) return;
+      subtitleDrag = { ...rect, ...subtitleOffset, clientX: event.clientX, clientY: event.clientY };
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    function moveSubtitleDrag(event) {
+      if ((event.buttons & 1) === 0) { subtitleDrag = null; return false; }
+      const drag = subtitleDrag;
+      const dx = Math.max(-drag.left, Math.min(event.clientX - drag.clientX, window.innerWidth - drag.right));
+      const dy = Math.max(-drag.top, Math.min(event.clientY - drag.clientY, window.innerHeight - drag.bottom));
+      subtitleOffset = { x: drag.x + dx, y: drag.y + dy };
+      dragStyle.sheet.cssRules[0].style.setProperty("translate", `${subtitleOffset.x}px ${subtitleOffset.y}px`, "important");
+      subtitleClick = true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return true;
+    }
+
+    function endSubtitleDrag(event) {
+      if (!subtitleDrag || event.button !== 0) return;
+      subtitleDrag = null;
+      pointerMoved(event);
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
 
     // Leaving the line and the popup resumes what this reader paused, unless a
@@ -377,8 +434,9 @@
     // Entering a line while the video plays pauses it, once: whatever the
     // viewer does while the pointer stays on the line is the viewer's.
     function pointerMoved(event) {
+      if (subtitleDrag && moveSubtitleDrag(event)) return;
       if (!hoverPause || sync() === null) return;
-      const over = overSubtitle(event.clientX, event.clientY);
+      const over = subtitleAt(event.clientX, event.clientY) !== null;
       if (over === hovering) return;
       hovering = over;
       if (!over) {
@@ -423,7 +481,18 @@
     document.addEventListener(PAGE_EVENT, event => {
       if (typeof event.detail === "string") accept(event.detail);
     });
-    document.addEventListener("mousemove", pointerMoved, { capture: true, passive: true });
+    // Window capture runs before the reader's selection gestures and Netflix's
+    // player controls. Only a press on the actual subtitle text starts a drag.
+    window.addEventListener("mousedown", startSubtitleDrag, true);
+    window.addEventListener("mousemove", pointerMoved, true);
+    window.addEventListener("mouseup", endSubtitleDrag, true);
+    window.addEventListener("blur", () => { subtitleDrag = null; subtitleClick = false; });
+    window.addEventListener("click", event => {
+      if (!subtitleClick || event.button !== 0) return;
+      subtitleClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
     for (const type of ["play", "seeking", "seeked"]) document.addEventListener(type, videoChanged, true);
     window.addEventListener(POPUP_SHOWN_EVENT, () => { popupOpen = true; });
     window.addEventListener(POPUP_HIDDEN_EVENT, () => {
@@ -431,7 +500,7 @@
       release();
     });
 
-    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio };
+    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging };
   }
 
   globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };

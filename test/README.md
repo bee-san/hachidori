@@ -477,6 +477,11 @@ These run separately:
   word-highlight lines on light and dark pages; `test/tmp/ci/theme-contrast.png`
   is its filmstrip. Chrome emulation does not replace a check on a real Windows
   contrast theme.
+- **`chrome-netflix-subtitle-drag.mjs`**, included in `test:chrome`, exercises real
+  left-button drags on native subtitle text in a synthetic Netflix page. It
+  checks both axes, player-click suppression, caret lookup at the moved text,
+  replacement layers, viewport bounds, switching off/on, and page reload. It
+  writes `test/tmp/ci/netflix-subtitle-drag.png`; no Netflix service is contacted.
 - **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
   headless Chrome records tab audio as silence), mines a fixture page served at
   a Netflix watch address into a fake AnkiConnect. Request interception serves
