@@ -12,7 +12,7 @@ import {
   activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, clampOption, customButtonController,
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, DESIGN_OPTION_KEYS, element, FREQUENCY_ORDERS, hasCapability,
   METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS, options,
-  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS, popupRenderer,
+  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
   renderCurrentOptions, renderExperimentalSettings, renderLowMemoryMode, savedOptions, send, setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
   updateKeybindSettings, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
@@ -356,13 +356,12 @@ function renderThemeChoices() {
     }
   }
   let storeGroup = [...theme.children].find(group => group.label === "Theme Store");
-  if (!storeGroup && (options.experimental.themeStore || popupRenderer(options.popupTheme) !== "default")) {
+  if (!storeGroup) {
     storeGroup = document.createElement("optgroup");
     storeGroup.label = "Theme Store";
     for (const slug of POPUP_RENDERER_IDS) storeGroup.append(new Option(rendererLabel(slug), slug));
     theme.append(storeGroup);
   }
-  if (storeGroup) storeGroup.hidden = !options.experimental.themeStore && popupRenderer(options.popupTheme) === "default";
   if (theme !== document.activeElement) theme.value = options.popupTheme;
 }
 
@@ -433,6 +432,7 @@ function renderOptions() {
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-audio-autoplay").checked = options.audioAutoplay;
+  element("opt-smaller-anki-cards").checked = options.smallerAnkiCards;
   renderThemeChoices();
   renderCustomCss();
   renderCustomJavascript();
@@ -542,6 +542,10 @@ function attachOptionHandlers() {
       writeOptions();
     });
   }
+  element("opt-smaller-anki-cards").addEventListener("change", (event) => {
+    options.smallerAnkiCards = event.target.checked;
+    writeOptions();
+  });
   element("opt-personal-dictionary").addEventListener("change", (event) => {
     options.personalDictionaryEnabled = event.target.checked;
     renderPersonalDictionaryControls();

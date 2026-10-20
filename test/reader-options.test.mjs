@@ -22,6 +22,25 @@ const groups = [
   { id: "empty", name: "Empty", dictionaryIds: ["pitch", "disabled"] },
 ];
 
+test("promoted features keep saved choices and Smaller Anki cards defaults off", () => {
+  assert.equal(normaliseOptions({}).smallerAnkiCards, false);
+  assert.equal(normaliseOptions({}).wordHighlightEnabled, false);
+  for (const enabled of [false, true]) {
+    const legacy = { popupTheme: "bee", wordHighlightEnabled: enabled,
+      experimental: { themeStore: true, smallerAnkiCards: enabled, wordHighlighting: true } };
+    const options = normaliseOptions(legacy);
+    assert.equal(options.popupTheme, "bee");
+    assert.equal(options.wordHighlightEnabled, enabled);
+    assert.equal(options.smallerAnkiCards, enabled);
+    assert.deepEqual(options.experimental, DEFAULT_OPTIONS.experimental);
+    assert.equal(projectStoredOptions(legacy).smallerAnkiCards, enabled);
+    assert.deepEqual(validateOptionsPatch({ smallerAnkiCards: enabled }), { smallerAnkiCards: enabled });
+    assert.equal(normaliseOptions({ ...legacy, smallerAnkiCards: !enabled }).smallerAnkiCards, !enabled);
+  }
+  assert.equal(normaliseOptions({ experimental: { smallerAnkiCards: "yes" } }).smallerAnkiCards, false);
+  assert.throws(() => validateOptionsPatch({ smallerAnkiCards: "yes" }), /invalid reader option/);
+});
+
 test("a group reference round-trips through the clicked-kanji option", () => {
   const group = { kind: "tabGroup", id: "g1" };
   assert.deepEqual(normaliseKanjiSelection(group), group);

@@ -88,8 +88,8 @@ contacting Anki, while an unknown miss continues to the ordinary live mining
 check. Clicking View validates the matching IDs live before opening Anki and
 repairs or removes the compact row. These reads and checks do not create notes.
 Page-wide word status reads this same local index for the words on a page and
-never contacts Anki; a linked browser asks its host's index instead. With the
-experimental **Word highlighting** on, Hachidori reads the Japanese text near
+never contacts Anki; a linked browser asks its host's index instead. With
+**Word highlighting** on, Hachidori reads the Japanese text near
 the visible part of every page and splits it into words with your local
 dictionaries, so it can mark them by that status; nothing leaves the browser
 for this unless it is linked to another Hachidori (below). The marks do not

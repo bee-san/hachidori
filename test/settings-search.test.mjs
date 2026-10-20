@@ -300,7 +300,7 @@ test("search offers no Design control the selected theme hides", t => {
   assert.equal(f.document.activeElement, f.el("opt-pitch-badge"));
 });
 
-test("Design follows the latest theme in use, even with the Store off, and shows everything without a catalogue", async t => {
+test("Design follows the latest theme in use and shows everything without a catalogue", async t => {
   const f = fixture(t, "design");
   const design = f.el("design");
   const everything = designControls(f.document);
@@ -308,18 +308,19 @@ test("Design follows the latest theme in use, even with the Store off, and shows
   const fetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = fetch; });
   const store = () => createThemeStore({ root: f.el("theme-store"), design, onSelect() {} });
-  const options = popupTheme => ({ popupTheme, experimental: { themeStore: false } });
+  const options = popupTheme => ({ popupTheme });
   let respond;
   globalThis.fetch = () => new Promise(resolve => { respond = resolve; });
   const slow = store();
   slow.render(options("plain"));
+  assert.equal(f.el("theme-store").hidden, false, "the Store needs no experimental flag");
   slow.render(options("jl"));
   respond({ ok: true, json: async () => ({ themes: catalogue }) });
   await settle();
-  assert.deepEqual(designControls(f.document), JL_DESIGN, "the earlier Plain selection does not apply");
+  assert.deepEqual(designControls(f.document), ["# Theme Store", ...JL_DESIGN], "the earlier Plain selection does not apply");
   globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
   store().render(options("plain"));
   await settle();
-  assert.deepEqual(designControls(f.document), everything);
+  assert.deepEqual(designControls(f.document), ["# Theme Store", ...everything]);
   assert.equal(f.el("popup-theme-hint").hidden, true);
 });

@@ -57,7 +57,7 @@ import {
 import { renderLookupCountsReset, resetLookupCounts } from "./lookup-stats-settings.js";
 import {
   attachOptionHandlers, flushOptionsUntilIdle, optionsEditRevision, pendingOptions, renderOptions,
-  renderThemeChoices, renderWordHighlightControls, savingOptions, writeOptions,
+  renderThemeChoices, savingOptions, writeOptions,
 } from "./option-settings.js";
 
 // Get debug info includes this page's warnings and errors, the errors it shows
@@ -139,7 +139,7 @@ const APPEARANCE_CHOICES = [
   { key: "definitionBlurReveal", id: "opt-blur-reveal", values: DEFINITION_BLUR_REVEALS },
   { key: "wordHighlightStyle", id: "opt-word-highlight-style", values: WORD_HIGHLIGHT_STYLES },
 ];
-// Reading → Word highlighting (#520, experimental).
+// Reading → Word highlighting (#520).
 const WORD_HIGHLIGHT_SWITCHES = [
   { key: "wordHighlightEnabled", id: "opt-word-highlight" },
   { key: "wordHighlightUnknown", id: "opt-word-highlight-unknown" },
@@ -481,12 +481,6 @@ function updateSharingSettings() {
 
 async function toggleExperimental(id, enabled) {
   options.experimental = { ...options.experimental, [id]: enabled };
-  // Word highlighting keeps its own switches and style, but its marks must
-  // not stay on pages behind a hidden section.
-  if (id === "wordHighlighting" && !enabled) {
-    options.wordHighlightEnabled = false;
-    renderWordHighlightControls();
-  }
   renderExperimentalSettings();
   writeOptions();
 }

@@ -1,4 +1,4 @@
-// Focused MVP check: Store opt-in, real hover, kanji/Back, and Default restore.
+// Focused check: Store availability, real hover, kanji/Back, and Default restore.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
@@ -62,11 +62,39 @@ try {
   await (await settings.$("#import-file")).uploadFile(resolve(root, "test/fixtures/hachidori-fixture.zip"));
   await settings.waitForFunction(() => document.getElementById("import-state").textContent.includes("1 imported, 0 failed"));
   console.log("fixture imported");
-  assert.equal(await settings.$eval("#theme-store", node => node.hidden), true);
+  assert.equal(await settings.$eval("#theme-store", node => node.hidden), false);
   await settings.evaluate(() => { location.hash = "advanced"; });
-  await settings.waitForSelector("#opt-experimental-themeStore", { visible: true });
-  await settings.click("#opt-experimental-themeStore");
-  await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options?.experimental?.themeStore === true);
+  assert.equal(await settings.$("#opt-experimental-themeStore"), null);
+  assert.equal(await settings.$("#opt-experimental-smallerAnkiCards"), null);
+  assert.equal(await settings.$("#opt-experimental-wordHighlighting"), null);
+  for (const palette of ["light", "dark"]) {
+    await settings.evaluate(async popupTheme => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: options.revision, options: { popupTheme } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, palette);
+    await settings.waitForFunction(palette => document.documentElement.dataset.hoshidictsTheme === palette, {}, palette);
+    for (const [section, selector] of [["design", "#theme-store"], ["anki", "#anki-card-format"],
+      ["word-highlighting", "#word-highlighting"]]) {
+      await settings.evaluate(section => { location.hash = section; }, section);
+      await settings.waitForSelector(selector, { visible: true });
+      if (section === "design") await settings.waitForSelector(".theme-store-card button", { visible: true });
+      await (await settings.$(selector)).screenshot({ path: resolve(output, `settings-${section}-${palette}.png`) });
+    }
+  }
+  assert.equal(await settings.$eval("#opt-word-highlight", input => input.checked), false);
+  await settings.evaluate(() => { location.hash = "anki"; });
+  await settings.waitForSelector("#opt-smaller-anki-cards", { visible: true });
+  assert.equal(await settings.$eval("#opt-smaller-anki-cards", input => input.checked), false);
+  for (const enabled of [true, false]) {
+    await settings.click("#opt-smaller-anki-cards");
+    await settings.waitForFunction(async enabled =>
+      (await chrome.storage.local.get("options")).options.smallerAnkiCards === enabled, {}, enabled);
+    await settings.reload();
+    await settings.waitForSelector("#opt-smaller-anki-cards", { visible: true });
+    assert.equal(await settings.$eval("#opt-smaller-anki-cards", input => input.checked), enabled);
+  }
   await settings.evaluate(async ankiUrl => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
@@ -224,7 +252,7 @@ try {
   await hover();
   await tab.waitForFunction(() => {
     const buttons = [...document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
-    return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled);
+    return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled && button.dataset.state === "ready");
   });
   const jl = await tab.evaluate(() => {
     const shadow = document.querySelector("hachidori-host").shadowRoot;
@@ -603,8 +631,8 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store hidden by default", "experimental opt-in", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: Store opt-in, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
+    checks: ["Store available without experimental opt-in", "Smaller Anki cards and Word highlighting start off in normal Settings", "Smaller Anki cards saves and reloads through its Anki control", "five bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: normal Settings, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

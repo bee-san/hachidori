@@ -162,7 +162,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | file | what it proves |
 | --- | --- |
 | `activation-settings` | Reading → Activation key or button: No key first, mouse buttons above keys; **Press to set** records middle/Back/Forward without their native actions, records keys by name, refuses primary/secondary buttons and unlisted keys, ignores repeats, cancels on Escape. |
-| `advanced-settings` | Advanced keeps dictionary experiments; Word highlighting's section, rail link, picker option and search results stay hidden until its experimental switch is on, and turning it off stops the marks in the same save. |
+| `advanced-settings` | Advanced keeps dictionary experiments; Word highlighting is always available in Reading and search, starts off and keeps its presentation when disabled; Smaller Anki cards is an optional Anki control. |
 | `anki-addon` | The pinned GitHub add-on URL, binary preservation, HTTP and network errors. |
 | `anki-audio`, `anki-offscreen-audio` | First decodable pronunciation exported without playback, exact TTS voice capture, linked TTS planned without host capture. |
 | `anki-client-media` | Linked screenshot and browser-speech WAV bytes are allowlisted against the request; stale and malformed media are refused. |

@@ -90,7 +90,7 @@ test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch
   assert.equal(el("opt-experimental-mdxImport"), null);
 });
 
-test("Word highlighting is a Reading tab that only its experimental switch reveals, search included", t => {
+test("Word highlighting is always available in Reading and search, with highlighting initially off", t => {
   const { window, el, visible } = fixture(t, { hash: "#word-highlighting", stored: { wordHighlightKnown: true } });
   const tab = () => el("reading-navigation").querySelector('a[href="#word-highlighting"]');
   const current = () => el("reading-navigation").querySelector('[aria-current="page"]')?.hash;
@@ -104,15 +104,9 @@ test("Word highlighting is a Reading tab that only its experimental switch revea
     el("settings-search").dispatchEvent(new window.Event("input"));
     return found;
   };
-  // Off: the section, its tab, its picker option and its settings in search are all hidden.
   assert.equal(window.document.querySelector('.settings-nav a[href="#word-highlighting"]'), null, "no rail link of its own");
-  assert.deepEqual(visible(), ["advanced"]);
-  assert.equal(tab().hidden, true);
-  assert.equal(pickerOption().hidden, true);
-  assert.deepEqual(search("mark unknown words"), []);
-
-  el("opt-experimental-wordHighlighting").click();
-  assert.deepEqual(visible(), ["word-highlighting"], "the requested section opens once its switch is on");
+  assert.equal(el("opt-experimental-wordHighlighting"), null);
+  assert.deepEqual(visible(), ["word-highlighting"]);
   assert.equal(tab().hidden, false);
   assert.equal(el("reading-navigation").hidden, false);
   assert.equal(current(), "#word-highlighting");
@@ -126,22 +120,30 @@ test("Word highlighting is a Reading tab that only its experimental switch revea
   el("opt-word-highlight").click();
   el("opt-word-highlight-style").value = "background";
   el("opt-word-highlight-style").dispatchEvent(new window.Event("change", { bubbles: true }));
-  assert.deepEqual(plain(window.readPending()), { experimental: { ...plain(window.readOptions().experimental), wordHighlighting: true },
-    wordHighlightEnabled: true, wordHighlightStyle: "background" });
+  assert.deepEqual(plain(window.readPending()), { wordHighlightEnabled: true, wordHighlightStyle: "background" });
 });
 
-test("turning Word highlighting's experimental switch off stops the marks in the same save and keeps its settings", t => {
+test("turning Word highlighting off keeps its Reading tab and saved presentation", t => {
   const { window, el, visible } = fixture(t, { hash: "#word-highlighting", stored: {
     experimental: { wordHighlighting: true }, wordHighlightEnabled: true, wordHighlightKnown: true, wordHighlightStyle: "color" } });
   assert.deepEqual(visible(), ["word-highlighting"]);
   assert.equal(el("opt-word-highlight").checked, true);
-  el("opt-experimental-wordHighlighting").click();
-  assert.deepEqual(visible(), ["advanced"]);
+  el("opt-word-highlight").click();
+  assert.deepEqual(visible(), ["word-highlighting"]);
   window.location.hash = "#lookup";
   window.dispatchEvent(new window.Event("hashchange"));
-  assert.equal(el("reading-navigation").hidden, true, "Reading has no tab row with one view");
-  assert.deepEqual(plain(window.readPending()), {
-    experimental: { ...plain(window.readOptions().experimental), wordHighlighting: false }, wordHighlightEnabled: false });
+  assert.equal(el("reading-navigation").hidden, false);
+  assert.deepEqual(plain(window.readPending()), { wordHighlightEnabled: false });
   assert.equal(window.readOptions().wordHighlightKnown, true);
   assert.equal(window.readOptions().wordHighlightStyle, "color");
+});
+
+test("Smaller Anki cards is an Anki option that uses the existing options save", t => {
+  const { window, el } = fixture(t);
+  const input = el("opt-smaller-anki-cards");
+  assert.equal(input.closest("section").id, "anki");
+  assert.equal(input.checked, false);
+  assert.equal(el("opt-experimental-smallerAnkiCards"), null);
+  input.click();
+  assert.deepEqual(plain(window.readPending()), { smallerAnkiCards: true });
 });

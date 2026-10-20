@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings → Advanced → Experimental features → Smaller Anki cards. Rewrites
+// Settings → Anki → Smaller Anki cards. Rewrites
 // each dictionary body of an exported glossary as compact HTML. The live
 // document's cascade resolves the scoped dictionary CSS as the popup does, and
 // only what it means for the content is written out: generated text, hidden

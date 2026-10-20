@@ -54,7 +54,7 @@ What is staged for the recording:
   Mining deck, accepts the note and returns its fields. Settings' detection, the field mapping and the
   popup's + button run unchanged against it.
 - Settings → Reading → Activation uses No key, so pointing at a word looks it up. Definition blur is on with a
-  threshold of 3 lookups and a 3-second reveal. The MDX import and Theme Store experimental features are on.
+  threshold of 3 lookups and a 3-second reveal. MDX import and Theme Store are available without experimental switches.
 - The kanji and compact-summary dictionaries are set the way first-run setup sets them for these dictionaries.
 
 ## Regenerate

@@ -12,7 +12,7 @@ const {
 } = globalThis.HDReaderOptions;
 
 test("experimental features are registered with defaults that start off", () => {
-  for (const retired of ["mediaMining", "longKeyScan", "mdxImport"]) {
+  for (const retired of ["mediaMining", "longKeyScan", "mdxImport", "themeStore", "smallerAnkiCards", "wordHighlighting"]) {
     assert.ok(!EXPERIMENTAL_FEATURES.some(feature => feature.id === retired));
   }
   for (const feature of EXPERIMENTAL_FEATURES) {

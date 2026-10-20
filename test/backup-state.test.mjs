@@ -206,8 +206,8 @@ test("an archived experimental record from another release migrates instead of s
   const prepared = await prepareBackupSnapshot(archived);
   assert.equal(prepared.warning, null);
   const restored = restoredBackupSnapshot(current, prepared.snapshot, []);
-  assert.deepEqual(restored.options, { revision: 22, popupTheme: "dark", experimental: {
-    ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, themeStore: true, googleDocs: false, smallerAnkiCards: true } });
+  assert.deepEqual(restored.options, { revision: 22, popupTheme: "dark", smallerAnkiCards: true,
+    experimental: globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental });
   await assertBackupSnapshot(restored);
   assert.deepEqual(archived, untouched, "preparation must not mutate the archived snapshot");
 });
