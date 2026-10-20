@@ -9,7 +9,7 @@
 // The scenario's previous file: its steps run before the ones here.
 import "./activation.mjs";
 import { describe } from "node:test";
-import { frequencyRankingFixture, GENERIC_KANJI_GLOSSARY } from "../make-fixture.mjs";
+import { buildTitledZip, frequencyRankingFixture, GENERIC_KANJI_GLOSSARY } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
 import { hoverForPopup } from "./popup-reader.mjs";
 import { popup, tab } from "./reader.mjs";
@@ -186,6 +186,21 @@ async function checkPopupAudio(settings, tab, popup, browser) {
 
 async function checkFrequencyDirection(browser, settings, tab, popup) {
   const fixture = frequencyRankingFixture();
+  const words = ["来る", "言う", "出る", "滝", "暁", "論じる"];
+  const inferred = ["ascending", "descending"].map(direction => {
+    const title = `Frequency inferred ${direction}`;
+    const values = direction === "ascending" ? [20, 10, 30] : [1, 2, 9];
+    return { title, archive: buildTitledZip(title, {
+      terms: [
+        ...["あ", "い", "う"].map((reading, index) => [fixture.query, reading, "", "", 30 - index * 10, [reading], index, ""]),
+        ...words.map((term, index) => [term, term, "", "", 0, [term], 10 + index, ""]),
+      ],
+      termMeta: [
+        ...["あ", "い", "う"].map((reading, index) => [fixture.query, "freq", { reading, frequency: values[index] }]),
+        ...words.map((term, index) => [term, "freq", (index < 3) === (direction === "ascending") ? 10 : 9000]),
+      ],
+    }) };
+  });
   const original = await readSettingsControls(settings, ["opt-frequency-dictionary", "opt-frequency-order", "opt-max-results"]);
   const originalVerb = await tab.$eval("#verb", (element) => element.innerHTML);
   const viewport = settings.viewport();
@@ -198,7 +213,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
   let manualSurvived;
   let cleaned;
   try {
-    for (const dictionary of fixture.dictionaries) {
+    for (const dictionary of [...fixture.dictionaries, ...inferred]) {
       await installMediaArchive(settings, dictionary.archive);
       installed.push(dictionary.title);
     }
@@ -239,10 +254,17 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await observe(rank, "ascending", "い");
     await editSettingsControls(settings, { "opt-frequency-dictionary": occurrence });
     await observe(occurrence, "descending", "う");
+    for (const [index, direction] of ["ascending", "descending"].entries()) {
+      const started = performance.now();
+      await editSettingsControls(settings, { "opt-frequency-dictionary": inferred[index].title });
+      console.log(`  frequency inference ${direction}: ${(performance.now() - started).toFixed(1)} ms including Settings autosave`);
+      await observe(inferred[index].title, direction, direction === "ascending" ? "い" : "う");
+    }
     const state = await settings.evaluate(async () => (await chrome.storage.local.get("dictionaryState")).dictionaryState);
     metadata = !!alias.settled && state.dictionaries.find((dictionary) => dictionary.title === rank)?.displayName === "Rank alias"
       && fixture.dictionaries.every(({ title, frequencyMode }) =>
-        state.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode);
+        state.dictionaries.find((dictionary) => dictionary.title === title)?.frequencyMode === frequencyMode)
+      && inferred.every(({ title }) => state.dictionaries.find(dictionary => dictionary.title === title)?.frequencyMode === null);
     evidence.push((await status()).generation === generation);
     if (process.env.HACHIDORI_FREQUENCY_SCREENSHOT) {
       await editSettingsControls(settings, { "opt-max-results": original["opt-max-results"] });
@@ -267,7 +289,7 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     await tab.keyboard.press("Escape");
   }
   check("Settings persists frequency directions and applies them to real-WASM lookup results",
-    evidence.length === 6 && evidence.every(Boolean) && metadata && manualSurvived && cleaned,
+    evidence.length === 8 && evidence.every(Boolean) && metadata && manualSurvived && cleaned,
     JSON.stringify({ evidence, metadata, manualSurvived, cleaned }));
 }
 

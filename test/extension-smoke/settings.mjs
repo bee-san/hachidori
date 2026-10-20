@@ -275,6 +275,9 @@ async function settingsFrequencyStage() {
     genericPackage({ id: "unknown", title: "Unknown mode", frequencyCount: 3 }),
   ] };
   const writes = [];
+  const sampledTerms = [];
+  let sampling = null, releaseSample;
+  let sampleHold = null;
   const emitOptions = (patch) => {
     storedOptions = { ...storedOptions, ...patch, revision: storedOptions.revision + 1 };
     listener({ options: { newValue: structuredClone(storedOptions) } }, "local");
@@ -289,6 +292,16 @@ async function settingsFrequencyStage() {
       if (message.type === "hd_audio_voices") return { ok: true, voices: [] };
       if (message.type === "hd_state_read") return { ok: true, state: structuredClone(state) };
       if (message.type === "hd_status") return { ok: true, ready: true, loading: false, dictionaryCount: 3 };
+      if (message.type === "hd_lookup") {
+        sampledTerms.push(message.text);
+        if (sampleHold) await sampleHold;
+        if (!sampling) return { ok: true, results: [] };
+        const common = (sampledTerms.length - 1) % 20 < 10;
+        const value = common === (sampling === "ascending") ? 10 : 9000;
+        return { ok: true, results: [{ term: { expression: message.text, frequencies: [
+          { dictionary: "Unknown mode", frequencies: [{ value }] },
+        ] } }] };
+      }
       if (message.type !== "hd_options_write") throw new Error(`Unexpected frequency Settings request ${message.type}`);
       writes.push(structuredClone(message));
       if (message.baseRevision !== storedOptions.revision) {
@@ -356,6 +369,29 @@ async function settingsFrequencyStage() {
       && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
       && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
+
+    sampledTerms.length = 0;
+    sampling = "ascending";
+    const inferredRank = await edit("dictionary", "Unknown mode");
+    sampling = "descending";
+    const beforeInference = writes.length;
+    auto.click();
+    await until(() => writes.length === beforeInference + 1 && status() === "Saved.");
+    const inference = inferredRank.frequencyOrder === "ascending" && storedOptions.frequencyOrder === "descending"
+      && sampledTerms.length === 40;
+    sampleHold = new Promise(resolve => { releaseSample = resolve; });
+    sampledTerms.length = 0;
+    auto.click();
+    await until(() => sampledTerms.length === 1);
+    await edit("order", "ascending");
+    const afterManual = writes.length;
+    releaseSample();
+    sampleHold = null;
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const inferenceOwnership = storedOptions.frequencyOrder === "ascending"
+      && writes.length === afterManual && sampledTerms.length === 1;
+    sampling = null;
+    await edit("dictionary", "");
 
     const chooser = field("dictionary");
     await focusIn(chooser);
@@ -824,7 +860,7 @@ async function settingsFrequencyStage() {
     localAudio &&= storedOptions.audioSources.length === 1
       && storedOptions.audioSources[0].url === "http://127.0.0.1:5050/?term={term}&reading={reading}";
     settingsTheme &&= window.document.documentElement.dataset.hoshidictsTheme === "light";
-    return { explicit, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
+    return { explicit, inference, inferenceOwnership, availability, draft, writes, summary, imageSources, metadata, metadataDetails,
       designReset, settingsTheme, toolbar, css, audio, localAudio,
       summaryDetails: { summaryDefault, focusedChoice, disabledKept, unavailableKept, offKept, nativeSummaryDraft,
         summaryConflict, disabledAfterBlur, countDraft, countConflict } };
@@ -1002,6 +1038,8 @@ describe("Settings", () => {
       frequencySettings?.designReset === true, JSON.stringify(frequencySettings));
     check("Settings derives frequency direction only on dictionary selection or explicit Auto",
       frequencySettings?.explicit === true, JSON.stringify(frequencySettings));
+    check("Auto direction infers undeclared frequency modes and retires sampling when a manual direction supersedes it",
+      frequencySettings?.inference === true && frequencySettings.inferenceOwnership === true, JSON.stringify(frequencySettings));
     check("frequency controls preserve unavailable selections and revision-bound native drafts",
       frequencySettings?.availability === true && frequencySettings.draft === true,
       JSON.stringify(frequencySettings));

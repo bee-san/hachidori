@@ -7,6 +7,7 @@
 import { extensionApi as chrome } from "./browser-api.js";
 import { createActivationSettings } from "./activation-settings.js";
 import { describeErrorOrJson } from "./error-text.js";
+import { inferFrequencyDirection } from "./frequency-direction.js";
 import { applyPageTheme } from "./settings-dom.js";
 import {
   activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, clampOption, customButtonController,
@@ -30,6 +31,7 @@ let optionsTimer = null;
 let optionsSaveFailed = false;
 let optionsEditRevision = null; // NOSONAR: shared with the other Settings modules
 let activationController;
+let frequencyDirectionRequest = 0;
 
 function selectionParts(value) {
   if (value && typeof value === "object") {
@@ -236,14 +238,43 @@ function renderFrequencyOrder() {
   else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
   else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto puts the lowest numbers first.";
   else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto puts the highest numbers first.";
-  else hint = "No mode declared: Auto uses highest numbers first.";
+  else hint = "No mode declared: Auto compares common and less-common Japanese words; inconclusive results use highest numbers first.";
   const hintElement = element("frequency-order-hint");
   if (hintElement.textContent !== hint) hintElement.textContent = hint;
 }
 
-function applyFrequencyDirection() {
-  const direction = selectedFrequencyDictionary()?.frequencyMode === "rank-based" ? "ascending" : "descending";
-  options.frequencyOrder = options.frequencyDictionary === "" ? "auto" : direction;
+async function applyFrequencyDirection() {
+  const request = ++frequencyDirectionRequest;
+  const dictionary = selectedFrequencyDictionary();
+  const revision = optionsRevision;
+  const previousOrder = options.frequencyOrder;
+  const owns = () => {
+    const current = selectedFrequencyDictionary();
+    return request === frequencyDirectionRequest && revision === optionsRevision && previousOrder === options.frequencyOrder
+      && current?.id === dictionary?.id && current?.path === dictionary?.path && current?.revision === dictionary?.revision
+      && current?.frequencyMode === dictionary?.frequencyMode;
+  };
+  let direction = "auto";
+  if (dictionary?.frequencyMode === "rank-based") direction = "ascending";
+  else if (dictionary?.frequencyMode === "occurrence-based") direction = "descending";
+  else if (dictionary) {
+    try {
+      direction = await inferFrequencyDirection(dictionary, async text => {
+        if (!owns()) throw new Error("The frequency dictionary choice changed.");
+        const reply = await send("hd_lookup", {
+          text, maxResults: 256, scanLength: [...text].length, options: { frequencyOrder: "disabled" },
+        });
+        if (!reply.ok) throw new Error(reply.error || "The frequency lookup failed.");
+        return reply;
+      }) ?? "descending";
+    } catch (error) {
+      if (!owns()) return;
+      setOptionsStatus(`Could not infer frequency direction: ${describeErrorOrJson(error)}`);
+      return;
+    }
+  }
+  if (!owns()) return;
+  options.frequencyOrder = direction;
   renderFrequencyOrder();
   writeOptions();
 }
@@ -625,6 +656,7 @@ function attachOptionHandlers() {
   });
 
   element("opt-frequency-order").addEventListener("change", (event) => {
+    frequencyDirectionRequest++;
     options.frequencyOrder = FREQUENCY_ORDERS.includes(event.target.value) ? event.target.value : "auto";
     renderFrequencyOrder();
     writeOptions();
