@@ -258,6 +258,7 @@ async function applyFrequencyDirection() {
   if (dictionary?.frequencyMode === "rank-based") direction = "ascending";
   else if (dictionary?.frequencyMode === "occurrence-based") direction = "descending";
   else if (dictionary) {
+    setOptionsStatus("Unsaved changes…");
     try {
       direction = await inferFrequencyDirection(dictionary, async text => {
         if (!owns()) throw new Error("The frequency dictionary choice changed.");

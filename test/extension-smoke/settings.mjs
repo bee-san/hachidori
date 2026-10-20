@@ -383,12 +383,13 @@ async function settingsFrequencyStage() {
     sampledTerms.length = 0;
     auto.click();
     await until(() => sampledTerms.length === 1);
+    const inferencePending = status() === "Unsaved changes…";
     await edit("order", "ascending");
     const afterManual = writes.length;
     releaseSample();
     sampleHold = null;
     await new Promise(resolve => setTimeout(resolve, 180));
-    const inferenceOwnership = storedOptions.frequencyOrder === "ascending"
+    const inferenceOwnership = inferencePending && storedOptions.frequencyOrder === "ascending"
       && writes.length === afterManual && sampledTerms.length === 1;
     sampling = null;
     await edit("dictionary", "");
