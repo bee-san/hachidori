@@ -17,6 +17,7 @@ import { sharingLinked, forwardToHost } from "./background-sharing.js";
 import { alarms, sharingReady } from "./background.js";
 
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
+const UPDATE_CHECK_IDLE_MS = 120_000;
 
 async function readUpdateSettings() {
   const stored = await chrome.storage.local.get(UPDATE_SETTINGS_KEY);
@@ -73,9 +74,40 @@ async function managedCandidates(dictionaryIds) {
   });
 }
 
-async function remoteUpdate(candidate) {
-  const { source } = candidate.fingerprint;
-  const response = await fetch(source.indexUrl, { credentials: "omit" });
+function cancelUpdateResponse(response) {
+  try {
+    void response?.body?.cancel().catch(() => {});
+  } catch {
+    // The index reader may still own the stream when the deadline expires.
+  }
+}
+
+async function readUpdateBody(response, signal, progress) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return response.json();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) break;
+      if (value.byteLength === 0) continue;
+      progress();
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return JSON.parse(chunks.join(""));
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function readUpdateIndex(source, signal, received, progress) {
+  const response = await fetch(source.indexUrl, { credentials: "omit", signal });
+  received(response);
+  signal.throwIfAborted();
+  progress();
   if (!response.ok) {
     throw new Error(`update index request failed with HTTP ${response.status}`);
   }
@@ -86,7 +118,36 @@ async function remoteUpdate(candidate) {
   if (source.kind === "generic" && httpsUrl(response.url) === null) {
     throw new Error("update index redirected to a non-HTTPS URL");
   }
-  const index = await response.json();
+  const index = await readUpdateBody(response, signal, progress);
+  signal.throwIfAborted();
+  return index;
+}
+
+async function remoteUpdate(candidate) {
+  const { source } = candidate.fingerprint;
+  const controller = new AbortController();
+  let response, timer, resetIdleTimer;
+  const deadline = new Promise((_, reject) => {
+    resetIdleTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const error = new Error("Dictionary update check received no data for two minutes. Try checking again.");
+        controller.abort(error);
+        cancelUpdateResponse(response);
+        reject(error);
+      }, UPDATE_CHECK_IDLE_MS);
+    };
+    resetIdleTimer();
+  });
+  let index;
+  try {
+    index = await Promise.race([readUpdateIndex(source, controller.signal, value => {
+      response = value;
+      if (controller.signal.aborted) cancelUpdateResponse(response);
+    }, resetIdleTimer), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
   if (typeof index?.revision !== "string" || index.revision === "") {
     throw new Error("update index did not declare a revision");
   }

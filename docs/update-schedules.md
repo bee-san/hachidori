@@ -23,6 +23,12 @@ action in the list; failed checks offer **Check again**. These details survive
 reopening Settings, including failures from automatic updates. A manual run's
 summary also names each failed dictionary and its error.
 
+Update-index metadata checks stop after two minutes without receiving data. Each
+nonempty response chunk renews that wait, so a slow connection can keep progressing
+without a total time limit. A stalled check records failure and continues with the
+remaining dictionaries; **Check again** retries it. Dictionary archive downloads
+and imports have no new deadline.
+
 One nonperiodic Chrome alarm targets the earliest due package. Package changes,
 schedule edits, completed checks, restore and worker startup reconcile it. An
 already-due alarm is retained instead of repeatedly postponing delivery. Every
