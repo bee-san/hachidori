@@ -23,6 +23,10 @@ action in the list; failed checks offer **Check again**. These details survive
 reopening Settings, including failures from automatic updates. A manual run's
 summary also names each failed dictionary and its error.
 
+Each update index has a 15-second deadline, including reading its response body.
+A timeout records a failed check and continues with the remaining dictionaries;
+**Check again** retries it. This deadline does not limit archive imports.
+
 One nonperiodic Chrome alarm targets the earliest due package. Package changes,
 schedule edits, completed checks, restore and worker startup reconcile it. An
 already-due alarm is retained instead of repeatedly postponing delivery. Every

@@ -17,6 +17,7 @@ import { sharingLinked, forwardToHost } from "./background-sharing.js";
 import { alarms, sharingReady } from "./background.js";
 
 const UPDATE_ALARM = "hachidori-managed-dictionary-updates";
+const UPDATE_CHECK_TIMEOUT_MS = 15_000;
 
 async function readUpdateSettings() {
   const stored = await chrome.storage.local.get(UPDATE_SETTINGS_KEY);
@@ -73,9 +74,18 @@ async function managedCandidates(dictionaryIds) {
   });
 }
 
-async function remoteUpdate(candidate) {
-  const { source } = candidate.fingerprint;
-  const response = await fetch(source.indexUrl, { credentials: "omit" });
+function cancelUpdateResponse(response) {
+  try {
+    void response?.body?.cancel().catch(() => {});
+  } catch {
+    // response.json() may still own the reader when the deadline expires.
+  }
+}
+
+async function readUpdateIndex(source, signal, received) {
+  const response = await fetch(source.indexUrl, { credentials: "omit", signal });
+  received(response);
+  signal.throwIfAborted();
   if (!response.ok) {
     throw new Error(`update index request failed with HTTP ${response.status}`);
   }
@@ -87,6 +97,31 @@ async function remoteUpdate(candidate) {
     throw new Error("update index redirected to a non-HTTPS URL");
   }
   const index = await response.json();
+  signal.throwIfAborted();
+  return index;
+}
+
+async function remoteUpdate(candidate) {
+  const { source } = candidate.fingerprint;
+  const controller = new AbortController();
+  let response, timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("Dictionary update check timed out after 15 seconds. Try checking again.");
+      controller.abort(error);
+      cancelUpdateResponse(response);
+      reject(error);
+    }, UPDATE_CHECK_TIMEOUT_MS);
+  });
+  let index;
+  try {
+    index = await Promise.race([readUpdateIndex(source, controller.signal, value => {
+      response = value;
+      if (controller.signal.aborted) cancelUpdateResponse(response);
+    }), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
   if (typeof index?.revision !== "string" || index.revision === "") {
     throw new Error("update index did not declare a revision");
   }
