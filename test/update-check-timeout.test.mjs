@@ -20,7 +20,7 @@ for (const phase of ["headers", "body"]) {
       body: { cancel: async () => { cancelCount++; } } });
     const context = loadBackgroundScript({ chrome, console, Promise, Error, TypeError,
       setTimeout(callback, delay, ...args) {
-        if (delay !== 15_000) return setTimeout(callback, delay, ...args);
+        if (delay !== 120_000) return setTimeout(callback, delay, ...args);
         expire = callback;
         return { deadline: true };
       },
@@ -43,7 +43,7 @@ for (const phase of ["headers", "body"]) {
     expire();
     const first = await running;
     assert.deepEqual(Array.from(first.outcomes, entry => entry.status), ["check-failed", "update-available"]);
-    assert.match(first.outcomes[0].error, /timed out after 15 seconds/u);
+    assert.match(first.outcomes[0].error, /no data for two minutes/u);
     assert.equal(signal.aborted, true);
     assert.deepEqual(received, dictionaries.map(entry => entry.indexUrl));
     const beforeLate = (await chrome.storage.local.get("dictionaryState")).dictionaryState;
@@ -56,3 +56,42 @@ for (const phase of ["headers", "body"]) {
     assert.deepEqual(Array.from(retry.outcomes, entry => entry.status), ["update-available", "update-available"]);
   });
 }
+
+test("slow index chunks renew inactivity without a total deadline, and empty chunks do not renew it", async () => {
+  const chrome = makeChrome("check-worker", makeBus(), makeStorage(), makeAlarms());
+  let now = 0, stream, signal;
+  const timers = new Set();
+  const body = new ReadableStream({ start(controller) { stream = controller; } });
+  const context = loadBackgroundScript({ chrome, console, Promise, Error, TypeError, TextDecoder,
+    setTimeout(callback, delay, ...args) {
+      if (delay !== 120_000) return setTimeout(callback, delay, ...args);
+      const timer = { at: now + delay, callback };
+      timers.add(timer);
+      return timer;
+    },
+    clearTimeout(timer) { if (!timers.delete(timer)) clearTimeout(timer); },
+    fetch: async (url, init) => { signal = init.signal; return { ok: true, url, body }; },
+  });
+  const advance = duration => {
+    now += duration;
+    for (const timer of timers) if (timer.at <= now) { timers.delete(timer); timer.callback(); }
+  };
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  const running = runInContext('remoteUpdate({fingerprint: {source: {kind: "generic", indexUrl: "https://example.com/index.json", downloadUrl: "https://example.com/archive.zip"}}})', context);
+  await flush();
+  const bytes = new TextEncoder().encode('{"revision":"次版"}');
+  advance(90_000);
+  stream.enqueue(bytes.slice(0, 15)); // Split a UTF-8 character between chunks.
+  await flush();
+  assert.equal([...timers][0].at, 210_000);
+  advance(90_000);
+  stream.enqueue(new Uint8Array());
+  await flush();
+  assert.equal([...timers][0].at, 210_000);
+  advance(20_000);
+  stream.enqueue(bytes.slice(15));
+  stream.close();
+  assert.equal((await running).revision, "次版");
+  assert.equal(signal.aborted, false);
+  assert.equal(timers.size, 0, "metadata timers retire before any archive download or import begins");
+});
