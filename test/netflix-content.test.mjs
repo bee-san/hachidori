@@ -522,6 +522,24 @@ test("hovering a playing subtitle pauses it until the pointer has left the line 
   assert.deepEqual(empty.hoverCommands(), [], "an empty subtitle layer pauses nothing");
 });
 
+test("opening a lookup pauses playback even without a subtitle hover", async t => {
+  const f = playing(t);
+  f.netflix.setHoverPause(true);
+  f.move(AWAY);
+  f.popup(true);
+  assert.equal(f.paused(), true, "a keyboard or selection lookup pauses a playing video");
+  f.popup(true);
+  assert.deepEqual(f.hoverCommands(), ["pause"], "nested/repeated popup signals keep the same pause");
+  await settle();
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"], "closing the lookup resumes what it paused");
+  await settle();
+  f.media("pause");
+  f.popup(true);
+  f.popup(false);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"], "an already paused video is left paused");
+});
+
 test("what the viewer plays, pauses or seeks while hovering is left as the viewer left it", async t => {
   const takeOvers = {
     play: f => f.media("play"),

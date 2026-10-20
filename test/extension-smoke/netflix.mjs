@@ -152,14 +152,15 @@ async function netflixLoadCase() {
   // The worker added the scripts: netflix-content.js publishes HDNetflix.
   const calls = [];
   window.HDNetflix = { setHoverPause: value => calls.push(["hover", value]), setLineAudio: value => calls.push(["audio", value]),
+    setSubtitleDragging: value => calls.push(["drag", value]),
     miningFields: () => ({}), observe: () => null };
   harness.reply(harness.take("hd_netflix_load"), { loaded: true });
   await harness.settle();
-  const followedOn = JSON.stringify(calls) === JSON.stringify([["hover", true], ["audio", true]]);
+  const followedOn = JSON.stringify(calls) === JSON.stringify([["hover", true], ["audio", true], ["drag", true]]);
   harness.emitOptions({ experimental: off });
   harness.emitOptions({ experimental: on, maxResults: 7 });
-  const followed = followedOn && JSON.stringify(calls.slice(2)) === JSON.stringify([["hover", false], ["audio", false],
-    ["hover", true], ["audio", true]]) && loads(harness).length === 2;
+  const followed = followedOn && JSON.stringify(calls.slice(3)) === JSON.stringify([["hover", false], ["audio", false],
+    ["drag", false], ["hover", true], ["audio", true], ["drag", true]]) && loads(harness).length === 2;
   harness.close();
   // Opened with the switch already on, it asks at once; elsewhere it never does.
   const opened = await createHarness(undefined, { url: "https://www.netflix.com/browse", options: { experimental: on } });

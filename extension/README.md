@@ -130,6 +130,9 @@ the service worker and both engine runtimes run the same code.
   hovered line's cue, and pausing while a line is hovered) on
   `www.netflix.com`; `background-netflix.js` adds the same scripts to a
   Netflix page that was open before the switch went on, when its reader asks.
+  Drag the subtitle text with the left mouse button to move the native subtitle
+  box. New lines keep that offset until the page reloads; turning Netflix mining
+  off restores Netflix's position. Word lookups still work on the moved text.
   `{sentence-audio}` attaches the line's WAV, cut from what
   `netflix-audio.js` kept. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that

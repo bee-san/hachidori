@@ -181,6 +181,8 @@ function playerFixture({ startMs = 7000, paused = true, rate = 1.5 } = {}) {
     getMovieId: () => 81000001,
     getElement: () => video,
   };
+  video.pause = () => { calls.push(["native pause"]); pause(); };
+  video.play = () => { calls.push(["native play"]); playingSince ??= now(); return Promise.resolve(); };
   if (!paused) playingSince = now();
   return { calls, video, player };
 }
@@ -260,10 +262,14 @@ test("pause and resume go through Netflix's player, wait for a replay, and malfo
   command({ type: "pause" });
   assert.deepEqual(calls.at(-1), ["pause"]);
 
-  // Without Netflix's player nothing is paused.
+  // Hover pause needs no private replay/seek API.
   const playing = playerFixture({ paused: false });
-  page({ video: playing.video }).command({ type: "pause" });
+  const native = page({ video: playing.video });
+  native.command({ type: "pause" });
+  assert.equal(playing.video.paused, true);
+  native.command({ type: "resume" });
   assert.equal(playing.video.paused, false);
+  assert.deepEqual(playing.calls, [["native pause"], ["native play"]]);
 });
 
 // Another session of Netflix's: its calls are logged under its name.
@@ -289,7 +295,7 @@ test("pause, resume and replays use the watch page's own session, not one Netfli
   assert.deepEqual(others, [], "no other session is paused, played or seeked");
 });
 
-test("a page with a single session keeps it; several with no attached watch player of this movie pause nothing", async () => {
+test("an unidentified player uses native hover controls, while replays still require the exact session", async () => {
   // One session that says nothing of itself: the player before #548 used it.
   const lone = playerFixture({ paused: false });
   const unnamed = { seek: lone.player.seek, play: lone.player.play, pause: lone.player.pause };
@@ -314,7 +320,8 @@ test("a page with a single session keeps it; several with no attached watch play
     const { posted, command } = page({ video: f.video, sessions: sessions(f.player) });
     command({ type: "pause" });
     command({ type: "replay", id: "r1", startMs: 0, endMs: 10, padMs: 0 });
-    assert.equal(f.video.paused, false, name);
+    assert.equal(f.video.paused, true, name);
+    assert.deepEqual(f.calls, [["native pause"]], "no private player session is guessed");
     assert.deepEqual(await replayed(posted), { kind: "replay", id: "r1", ok: false, error: "player" }, name);
   }
 });
