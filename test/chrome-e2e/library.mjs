@@ -232,6 +232,15 @@ describe("Settings library", () => {
               noOverflow: document.documentElement.scrollWidth <= innerWidth,
               controlsFit: controls.every((control) => {
                 const rect = control.getBoundingClientRect();
+                const carousel = control.closest(".theme-store-grid");
+                if (carousel) {
+                  const viewport = carousel.getBoundingClientRect();
+                  // Cards intentionally extend beyond their scroll viewport;
+                  // the viewport and each scrollable control must still fit.
+                  return rect.width > 0 && rect.width <= carousel.clientWidth
+                    && viewport.left >= 0 && viewport.right <= innerWidth + 1
+                    && getComputedStyle(carousel).overflowX === "auto";
+                }
                 return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth + 1;
               }),
               statusFits: status === null || (status.checkVisibility()

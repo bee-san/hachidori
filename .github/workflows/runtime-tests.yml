@@ -251,6 +251,7 @@ jobs:
           name: ${{ matrix.suite }}-failure
           path: |
             test/tmp/ci/
+            test/tmp/theme-store/
             /tmp/hachidori-e2e-profile-*
             /tmp/hachidori-sharing-host-*
             /tmp/hachidori-sharing-client-*

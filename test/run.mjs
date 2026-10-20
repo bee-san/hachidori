@@ -72,13 +72,13 @@ try {
     await run("extension-smoke", [...NODE_TEST, "test/extension-smoke.mjs"]);
   } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
+    if (suite === "chrome-e2e") await run("chrome-theme-store", ["test/chrome-theme-store.mjs"]);
     await run(suite, [...(suite === "chrome-e2e" ? NODE_TEST : []), `test/${suite}.mjs`], {
       HACHIDORI_DEINFLECTION_SCREENSHOT: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT || resolve(OUTPUT, "deinflection.png"),
       HACHIDORI_SETTINGS_THEME_FILMSTRIP: process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP || resolve(OUTPUT, "settings-theme-first-frame.png"),
       HACHIDORI_SHARING_SCREENSHOTS: process.env.HACHIDORI_SHARING_SCREENSHOTS || resolve(OUTPUT, "sharing"),
     });
     if (suite === "chrome-e2e") {
-      await run("chrome-theme-store", ["test/chrome-theme-store.mjs"]);
       await run("chrome-netflix-subtitle-drag", ["test/chrome-netflix-subtitle-drag.mjs"]);
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
