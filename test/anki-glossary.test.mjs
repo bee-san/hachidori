@@ -67,6 +67,17 @@ test("Anki first/brief/plain/dictionary variants keep their distinct source mean
   assert.match(await render({ dictionary: "A", plain: true }), /\(Alias &lt;A&gt;\)/u);
 });
 
+test("plain Anki definitions traverse deeply nested content without recursion", async t => {
+  const { document, request } = fixture(t);
+  const depth = 6000;
+  request.term.glossaries = [{ dictionary: "A", glossary: '[{"type":"structured-content","content":'
+    + '{"tag":"span","content":'.repeat(depth)
+    + '["before <&>",{"tag":"p","content":"paragraph"},{"tag":"a","href":"https://example.com/","content":"link"}," after"]'
+    + '}'.repeat(depth) + '}]' }];
+  assert.equal(await createAnkiDefinitionRenderer(document, request)({ plain: true, noDictionary: true }),
+    "before &lt;&amp;&gt;paragraph<br>link after");
+});
+
 test("rich Anki glossaries turn dictionary line breaks into <br> as Yomitan does, and plain glossaries keep their lines", async t => {
   const { document, request } = fixture(t);
   // A note field has none of the popup's white-space: pre-wrap, so a raw newline renders as a space (#359).
