@@ -60,6 +60,12 @@ Files share a prefix with the feature they belong to. A rule that more than
 one context needs lives in a module with no Chrome dependency, so Settings,
 the service worker and both engine runtimes run the same code.
 
+Reading's frequency dictionary choice and **Auto** direction button use declared
+rank/occurrence metadata first. For dictionaries without it, `frequency-direction.js`
+compares common and less-common Japanese words through the engine; inconclusive
+samples keep highest-first ordering. Sampling runs only for these Settings actions,
+and a newer choice cancels its result. Explicit ascending/descending choices stay fixed.
+
 - **Dictionaries and stored state.** `reader-options.js` is the one stored
   options view every context reads. `dictionary-group-state.js` and
   `dictionary-groups.js` hold the group rules and their Settings controls,

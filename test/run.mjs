@@ -77,6 +77,7 @@ try {
       HACHIDORI_DEINFLECTION_SCREENSHOT: process.env.HACHIDORI_DEINFLECTION_SCREENSHOT || resolve(OUTPUT, "deinflection.png"),
       HACHIDORI_SETTINGS_THEME_FILMSTRIP: process.env.HACHIDORI_SETTINGS_THEME_FILMSTRIP || resolve(OUTPUT, "settings-theme-first-frame.png"),
       HACHIDORI_SHARING_SCREENSHOTS: process.env.HACHIDORI_SHARING_SCREENSHOTS || resolve(OUTPUT, "sharing"),
+      HACHIDORI_FREQUENCY_SCREENSHOT: process.env.HACHIDORI_FREQUENCY_SCREENSHOT || resolve(OUTPUT, "frequency-inference.png"),
     });
     if (suite === "chrome-e2e") {
       await run("chrome-netflix-subtitle-drag", ["test/chrome-netflix-subtitle-drag.mjs"]);
