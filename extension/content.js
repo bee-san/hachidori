@@ -378,6 +378,7 @@
     const enabled = !disposed && netflixMiningEnabled();
     window.HDNetflix.setHoverPause(enabled);
     window.HDNetflix.setLineAudio(enabled);
+    window.HDNetflix.setSubtitleDragging(enabled);
   }
 
   // background.js registers netflix-content.js for Netflix pages that load

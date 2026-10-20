@@ -11,7 +11,7 @@ export async function inferFrequencyDirection(dictionary, lookup) {
 
   const samples = [];
   for (const term of [...COMMON_TERMS, ...LESS_COMMON_TERMS]) {
-    const reply = await lookup(term);
+    const reply = await lookup(term); // NOSONAR: one engine turn at a time lets obsolete sampling stop and releases each glossary reply before the next.
     const values = reply.results.flatMap(result => result.term.expression === term
       ? result.term.frequencies.filter(group => group.dictionary === dictionary.title)
         .flatMap(group => group.frequencies.map(frequency => frequency.value)).filter(Number.isFinite)
@@ -21,10 +21,11 @@ export async function inferFrequencyDirection(dictionary, lookup) {
     samples.push(values.length ? { min, max } : null);
   }
   let score = 0;
-  for (const common of samples.slice(0, COMMON_TERMS.length)) {
-    if (common === null) continue;
-    for (const rare of samples.slice(COMMON_TERMS.length)) {
-      if (rare !== null) score += Math.sign(common.max - rare.min) + Math.sign(common.min - rare.max);
+  const commonSamples = samples.slice(0, COMMON_TERMS.length).filter(sample => sample !== null);
+  const rareSamples = samples.slice(COMMON_TERMS.length).filter(sample => sample !== null);
+  for (const common of commonSamples) {
+    for (const rare of rareSamples) {
+      score += Math.sign(common.max - rare.min) + Math.sign(common.min - rare.max);
     }
   }
   if (score < 0) return "ascending";

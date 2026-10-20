@@ -48,9 +48,17 @@ function applyClassStyles(root) {
 
 const BLOCKS = new Set(["BR", "DIV", "LI", "OL", "P", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL"]);
 function plainText(node) {
-  if (node.nodeType === 3) return node.textContent;
-  if (node.getAttribute?.("aria-hidden") === "true") return "";
-  return [...node.childNodes].map(plainText).join("") + (BLOCKS.has(node.nodeName) ? "\n" : "");
+  const stack = [node], output = [];
+  while (stack.length) {
+    const current = stack.pop();
+    if (current === "\n") output.push(current);
+    else if (current.nodeType === 3) output.push(current.textContent);
+    else if (current.getAttribute?.("aria-hidden") !== "true") {
+      if (BLOCKS.has(current.nodeName)) stack.push("\n");
+      for (let index = current.childNodes.length - 1; index >= 0; index--) stack.push(current.childNodes[index]);
+    }
+  }
+  return output.join("");
 }
 
 function imageSize(image, value) {

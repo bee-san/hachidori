@@ -79,6 +79,7 @@ try {
       HACHIDORI_FREQUENCY_SCREENSHOT: process.env.HACHIDORI_FREQUENCY_SCREENSHOT || resolve(OUTPUT, "frequency-inference.png"),
     });
     if (suite === "chrome-e2e") {
+      await run("chrome-netflix-subtitle-drag", ["test/chrome-netflix-subtitle-drag.mjs"]);
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }

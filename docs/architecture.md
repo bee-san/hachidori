@@ -3184,18 +3184,34 @@ kept after an uncertain one, and discarded by token
 abandons the submission. A replay that fails cancels the recording with
 `hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
 
+**Subtitle positioning.** With Netflix mining on, the reader calls
+`HDNetflix.setSubtitleDragging(true)`. A left-button drag on the native subtitle
+text translates `.player-timedtext` horizontally and vertically, bounded by the
+viewport. A session stylesheet keeps the offset through Netflix replacing its
+subtitle lines or layers, preserving the player's own transforms. Window capture
+listeners keep a drag out of text selection and player click handling. The
+translated text remains available to caret lookup and cue observation. Switching
+mining off removes the stylesheet; switching back on remembers the offset until
+the page reloads.
+
+![Native subtitle text moved in a synthetic Netflix player fixture](assets/netflix-subtitle-drag.png)
+
 **Hover pause.** The video pauses while a subtitle line or the popup is
 hovered. `netflix-content.js` cannot read the switch, so the content script
 calls `HDNetflix.setHoverPause` with it on every options change and turns it
 off when the reader stops; a page that kept the scripts after the switch went
-off pauses nothing. On a `/watch/` page, a passive capture `mousemove` listener
+off pauses nothing. On a `/watch/` page, a capture `mousemove` listener
 tests the pointer against the bounds of the text in each
 `.player-timedtext-text-container`, taken from its text nodes' client rects,
 because Netflix's subtitle layer covers the player and may not receive pointer
 events. The bounds include the gap between a box's lines; a layer with no line
 showing has no text and so no bounds. Entering a line while the `<video>` plays
 sends the page a `pause` command, which it carries out through Netflix's player
-API like the replay, never by writing `currentTime`. The pause holds while the
+API like the replay. If that private session cannot be identified, hover pause
+uses the watch video's native `pause()`/`play()` methods; replay and seeking still
+require the exact Netflix session. Neither pause path writes `currentTime`.
+Opening a lookup without a subtitle hover (for example, a selection or keyboard
+lookup) starts the same pause. The pause holds while the
 pointer stays on the line or the reader's popup is shown (from
 `hachidori-popup-shown` to `hachidori-popup-hidden` on `window`, which nested
 popups share), and leaving both sends `resume`. A `play` or `seeking` event on

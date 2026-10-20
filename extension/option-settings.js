@@ -672,7 +672,7 @@ function attachOptionHandlers() {
     options.frequencyDictionary = event.target.value;
     // Blur set to "Same as sorting" follows this choice.
     renderDefinitionBlurControls();
-    applyFrequencyDirection();
+    void applyFrequencyDirection();
   });
   element("opt-frequency-auto").addEventListener("click", applyFrequencyDirection);
 
