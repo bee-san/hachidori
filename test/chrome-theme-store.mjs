@@ -252,7 +252,7 @@ try {
   await hover();
   await tab.waitForFunction(() => {
     const buttons = [...document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
-    return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled);
+    return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled && button.dataset.state === "ready");
   });
   const jl = await tab.evaluate(() => {
     const shadow = document.querySelector("hachidori-host").shadowRoot;
