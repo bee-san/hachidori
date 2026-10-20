@@ -1,10 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Experimental popup themes
+# Popup themes
 
-Enable **Advanced → Experimental features → Theme Store**, then open **Design**.
-Scroll the cards horizontally and choose **Use**. Selection saves immediately
-and updates open popups and the preview. Disabling the experiment hides the
-Store and keeps the selected popup. Existing palettes continue to use Default.
+Open **Design → Theme Store**. Scroll the cards horizontally and choose **Use**.
+Selection saves immediately and updates open popups and the preview. Existing
+palettes continue to use Default.
 Design shows only the settings the selected theme uses (see
 [Design settings](#design-settings)); the others keep their values for Default.
 
@@ -148,8 +147,8 @@ are never declared.
 Settings shows the core controls and the selected theme's declared ones, and
 hides a group whose controls are all hidden. Search skips hidden controls.
 Hidden settings keep their saved values and apply again on Default; choosing a
-theme writes only `popupTheme`. The filter follows the theme in use, even with
-the Theme Store switched off. An entry without `designSettings`, an unknown
+theme writes only `popupTheme`. The filter follows the theme in use. An entry
+without `designSettings`, an unknown
 theme or an unreadable catalogue shows every control. Default declares `"all"`
 because new Design settings are built there first; the other themes list their
 keys, so a new setting stays hidden on them until each implements and declares it.

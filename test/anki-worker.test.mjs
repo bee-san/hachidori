@@ -146,7 +146,7 @@ test("Smaller Anki cards is part of the checked configuration and reaches every 
   const f = fixture();
   f.request.configKey = (await f.service.status()).configKey;
   await f.service.preflight(f.request);
-  f.options.experimental = { ...f.options.experimental, smallerAnkiCards: true };
+  f.options.smallerAnkiCards = true;
   await assert.rejects(f.service.submit(f.request), /configuration changed/u,
     "a toggle between preflight and Add cannot write a note that mixes both modes");
   assert.equal(f.calls.includes("addNote"), false);

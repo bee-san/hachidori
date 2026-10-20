@@ -87,6 +87,11 @@ function projectBackupReaderSettings(settings) {
   const { experimental } = options;
   if (experimental && typeof experimental === "object" && !Array.isArray(experimental)
       && Object.values(experimental).every(value => typeof value === "boolean")) {
+    // Project the promoted mining choice before dropping retired flags.
+    const { smallerAnkiCards } = globalThis.HDReaderOptions.projectStoredOptions({ experimental });
+    if (!Object.hasOwn(options, "smallerAnkiCards") && smallerAnkiCards !== undefined) {
+      options.smallerAnkiCards = smallerAnkiCards;
+    }
     options.experimental = globalThis.HDReaderOptions.normaliseExperimental(experimental);
   }
   let projected;

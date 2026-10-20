@@ -162,7 +162,7 @@ export function createAnkiWorkerService({
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards
         // between a preflight and Add refuses the stale Add.
-        compactGlossary: options.experimental.smallerAnkiCards === true,
+        compactGlossary: options.smallerAnkiCards === true,
         // Likewise for the experimental Netflix mining switch, which decides
         // whether a Netflix request gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,

@@ -97,8 +97,7 @@ export function createThemeStore({ root, design, onSelect }) {
   }
 
   // Every selection waits for the same catalogue read, so selections apply in
-  // order and the latest wins. The flag only hides the Store: a theme still in
-  // use keeps filtering Design.
+  // order and the latest wins.
   function updateDesign() {
     const slug = globalThis.HDReaderOptions.popupRenderer(options.popupTheme);
     if (slug === designTheme) return;
@@ -109,8 +108,8 @@ export function createThemeStore({ root, design, onSelect }) {
 
   return { render(next) {
     options = next;
-    root.hidden = !options.experimental.themeStore;
-    if (!root.hidden) loading ??= load();
+    root.hidden = false;
+    loading ??= load();
     updateSelection();
     updateDesign();
   } };

@@ -331,12 +331,8 @@ try {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
     return status?.ok && status.ready && !status.loading;
   }), Boolean, "engine ready");
-  // Hover lookups (Reading → Activation: No key) with the Hachidori palette;
-  // the Theme Store is under Settings → Advanced → Experimental features.
-  const experimental = await settings.evaluate(() => ({
-    ...Object.fromEntries(HDReaderOptions.EXPERIMENTAL_FEATURES.map(feature => [feature.id, false])),
-    themeStore: true }));
-  await writeOptions({ popupTheme: "default", lookupMode: "hover", experimental });
+  // Hover lookups (Reading → Activation: No key) with the Hachidori palette.
+  await writeOptions({ popupTheme: "default", lookupMode: "hover" });
   await settings.reload();
   await settings.waitForSelector("#import-file");
   await sleep(800);

@@ -83,7 +83,7 @@ the service worker and both engine runtimes run the same code.
   recognises an existing mining setup. `anki-templates.js`, `anki-values.js`,
   `anki-glossary.js`, `anki-pitch.js`, `anki-resources.js` and `anki-audio.js` build the note
   fields and media; the rich glossary fields carry Yomitan's structured-content
-  class rules inline. While the experimental Smaller Anki cards flag is on,
+  class rules inline. While Anki → Smaller Anki cards is on,
   `anki-compact.js` rewrites the rich glossary fields as compact HTML.
   Stored Anki Templates group each destination, note type,
   field mapping and duplicate policy; the first powers the built-in action and
@@ -146,7 +146,7 @@ the service worker and both engine runtimes run the same code.
   lower resolution and approximate timing. It needs no recording or subtitle
   integration; missing previews leave a warning on the saved note. See the
   [capture research](../docs/netflix-screenshot-research.md).
-- **Word highlighting.** While the experimental flag and its switch are on,
+- **Word highlighting.** While Reading → Word highlighting is on,
   `word-highlights.js`, a content script beside `content.js`, marks a page's
   Japanese words by their Anki status: it segments the text near the viewport
   with `hd_segment`, reads the statuses with `hd_anki_word_status` and paints
@@ -186,7 +186,7 @@ the service worker and both engine runtimes run the same code.
   the Design preview from the images in `assets/` (see
   `assets/ATTRIBUTION.md`); `design-preview.js` renders the preview from
   `sample-meal.svg` and local sample data.
-- **Theme Store.** `theme-store.js` renders the experimental Design carousel and
+- **Theme Store.** `theme-store.js` renders the Design carousel and
   shows only the Design settings the selected theme declares in
   `vendor/themes/index.json`.
   `theme-host.js` selects Default or a bundled Nazeka, Plain or JL view before constructing

@@ -264,10 +264,9 @@ try {
       baseRevision: options?.revision ?? 0, options: next });
     if (!reply.ok) throw new Error(reply.error);
   }, patch);
-  const { anki, experimental } = globalThis.HDReaderOptions.normaliseOptions({});
+  const { anki } = globalThis.HDReaderOptions.normaliseOptions({});
   await writeOptions({ hoverEnabled: true, lookupMode: "hover", popupTheme: "default",
     anki: { ...anki, url: `${origin}/anki`, model: "Basic", fields: { ...anki.fields, expression: "Front" } },
-    experimental: { ...experimental, wordHighlighting: true },
     wordHighlightEnabled: true, wordHighlightKnown: true, wordHighlightIgnored: true });
   await settings.evaluate(async headword => {
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_word_status_override",

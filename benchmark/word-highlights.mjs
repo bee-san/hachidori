@@ -142,8 +142,7 @@ async function session(variant, origin) {
       if (!reply.ok) throw new Error(reply.error);
     }, { hoverEnabled: true, lookupMode: "hover", showLookupCounts: false,
       anki: { ...options.anki, url: `${origin}/anki`, model: "Basic", fields: { ...options.anki.fields, expression: "Front" } },
-      ...(variant.enabled === undefined ? {} : { experimental: { ...options.experimental, wordHighlighting: variant.enabled },
-        wordHighlightEnabled: variant.enabled }) });
+      ...(variant.enabled === undefined ? {} : { wordHighlightEnabled: variant.enabled }) });
     // The index's first refresh, so word status is available before the page opens.
     await settings.waitForFunction(async () => Array.isArray((await chrome.runtime.sendMessage({ target: "hachidori-anki",
       type: "hd_anki_word_status", requestId: "word-bench", request: { headwords: [] } })).statuses), { polling: 200 });

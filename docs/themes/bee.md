@@ -1,8 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Bee's Theme
 
-Enable **Advanced → Experimental features → Theme Store**, then open **Design**
-and select **Bee's Theme**.
+Open **Design → Theme Store** and select **Bee's Theme**.
 
 The theme puts Girlypop's blush, magenta and violet palette on JL's compact
 layout, typography and repeated header for each dictionary. Brighter text

@@ -1411,11 +1411,10 @@ same helpers, hover and timer without making lookups or Anki requests.
 
 ## Word highlighting
 
-Settings → Advanced → Experimental features → **Word highlighting**
-(`options.experimental.wordHighlighting`, #520) reveals Reading → Word
-highlighting. Its **Highlight words by Anki status** (`wordHighlightEnabled`,
-off by default) is the runtime switch, together with Enable lookups; turning
-the experimental switch off turns it off in the same save and keeps the rest:
+Settings → Reading → **Word highlighting** (#520) is always available.
+**Highlight words by Anki status** (`wordHighlightEnabled`, off by default)
+is the runtime switch, together with Enable lookups. Turning it off keeps
+the other settings:
 one switch per status (`wordHighlightUnknown` and `wordHighlightLearning` on,
 `wordHighlightKnown` and `wordHighlightIgnored` off) and the style
 (`wordHighlightStyle`: underline, text colour or background).
@@ -2274,8 +2273,9 @@ link or tab and its picker option hidden while the switch is off; a hash request
 the hidden section resolves to Advanced and is re-resolved when the stored
 options arrive or change. Global search leaves the hidden section's settings
 out too. The feature's own settings stay where they were, so
-turning a switch off preserves them. Word highlighting is such a section: its
-tab under Reading is hidden while it is off, and Reading then shows no tab row.
+turning a switch off preserves them. Word highlighting is a normal Reading
+tab, available even while highlighting is off. Theme Store is always available
+in Design, and Smaller Anki cards is an optional Anki setting.
 The compact picker keeps all fourteen task views available and groups the
 Dictionaries and Reading choices.
 Global search matches settings across every section, includes the Dictionaries
@@ -2747,10 +2747,10 @@ filtered exactly as in the popup, then scoped by selector prefix,
 `@scope`; a rule whose prefixed selector does not parse is dropped rather than
 left unscoped. Images keep Hachidori's sized `<img>` (#325), so the file's
 image-box rules have nothing to match. Image filenames
-bind to committed generation paths. While the experimental **Smaller Anki
-cards** flag (`options.experimental.smallerAnkiCards`) is on, the rich
+bind to committed generation paths. While Anki → **Smaller Anki cards**
+(`options.smallerAnkiCards`, off by default) is on, the rich
 glossary markers are compacted instead, following the Compact HTML Cleanup
-Anki add-on. The flag is part of the checked Anki configuration, so toggling it
+Anki add-on. The option is part of the checked Anki configuration, so toggling it
 between preflight and Add fails with the existing configuration-changed error.
 `anki-compact.js` mounts a source-less copy of the export in a hidden, closed
 shadow root of the offscreen document, where `getComputedStyle` resolves the

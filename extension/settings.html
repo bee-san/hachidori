@@ -37,7 +37,7 @@
             </optgroup>
             <optgroup label="Reading">
               <option value="lookup">Reading</option>
-              <option value="word-highlighting" hidden>Word highlighting</option>
+              <option value="word-highlighting">Word highlighting</option>
             </optgroup>
             <option value="design">Design</option>
             <option value="audio">Audio</option>
@@ -117,7 +117,7 @@
         </nav>
         <nav class="section-tabs" id="reading-navigation" aria-label="Reading sections" hidden>
           <a href="#lookup" data-label="Reading">Reading</a>
-          <a href="#word-highlighting" data-label="Word highlighting" hidden>Word highlighting</a>
+          <a href="#word-highlighting" data-label="Word highlighting">Word highlighting</a>
         </nav>
         <section
           class="card library"
@@ -735,7 +735,6 @@
           aria-labelledby="word-highlighting-heading"
           data-settings-group="Reading"
           data-settings-name="Word highlighting"
-          data-settings-gated
           hidden
         >
           <div class="card-head">
@@ -1169,6 +1168,14 @@
               <button id="anki-find-setup" type="button" class="ghost">Find existing setup</button>
             </div>
           </div>
+          <fieldset class="lookup-group" id="anki-card-format">
+            <legend>Card formatting</legend>
+            <label class="lookup-enable">
+              <span>Smaller Anki cards</span>
+              <input id="opt-smaller-anki-cards" type="checkbox" aria-describedby="smaller-anki-cards-help">
+            </label>
+            <p id="smaller-anki-cards-help" class="field-hint">Remove dictionary styling and keep the text, line breaks, lists, tables, furigana and images. Links become plain text. Applies to every Template when adding or updating notes.</p>
+          </fieldset>
           <fieldset class="lookup-group anki-panel anki-card anki-template-manager" id="anki-template-manager">
             <legend>Templates</legend>
             <p class="field-hint">The first Template powers the built-in Anki button.</p>

@@ -610,7 +610,7 @@ async function checkAnkiMatureDefinitionBlur({ browser, settings, tab, popup, wa
 }
 
 async function checkWordHighlighting({ browser, settings, pageUrl }) {
-  const controls = ["opt-experimental-wordHighlighting", "opt-word-highlight", "opt-word-highlight-unknown",
+  const controls = ["opt-word-highlight", "opt-word-highlight-unknown",
     "opt-word-highlight-learning", "opt-word-highlight-known", "opt-word-highlight-style"];
   const original = await readSettingsControls(settings, controls);
   const originalAnki = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
@@ -723,8 +723,6 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
         options: { anki: { ...defaults, url, model: "Basic", fields: { ...defaults.fields, expression: "Front" } } } });
       if (!reply.ok) throw new Error(reply.error);
     }, new URL(WORD_HIGHLIGHT_ANKI_PATH, pageUrl).href);
-    // A gated section opens only once its experimental switch is on.
-    await updateSettingsControls(settings, { "opt-experimental-wordHighlighting": true });
     await updateSettingsControls(settings, { "opt-word-highlight": true, "opt-word-highlight-unknown": true,
       "opt-word-highlight-learning": true, "opt-word-highlight-known": false, "opt-word-highlight-style": "underline" });
     await tab.bringToFront();
@@ -840,13 +838,12 @@ async function checkWordHighlighting({ browser, settings, pageUrl }) {
     const kept = await settings.evaluate(async () => {
       const { options } = await chrome.storage.local.get("options");
       return { enabled: options.wordHighlightEnabled, unknown: options.wordHighlightUnknown,
-        learning: options.wordHighlightLearning, known: options.wordHighlightKnown, style: options.wordHighlightStyle,
-        flag: options.experimental.wordHighlighting };
+        learning: options.wordHighlightLearning, known: options.wordHighlightKnown, style: options.wordHighlightStyle };
     });
     check(WORD_HIGHLIGHT_CHECKS[3],
       Object.keys(cleared).length === 0
         && JSON.stringify(kept) === JSON.stringify({ enabled: false, unknown: true, learning: true, known: false,
-          style: "underline", flag: true }),
+          style: "underline" }),
       JSON.stringify({ cleared, kept }));
   } finally {
     await updateSettingsControls(settings, original);

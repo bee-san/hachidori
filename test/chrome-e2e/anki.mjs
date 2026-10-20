@@ -97,13 +97,6 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
         fieldTemplates: { Front: template(audio ? "{expression}{audio}" : "{expression}"), Back: template("{glossary}"), Audio: template(audio ? "{audio}" : "") }, ...anki } } });
     if (!reply.ok) throw new Error(reply.error);
   }, { audio, source, anki });
-  // Experimental patches carry the complete flag record.
-  const experimental = flags => settings.evaluate(async flags => {
-    const { options } = await chrome.storage.local.get("options");
-    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
-      options: { experimental: { ...HDReaderOptions.normaliseOptions(options).experimental, ...flags } } });
-    if (!reply.ok) throw new Error(reply.error);
-  }, flags);
   // Writes a reader-options patch and returns the options it replaced.
   const writeOptions = patch => settings.evaluate(async patch => {
     const { options } = await chrome.storage.local.get("options");
@@ -153,7 +146,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
 
     // Smaller Anki cards (#354): the same result is written as compact HTML,
     // and the image it keeps is uploaded again once Anki no longer has it.
-    await experimental({ smallerAnkiCards: true });
+    await writeOptions({ smallerAnkiCards: true });
     const compactTemplate = value => ({ value, overwriteMode: "overwrite" });
     await configure(false, { fieldTemplates: { Front: compactTemplate("{expression} compact"),
       Back: compactTemplate("{glossary}"), Audio: compactTemplate("") } });
@@ -161,7 +154,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
     for (const filename of images) files.delete(filename);
     const compactUploads = calls.filter(call => call.action === "storeMediaFile").length;
     const compactAdded = await operation("hd_anki_submit", compactRequest);
-    await experimental({ smallerAnkiCards: false });
+    await writeOptions({ smallerAnkiCards: false });
     const compactNote = notes.get(compactAdded.noteId);
     const compactImages = [...new Set([...compactNote.Back.matchAll(/<img[^>]+src="([^"]+)"/gu)].map(match => match[1]))];
     check("Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
