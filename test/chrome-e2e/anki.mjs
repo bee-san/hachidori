@@ -535,7 +535,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
     check("the native kanji view mines character, readings, strokes, glossary and source context, then opens the saved note",
       savedKanji.controls[0].action === "view" && kanjiNote.Front === "食"
         && kanjiNote.Back.startsWith("ショク, ジキ|く.う, た.べる|9|")
-        && kanjiNote.Back.includes("食べる") && kanjiNote.Back.endsWith(tab.url().replaceAll("&", "&amp;"))
+        && kanjiNote.Back.includes("<b>食</b>べる。") && kanjiNote.Back.endsWith(tab.url().replaceAll("&", "&amp;"))
         && kanjiNote.Audio.includes("food") && kanjiNote.Audio.includes("ショク")
         && calls.filter(call => call.action === "addNote").length === addsBeforeKanji + 1
         && kanjiBrowse?.params.query === `nid:${[...notes.keys()].at(-1)}`,
