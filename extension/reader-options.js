@@ -596,6 +596,15 @@
     return options.definitionBlurFrequencyDictionary || options.frequencyDictionary;
   }
 
+  // The direction a dictionary's own mode implies: only a declared
+  // "occurrence-based" list counts up. A dictionary without frequencyMode is
+  // read as ranks, as Yomitan's rank aggregates read it
+  // (yomidevs/yomitan@d3c54c1 ext/js/data/anki-note-data-creator.js:184):
+  // CC100, BCCWJ and most other Japanese lists are ranks that predate the field.
+  function frequencyModeOrder(frequencyMode) {
+    return frequencyMode === "occurrence-based" ? "descending" : "ascending";
+  }
+
   // Shared by the reader and the Design preview. Native numeric frequency
   // values are the evidence; rendered labels are intentionally ignored.
   function definitionBlurFrequencyEvidence(options, frequencyGroups, dictionaries) {
@@ -613,7 +622,7 @@
       .filter(value => typeof value === "number" && Number.isFinite(value) && value > 0);
     if (values.length === 0) return unavailable;
     const order = options.definitionBlurFrequencyOrder === "auto"
-      ? (source.frequencyMode === "rank-based" ? "ascending" : "descending")
+      ? frequencyModeOrder(source.frequencyMode)
       : options.definitionBlurFrequencyOrder;
     const value = order === "ascending" ? Math.min(...values) : Math.max(...values);
     return {
@@ -891,7 +900,7 @@
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
-    definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies,
+    definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch, normaliseDictionarySelections,

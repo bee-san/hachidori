@@ -363,12 +363,14 @@ async function settingsFrequencyStage() {
     const occurrence = await edit("dictionary", "Occurrence");
     const occurrenceHint = hint.textContent.startsWith("Occurrence-based:");
     await edit("dictionary", "Unknown mode");
+    // No sample word has a value, so inference is inconclusive: a rank list.
     const unknown = storedOptions.frequencyOrder;
+    const unknownHint = hint.textContent.endsWith("inconclusive results read it as ranks, lowest numbers first.");
     const any = await edit("dictionary", "");
     const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending"
       && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
-      && unknown === "descending" && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
+      && unknown === "ascending" && unknownHint && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
 
     sampledTerms.length = 0;
     sampling = "ascending";
@@ -601,9 +603,11 @@ async function settingsFrequencyStage() {
       await editControl(frequencyBlur, true);
       metadataDetails.push(JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyEnabled: true })
         && !blurControl("definition-blur-frequency-controls").hidden && !frequencyDictionary.disabled
-        // Same as sorting follows this page's sort dictionary, which declares no mode.
+        // Same as sorting follows this page's sort dictionary, which declares no
+        // mode, so it reads as ranks: lowest values qualify.
         && frequencyDictionary.value === "" && frequencyDictionary.options[0].textContent === "Same as sorting (Unknown mode)"
-        && blurControl("definition-blur-frequency-help").textContent.includes("Using undeclared metadata")
+        && blurControl("definition-blur-frequency-help").textContent
+          === "Using ranks (no mode declared): values at or below the threshold qualify."
         && !blurControl("definition-blur-any-help").hidden);
       await editControl(frequencyDictionary, "Occurrence");
       metadataDetails.push(JSON.stringify(writes.at(-1).options)

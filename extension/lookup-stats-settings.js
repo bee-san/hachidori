@@ -5,7 +5,7 @@
 
 import { describeErrorOrJson } from "./error-text.js";
 import {
-  clampOption, definitionBlurFrequencyDictionary, element, options, send, setSectionStatus,
+  clampOption, definitionBlurFrequencyDictionary, element, frequencyModeOrder, options, send, setSectionStatus,
   sharingLinkedAddress, WORKER_TARGET,
 } from "./settings.js";
 import { dictionaries, dictionaryLabel } from "./library-settings.js";
@@ -90,15 +90,14 @@ function renderDefinitionBlurControls() { // NOSONAR: existing complexity, kept 
       frequencyHelp.textContent = "The saved frequency dictionary is unavailable. This condition fails open until it is enabled or reinstalled.";
     } else {
       const automatic = options.definitionBlurFrequencyOrder === "auto";
-      const order = automatic && selected.frequencyMode === "rank-based"
-        ? "ascending" : automatic ? "descending" : options.definitionBlurFrequencyOrder; // NOSONAR: existing nested ternary, kept by the #533 split
-      const mode = automatic
-        ? selected.frequencyMode === "rank-based" ? "rank-based metadata" // NOSONAR: existing nested ternary, kept by the #533 split
-          : selected.frequencyMode === "occurrence-based" ? "occurrence-based metadata" : "undeclared metadata" // NOSONAR: existing nested ternary, kept by the #533 split
-        : "your manual order";
+      const order = automatic ? frequencyModeOrder(selected.frequencyMode) : options.definitionBlurFrequencyOrder;
+      let source = "your manual order";
+      if (automatic && selected.frequencyMode === "occurrence-based") source = "occurrence-based metadata";
+      else if (automatic && selected.frequencyMode === "rank-based") source = "rank-based metadata";
+      else if (automatic) source = "ranks (no mode declared)";
       frequencyHelp.textContent = order === "ascending"
-        ? `Using ${mode}: values at or below the threshold qualify.`
-        : `Using ${mode}: values at or above the threshold qualify.`;
+        ? `Using ${source}: values at or below the threshold qualify.`
+        : `Using ${source}: values at or above the threshold qualify.`;
     }
   }
 }
