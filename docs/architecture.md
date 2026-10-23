@@ -1133,11 +1133,13 @@ reapplies that mapping. Manual directions remain unchanged during rendering,
 metadata updates and restart. These are numeric directions, not universally
 "common first" or "rare first" labels.
 
-**Any** selects the existing native automatic mode, comparing enabled frequency
-dictionaries in manifest order with numerically ascending values per dictionary.
-It does not reinterpret mixed occurrence/rank metadata. **Disabled** bypasses
-frequency ranking. Selecting Automatic or Disabled in the order control remembers
-the inactive selected dictionary; choosing Any explicitly clears that selection.
+**None** (no sort dictionary, an empty `frequencyDictionary`) leaves frequency
+out of lookup ranking: results keep the dictionary order, as Yomitan's do without
+a sort frequency dictionary (`translator.js:123-128` and `:2205-2211` at
+yomidevs/yomitan@d3c54c1, hoshidicts#43 for #575). The order control's
+**Automatic** does the same, and **Disabled** bypasses frequency ranking.
+Selecting Automatic or Disabled in the order control remembers
+the inactive selected dictionary; choosing None explicitly clears that selection.
 Only an explicit dictionary selection or Auto action derives a numeric direction.
 
 An unavailable choice remains visible until authoritative options change, with

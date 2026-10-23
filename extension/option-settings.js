@@ -100,7 +100,8 @@ function renderFrequencyChoices() {
 
   const automatic = document.createElement("option");
   automatic.value = "";
-  automatic.textContent = "Any — automatic across all dictionaries";
+  // No sort dictionary: lookups keep your dictionary order, as Yomitan does without one (#575).
+  automatic.textContent = "None — dictionary order";
   select.appendChild(automatic);
 
   const enabled = dictionaries.filter(isAvailableFrequencyDictionary);
@@ -233,7 +234,8 @@ function renderFrequencyOrder() {
   }
   element("opt-frequency-auto").disabled = !selected;
   let hint;
-  if (options.frequencyOrder === "auto") hint = "Automatic compares all enabled frequency dictionaries in their listed order.";
+  const remembered = selected ? " Your dictionary choice is remembered." : "";
+  if (options.frequencyOrder === "auto") hint = `Automatic sorts by your dictionary order, as Yomitan does without a sort dictionary.${remembered}`;
   else if (options.frequencyOrder === "disabled") hint = "Frequency sorting is off. Your dictionary choice is remembered.";
   else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
   else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto direction puts the lowest numbers first.";

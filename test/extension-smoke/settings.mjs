@@ -367,7 +367,11 @@ async function settingsFrequencyStage() {
     const unknown = storedOptions.frequencyOrder;
     const unknownHint = hint.textContent.endsWith("inconclusive results read it as ranks, lowest numbers first.");
     const any = await edit("dictionary", "");
-    const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending"
+    // Since #575 no sort dictionary means dictionary order, as in Yomitan.
+    const noneLabels = field("dictionary").options[0].textContent === "None — dictionary order"
+      && field("order").querySelector('option[value="auto"]').textContent === "Automatic — dictionary order"
+      && hint.textContent === "Automatic sorts by your dictionary order, as Yomitan does without a sort dictionary.";
+    const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending" && noneLabels
       && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
       && unknown === "ascending" && unknownHint && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
