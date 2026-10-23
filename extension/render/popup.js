@@ -466,9 +466,15 @@
 
   const JITEN_KANA_FREQUENCY_MARKER = "㋕";
 
+  // A kana-form value is its own number followed by ㋕, as Jiten and JPDB write
+  // it ("14425㋕"). JPDB v2.2 Kana Display Only writes the word's rank and its
+  // kana form's in one display value, "312, 19896㋕": the value 312 is the
+  // word's own rank and the marker belongs to the second number only.
   function isKanaFrequency(frequency) {
-    return typeof frequency.displayValue === "string"
-      && frequency.displayValue.trim().endsWith(JITEN_KANA_FREQUENCY_MARKER);
+    if (typeof frequency.displayValue !== "string") return false;
+    const displayValue = frequency.displayValue.trim();
+    return displayValue.endsWith(JITEN_KANA_FREQUENCY_MARKER)
+      && Number(displayValue.slice(0, -JITEN_KANA_FREQUENCY_MARKER.length).replaceAll(",", "")) === frequency.value;
   }
 
   function formatCompactFrequencyValue(frequency) {
