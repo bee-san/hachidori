@@ -229,6 +229,7 @@ jobs:
             test/tmp/popup-scale/*.png
             test/tmp/ci/dictionary-import-error.png
             test/tmp/ci/frequency-inference.png
+            test/tmp/ci/kanji-mining-*.png
             test/tmp/ci/netflix-subtitle-drag.png
             test/tmp/theme-store/settings-*.png
           retention-days: 7

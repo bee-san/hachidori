@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import plain from "../extension/vendor/themes/plain/theme.js";
 import theme from "../extension/vendor/themes/nazeka/theme.js";
 import bee from "../extension/vendor/themes/bee/theme.js";
+import { createView as createJLView } from "../extension/vendor/themes/jl/theme.js";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const extension = resolve(import.meta.dirname, "../extension");
@@ -22,6 +23,36 @@ const results = [{ matched: "食べる", trace: [], term: { expression: "食べ�
     { tag: "b", content: "eat " }, { tag: "a", href: "https://example.test", content: "food" },
     { tag: "img", path: "test.png" },
   ] }]) }] } }];
+
+test("JL, Bee and Nazeka bind native kanji mining to each dictionary's own entry", t => {
+  for (const createView of [createJLView, bee.createView, theme.createView]) {
+    const dom = environment(), { window } = dom, { document } = window;
+    const popup = document.createElement("div");
+    document.body.append(popup);
+    let bound;
+    const view = createView({ document, window, popup, positionPopup() {},
+      components: { ...window.HDPopup, ...window.HDGlossary },
+      appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+      customButtons: [{ id: "kanji", type: "anki", label: "Kanji", templateId: "kanji" }],
+      onResultsRendered(value) { bound = value; }, onResultsExpanded(value) { bound = value; } });
+    t.after(() => { view.destroy(); window.close(); });
+    const entries = ["First", "Second"].map(dictionary => ({ dictionary, onyomi: "ショク", kunyomi: "く.う",
+      definitions: [`${dictionary} meaning`], stats: [], tags: "" }));
+    view.renderKanji({ character: "食", entries }, { sentence: "食べる" });
+    assert.equal(bound.audioButtons.length, 0, "kanji mining does not trigger pronunciation autoplay");
+    assert.equal(bound.miningActions.length, 2);
+    for (const [index, item] of bound.miningActions.entries()) {
+      assert.equal(item.actions.isConnected, true);
+      assert.equal(item.feedback.isConnected, true);
+      assert.equal(item.result.term.expression, "食");
+      assert.equal(item.result.term.glossaries.length, 1);
+      assert.equal(item.result.term.glossaries[0].kanji.dictionary, entries[index].dictionary);
+    }
+    if (createView === bee.createView) {
+      assert.equal(bound.miningActions[0].actions.querySelector(".gsm-hoshidicts-custom-anki-button").dataset.ankiTemplateId, "kanji");
+    }
+  }
+});
 test("Nazeka builds text directly, binds core actions, and never constructs Default or rich DOM", () => {
   const dom = environment(), { window } = dom, { document } = window;
   try {

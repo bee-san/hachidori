@@ -1937,7 +1937,7 @@
       const frequencyModes = new Map(dictionaries.map(item => [item.title, item.frequencyMode]));
       const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
-      return { ...result, term, generation: level.activeTermRender.generation, sentence: candidate.sentence,
+      return { ...result, term, generation: result.generation ?? level.activeTermRender.generation, sentence: candidate.sentence,
         matchOffset: candidate.matchOffset, matched: sentenceMatchedText(candidate, result.matched || result.term.expression),
         searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",

@@ -405,7 +405,7 @@ export function createView(options, enhanced = false) {
   // keybinds and autoplay follow the tab.
   function shownBindings() {
     const bound = bindings.filter((_, index) => !entries[index].hidden);
-    return { audioButtons: bound.map(item => item.audio), miningActions: bound.map(item => item.mining) };
+    return { audioButtons: bound.flatMap(item => item.audio ? [item.audio] : []), miningActions: bound.map(item => item.mining) };
   }
   // Tabs only hide blocks, so switching needs no render.
   function selectTab(dictionary, notify) {
@@ -518,16 +518,24 @@ export function createView(options, enhanced = false) {
       const line = node("div", "jl-top");
       const kanjiWord = node("span", "jl-spelling", kanji.character);
       const sourceActions = enhanced ? node("div", "bee-source-actions") : line;
+      const actions = node("div", "gsm-hoshidicts-entry-actions");
+      actions.setAttribute("role", "group");
+      actions.setAttribute("aria-label", "Kanji actions");
+      const feedback = node("div", "gsm-hoshidicts-anki-feedback");
+      feedback.hidden = true;
+      const result = { ...components.kanjiEntryResult(kanji.character, entry), generation: context.generation };
+      result.term.frequencies = kanji.frequencies ?? [];
       line.append(kanjiWord);
       if (enhanced) line.append(sourceActions);
-      sourceActions.append(dictionaryLabel(entry.dictionary));
-      block.append(line);
+      sourceActions.append(dictionaryLabel(entry.dictionary), actions);
+      block.append(line, feedback);
       scroll.append(block);
+      block.dataset.dictionary = entry.dictionary;
+      entries.push(block);
+      bindings.push({ mining: { actions, feedback, result } });
       if (enhanced) {
-        block.dataset.dictionary = entry.dictionary;
-        addTools(sourceActions, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
+        addTools(actions, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
         formattedDefinition(block, [{ glossary: JSON.stringify(entry.definitions) }], entry.dictionary, context, block);
-        entries.push(block);
       }
       block.append(node("div", "jl-kanji-text", lines.filter(Boolean).join("\n")));
     }
@@ -537,6 +545,7 @@ export function createView(options, enhanced = false) {
     }
     updateDictionaryPresentation(context, false);
     finish(candidate, context.highlightText || kanji.character, context);
+    options.onResultsRendered?.({ ...shownBindings(), lookupStats: null });
   }
   function renderNotice(message, candidate, context = {}) {
     clear(); navigation(context);

@@ -121,6 +121,7 @@ function createView(options) {
   }
   function renderKanji(kanji, candidate, context = {}) {
     clear();
+    const miningActions = [];
     navigation(scroll, context);
     scroll.append(node("div", "nazeka-word", kanji.character));
     for (const entry of kanji.entries) {
@@ -129,10 +130,21 @@ function createView(options) {
         node("div", "nazeka-reading", [entry.onyomi, entry.kunyomi].flat().filter(Boolean).join(" · ")),
         node("div", "", components.glossaryToPlainText(entry.definitions)),
         node("div", "", (entry.stats ?? []).map(stat => `${stat.name}: ${stat.value}`).join(" · ")));
+      const actions = node("div", "gsm-hoshidicts-entry-actions");
+      actions.setAttribute("role", "group");
+      actions.setAttribute("aria-label", "Kanji actions");
+      const feedback = node("div", "gsm-hoshidicts-anki-feedback");
+      feedback.hidden = true;
+      const result = { ...components.kanjiEntryResult(kanji.character, entry), generation: context.generation };
+      result.term.frequencies = kanji.frequencies ?? [];
+      miningActions.push({ actions, feedback, result });
+      info.append(actions, feedback);
+      entries.push(info);
       scroll.append(info);
     }
     updateDictionaryPresentation(context);
     finish(candidate, context.highlightText || kanji.character, context);
+    options.onResultsRendered?.({ audioButtons: [], miningActions, lookupStats: null });
   }
   function renderNotice(message, candidate, context = {}) {
     clear(); navigation(scroll, context);

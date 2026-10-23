@@ -19,6 +19,17 @@ key remain shared connection settings. The first Template powers the ordinary
 built-in Anki button, so a profile with one Template works as before without
 needing a custom button.
 
+The native kanji view also offers the built-in Anki action and custom Anki
+buttons. To use a separate kanji deck or note type, create a Kanji Template and
+choose it on a custom button under Design. Map its fields to `{character}`,
+`{onyomi}`, `{kunyomi}`, `{stroke-count}` and `{glossary}`. The glossary includes
+the displayed dictionaries' readings, meanings and details; the dedicated
+reading markers combine unique readings in dictionary order. Kanji markers
+stay empty on ordinary term results. Existing `{expression}`, sentence,
+frequency and screenshot mappings work in the kanji view too. Default mines the
+displayed dictionaries together; JL, Bee and Nazeka mine each dictionary's own
+entry, as their term actions do.
+
 ![The second of two Anki Templates](assets/anki-templates-settings.png)
 
 The Template manager supports previous/next navigation, direct selection,

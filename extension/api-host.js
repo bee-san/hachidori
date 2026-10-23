@@ -133,7 +133,7 @@ function kanjiEntry(character, entry, where) {
   };
 }
 
-// Yomitan's kanji note fields have no counterpart in mining, which is term-only.
+// Yomitan's kanji fields API retains its dictionary-entry output format.
 function kanjiFields(character, entry, markers, where) {
   const stat = name => entry.stats.find(item => item.name === name)?.value ?? "";
   const table = {
@@ -150,9 +150,9 @@ function kanjiFields(character, entry, markers, where) {
   return Object.fromEntries(markers.map(marker => [marker, Object.hasOwn(table, marker) ? table[marker]() : ""]));
 }
 
-// Yomitan's AnkiCardFormat for one Anki Template. Mining is term-only and a
-// Template has no add-button icon; a legacy mapping answers the rows mining
-// builds from it. Only these keys leave the browser.
+// Yomitan's AnkiCardFormat for one Anki Template. A Template has no add-button
+// icon; a legacy mapping answers the rows mining builds from it. Only these
+// keys leave the browser.
 function cardFormat(template) {
   const fields = template.fieldTemplates
     ?? resolveAnkiTemplates(template, ankiMappedFieldNames(template)).templates;

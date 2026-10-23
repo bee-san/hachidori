@@ -308,6 +308,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       const { options } = await chrome.storage.local.get("options");
       const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
         options: { anki: original.anki, audioSources: original.audioSources, audioAutoplay: original.audioAutoplay,
+          kanjiClickDictionary: original.kanjiClickDictionary, popupTheme: original.popupTheme,
           popupColumns: original.popupColumns ?? 1, experimental: HDReaderOptions.normaliseOptions(original).experimental } });
       if (!reply.ok) throw new Error(reply.error);
     }, original);
@@ -509,6 +510,37 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
       JSON.stringify(keyboard));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
     await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
+    await writeOptions({ kanjiClickDictionary: "" });
+    await configure(false, { fieldTemplates: { Front: template("{character}"),
+      Back: template("{onyomi}|{kunyomi}|{stroke-count}|{sentence}|{url-plain}"), Audio: template("{glossary}") } });
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb");
+    await popup.click(".gsm-hoshidicts-kanji-link");
+    await settled(state => state?.controls[0]?.state === "ready" && state.order[0] === "gsm-hoshidicts-kanji-back");
+    {
+      const screenshot = process.env.HACHIDORI_KANJI_MINING_SCREENSHOT || "test/tmp/ci/kanji-mining";
+      for (const palette of ["light", "dark"]) {
+        await writeOptions({ popupTheme: palette });
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await tab.screenshot({ path: `${screenshot}-${palette}.png`, clip: await popup.rect() });
+      }
+    }
+    const addsBeforeKanji = calls.filter(call => call.action === "addNote").length;
+    await popup.click(".gsm-hoshidicts-mine-button");
+    const savedKanji = await settled(state => state?.controls[0]?.state === "success");
+    const kanjiNote = [...notes.values()].at(-1);
+    await popup.click(".gsm-hoshidicts-mine-button");
+    await settled(state => state?.controls[0]?.disabled === false);
+    const kanjiBrowse = calls.filter(call => call.action === "guiBrowse").at(-1);
+    check("the native kanji view mines character, readings, strokes, glossary and source context, then opens the saved note",
+      savedKanji.controls[0].action === "view" && kanjiNote.Front === "食"
+        && kanjiNote.Back.startsWith("ショク, ジキ|く.う, た.べる|9|")
+        && kanjiNote.Back.includes("食べる") && kanjiNote.Back.endsWith(tab.url().replaceAll("&", "&amp;"))
+        && kanjiNote.Audio.includes("food") && kanjiNote.Audio.includes("ショク")
+        && calls.filter(call => call.action === "addNote").length === addsBeforeKanji + 1
+        && kanjiBrowse?.params.query === `nid:${[...notes.keys()].at(-1)}`,
+      JSON.stringify({ saved: savedKanji.controls[0], kanjiNote, kanjiBrowse }));
+    await popup.click(".gsm-hoshidicts-kanji-back");
   } finally {
     control.preflightGate?.resolve();
     control.preflightGate = null;
