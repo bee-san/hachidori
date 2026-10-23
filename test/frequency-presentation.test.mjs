@@ -257,6 +257,21 @@ test("averages read each dictionary's first value as Yomitan does, over one, two
   assert.deepEqual(average([group("Unranked", { value: 0, displayValue: "-" })]), []);
 });
 
+// Yomitan's rank filter takes every dictionary that does not declare another
+// mode, so a malformed mode (Yomitan's index schema refuses "rank") is left out
+// of Avg rank exactly as it is left out of the card's {frequency-harmonic-rank}.
+test("a dictionary declaring neither of Yomitan's modes is in neither average, as on the card", t => {
+  const f = fixture(t);
+  const result = { ...RESULT, term: { ...RESULT.term, frequencies: [
+    { dictionary: "Jiten", frequencies: [{ value: 15700, displayValue: "15700" }] },
+    { dictionary: "Odd", frequencies: [{ value: 800, displayValue: "800" }] },
+  ] } };
+  const capsule = f.render({ ...f.options.normaliseOptions({}), averageFrequency: true, dictionaryPresentation:
+    [{ title: "Jiten", frequencyMode: "rank-based" }, { title: "Odd", frequencyMode: "rank" }] }, result);
+  assert.deepEqual([...capsule.querySelectorAll("[data-frequency-average]")].map(tag => tag.textContent),
+    ["Avg rank15700"]);
+});
+
 test("averages can keep each dictionary's tag shown after them, live", t => {
   const f = fixture(t);
   const result = { ...RESULT, term: { ...RESULT.term, frequencies: [

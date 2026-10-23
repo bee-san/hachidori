@@ -343,6 +343,13 @@
     return numbers;
   }
 
+  // Yomitan's mode filter (anki-note-data-creator.js:184): a dictionary counts
+  // for a requested mode unless it declares another one, so one without a mode
+  // counts for every mode.
+  function frequencyModeMatches(frequencyMode, requested) {
+    return !frequencyMode || frequencyMode === requested;
+  }
+
   // The floored harmonic (or arithmetic) mean; null where Yomitan returns -1.
   // The popup's averages and the Anki frequency markers share it.
   function frequencyMean(groups, harmonic = true) {
@@ -1968,6 +1975,7 @@
     definitionTagList,
     distributeFurigana,
     frequencyMean,
+    frequencyModeMatches,
     frequencyNumber,
     getDownstepPositions,
     getFuriganaKanaSegments,

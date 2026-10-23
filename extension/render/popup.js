@@ -566,10 +566,13 @@
   // harmonic mean of each dictionary's first value. A dictionary without a
   // frequencyMode is a rank list (CC100, BCCWJ) and joins the ranks, as Yomitan's
   // rank harmonic mean counts it; a declared occurrence count is not a rank, so it
-  // gets its own average rather than skewing theirs.
+  // gets its own average rather than skewing theirs. The rank average takes
+  // Yomitan's rank filter itself, so it is always the card's {frequency-harmonic-rank}.
   const FREQUENCY_AVERAGES = [
-    { kind: "rank-based", accessible: "Rank average", display: "Avg rank" },
-    { kind: "occurrence-based", accessible: "Occurrence average", display: "Avg count" },
+    { kind: "rank-based", accessible: "Rank average", display: "Avg rank",
+      includes: mode => window.HDGlossary.frequencyModeMatches(mode, "rank-based") },
+    { kind: "occurrence-based", accessible: "Occurrence average", display: "Avg count",
+      includes: mode => mode === "occurrence-based" },
   ];
 
   function createFrequencyTags(
@@ -585,9 +588,9 @@
     const averageTags = [];
     if (averageFrequency) {
       const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
-      const kindOf = group => modes.get(group.dictionary) === "occurrence-based" ? "occurrence-based" : "rank-based";
-      for (const { kind, accessible, display } of FREQUENCY_AVERAGES) {
-        const value = window.HDGlossary.frequencyMean(result.term.frequencies.filter(group => kindOf(group) === kind));
+      for (const { kind, accessible, display, includes } of FREQUENCY_AVERAGES) {
+        const value = window.HDGlossary.frequencyMean(result.term.frequencies
+          .filter(group => includes(modes.get(group.dictionary))));
         if (value === null) continue;
         const frequency = { value, displayValue: null };
         const tag = createFrequencyTag(

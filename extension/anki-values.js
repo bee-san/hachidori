@@ -45,8 +45,8 @@ const frequencyNumber = frequency => globalThis.HDGlossary.frequencyNumber(frequ
 // Yomitan's mode filter (anki-note-data-creator.js:184 at d3c54c1): a dictionary
 // that declares no mode counts for both rank and occurrence aggregates.
 function frequencyAggregate(term, mode, harmonic) {
-  const mean = globalThis.HDGlossary.frequencyMean(
-    term.frequencies.filter(group => !group.frequencyMode || group.frequencyMode === mode), harmonic);
+  const { frequencyMean, frequencyModeMatches } = globalThis.HDGlossary;
+  const mean = frequencyMean(term.frequencies.filter(group => frequencyModeMatches(group.frequencyMode, mode)), harmonic);
   if (mean === null) return mode === "rank-based" ? "9999999" : "0";
   return String(mean);
 }

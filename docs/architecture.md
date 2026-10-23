@@ -1215,10 +1215,14 @@ itself, when positive, so `312, 19896㋕` is 312; as in Yomitan, a display value
 written with thousands separators reads only its digits before the first
 comma. Only a dictionary's first value counts: one whose first value has no
 positive number adds nothing. `HDGlossary.frequencyMean` holds the rule, and the
-Anki `{frequency-harmonic-*}` and `{frequency-average-*}` markers use it too,
-so a card's FreqSort field is the popup's `Avg rank`. Declared occurrence counts
+Anki `{frequency-harmonic-*}` and `{frequency-average-*}` markers use it too.
+`Avg rank` takes the dictionaries Yomitan's rank filter takes
+(`HDGlossary.frequencyModeMatches`: all but those declaring another mode), so a
+card's FreqSort field is the popup's `Avg rank`. Declared occurrence counts
 aggregate separately from ranks, since a harmonic mean of ranks and counts is
-neither; Yomitan's popup Average mixes them. A dictionary without a
+neither; Yomitan's popup Average mixes them. `Avg count` takes only declared
+occurrence lists, while the `{frequency-*-occurrence}` markers keep Yomitan's
+filter and so also count lists without a mode. A dictionary without a
 `frequencyMode` averages with the ranks, as Yomitan's rank average counts it,
 so Jiten (`rank-based`) and CC100 (no mode) give one `Avg rank`. An undeclared
 list of counts, such as the original Innocent Corpus, averages with the ranks
