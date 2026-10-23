@@ -591,7 +591,7 @@
   }
 
   // An empty blur dictionary means "Same as sorting": the Reading → Frequency
-  // sorting dictionary, which may itself be Automatic (no single dictionary).
+  // sorting dictionary, which may itself be None (no sort dictionary).
   function definitionBlurFrequencyDictionary(options) {
     return options.definitionBlurFrequencyDictionary || options.frequencyDictionary;
   }
