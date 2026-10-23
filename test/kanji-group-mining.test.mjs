@@ -31,7 +31,7 @@ const ENTRY = { dictionary: "kanji-group-first", onyomi: "ショク ジキ", kun
   definitions: ["kanji-group first meaning"], stats: [{ name: "strokes", value: "9" }] };
 
 function renderer(t) {
-  const dom = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "https://extension.test",
+  const dom = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", pretendToBeVisual: true, url: "https://extension.test",
     virtualConsole: new VirtualConsole() });
   t.after(() => dom.window.close());
   for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
@@ -131,7 +131,7 @@ test("the native kanji view binds built-in and custom Anki actions to the displa
     onResultsRendered(value) { rendered = value; controller.bind(value.miningActions, context); } });
   t.after(() => { controller.retire(); view.destroy(); });
   view.renderKanji({ character: "食", entries: [ENTRY, { ...ENTRY, dictionary: "Other" }], frequencies: [] },
-    { sentence: "食べたかった" }, { onBack() {}, generation: 7, selectedDictionaryTab: { dictionary: ENTRY.dictionary },
+    { sentence: "食べたかった" }, { onBack() {}, onRenderError(error) { throw error; }, generation: 7, selectedDictionaryTab: { dictionary: ENTRY.dictionary },
       dictionaryPresentation: [{ title: ENTRY.dictionary, favorite: true }, { title: "Other", favorite: true }] });
   const settle = async predicate => {
     for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setImmediate(resolve));
@@ -154,6 +154,11 @@ test("the native kanji view binds built-in and custom Anki actions to the displa
   assert.equal(submitted.term.glossaries[0].kanji.onyomi, ENTRY.onyomi);
   custom.click();
   await settle(() => calls.some(call => call.type === "hd_anki_browse"));
+  view.updateDictionaryPresentation({ dictionaryPresentation: [] });
+  assert.equal(rendered.miningActions[0].result.term.glossaries.length, 2);
+  await settle(() => custom.dataset.state === "ready");
+  popup.querySelectorAll(".gsm-hoshidicts-kanji-entry")[1].click();
+  assert.equal(view.currentEntryIndex(), 0, "all native dictionaries share the header's mining action for keybinds");
   view.renderNotice("No definition found.", { query: "unknown" });
   const before = calls.length;
   custom.click();

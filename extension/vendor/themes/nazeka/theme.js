@@ -126,6 +126,9 @@ function createView(options) {
     scroll.append(node("div", "nazeka-word", kanji.character));
     for (const entry of kanji.entries) {
       const info = node("div", "nazeka-kanji-info");
+      info.tabIndex = -1;
+      const index = entries.length;
+      info.addEventListener("click", () => { selected = index; });
       info.append(dictionaryLabel(entry.dictionary),
         node("div", "nazeka-reading", [entry.onyomi, entry.kunyomi].flat().filter(Boolean).join(" · ")),
         node("div", "", components.glossaryToPlainText(entry.definitions)),

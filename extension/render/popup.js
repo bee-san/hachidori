@@ -4533,7 +4533,8 @@
       renderResults,
       renderKanji,
       captureTermView: () => captureTermView?.(),
-      currentEntryIndex: () => currentEntryIndex(),
+      // Native kanji dictionaries share one result and its toolbar action.
+      currentEntryIndex: () => currentResultPanel ? currentEntryIndex() : 0,
       focusEntry,
       setDefinitionBlurState,
       setLookupStats,

@@ -51,6 +51,8 @@ test("JL, Bee and Nazeka bind native kanji mining to each dictionary's own entry
     if (createView === bee.createView) {
       assert.equal(bound.miningActions[0].actions.querySelector(".gsm-hoshidicts-custom-anki-button").dataset.ankiTemplateId, "kanji");
     }
+    popup.querySelectorAll(".jl-kanji, .nazeka-kanji-info")[1].click();
+    assert.equal(view.currentEntryIndex(), 1, "keybinds follow the clicked dictionary's mining action");
   }
 });
 test("Nazeka builds text directly, binds core actions, and never constructs Default or rich DOM", () => {

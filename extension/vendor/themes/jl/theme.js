@@ -515,6 +515,9 @@ export function createView(options, enhanced = false) {
       }
       if (entry.stats?.length) lines.push("Statistics:", ...entry.stats.map(stat => `${stat.name}: ${stat.value}`));
       const block = node("article", "jl-entry jl-kanji");
+      block.tabIndex = -1;
+      const index = entries.length;
+      block.addEventListener("click", () => { selected = index; });
       const line = node("div", "jl-top");
       const kanjiWord = node("span", "jl-spelling", kanji.character);
       const sourceActions = enhanced ? node("div", "bee-source-actions") : line;
