@@ -69,6 +69,18 @@ test("version answers the extension's own version", async () => {
   await assert.rejects(answer({ type: "hd_lookup" }), /unsupported API request/u);
 });
 
+// Yomitan's TermFrequency.frequencyMode is the declared mode or null.
+test("term entry frequencies name each dictionary's declared frequency mode, or null", async () => {
+  const result = { ...tabetakatta, term: { ...tabetakatta.term, frequencies: [
+    { dictionary: "Fixture", frequencies: [{ value: 26300, displayValue: "26300" }] },
+    { dictionary: "Freq", frequencies: [{ value: 142, displayValue: "142位" }] },
+  ] } };
+  const { answer } = host({ lookups: { "食べたかった": [result] } });
+  const { results } = await answer({ type: "hd_api_term_entries", terms: ["食べたかった"] });
+  assert.deepEqual(results[0].dictionaryEntries[0].frequencies.map(({ dictionary, frequencyMode }) =>
+    [dictionary, frequencyMode]), [["Fixture", null], ["Freq", "rank-based"]]);
+});
+
 test("term entries project the engine result onto Yomitan's TermDictionaryEntry, one result per input in order", async () => {
   const { answer, calls } = host({ lookups: { "食べたかった": [tabetakatta] } });
   const { results } = await answer({ type: "hd_api_term_entries", terms: ["食べたかった", "xyz"] });
@@ -89,8 +101,9 @@ test("term entries project the engine result onto Yomitan's TermDictionaryEntry,
   assert.equal(entry.definitions[0].dictionary, "Fixture");
   assert.equal(entry.definitions[0].dictionaryAlias, "Fix");
   assert.deepEqual(entry.definitions[1].tags.map(tag => tag.name), ["col"]);
-  assert.deepEqual(entry.frequencies, [{ index: 0, headwordIndex: 0, dictionary: "Freq", dictionaryIndex: 1, dictionaryAlias: "Freq",
-    hasReading: false, frequency: 142, displayValue: "142位", displayValueParsed: false }]);
+  assert.deepEqual(entry.frequencies, [{ index: 0, headwordIndex: 0, dictionary: "Freq", frequencyMode: "rank-based",
+    dictionaryIndex: 1, dictionaryAlias: "Freq", hasReading: false, frequency: 142, displayValue: "142位",
+    displayValueParsed: false }]);
   assert.deepEqual(entry.pronunciations[0].pronunciations, [
     { type: "pitch-accent", positions: 2, nasalPositions: [], devoicePositions: [], tags: [] },
     { type: "phonetic-transcription", ipa: "tabeɾɯ", tags: [] }]);
