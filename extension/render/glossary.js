@@ -319,6 +319,39 @@
     return position >= splitPitchAccentMorae(reading).length ? "odaka" : "nakadaka";
   }
 
+  // Yomitan's getFrequencyNumbers and getFrequencyHarmonic/-Average
+  // (ext/js/data/anki-note-data-creator.js:178-245 at yomidevs/yomitan@d3c54c1).
+  // A value's number is the leading digits of its display value, else the value
+  // itself, when positive; "312, 19896㋕" is 312 and "14,200" is 14, as there.
+  function frequencyNumber(frequency) {
+    const digits = typeof frequency?.displayValue === "string" ? /^\d+/u.exec(frequency.displayValue) : null;
+    const display = digits ? Number.parseInt(digits[0], 10) : 0;
+    return display > 0 ? display : frequency?.value;
+  }
+
+  // Each dictionary's first value only: one whose first value has no positive
+  // number adds nothing. The groups are already filtered by mode.
+  function frequencyNumbers(groups) {
+    const numbers = [];
+    const seen = new Set();
+    for (const group of groups) {
+      if (seen.has(group.dictionary)) continue;
+      seen.add(group.dictionary);
+      const value = group.frequencies.length > 0 ? frequencyNumber(group.frequencies[0]) : null;
+      if (Number.isFinite(value) && value > 0) numbers.push(value);
+    }
+    return numbers;
+  }
+
+  // The floored harmonic (or arithmetic) mean; null where Yomitan returns -1.
+  // The popup's averages and the Anki frequency markers share it.
+  function frequencyMean(groups, harmonic = true) {
+    const numbers = frequencyNumbers(groups);
+    if (numbers.length === 0) return null;
+    const total = numbers.reduce((sum, value) => sum + (harmonic ? 1 / value : value), 0);
+    return Math.floor(harmonic ? numbers.length / total : total / numbers.length);
+  }
+
   // japanese.js DIACRITIC_MAPPING: the character a dakuten form is built on.
   const DAKUTEN_BASES = new Map();
   {
@@ -1934,6 +1967,8 @@
     createPronunciationText,
     definitionTagList,
     distributeFurigana,
+    frequencyMean,
+    frequencyNumber,
     getDownstepPositions,
     getFuriganaKanaSegments,
     isMoraPitchHigh,

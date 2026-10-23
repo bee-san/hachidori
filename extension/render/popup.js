@@ -24,7 +24,8 @@
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
   const DEFAULT_MAX_METADATA_TAGS = 12;
-  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers",
+  const METADATA_OPTION_KEYS = ["averageFrequency", "showFrequencyTagsWithAverage", "showFrequencyDictionaryNames",
+    "compactFrequencyNumbers",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "showPitchAccentBadge",
     "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
 
@@ -509,12 +510,6 @@
     return compactFrequencyNumbers ? formatCompactFrequencyNumber(frequency.value) : String(frequency.value);
   }
 
-  function frequencyNumberForAverage(frequency) {
-    return Number.isFinite(frequency.value) && frequency.value > 0
-      ? frequency.value
-      : null;
-  }
-
   function createFrequencyTag(
     documentRef,
     group,
@@ -566,6 +561,17 @@
     return tag;
   }
 
+  // One average per unit, as Yomitan's "Average" tag (dictionary-data-util.js:107-125
+  // and anki-note-data-creator.js:178-225 at yomidevs/yomitan@d3c54c1): the floored
+  // harmonic mean of each dictionary's first value. A dictionary without a
+  // frequencyMode is a rank list (CC100, BCCWJ) and joins the ranks, as Yomitan's
+  // rank harmonic mean counts it; a declared occurrence count is not a rank, so it
+  // gets its own average rather than skewing theirs.
+  const FREQUENCY_AVERAGES = [
+    { kind: "rank-based", accessible: "Rank average", display: "Avg rank" },
+    { kind: "occurrence-based", accessible: "Occurrence average", display: "Avg count" },
+  ];
+
   function createFrequencyTags(
     documentRef,
     result,
@@ -573,39 +579,20 @@
     maximumTags,
     averageFrequency = false,
     showFrequencyDictionaryNames = false,
-    compactFrequencyNumbers = false
+    compactFrequencyNumbers = false,
+    showFrequencyTagsWithAverage = false
   ) {
     const averageTags = [];
     if (averageFrequency) {
       const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
-      const aggregates = new Map();
-      const seen = new Set();
-      for (const group of result.term.frequencies) {
-        if (seen.has(group.dictionary)) continue;
-        for (const frequency of group.frequencies) {
-          const value = frequencyNumberForAverage(frequency);
-          if (value !== null) {
-            const mode = modes.get(group.dictionary);
-            // Only a declared occurrence list counts up; a dictionary without a
-            // mode is a rank list (CC100, BCCWJ), as Yomitan's rank average reads it.
-            const label = mode === "occurrence-based"
-              ? { accessible: "Occurrence average", display: "Avg count", kind: mode }
-              : { accessible: "Rank average", display: "Avg rank", kind: "rank-based" };
-            const aggregate = aggregates.get(label.accessible)
-              || { count: 0, reciprocalSum: 0, display: label.display, kind: label.kind };
-            aggregate.count += 1;
-            aggregate.reciprocalSum += 1 / value;
-            aggregates.set(label.accessible, aggregate);
-            seen.add(group.dictionary);
-            break;
-          }
-        }
-      }
-      for (const [label, { count, reciprocalSum, display, kind }] of aggregates) {
-        const frequency = { value: Math.floor(count / reciprocalSum), displayValue: null };
+      const kindOf = group => modes.get(group.dictionary) === "occurrence-based" ? "occurrence-based" : "rank-based";
+      for (const { kind, accessible, display } of FREQUENCY_AVERAGES) {
+        const value = window.HDGlossary.frequencyMean(result.term.frequencies.filter(group => kindOf(group) === kind));
+        if (value === null) continue;
+        const frequency = { value, displayValue: null };
         const tag = createFrequencyTag(
           documentRef,
-          { dictionary: label },
+          { dictionary: accessible },
           display,
           [{ display: formatFrequencyValue(frequency, compactFrequencyNumbers), frequency }],
           // These labels identify units, not a source dictionary.
@@ -639,7 +626,7 @@
         }
       }
       // No reordering: Yomitan lists values in dictionary order, and the
-      // average takes each dictionary's first usable value.
+      // average takes each dictionary's first value.
       const key = JSON.stringify([
         group.dictionary,
         frequencies.map(({ display, frequency }) => [frequency.value, display]),
@@ -661,8 +648,9 @@
     }
     if (!averageFrequency) return tags;
     // Like Yomitan, averaging only hides the per-dictionary tags: they stay in
-    // the DOM, unchanged, for custom CSS and themes.
-    for (const tag of tags) tag.hidden = true;
+    // the DOM, unchanged, for custom CSS and themes. Asked to, they stay shown
+    // after the averages instead.
+    if (!showFrequencyTagsWithAverage) for (const tag of tags) tag.hidden = true;
     return [...averageTags, ...tags];
   }
 
@@ -3041,6 +3029,7 @@
         includeFrequency = true,
         includePitch = true,
         averageFrequency = false,
+        showFrequencyTagsWithAverage = false,
         showFrequencyDictionaryNames = false,
         compactFrequencyNumbers = false,
         showPitchAccentDictionaryNames = true,
@@ -3071,7 +3060,8 @@
           Infinity,
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
-          context.compactFrequencyNumbers === true
+          context.compactFrequencyNumbers === true,
+          context.showFrequencyTagsWithAverage === true
         ) : [];
         // Hidden per-dictionary tags take no display budget from pitch badges.
         const visibleCount = frequencyTags.filter(tag => !tag.hidden).length;
@@ -3146,8 +3136,8 @@
         });
         ipaRow.appendChild(overflow);
       } else appendTranscriptions(ipaRow);
-      const context = { dictionaryPresentation, averageFrequency, showFrequencyDictionaryNames,
-        compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames,
+      const context = { dictionaryPresentation, averageFrequency, showFrequencyTagsWithAverage,
+        showFrequencyDictionaryNames, compactFrequencyNumbers, showPitchAccentBadge: includePitch, showPitchAccentDictionaryNames,
         showPitchAccentText, showPitchAccentPosition, showPitchAccentGraph };
       updateFrequency(context);
       updatePitch(context);
@@ -3203,7 +3193,8 @@
           Infinity,
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
-          context.compactFrequencyNumbers === true
+          context.compactFrequencyNumbers === true,
+          context.showFrequencyTagsWithAverage === true
         );
         if (frequencyTags.length > 0) {
           const frequencies = documentRef.createElement("span");
@@ -3685,6 +3676,7 @@
             onLayoutChange: scheduleMasonry,
             includePitch: renderContext.showPitchAccentBadge === true,
             averageFrequency: renderContext.averageFrequency === true,
+            showFrequencyTagsWithAverage: renderContext.showFrequencyTagsWithAverage === true,
             showFrequencyDictionaryNames:
               renderContext.showFrequencyDictionaryNames === true,
             compactFrequencyNumbers: renderContext.compactFrequencyNumbers === true,
@@ -3930,7 +3922,8 @@
         updateMetadata() {
           const nextModes = frequencyModes(imageContext);
           const labelsChanged = JSON.stringify(imageContext.dictionaryPresentation) !== JSON.stringify(appliedDictionaryPresentation);
-          const frequencyChanged = ["averageFrequency", "showFrequencyDictionaryNames", "compactFrequencyNumbers"]
+          const frequencyChanged = ["averageFrequency", "showFrequencyTagsWithAverage", "showFrequencyDictionaryNames",
+            "compactFrequencyNumbers"]
             .some(key => imageContext[key] !== appliedMetadata[key]) || nextModes !== appliedFrequencyModes;
           const grammarChanged = imageContext.hidePopupGrammarTags !== appliedMetadata.hidePopupGrammarTags;
           const pitchChanged = ["showPitchAccentBadge", "showPitchAccentDictionaryNames", "showPitchAccentText",
@@ -4043,7 +4036,8 @@
           Infinity,
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
-          context.compactFrequencyNumbers === true
+          context.compactFrequencyNumbers === true,
+          context.showFrequencyTagsWithAverage === true
         );
         const frequencies = documentRef.createElement("span");
         frequencies.className = "gsm-hoshidicts-primary-frequencies";

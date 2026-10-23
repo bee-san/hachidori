@@ -40,25 +40,15 @@ function expressionFurigana(term, plain) {
   }).join("");
 }
 
-function frequencyNumber(frequency) {
-  const prefix = typeof frequency.displayValue === "string" ? /^\d+/u.exec(frequency.displayValue) : null;
-  const display = prefix ? Number(prefix[0]) : 0;
-  return display > 0 ? display : frequency.value;
-}
+const frequencyNumber = frequency => globalThis.HDGlossary.frequencyNumber(frequency);
 
+// Yomitan's mode filter (anki-note-data-creator.js:184 at d3c54c1): a dictionary
+// that declares no mode counts for both rank and occurrence aggregates.
 function frequencyAggregate(term, mode, harmonic) {
-  const values = [];
-  for (const group of term.frequencies) {
-    if (group.frequencyMode && group.frequencyMode !== mode) continue;
-    for (const frequency of group.frequencies) {
-      const value = frequencyNumber(frequency);
-      if (value > 0) { values.push(value); break; }
-    }
-  }
-  if (!values.length) return mode === "rank-based" ? "9999999" : "0";
-  const mean = harmonic ? values.length / values.reduce((sum, value) => sum + 1 / value, 0)
-    : values.reduce((sum, value) => sum + value, 0) / values.length;
-  return String(Math.floor(mean));
+  const mean = globalThis.HDGlossary.frequencyMean(
+    term.frequencies.filter(group => !group.frequencyMode || group.frequencyMode === mode), harmonic);
+  if (mean === null) return mode === "rank-based" ? "9999999" : "0";
+  return String(mean);
 }
 
 function frequencyHtml(request, groups = request.term.frequencies) {
