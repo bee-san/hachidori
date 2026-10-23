@@ -120,6 +120,7 @@ const METADATA_FIELDS = [
   { key: "showFrequencyDictionaryNames", id: "opt-frequency-names" },
   { key: "compactFrequencyNumbers", id: "opt-frequency-compact" },
   { key: "averageFrequency", id: "opt-average-frequency" },
+  { key: "showFrequencyTagsWithAverage", id: "opt-average-frequency-tags" },
   { key: "showPitchAccentFurigana", id: "opt-pitch-furigana" },
   { key: "showPitchAccentColors", id: "opt-pitch-colors" },
   { key: "showPitchAccentBadge", id: "opt-pitch-badge" },
