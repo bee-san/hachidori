@@ -236,9 +236,9 @@ function renderFrequencyOrder() {
   if (options.frequencyOrder === "auto") hint = "Automatic compares all enabled frequency dictionaries in their listed order.";
   else if (options.frequencyOrder === "disabled") hint = "Frequency sorting is off. Your dictionary choice is remembered.";
   else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
-  else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto puts the lowest numbers first.";
-  else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto puts the highest numbers first.";
-  else hint = "No mode declared: Auto compares common and less-common Japanese words; inconclusive results read it as ranks, lowest numbers first.";
+  else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto direction puts the lowest numbers first.";
+  else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto direction puts the highest numbers first.";
+  else hint = "No mode declared: Auto direction compares common and less-common Japanese words; inconclusive results read it as ranks, lowest numbers first.";
   const hintElement = element("frequency-order-hint");
   if (hintElement.textContent !== hint) hintElement.textContent = hint;
 }
