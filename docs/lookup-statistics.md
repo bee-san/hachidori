@@ -91,8 +91,9 @@ leaves this condition unqualified. Dictionary lookup never waits for Anki.
 threshold dictionary** defaults to **Same as sorting**, the dictionary chosen in
 Reading → Frequency sorting; when sorting compares every dictionary, choose one
 here. Automatic
-order treats rank-based dictionaries as ascending and occurrence-based or
-undeclared dictionaries as descending. Ascending qualifies when the lowest
+order treats occurrence-based dictionaries as descending and rank-based
+dictionaries, or ones that declare no mode, as ascending: those are rank lists.
+Ascending qualifies when the lowest
 positive native value is at or below the threshold. Descending qualifies when
 the highest positive native value is at or above it. Display text is never
 parsed. Missing, disabled, unavailable and nonnumeric data fail open, while an
