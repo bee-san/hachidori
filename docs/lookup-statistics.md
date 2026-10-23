@@ -93,6 +93,9 @@ Reading → Frequency sorting; when sorting compares every dictionary, choose on
 here. Automatic
 order treats occurrence-based dictionaries as descending and rank-based
 dictionaries, or ones that declare no mode, as ascending: those are rank lists.
+A list of counts that declares no mode, such as the original Innocent Corpus
+(Innocent Ranked is a rank list), needs Descending chosen by hand; the hint
+says so for any dictionary without a mode.
 Ascending qualifies when the lowest
 positive native value is at or below the threshold. Descending qualifies when
 the highest positive native value is at or above it. Display text is never

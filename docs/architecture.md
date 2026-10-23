@@ -1118,12 +1118,17 @@ in one existing options patch: `rank-based` selects ascending and
 `occurrence-based` descending. For a dictionary that declares neither,
 `frequency-direction.js` compares common and less-common Japanese words through
 the engine, as Yomitan's `SortFrequencyDictionaryController` does; an
-inconclusive sample reads it as ranks and selects ascending. A missing
-`frequencyMode` means a rank list everywhere Hachidori interprets one (sorting,
-blur, the popup's averages and the Yomitan API, which reports it as `null`), as
+inconclusive sample reads it as ranks and selects ascending. Wherever
+Hachidori has to give a missing `frequencyMode` one meaning (that fallback,
+blur's Automatic order and the popup's averages), it reads a rank list, as
 Yomitan's rank aggregates count it (`anki-note-data-creator.js:184` at
 yomidevs/yomitan@d3c54c1): CC100, BCCWJ and most other Japanese lists are ranks
-that predate the field. The explicit **Auto direction** button
+that predate the field. The Yomitan API reports the mode as `null`, and the Anki
+aggregate markers keep Yomitan's filter, which counts such a list for the rank
+and the occurrence markers alike. The original Innocent Corpus is the common
+exception: it counts occurrences without declaring it, so, as in Yomitan, its
+values average with the ranks, and its blur needs Descending chosen by hand. The
+direction sample still sorts it descending. The explicit **Auto direction** button
 reapplies that mapping. Manual directions remain unchanged during rendering,
 metadata updates and restart. These are numeric directions, not universally
 "common first" or "rare first" labels.
@@ -1204,7 +1209,8 @@ the standalone contract: arithmetic uses the native positive numeric value, not
 its display label, and declared occurrence counts aggregate separately from
 ranks. A dictionary without a `frequencyMode` averages with the ranks, as
 Yomitan's rank average counts it, so Jiten (`rank-based`) and CC100 (no mode)
-give one `Avg rank`. Each dictionary contributes its first usable value once. Tags list
+give one `Avg rank`. An undeclared list of counts, such as the original Innocent
+Corpus, averages with the ranks too, as Yomitan's popup Average averages it. Each dictionary contributes its first usable value once. Tags list
 a dictionary's values in its own order, as Yomitan does, without moving `㋕`
 values forward, so a positive first value is the first one shown and the one
 averaged. Type labels

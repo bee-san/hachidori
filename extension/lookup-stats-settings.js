@@ -91,13 +91,16 @@ function renderDefinitionBlurControls() { // NOSONAR: existing complexity, kept 
     } else {
       const automatic = options.definitionBlurFrequencyOrder === "auto";
       const order = automatic ? frequencyModeOrder(selected.frequencyMode) : options.definitionBlurFrequencyOrder;
-      let source = "your manual order";
+      let source = "your manual order", counts = "";
       if (automatic && selected.frequencyMode === "occurrence-based") source = "occurrence-based metadata";
       else if (automatic && selected.frequencyMode === "rank-based") source = "rank-based metadata";
-      else if (automatic) source = "ranks (no mode declared)";
-      frequencyHelp.textContent = order === "ascending"
-        ? `Using ${source}: values at or below the threshold qualify.`
-        : `Using ${source}: values at or above the threshold qualify.`;
+      else if (automatic) {
+        // A list of counts without a declared mode (the original Innocent Corpus) reads as ranks too.
+        source = "ranks (no mode declared)";
+        counts = " If this list counts occurrences instead, choose Descending.";
+      }
+      const qualifying = order === "ascending" ? "at or below" : "at or above";
+      frequencyHelp.textContent = `Using ${source}: values ${qualifying} the threshold qualify.${counts}`;
     }
   }
 }

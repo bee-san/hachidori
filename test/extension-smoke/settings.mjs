@@ -607,7 +607,7 @@ async function settingsFrequencyStage() {
         // mode, so it reads as ranks: lowest values qualify.
         && frequencyDictionary.value === "" && frequencyDictionary.options[0].textContent === "Same as sorting (Unknown mode)"
         && blurControl("definition-blur-frequency-help").textContent
-          === "Using ranks (no mode declared): values at or below the threshold qualify."
+          === "Using ranks (no mode declared): values at or below the threshold qualify. If this list counts occurrences instead, choose Descending."
         && !blurControl("definition-blur-any-help").hidden);
       await editControl(frequencyDictionary, "Occurrence");
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
