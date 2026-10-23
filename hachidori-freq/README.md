@@ -3,7 +3,7 @@
 Real Chrome 152 (headless) with the unpacked extension of each checkout, over
 small made-up frequency lists in the Discord report's shape: a rank-based
 Jiten-like list (平均 15700) and a CC100-like list without `frequencyMode`
-(平均 26700). "before" is main 58be1244.
+(平均 26700). "before" is main 58be1244. Images updated after the audit show the heads after its fixes.
 
 - `popup-averages-before.png` / `popup-averages-after.png`: Show frequency
   averages and Abbreviate large numbers on. main shows Avg rank 15.7k and Avg
@@ -15,6 +15,9 @@ Jiten-like list (平均 15700) and a CC100-like list without `frequencyMode`
 - `settings-sort-cc100-*.png`: Reading → Frequency sorting with the CC100-like
   list chosen; the sample is inconclusive, so main sorts it highest first and
   the branch lowest first, as a rank list.
+- `settings-blur-cc100-*.png`: Reading → Definition blur by frequency reading the
+  CC100-like list: main reads it as counts ("at or above"), the branch as ranks,
+  with a note for an undeclared list of counts such as the original Innocent Corpus.
 - `settings-design-frequency-*.png`: Design → Frequency labels.
 - `settings-sort-labels-*.png`: Reading → Frequency sorting labels.
 

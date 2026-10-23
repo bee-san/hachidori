@@ -72,6 +72,17 @@ try {
   await shoot("#design", "opt-average-frequency", "design-frequency-labels");
   await shoot("#lookup", "opt-frequency-dictionary", "reading-frequency-sorting");
   await shoot("#lookup", "opt-frequency-dictionary", "reading-frequency-sorting-cc100", "CC100");
+  // Definition blur by frequency, reading the CC100-like list (no frequencyMode).
+  await settings.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      requestId: "blur", baseRevision: options?.revision ?? 0,
+      options: { definitionBlurFrequencyEnabled: true, definitionBlurFrequencyDictionary: "CC100" } });
+    if (!reply?.ok) throw new Error(JSON.stringify(reply));
+  });
+  await new Promise(done => setTimeout(done, 1500));
+  await settings.evaluate(() => { document.getElementById("definition-blur-reveal-controls").open = true; });
+  await shoot("#lookup", "opt-blur-frequency-dictionary", "reading-blur-cc100");
 } finally {
   await browser.close();
   rmSync(PROFILE, { recursive: true, force: true });
