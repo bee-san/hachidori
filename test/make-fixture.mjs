@@ -766,6 +766,33 @@ export function frequencyRankingFixture() {
   return { query, dictionaries };
 }
 
+// Small made-up frequency lists in the shapes the common Japanese ones use
+// (the values are invented): a declared rank list with reading-scoped
+// {value, displayValue} rows and a ㋕ kana row (Jiten), a surface list without
+// a mode whose one number applies to every reading (CC100), a reading-scoped
+// list of plain numbers without a mode (BCCWJ) and a declared occurrence list.
+// The term dictionary gives 平均 three readings, which the lists cover with
+// three, two and one rank values; the second is the Discord report's shape.
+export function frequencyAverageFixture() {
+  const query = '平均';
+  const readings = ['へいきん', 'ひらきん', 'たいらきん'];
+  const [first, second] = readings;
+  const freq = (reading, frequency) => [query, 'freq', reading === null ? frequency : { reading, frequency }];
+  const dictionaries = [
+    { title: 'Average rank list', frequencyMode: 'rank-based', termMeta: [
+      freq(first, { value: 9000, displayValue: '9000' }), freq(first, { value: 41000, displayValue: '41000㋕' }),
+      freq(second, { value: 15700, displayValue: '15700' })] },
+    { title: 'Average surface list', termMeta: [freq(null, 26700)] },
+    { title: 'Average reading list', termMeta: [freq(first, 30000)] },
+    { title: 'Average count list', frequencyMode: 'occurrence-based', termMeta: [
+      freq(first, { value: 5400, displayValue: '5400' })] },
+  ].map(({ title, frequencyMode, termMeta }) => ({ title, frequencyMode,
+    archive: buildTitledZip(title, { banks: false, frequencyMode, termMeta }) }));
+  const terms = buildTitledZip('Average terms', { terms: readings.map((reading, index) =>
+    [query, reading, '', '', 30 - index * 10, [`average (${reading})`], index, '']) });
+  return { query, readings, terms, dictionaries };
+}
+
 export function compactSummaryFixture() {
   const query = '要約', child = '要約語', summaryLookup = '短い説明', broken = '欠損図';
   const illustrated = 'compact-summary-illustrated', plain = 'compact-summary-text';

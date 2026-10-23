@@ -13,14 +13,17 @@ import { resolve } from "node:path";
 import { describe } from "node:test";
 import { createContext, runInContext } from "node:vm";
 import { buildAnkiResourceFields } from "../../extension/anki-resources.js";
+import { buildAnkiFields } from "../../extension/anki-values.js";
 import {
+  frequencyAverageFixture,
   gaijiSizingFixture,
   imageSizingFixture,
   structuredContentDeepFixture,
 } from "../make-fixture.mjs";
 import { kanji, lookup, media } from "./engine-lookup.mjs";
-import { request } from "./engine.mjs";
+import { request, storedDictionaryState } from "./engine.mjs";
 import {
+  createObjectURL,
   DEFAULT_JSDOM_TREE,
   EXTENSION,
   jsdomFailure,
@@ -359,11 +362,13 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { title: "Rank B", frequencyMode: "rank-based" },
     { title: "Occurrences", frequencyMode: "occurrence-based" },
   ], 12, true, false).filter(tag => !tag.hidden);
-  // "Unspecified" declares no mode, so it is one more rank list: Avg rank is
-  // the harmonic mean of 1234, 2468 and 7.
-  check("frequency aggregates use native values once per dictionary, count undeclared modes as ranks and keep occurrences separate",
+  // Yomitan's getFrequencyNumbers: each dictionary's first value only, read
+  // from its display value's leading digits ("1,234" is 1, "999" is 999 though
+  // the value is 0), else the value. "Unspecified" and "Empty" declare no mode,
+  // so they are rank lists too.
+  check("frequency aggregates read each dictionary's first value as Yomitan does, count undeclared modes as ranks and keep occurrences separate",
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
-      === JSON.stringify([Math.floor(3 / (1 / 1234 + 1 / 2468 + 1 / 7)), 1000])
+      === JSON.stringify([Math.floor(4 / (1 / 1 + 1 / 999 + 1 / 7 + 1 / 100)), 1000])
       && JSON.stringify(aggregateTags.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source")?.textContent))
         === JSON.stringify(["Avg rank", "Avg count"])
       && JSON.stringify(aggregateTags.map(tag => tag.title))
@@ -3022,6 +3027,85 @@ async function deepStructuredContentStage({ HDGlossary, HDPopup, document }) {
 }
 
 describe("renderer", () => {
+  step("frequency averages over real WASM frequency lists", async () => {
+    section("frequency averages over real WASM frequency lists");
+    const fixture = frequencyAverageFixture();
+    const imported = [];
+    try {
+      for (const { archive } of [{ archive: fixture.terms }, ...fixture.dictionaries]) {
+        imported.push(await request("hd_import", { blobUrl: createObjectURL(archive) }));
+      }
+      const state = await storedDictionaryState();
+      const stored = title => state.dictionaries.find(dictionary => dictionary.title === title);
+      const reply = await request("hd_lookup", { text: fixture.query, scanLength: 16, maxResults: 8,
+        options: { frequencyDictionary: "", frequencyOrder: "disabled" } });
+      const results = new Map(reply.results.filter(({ term }) => term.expression === fixture.query)
+        .map(result => [result.term.reading, result]));
+      const values = reading => Object.fromEntries((results.get(reading)?.term.frequencies ?? [])
+        .map(group => [group.dictionary, group.frequencies.map(({ value, displayValue }) => `${value}:${displayValue}`)]));
+      const [first, second, third] = fixture.readings;
+      // Reading-scoped rows reach only their reading; the surface row reaches all.
+      check("real WASM lookups keep each frequency row's reading scope, value and display value",
+        imported.every(reply => reply.ok) && results.size === 3
+          && JSON.stringify(values(first)) === JSON.stringify({ "Average rank list": ["9000:9000", "41000:41000㋕"],
+            "Average surface list": ["26700:26700"], "Average reading list": ["30000:30000"],
+            "Average count list": ["5400:5400"] })
+          && JSON.stringify(values(second)) === JSON.stringify({ "Average rank list": ["15700:15700"],
+            "Average surface list": ["26700:26700"] })
+          && JSON.stringify(values(third)) === JSON.stringify({ "Average surface list": ["26700:26700"] })
+          && fixture.dictionaries.every(({ title, frequencyMode }) => (stored(title)?.frequencyMode ?? undefined) === frequencyMode),
+        JSON.stringify({ imported, readings: fixture.readings.map(values) }));
+
+      const jsdom = await loadJsdom();
+      const { window } = new jsdom.JSDOM("<!doctype html><html><body></body></html>", { url: "https://example.test/" });
+      const sandbox = createContext({ window, document: window.document, console, URL: window.URL, globalThis: undefined });
+      sandbox.globalThis = sandbox;
+      sandbox.window = window;
+      for (const file of ["external-links.js", "render/glossary.js", "render/popup.js"]) {
+        runInContext(readFileSync(resolve(EXTENSION, file), "utf8"), sandbox, { filename: file });
+      }
+      const presentation = state.dictionaries.map(({ title, frequencyMode }) => ({ title, frequencyMode }));
+      const averages = (reading, keep = false) => window.HDPopup.createFrequencyTags(window.document, results.get(reading),
+        presentation, Infinity, true, false, true, keep)
+        .map(tag => [tag.hidden, tag.dataset.frequencyAverage ?? tag.dataset.dictionary, tag.textContent]);
+      const rank = numbers => Math.floor(numbers.length / numbers.reduce((sum, value) => sum + 1 / value, 0));
+      const hidden = (title, text) => [true, title, text];
+      // Yomitan's harmonic mean of each list's first value: three, two and one
+      // rank lists, the two without a mode among them; the counts alone apart.
+      check("the popup averages one, two and three rank lists, counting lists without a mode as ranks",
+        JSON.stringify(averages(first)) === JSON.stringify([
+          [false, "rank-based", `Avg rank${(rank([9000, 26700, 30000]) / 1000).toFixed(1)}k`],
+          [false, "occurrence-based", "Avg count5.4k"],
+          hidden("Average rank list", "9k · 41k㋕"), hidden("Average surface list", "26.7k"),
+          hidden("Average reading list", "30k"), hidden("Average count list", "5.4k")])
+          && JSON.stringify(averages(second)) === JSON.stringify([[false, "rank-based", "Avg rank19.8k"],
+            hidden("Average rank list", "15.7k"), hidden("Average surface list", "26.7k")])
+          && JSON.stringify(averages(third)) === JSON.stringify([[false, "rank-based", "Avg rank26.7k"],
+            hidden("Average surface list", "26.7k")])
+          && JSON.stringify(averages(second, true).map(([isHidden]) => isHidden)) === JSON.stringify([false, false, false]),
+        JSON.stringify(fixture.readings.map(reading => averages(reading))));
+
+      // The card's {frequency-harmonic-rank} is the popup's Avg rank.
+      const frequencyModes = new Map(state.dictionaries.map(({ title, frequencyMode }) => [title, frequencyMode]));
+      const harmonic = [];
+      for (const reading of fixture.readings) {
+        const result = results.get(reading);
+        const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
+          ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
+        const fields = await buildAnkiFields({ ...result, term, sentence: fixture.query, matchOffset: 0,
+          matched: result.matched, searchQuery: fixture.query, popupSelectionText: "", documentTitle: "",
+          dictionaryAliases: {}, dictionaryIds: {}, frequencyDictionaries: [] },
+        { Freq: { value: "{frequency-harmonic-rank}", overwriteMode: "coalesce" } }, { definition: () => "" });
+        harmonic.push(Number(fields.Freq));
+      }
+      check("the Anki {frequency-harmonic-rank} marker equals the popup's rank average",
+        JSON.stringify(harmonic) === JSON.stringify([rank([9000, 26700, 30000]), rank([15700, 26700]), 26700]),
+        JSON.stringify(harmonic));
+    } finally {
+      for (const { title } of [{ title: "Average terms" }, ...fixture.dictionaries]) await request("hd_remove", { title });
+    }
+  });
+
   step("renderer against real engine output", async () => {
     section("renderer against real engine output");
     // 漢字 is the fixture's structured-content entry, the only one carrying an <img>.
