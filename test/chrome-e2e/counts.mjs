@@ -260,15 +260,17 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
       JSON.stringify({ threshold, qualifying, pendingOrBlurred, hovered, notQualifying, autoplayed }));
 
     const beforeFrequency = await readLookupStatistics(settings);
+    // The fixture declares no frequencyMode, so Automatic reads its 142 as a
+    // rank: a value at or below the threshold qualifies.
     await updateSettingsControls(settings, {
       "opt-lookup-counts": false, "opt-audio-autoplay": false, "opt-blur-count": false,
       "opt-blur-anki": false, "opt-blur-frequency": true,
       "opt-blur-frequency-dictionary": "hachidori-fixture", "opt-blur-frequency-order": "auto",
-      "opt-blur-frequency-threshold": "100", "opt-blur-reveal": "hover",
+      "opt-blur-frequency-threshold": "143", "opt-blur-reveal": "hover",
     });
     const frequencyDefinition = await freshLookup();
     const frequencyBlurred = await waitForDefinitionBlur(popup, value => value?.state === "blurred");
-    await updateSettingsControls(settings, { "opt-blur-frequency-threshold": "143" });
+    await updateSettingsControls(settings, { "opt-blur-frequency-threshold": "100" });
     const outsideDefinition = await freshLookup();
     const frequencyOpen = await waitForDefinitionBlur(popup, value => value?.state === "revealed");
     const afterFrequency = await readLookupStatistics(settings);
