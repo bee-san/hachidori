@@ -678,6 +678,11 @@ async function settingsFrequencyStage() {
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
         === JSON.stringify({ definitionBlurFrequencyOrder: "ascending" })
         && blurControl("definition-blur-frequency-help").textContent.includes("at or below"));
+      // With no sort dictionary, Same as sorting has no dictionary to read.
+      emitOptions({ frequencyDictionary: "", definitionBlurFrequencyDictionary: "" });
+      metadataDetails.push(blurControl("definition-blur-frequency-help").textContent
+        === "Sorting uses no frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.");
+      emitOptions({ frequencyDictionary: "Unknown mode", definitionBlurFrequencyDictionary: "Occurrence" });
       await editControl(focusedFrequencyThreshold, "0");
       metadataDetails.push(focusedFrequencyThreshold.value === "1"
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyThreshold: 1 })
