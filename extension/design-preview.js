@@ -158,12 +158,12 @@
     const second = preferred && preferred !== first ? preferred : definitions[1]?.title || "Sample usage";
     const pitch = enabled.find(entry => entry.title === options.pitchAccentFuriganaDictionary && entry.pitchCount > 0)?.title
       || enabled.find(entry => entry.pitchCount > 0)?.title || "Sample pitch";
+    // A dictionary without a declared mode is a rank list (CC100, BCCWJ, …),
+    // so it gets the rank sample; only a declared occurrence list gets a count.
     const installedFrequencies = enabled
       .filter(entry => entry.frequencyCount > 0 && !["Sample ranks", "Sample corpus"].includes(entry.title))
-      .map(entry => ({ dictionary: entry.title, frequencies: [{
-        value: entry.frequencyMode === "rank-based" ? 120 : 18240,
-        displayValue: entry.frequencyMode === "rank-based" ? "120" : "18,240",
-      }] }));
+      .map(entry => ({ dictionary: entry.title, frequencies: [entry.frequencyMode === "occurrence-based"
+        ? { value: 18240, displayValue: "18,240" } : { value: 120, displayValue: "120" }] }));
     // Tag-bank tags in every category reader.css colours, sorted as the
     // engine sends them, so each palette's tag colours show here.
     const sampleTag = (name, category, order, notes) => ({ name, category, order, score: 0, notes });

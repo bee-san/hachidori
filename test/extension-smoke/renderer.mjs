@@ -359,13 +359,17 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     { title: "Rank B", frequencyMode: "rank-based" },
     { title: "Occurrences", frequencyMode: "occurrence-based" },
   ], 12, true, false).filter(tag => !tag.hidden);
-  check("frequency aggregates use native values once per dictionary and keep rank occurrence and unknown units separate",
+  // "Unspecified" declares no mode, so it is one more rank list: Avg rank is
+  // the harmonic mean of 1234, 2468 and 7.
+  check("frequency aggregates use native values once per dictionary, count undeclared modes as ranks and keep occurrences separate",
     JSON.stringify(aggregateTags.map(tag => Number(tag.querySelector("[data-frequency]")?.dataset.frequency)))
-      === JSON.stringify([1645, 1000, 7])
+      === JSON.stringify([Math.floor(3 / (1 / 1234 + 1 / 2468 + 1 / 7)), 1000])
       && JSON.stringify(aggregateTags.map(tag => tag.querySelector(".gsm-hoshidicts-frequency-source")?.textContent))
-        === JSON.stringify(["Avg rank", "Avg count", "Avg frequency"])
+        === JSON.stringify(["Avg rank", "Avg count"])
       && JSON.stringify(aggregateTags.map(tag => tag.title))
-        === JSON.stringify(["Rank average", "Occurrence average", "Frequency average (unspecified)"])
+        === JSON.stringify(["Rank average", "Occurrence average"])
+      && JSON.stringify(aggregateTags.map(tag => tag.dataset.frequencyAverage))
+        === JSON.stringify(["rank-based", "occurrence-based"])
       && JSON.stringify(aggregateResult) === aggregateInput,
     aggregateTags.map(tag => tag.outerHTML).join("\n"));
 

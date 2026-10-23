@@ -183,6 +183,32 @@ test("harmonic averages use concise typed labels and keep each dictionary's tag 
   assert.equal(capsule.querySelector(".gsm-hoshidicts-primary-frequencies").hidden, false);
 });
 
+// The Discord report: Jiten declares "rank-based", CC100 declares no mode, and
+// the popup showed two averages instead of Yomitan's one.
+test("a dictionary without a declared mode joins the rank average, so Jiten and CC100 give one value", t => {
+  const f = fixture(t);
+  const result = { ...RESULT, term: { ...RESULT.term, frequencies: [
+    { dictionary: "Jiten", frequencies: [{ value: 15700, displayValue: "15700" }] },
+    { dictionary: "CC100", frequencies: [{ value: 26700, displayValue: "26700" }] },
+  ] } };
+  const presentation = mode => [{ title: "Jiten", frequencyMode: "rank-based" }, { title: "CC100", frequencyMode: mode }];
+  const harmonic = Math.floor(2 / (1 / 15700 + 1 / 26700));
+  for (const mode of [undefined, null, "rank-based"]) {
+    const capsule = f.render({ ...f.options.normaliseOptions({}), averageFrequency: true, compactFrequencyNumbers: true,
+      dictionaryPresentation: presentation(mode) }, result);
+    const averages = [...capsule.querySelectorAll("[data-frequency-average]")];
+    assert.deepEqual(averages.map(tag => [tag.dataset.frequencyAverage, tag.textContent]),
+      [["rank-based", "Avg rank19.8k"]], String(mode));
+    assert.equal(averages[0].querySelector("[data-frequency]").dataset.frequency, String(harmonic));
+  }
+  // A declared occurrence list still gets its own count average.
+  const capsule = f.render({ ...f.options.normaliseOptions({}), averageFrequency: true,
+    dictionaryPresentation: presentation("occurrence-based") }, result);
+  assert.deepEqual([...capsule.querySelectorAll("[data-frequency-average]")]
+    .map(tag => [tag.dataset.frequencyAverage, tag.textContent]),
+  [["rank-based", "Avg rank15700"], ["occurrence-based", "Avg count26700"]]);
+});
+
 test("tags keep dictionary order, so each first value is the one averaged, as in Yomitan", t => {
   const f = fixture(t);
   const rows = (dictionary, ...values) => ({ dictionary, frequencies: values.map(displayValue =>

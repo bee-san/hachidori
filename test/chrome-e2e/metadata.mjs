@@ -387,7 +387,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && kept.sameForm && kept.mounted && kept.draft === "Keep the metadata draft"
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-average-frequency": true });
-    const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg frequency"));
+    // The fixture declares no frequencyMode, so its values average as ranks.
+    const averaged = await expectMetadata(value => value.frequencyNames.includes("Avg rank"));
     evidence.push(averaged.metadata.frequencies.length > 0 && averaged.metadata.frequencies.every(Number.isFinite)
       && !averaged.metadata.clippedFrequencies && averaged.metadata.frequencyTagsUniform
       && averaged.metadata.hiddenFrequencyDictionaries.includes("hachidori-fixture")
