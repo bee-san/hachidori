@@ -1217,8 +1217,9 @@ comma. Only a dictionary's first value counts: one whose first value has no
 positive number adds nothing. `HDGlossary.frequencyMean` holds the rule, and the
 Anki `{frequency-harmonic-*}` and `{frequency-average-*}` markers use it too.
 `Avg rank` takes the dictionaries Yomitan's rank filter takes
-(`HDGlossary.frequencyModeMatches`: all but those declaring another mode), so a
-card's FreqSort field is the popup's `Avg rank`. Declared occurrence counts
+(`HDGlossary.frequencyModeMatches`: all but those declaring `occurrence-based`;
+a mode that is neither of Yomitan's two, which its index schema refuses, counts
+as none), so a card's FreqSort field is the popup's `Avg rank`. Declared occurrence counts
 aggregate separately from ranks, since a harmonic mean of ranks and counts is
 neither; Yomitan's popup Average mixes them. `Avg count` takes only declared
 occurrence lists, while the `{frequency-*-occurrence}` markers keep Yomitan's

@@ -345,9 +345,11 @@
 
   // Yomitan's mode filter (anki-note-data-creator.js:184): a dictionary counts
   // for a requested mode unless it declares another one, so one without a mode
-  // counts for every mode.
+  // counts for every mode. A mode that is neither of Yomitan's two counts as none,
+  // as everywhere else in Hachidori: Yomitan's index schema refuses one.
+  const FREQUENCY_MODES = new Set(["rank-based", "occurrence-based"]);
   function frequencyModeMatches(frequencyMode, requested) {
-    return !frequencyMode || frequencyMode === requested;
+    return !FREQUENCY_MODES.has(frequencyMode) || frequencyMode === requested;
   }
 
   // The floored harmonic (or arithmetic) mean; null where Yomitan returns -1.

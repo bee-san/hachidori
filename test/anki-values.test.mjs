@@ -223,10 +223,10 @@ test("frequency aggregates take each dictionary's first value only and count und
   assert.equal(await render(source, "{frequency-harmonic-rank}|{frequency-average-rank}"),
     `${Math.floor(2 / (1 / 15700 + 1 / 26700))}|${Math.floor((15700 + 26700) / 2)}`);
   assert.equal(await render(source, "{frequency-harmonic-occurrence}"), String(Math.floor(2 / (1 / 26700 + 1 / 5400))));
-  // A mode that is neither of Yomitan's counts for neither marker, as in the popup.
+  // A mode that is neither of Yomitan's counts as no mode, as in the popup.
   source.term.frequencies.push({ dictionary: "Odd", frequencyMode: "rank", frequencies: [{ value: 800, displayValue: "800" }] });
   assert.equal(await render(source, "{frequency-harmonic-rank}|{frequency-harmonic-occurrence}"),
-    `${Math.floor(2 / (1 / 15700 + 1 / 26700))}|${Math.floor(2 / (1 / 26700 + 1 / 5400))}`);
+    `${Math.floor(3 / (1 / 15700 + 1 / 26700 + 1 / 800))}|${Math.floor(3 / (1 / 26700 + 1 / 5400 + 1 / 800))}`);
 });
 
 test("frequency lists match Yomitan's Anki shape, preserve every value and escape dictionary aliases", async () => {
