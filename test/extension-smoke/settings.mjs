@@ -612,8 +612,9 @@ async function settingsFrequencyStage() {
       await editControl(frequencyDictionary, "Occurrence");
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
         === JSON.stringify({ definitionBlurFrequencyDictionary: "Occurrence" })
-        && blurControl("definition-blur-frequency-help").textContent.includes("occurrence-based metadata")
-        && blurControl("definition-blur-frequency-help").textContent.includes("at or above"));
+        // A declared mode gets no "counts occurrences instead" note.
+        && blurControl("definition-blur-frequency-help").textContent
+          === "Using occurrence-based metadata: values at or above the threshold qualify.");
       const beforeUnavailable = writes.length;
       emitDictionaries({ enabled: false, displayName: "Dormant occurrence" }, "Occurrence");
       metadataDetails.push(frequencyDictionary.value === "Occurrence"
@@ -675,7 +676,10 @@ async function settingsFrequencyStage() {
         && blurControl("definition-blur-frequency-help").textContent.includes("at or below"));
       await editControl(focusedFrequencyThreshold, "0");
       metadataDetails.push(focusedFrequencyThreshold.value === "1"
-        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyThreshold: 1 }));
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyThreshold: 1 })
+        // Nor does a manual order.
+        && blurControl("definition-blur-frequency-help").textContent
+          === "Using your manual order: values at or below the threshold qualify.");
       await editControl(countBlur, true);
       metadataDetails.push(!blurControl("opt-blur-direction").disabled && !blurControl("opt-blur-delay").disabled);
       await editControl(blurControl("opt-blur-direction"), "below");
