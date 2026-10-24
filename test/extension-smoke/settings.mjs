@@ -367,7 +367,11 @@ async function settingsFrequencyStage() {
     const unknown = storedOptions.frequencyOrder;
     const unknownHint = hint.textContent.endsWith("inconclusive results read it as ranks, lowest numbers first.");
     const any = await edit("dictionary", "");
-    const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending"
+    // Since #575 no sort dictionary means dictionary order, as in Yomitan.
+    const noneLabels = field("dictionary").options[0].textContent === "None — dictionary order"
+      && field("order").querySelector('option[value="auto"]').textContent === "Automatic — dictionary order"
+      && hint.textContent === "Automatic sorts by your dictionary order, as Yomitan does without a sort dictionary.";
+    const explicit = passive && manualKept && occurrenceHint && autoOrder === "ascending" && noneLabels
       && rank.frequencyDictionary === "Rank" && rank.frequencyOrder === "ascending"
       && occurrence.frequencyDictionary === "Occurrence" && occurrence.frequencyOrder === "descending"
       && unknown === "ascending" && unknownHint && any.frequencyDictionary === "" && any.frequencyOrder === "auto";
@@ -674,6 +678,11 @@ async function settingsFrequencyStage() {
       metadataDetails.push(JSON.stringify(writes.at(-1).options)
         === JSON.stringify({ definitionBlurFrequencyOrder: "ascending" })
         && blurControl("definition-blur-frequency-help").textContent.includes("at or below"));
+      // With no sort dictionary, Same as sorting has no dictionary to read.
+      emitOptions({ frequencyDictionary: "", definitionBlurFrequencyDictionary: "" });
+      metadataDetails.push(blurControl("definition-blur-frequency-help").textContent
+        === "Sorting uses no frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.");
+      emitOptions({ frequencyDictionary: "Unknown mode", definitionBlurFrequencyDictionary: "Occurrence" });
       await editControl(focusedFrequencyThreshold, "0");
       metadataDetails.push(focusedFrequencyThreshold.value === "1"
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurFrequencyThreshold: 1 })

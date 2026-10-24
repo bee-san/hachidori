@@ -85,7 +85,7 @@ function renderDefinitionBlurControls() { // NOSONAR: existing complexity, kept 
   if (frequencyEnabled) {
     const selected = selectedDefinitionBlurFrequencyDictionary();
     if (!definitionBlurFrequencyDictionary(options)) {
-      frequencyHelp.textContent = "Sorting compares every frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.";
+      frequencyHelp.textContent = "Sorting uses no frequency dictionary, so choose one here. Missing frequency data leaves this condition unqualified.";
     } else if (!selected) {
       frequencyHelp.textContent = "The saved frequency dictionary is unavailable. This condition fails open until it is enabled or reinstalled.";
     } else {

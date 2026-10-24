@@ -89,7 +89,7 @@ leaves this condition unqualified. Dictionary lookup never waits for Anki.
 
 **Blur by frequency** reads one enabled frequency dictionary. Its **Blur
 threshold dictionary** defaults to **Same as sorting**, the dictionary chosen in
-Reading → Frequency sorting; when sorting compares every dictionary, choose one
+Reading → Frequency sorting; when sorting uses none, choose one
 here. Automatic
 order treats occurrence-based dictionaries as descending and rank-based
 dictionaries, or ones that declare no mode, as ascending: those are rank lists.
