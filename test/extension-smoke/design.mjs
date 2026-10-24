@@ -272,7 +272,18 @@ async function designPreviewStage() {
     await settle();
     const routing = query(".gloss-image-link")?.dataset.imageLoadState === "load-error";
     highlight &&= highlightedText() === "食べる";
-    return { sample, note, back, incremental, counts, blur, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview };
+    // An installed list without a mode is a rank list, so it gets the rank
+    // sample; only a declared occurrence list gets the count.
+    state = { ...state, revision: 5, dictionaries: [...state.dictionaries,
+      { id: "ranks", title: "Installed ranks", frequencyCount: 1, enabled: true },
+      { id: "counts", title: "Installed counts", frequencyMode: "occurrence-based", frequencyCount: 1, enabled: true }] };
+    update();
+    await settle();
+    const installedValue = title => query(`.gsm-hoshidicts-tag-frequency[data-dictionary="${title}"] .gsm-hoshidicts-frequency-values`)
+      ?.textContent;
+    const installedFrequencies = installedValue("Installed ranks") === "120" && installedValue("Installed counts") === "18,240";
+    return { sample, note, back, incremental, counts, blur, routing, appearance, highlight, kanjiSource, earlyLoad, cssOwner, cssPreview,
+      installedFrequencies };
   } finally { window.close(); }
 }
 
@@ -295,5 +306,7 @@ describe("Design", () => {
       preview?.appearance === true && preview.highlight === true, JSON.stringify(preview));
     check("the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot",
       preview?.kanjiSource === true, JSON.stringify(preview));
+    check("Design gives an installed frequency list without a mode the rank sample and an occurrence list the count",
+      preview?.installedFrequencies === true, JSON.stringify(preview));
   });
 });

@@ -102,6 +102,9 @@ function termEntry(result, where) {
       index: 0,
       headwordIndex: 0,
       dictionary: group.dictionary,
+      // Yomitan's TermFrequency (translator.js:1725 at d3c54c1): the declared
+      // mode, or null when the dictionary declares none.
+      frequencyMode: where.frequencyMode(group.dictionary),
       dictionaryIndex: where.index(group.dictionary),
       dictionaryAlias: where.alias(group.dictionary),
       hasReading: false,
@@ -206,6 +209,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       dictionaries,
       index: title => Math.max(0, titles.indexOf(title)),
       alias: title => dictionaries.find(item => item.title === title)?.displayName || title,
+      frequencyMode: title => dictionaries.find(item => item.title === title)?.frequencyMode || null,
     };
   }
 

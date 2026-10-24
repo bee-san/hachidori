@@ -54,8 +54,22 @@ test("auto uses the minimum rank and maximum occurrence value at inclusive bound
     groups([100, 250]), source("occurrence-based")),
   { qualified: true, value: 250, order: "descending" });
   assert.deepEqual(definitionBlurFrequencyEvidence(options({ definitionBlurFrequencyThreshold: 251 }),
-    groups([100, 250]), source(null)),
+    groups([100, 250]), source("occurrence-based")),
   { qualified: false, value: 250, order: "descending" });
+});
+
+// CC100 declares no mode while Jiten declares rank-based; both are rank lists,
+// so both read lowest-first, as Yomitan's rank aggregates read them.
+test("a dictionary that declares no frequency mode is read as ranks, like Yomitan", () => {
+  for (const frequencyMode of [null, undefined, ""]) {
+    assert.deepEqual(definitionBlurFrequencyEvidence(options(), groups([100, 250]), source(frequencyMode)),
+      { qualified: true, value: 100, order: "ascending" });
+    assert.deepEqual(definitionBlurFrequencyEvidence(options({ definitionBlurFrequencyThreshold: 99 }),
+      groups([100, 250]), source(frequencyMode)), { qualified: false, value: 100, order: "ascending" });
+  }
+  const { frequencyModeOrder } = globalThis.HDReaderOptions;
+  assert.deepEqual(["rank-based", "occurrence-based", null, undefined].map(frequencyModeOrder),
+    ["ascending", "descending", "ascending", "ascending"]);
 });
 
 test("explicit order overrides metadata and only positive finite native values count", () => {

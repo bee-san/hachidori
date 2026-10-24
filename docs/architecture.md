@@ -1114,8 +1114,21 @@ packages recover it from their committed generation's index without a new schema
 or WebAssembly build.
 
 Selecting one enabled frequency dictionary saves its title and inferred direction
-in one existing options patch: `rank-based` selects ascending; `occurrence-based`
-or an undeclared mode selects descending. The explicit **Auto direction** button
+in one existing options patch: `rank-based` selects ascending and
+`occurrence-based` descending. For a dictionary that declares neither,
+`frequency-direction.js` compares common and less-common Japanese words through
+the engine, as Yomitan's `SortFrequencyDictionaryController` does; an
+inconclusive sample reads it as ranks and selects ascending. Wherever
+Hachidori has to give a missing `frequencyMode` one meaning (that fallback,
+blur's Automatic order and the popup's averages), it reads a rank list, as
+Yomitan's rank aggregates count it (`anki-note-data-creator.js:184` at
+yomidevs/yomitan@d3c54c1): CC100, BCCWJ and most other Japanese lists are ranks
+that predate the field. The Yomitan API reports the mode as `null`, and the Anki
+aggregate markers keep Yomitan's filter, which counts such a list for the rank
+and the occurrence markers alike. The original Innocent Corpus is the common
+exception: it counts occurrences without declaring it, so, as in Yomitan, its
+values average with the ranks, and its blur needs Descending chosen by hand. The
+direction sample still sorts it descending. The explicit **Auto direction** button
 reapplies that mapping. Manual directions remain unchanged during rendering,
 metadata updates and restart. These are numeric directions, not universally
 "common first" or "rare first" labels.
@@ -1193,14 +1206,17 @@ them.
 
 Averages retain GSM PR #549's floored harmonic mean, with two corrections for
 the standalone contract: arithmetic uses the native positive numeric value, not
-its display label, and rank, occurrence and unspecified dictionaries aggregate
-separately. Each dictionary contributes its first usable value once. Tags list
+its display label, and declared occurrence counts aggregate separately from
+ranks. A dictionary without a `frequencyMode` averages with the ranks, as
+Yomitan's rank average counts it, so Jiten (`rank-based`) and CC100 (no mode)
+give one `Avg rank`. An undeclared list of counts, such as the original Innocent
+Corpus, averages with the ranks too, as Yomitan's popup Average averages it. Each dictionary contributes its first usable value once. Tags list
 a dictionary's values in its own order, as Yomitan does, without moving `㋕`
 values forward, so a positive first value is the first one shown and the one
 averaged. Type labels
-remain visible as concise `Avg rank`, `Avg count`, or `Avg frequency` text even
+remain visible as concise `Avg rank` or `Avg count` text even
 with source names hidden, and each aggregate carries `data-frequency-average`
-(`rank-based`, `occurrence-based` or `unspecified`). As in Yomitan, every tag
+(`rank-based` or `occurrence-based`). As in Yomitan, every tag
 that averages-off shows stays in the DOM after the aggregates, unchanged apart
 from the `hidden` attribute. Hidden tags take no layout or metadata display
 budget, stay out of the accessibility tree and still follow alias renames.
@@ -1268,8 +1284,8 @@ Native kanji entries remain outside term blur.
 The pure `definitionBlurFrequencyEvidence` helper is shared by the reader and
 Design preview. It accepts only positive finite native `frequency.value`
 numbers from the selected enabled dictionary; rendered labels are never parsed.
-Automatic order maps `rank-based` to ascending and occurrence-based or
-undeclared metadata to descending. Ascending compares the minimum value at or
+Automatic order maps `occurrence-based` to descending and `rank-based` or
+undeclared metadata to ascending. Ascending compares the minimum value at or
 below the threshold; descending compares the maximum value at or above it.
 Missing, disabled, unavailable and nonnumeric sources fail open.
 

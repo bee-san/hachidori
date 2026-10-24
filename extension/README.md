@@ -63,7 +63,8 @@ the service worker and both engine runtimes run the same code.
 Reading's frequency dictionary choice and **Auto** direction button use declared
 rank/occurrence metadata first. For dictionaries without it, `frequency-direction.js`
 compares common and less-common Japanese words through the engine; inconclusive
-samples keep highest-first ordering. Sampling runs only for these Settings actions,
+samples read the dictionary as ranks, lowest numbers first, as everything else
+that interprets a missing mode does. Sampling runs only for these Settings actions,
 and a newer choice cancels its result. Explicit ascending/descending choices stay fixed.
 
 - **Dictionaries and stored state.** `reader-options.js` is the one stored

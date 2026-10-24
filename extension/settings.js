@@ -90,7 +90,8 @@ const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
-  activationLabel, clampOption, hasCapability, normaliseCustomButtons, normaliseKanjiSelection, normaliseOptions,
+  activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
+  normaliseOptions,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -961,7 +962,8 @@ async function start() {
 export {
   activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, backingUp, clampOption,
   customButtonController, DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, definitionBlurFrequencyDictionary,
-  DESIGN_OPTION_KEYS, dictionaryGroupController, element, FREQUENCY_ORDERS, hasCapability, lastEngineStatus,
+  DESIGN_OPTION_KEYS, dictionaryGroupController, element, FREQUENCY_ORDERS, frequencyModeOrder, hasCapability,
+  lastEngineStatus,
   memorySettings, METADATA_FIELDS, nameDrafts, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat,
   OPTION_SECTIONS, options, OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
   popupRenderer, recommendedInstallation, refreshMemorySettings, refreshStatus, renderCurrentOptions,

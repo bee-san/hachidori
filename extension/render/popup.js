@@ -580,11 +580,11 @@
           const value = frequencyNumberForAverage(frequency);
           if (value !== null) {
             const mode = modes.get(group.dictionary);
-            const label = mode === "rank-based"
-              ? { accessible: "Rank average", display: "Avg rank", kind: mode }
-              : mode === "occurrence-based"
-                ? { accessible: "Occurrence average", display: "Avg count", kind: mode }
-                : { accessible: "Frequency average (unspecified)", display: "Avg frequency", kind: "unspecified" };
+            // Only a declared occurrence list counts up; a dictionary without a
+            // mode is a rank list (CC100, BCCWJ), as Yomitan's rank average reads it.
+            const label = mode === "occurrence-based"
+              ? { accessible: "Occurrence average", display: "Avg count", kind: mode }
+              : { accessible: "Rank average", display: "Avg rank", kind: "rank-based" };
             const aggregate = aggregates.get(label.accessible)
               || { count: 0, reciprocalSum: 0, display: label.display, kind: label.kind };
             aggregate.count += 1;
