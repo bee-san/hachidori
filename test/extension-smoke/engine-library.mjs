@@ -627,6 +627,44 @@ describe("engine: library state", () => {
       frequencyMetadata.every(Boolean), JSON.stringify(frequencyMetadata));
     for (const { title } of frequencyFixture.dictionaries) await request("hd_remove", { title });
   });
+
+  step("a term-only kanji source survives disabling and re-enabling", async () => {
+    const title = "toggle-kanji-source";
+    const selected = { title, kind: "term" };
+    const savedOptions = (await storage.api().local.get("options")).options;
+    const imported = await request("hd_import", {
+      blobUrl: createObjectURL(buildTitledZip(title, {
+        terms: [["食", "", "", "", 0, ["rich kanji card"], 1, ""]],
+        termMeta: [["食", "freq", 2205]],
+      })),
+      fileName: `${title}.zip`,
+    });
+    check("the term-only kanji toggle fixture imports", imported.ok, JSON.stringify(imported));
+    await pageChrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: savedOptions.revision, options: { kanjiClickDictionary: selected },
+    });
+    const observations = [];
+    for (const enabled of [false, true]) {
+      const state = await storedDictionaryState();
+      const applied = await request("hd_apply_state", {
+        baseRevision: state.revision,
+        dictionaries: state.dictionaries.map(row => row.title === title ? { ...row, enabled } : row),
+      });
+      const options = (await storage.api().local.get("options")).options;
+      const lookup = await request("hd_lookup_dictionary", { dictionary: title, text: "食" });
+      observations.push(applied.ok && JSON.stringify(options.kanjiClickDictionary) === JSON.stringify(selected)
+        && lookup.ok && lookup.results.length === (enabled ? 1 : 0));
+    }
+    check("a term-only kanji source keeps its route and returns entries again after re-enabling",
+      observations.every(Boolean), JSON.stringify(observations));
+    await request("hd_remove", { title });
+    const options = (await storage.api().local.get("options")).options;
+    await pageChrome.runtime.sendMessage({
+      target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: { kanjiClickDictionary: savedOptions.kanjiClickDictionary ?? "" },
+    });
+  });
 });
 
 export { studyGroup };

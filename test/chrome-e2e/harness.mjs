@@ -366,6 +366,7 @@ const PLANNED = [
   "Back restores focus to the exact clicked duplicate kanji",
   "the Settings enabled control disables one logical package",
   "a disabled selected term dictionary falls back to native kanji",
+  "re-enabling a selected term-only kanji dictionary restores its saved route",
   "a combined archive can use its term entries for clicked kanji",
   "selecting a kanji-bank dictionary keeps the native kanji view",
   `the hovered word is highlighted under CSS.highlights["${HIGHLIGHT_NAME}"]`,

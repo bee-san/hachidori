@@ -2198,9 +2198,11 @@ dictionary path instead of reopening term and metadata dictionaries per click.
 The engine resolves that path from its own loaded set, so a disabled, missing or
 unloaded package answers nothing without a storage round trip per request.
 Frequency and pitch metadata still come from every loaded metadata dictionary.
-A missing, disabled or empty selected source falls back to native kanji. For an
-enabled native source with no matching entry, the already returned automatic
-entries supply that fallback without another request. A terminal native miss
+A disabled selected source keeps its saved title and capability, while lookups
+fall back to native kanji until it is enabled again. Removing the source or its
+selected capability clears the choice. A missing or empty selected source also
+falls back to native kanji. For an enabled native source with no matching entry,
+the already returned automatic entries supply that fallback without another request. A terminal native miss
 retires that popup level; a protected same-view Note refresh retains its draft.
 Obsolete replies cannot dismiss or replace a newer view.
 
