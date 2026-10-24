@@ -379,6 +379,29 @@ test("frequency values stay as each dictionary shows them unless abbreviation is
   assert.equal(form.elements.definition.value, "keep my draft");
 });
 
+// JPDB v2.2 Kana Display Only writes the word's rank and its kana form's rank in
+// one display value, e.g. 読む's {value: 312, displayValue: "312, 19896㋕"}: the
+// value is the word's rank, and the ㋕ belongs to the second number only.
+test("a display value with the kana rank after the word's own is not a kana frequency", t => {
+  const f = fixture(t);
+  const defaults = f.options.normaliseOptions({});
+  const result = { ...RESULT, term: { ...RESULT.term, frequencies: [
+    { dictionary: "JPDBv2㋕", frequencies: [{ value: 312, displayValue: "312, 19896㋕" }] },
+    { dictionary: "Jiten", frequencies: [{ value: 459, displayValue: "459" }, { value: 25754, displayValue: "25754㋕" }] },
+  ] } };
+  const capsule = f.render(defaults, result);
+  const values = () => [...capsule.querySelectorAll(".gsm-hoshidicts-frequency-value")]
+    .map(node => [node.textContent, node.title]);
+  assert.deepEqual(values(), [["312, 19896㋕", "312 (312, 19896㋕)"], ["459", "459"],
+    ["25754㋕", "Kana frequency: 25754"]]);
+  // Abbreviating without names shows each value's own number, so the word's
+  // 312 no longer takes the second number's ㋕.
+  f.view.updateDictionaryPresentation({ ...defaults, compactFrequencyNumbers: true });
+  assert.deepEqual(values().map(([text]) => text), ["312", "459", "25.8k㋕"]);
+  f.view.updateDictionaryPresentation({ ...defaults, compactFrequencyNumbers: true, showFrequencyDictionaryNames: true });
+  assert.deepEqual(values().map(([text]) => text), ["312, 19896㋕", "459", "25.8k㋕"]);
+});
+
 test("abbreviated frequency numbers pick the unit after rounding", t => {
   const { api } = fixture(t);
   assert.deepEqual([999, 1000, 51499, 99950, 999949, 999950, 1234567, 999950000].map(api.formatCompactFrequencyNumber),
