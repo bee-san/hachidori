@@ -68,6 +68,7 @@ const TOGGLE_CONTROLS = {
   definitionBlurFrequencyEnabled: "opt-blur-frequency",
   showCompactDefinitionSummary: "opt-compact-summary",
   averageFrequency: "opt-average-frequency",
+  showFrequencyTagsWithAverage: "opt-average-frequency-tags",
   showFrequencyDictionaryNames: "opt-frequency-names",
   compactFrequencyNumbers: "opt-frequency-compact",
   showPitchAccentFurigana: "opt-pitch-furigana",

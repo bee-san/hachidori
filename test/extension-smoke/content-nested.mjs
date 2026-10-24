@@ -217,7 +217,7 @@ async function livePresentationCase() {
         const current = combined.render().context;
         const options = { revision: 1, frequencyDictionary: "Frequency A", frequencyOrder: "descending",
           kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9,
-          showCompactDefinitionSummary: update !== "metadata", averageFrequency: true,
+          showCompactDefinitionSummary: update !== "metadata", averageFrequency: true, showFrequencyTagsWithAverage: true,
           showFrequencyDictionaryNames: false, compactFrequencyNumbers: true, showPitchAccentFurigana: false,
           pitchAccentFuriganaDictionary: "Preferred pitch", pitchAccentFuriganaStyle: "overline", showPitchAccentBadge: false,
           showPitchAccentDictionaryNames: false, showPitchAccentText: false, showPitchAccentPosition: false,

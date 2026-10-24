@@ -171,6 +171,9 @@
     // inline glyphs (em-sized or at most 32px square), "all" previews every image.
     imageHoverPreview: "large",
     averageFrequency: false,
+    // With averages on, Yomitan hides each dictionary's frequency tag; this
+    // keeps them shown after the averages instead.
+    showFrequencyTagsWithAverage: false,
     showFrequencyDictionaryNames: false,
     compactFrequencyNumbers: false,
     showPitchAccentFurigana: true,
@@ -258,7 +261,8 @@
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
-    "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyDictionaryNames",
+    "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyTagsWithAverage",
+    "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle",
     "showPitchAccentBadge", "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph",
     "showPitchAccentColors", "hidePopupGrammarTags",

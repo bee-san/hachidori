@@ -200,6 +200,9 @@ function renderMetadataControls() {
     furiganaStyle.disabled = !options.showPitchAccentFurigana;
     furiganaStyle.value = options.pitchAccentFuriganaStyle;
   }
+  // Each dictionary's tags beside the averages only means something with averages on.
+  const averageTags = element("opt-average-frequency-tags");
+  if (averageTags !== document.activeElement) averageTags.disabled = !options.averageFrequency;
 }
 
 function renderPopupImageSources() {

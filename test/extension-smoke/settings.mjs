@@ -548,6 +548,8 @@ async function settingsFrequencyStage() {
       ["opt-frequency-names", "showFrequencyDictionaryNames", false],
       ["opt-frequency-compact", "compactFrequencyNumbers", false],
       ["opt-average-frequency", "averageFrequency", false],
+      // Enabled once the averages above are on.
+      ["opt-average-frequency-tags", "showFrequencyTagsWithAverage", false],
       ["opt-pitch-badge", "showPitchAccentBadge", true],
       ["opt-pitch-names", "showPitchAccentDictionaryNames", true],
       ["opt-pitch-text", "showPitchAccentText", true],
@@ -559,7 +561,8 @@ async function settingsFrequencyStage() {
     ];
     const pitch = window.document.getElementById("opt-pitch-dictionary");
     let metadata = Boolean(pitch) && metadataFields.every(([id, , checked]) =>
-      window.document.getElementById(id)?.checked === checked);
+      window.document.getElementById(id)?.checked === checked)
+      && window.document.getElementById("opt-average-frequency-tags").disabled;
     const metadataDetails = [];
     if (metadata) {
       for (const [id, key, checked] of metadataFields) {

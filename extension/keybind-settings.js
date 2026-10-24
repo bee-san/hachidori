@@ -17,6 +17,7 @@ export const KEYBIND_OPTION_LABELS = {
   definitionBlurFrequencyEnabled: "Blur definitions by frequency",
   showCompactDefinitionSummary: "Show brief definitions beside the headword",
   averageFrequency: "Show frequency averages",
+  showFrequencyTagsWithAverage: "Show each dictionary's frequencies with the averages",
   showFrequencyDictionaryNames: "Show frequency dictionary names",
   compactFrequencyNumbers: "Abbreviate large frequency numbers",
   showPitchAccentFurigana: "Show pitch in furigana",

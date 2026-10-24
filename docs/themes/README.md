@@ -127,6 +127,7 @@ The keys are the renderer-owned controls, tagged `data-design-setting` in
 `settings.html`: `popupOpacityPercent`, `popupToolbarPosition`, `popupColumns`,
 `glossaryLayoutMode`, `popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
 `showFrequencyDictionaryNames`, `compactFrequencyNumbers`, `averageFrequency`,
+`showFrequencyTagsWithAverage`,
 `showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `pitchAccentFuriganaStyle`,
 `showPitchAccentColors`, `showPitchAccentBadge`, `showPitchAccentDictionaryNames`,
 `showPitchAccentText`, `showPitchAccentPosition`, `showPitchAccentGraph`,

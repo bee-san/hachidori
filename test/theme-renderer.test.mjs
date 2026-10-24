@@ -499,6 +499,7 @@ const designPresentation = [
 // [key, a value other than its default, options the flip needs to show].
 const DESIGN_FLIPS = [
   ["showFrequencyDictionaryNames", true], ["compactFrequencyNumbers", true], ["averageFrequency", true],
+  ["showFrequencyTagsWithAverage", true, { averageFrequency: true }],
   ["showPitchAccentFurigana", false], ["pitchAccentFuriganaDictionary", "Daijirin"],
   ["pitchAccentFuriganaStyle", "overline"],
   ["showPitchAccentBadge", false], ["showPitchAccentDictionaryNames", false], ["showPitchAccentText", false],
