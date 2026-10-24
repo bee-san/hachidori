@@ -2,7 +2,7 @@
 import "./reader-options.js";
 
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
-const CORE_MARKERS = ["expression", "reading", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
+const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
   "definition", "glossary", "glossary-brief", "glossary-no-dictionary", "glossary-plain", "glossary-plain-no-dictionary",
   "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
@@ -16,6 +16,10 @@ const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pi
 const MARKER_DESCRIPTIONS = {
   expression: "Dictionary form of the selected term",
   reading: "Reading of the selected term",
+  character: "Selected kanji character (kanji entries only)",
+  onyomi: "Kanji on readings, separated by commas",
+  kunyomi: "Kanji kun readings, separated by commas",
+  "stroke-count": "Kanji stroke count from the first dictionary that supplies it",
   furigana: "Expression with ruby furigana",
   "furigana-plain": "Expression with bracketed plain-text furigana",
   dictionary: "Title of the first definition dictionary",

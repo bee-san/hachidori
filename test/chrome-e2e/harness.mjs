@@ -199,6 +199,7 @@ const PLANNED = [
   "Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
   "a mined screenshot of a page with a paused MSE video contains that video's frame instead of a black region",
   "a screenshot upload that Anki refuses is a warning on a note that is still added",
+  "the native kanji view mines character, readings, strokes, glossary and source context, then opens the saved note",
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "a note mined from a selection takes the hover's sentence without the hidden text inside it",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",

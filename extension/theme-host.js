@@ -88,6 +88,7 @@
       let destroyed = false;
       const settings = new Map();
       const components = { createLookupActions: window.HDPopup.createLookupActions,
+        kanjiEntryResult: window.HDPopup.kanjiEntryResult,
         createDictionaryTabs: window.HDPopup.createDictionaryTabs,
         createFrequencyTags: window.HDPopup.createFrequencyTags,
         glossaryToPlainText: window.HDGlossary.glossaryToPlainText,

@@ -187,6 +187,10 @@ function dynamicFrequencies(request) {
 
 export async function buildAnkiFields(request, templates, { definition, audio = "" }) {
   const { term } = request;
+  const kanjiTokens = value => Array.isArray(value) ? value : globalThis.HDGlossary.parseTagList(value);
+  let nativeKanjiEntries;
+  const kanjiEntries = () => nativeKanjiEntries ??= term.glossaries.flatMap(glossary => glossary.kanji ? [glossary.kanji] : []);
+  const kanjiReadings = key => [...new Set(kanjiEntries().flatMap(entry => kanjiTokens(entry[key])))].map(escape).join(", ");
   let sentenceParts;
   const parts = () => sentenceParts ??= [request.sentence.slice(0, request.matchOffset),
     request.sentence.slice(request.matchOffset, request.matchOffset + request.matched.length),
@@ -199,6 +203,10 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   const pageLink = () => { const address = pageUrl(); return address && `<a href="${address}">${address}</a>`; };
   const table = {
     expression: () => escape(term.expression), reading: () => escape(term.reading),
+    character: () => kanjiEntries().length ? escape(term.expression) : "",
+    onyomi: () => kanjiReadings("onyomi"), kunyomi: () => kanjiReadings("kunyomi"),
+    "stroke-count": () => escape(kanjiEntries().flatMap(entry => entry.stats ?? [])
+      .find(stat => stat.name === "strokes")?.value ?? ""),
     furigana: () => expressionFurigana(term, false), "furigana-plain": () => expressionFurigana(term, true),
     dictionary: () => escape(firstDictionary()), "dictionary-alias": () => escape(alias(request, firstDictionary())),
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
@@ -211,7 +219,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "part-of-speech": () => uniqueTokens([term.rules, ...term.glossaries.map(glossary => glossary.termTags)])
       .map(tag => escape(Object.hasOwn(PARTS_OF_SPEECH, tag) ? PARTS_OF_SPEECH[tag] : tag)).join(", ") || "Unknown",
     tags: () => uniqueTokens(term.glossaries.flatMap(glossary =>
-      [...globalThis.HDGlossary.definitionTagList(glossary).map(tag => tag.name), glossary.termTags]))
+      [...globalThis.HDGlossary.definitionTagList(glossary).map(tag => tag.name), glossary.termTags,
+        ...(glossary.kanji ? kanjiTokens(glossary.kanji.tags) : [])]))
       .map(tag => `<span class="tag" data-details="${escape(tag)}">${escape(tag)}</span>`).join(", "),
     "phonetic-transcriptions": () => {
       const items = term.pitches.flatMap(group => group.transcriptions).filter(Boolean).map(value =>

@@ -191,7 +191,7 @@ async function kanjiGroupCase() {
         .map((glossary) => ({ ...glossary, glossary: typeof glossary.glossary })) } })
         === JSON.stringify({ matched: "食", deinflected: "食", trace: [], preprocessorSteps: 0, term: {
           expression: "食", reading: "", rules: "", score: 0, frequencies: [], pitches: [], glossaries: [
-            { dictionary: "Native B", glossary: "string", definitionTags: "", termTags: "" }] } })
+            { dictionary: "Native B", glossary: "string", definitionTags: "", termTags: "", kanji: nativeEntry("Native B") }] } })
       && JSON.stringify(nativeFields) === JSON.stringify({ "{pitch-accent-categories}": "", "{part-of-speech}": "Unknown",
         "{tags}": "", "{conjugation}": "" });
     await render.context.onBack();

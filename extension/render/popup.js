@@ -1624,7 +1624,7 @@
     return {
       matched: character, deinflected: character, trace: [], preprocessorSteps: 0,
       term: { expression: character, reading: "", rules: "", score: 0, frequencies: [], pitches: [],
-        glossaries: [{ dictionary: entry.dictionary, glossary: kanjiEntryGlossary(entry), definitionTags: "", termTags: "" }] },
+        glossaries: [{ dictionary: entry.dictionary, glossary: kanjiEntryGlossary(entry), definitionTags: "", termTags: "", kanji: entry }] },
     };
   }
 
@@ -4056,6 +4056,24 @@
       if (back) noteControls.actions.prepend(back);
       primaryHeader.append(navigation, noteControls.actions);
       const toolbar = createResultChrome(primaryHeader);
+      const feedback = documentRef.createElement("div");
+      feedback.className = "gsm-hoshidicts-mining-feedback";
+      feedback.setAttribute("role", "status");
+      feedback.setAttribute("aria-live", "polite");
+      feedback.hidden = true;
+
+      function bindKanjiMining() {
+        const results = kanji.entries
+          .filter(entry => selected.dictionaries.size === 0 || selected.dictionaries.has(entry.dictionary))
+          .map(entry => kanjiEntryResult(kanji.character, entry));
+        const miningActions = [];
+        if (results.length > 0) {
+          const result = { ...results[0], generation: renderOptions.generation, term: { ...results[0].term, frequencies: kanjiFrequencies,
+            glossaries: results.flatMap(result => result.term.glossaries) } };
+          miningActions.push({ actions: noteControls.actions, feedback, result });
+        }
+        onResultsRendered({ audioButtons: [], miningActions });
+      }
 
       function renderEntries() {
         const entries = documentRef.createDocumentFragment();
@@ -4142,7 +4160,8 @@
         return entries;
       }
 
-      mountResultChrome(toolbar, renderEntries());
+      mountResultChrome(toolbar, renderEntries(), feedback);
+      bindKanjiMining();
       const ownsKanji = () => currentToolbar === toolbar && renderOptions.isCurrentView?.() !== false;
       currentPresentationUpdate = (context) => runRenderAction(ownsKanji, renderOptions, () => {
         const next = createDictionaryTabs(dictionaries, context);
@@ -4161,6 +4180,7 @@
           }
         } else {
           contentScroll.replaceChildren(renderEntries());
+          bindKanjiMining();
           changed = true;
         }
         if (changed) scheduleMasonry();
@@ -4513,7 +4533,8 @@
       renderResults,
       renderKanji,
       captureTermView: () => captureTermView?.(),
-      currentEntryIndex: () => currentEntryIndex(),
+      // Native kanji dictionaries share one result and its toolbar action.
+      currentEntryIndex: () => currentResultPanel ? currentEntryIndex() : 0,
       focusEntry,
       setDefinitionBlurState,
       setLookupStats,
