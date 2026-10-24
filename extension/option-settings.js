@@ -81,7 +81,7 @@ function normaliseKanjiClickOption() {
   } else if (kanjiSelection) {
     const selected = dictionaries.find((entry) => entry.title === kanjiSelection.title);
     const requestedKind = kanjiSelection.kind || (selected && hasCapability(selected, "kanji") ? "kanji" : "term");
-    if (!selected || selected.enabled === false || !hasCapability(selected, requestedKind)) {
+    if (!selected || !hasCapability(selected, requestedKind)) {
       options.kanjiClickDictionary = "";
       changed = true;
     } else if (kanjiSelection.kind === "") {

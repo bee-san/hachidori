@@ -138,6 +138,29 @@ describe("clicked kanji", () => {
     await popup.click(".gsm-hoshidicts-kanji-back");
   });
 
+  step("re-enabling a selected term-only kanji dictionary", async () => {
+    const reenabled = await setDictionaryEnabledInSettings(page, GENERIC_KANJI_TITLE, true);
+    const selection = await page.evaluate(async () =>
+      (await chrome.storage.local.get("options")).options?.kanjiClickDictionary);
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await hover("#duplicate");
+    const clicked = await popup.click(".gsm-hoshidicts-kanji-link");
+    await tab.waitForFunction(glossary => [...document.querySelectorAll("hachidori-host")]
+      .some(host => host.shadowRoot?.textContent.includes(glossary)), {}, GENERIC_KANJI_GLOSSARY);
+    const restored = await popup.state();
+    check(
+      "re-enabling a selected term-only kanji dictionary restores its saved route",
+      reenabled?.settled?.id === GENERIC_KANJI_ID
+        && selection?.title === GENERIC_KANJI_TITLE && selection?.kind === "term"
+        && clicked && restored?.text.includes(GENERIC_KANJI_GLOSSARY),
+      JSON.stringify({ reenabled, selection, restored }),
+    );
+    await popup.click(".gsm-hoshidicts-kanji-back");
+    await setDictionaryEnabledInSettings(page, GENERIC_KANJI_TITLE, false);
+    await hover("#duplicate");
+  });
+
   step("a combined archive's term entries", async () => {
     await showSettingsSection(page, "lookup");
     await page.select("#opt-kanji-dictionary", FIXTURE_TERM_SELECTION_VALUE);

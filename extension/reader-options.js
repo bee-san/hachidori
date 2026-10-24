@@ -703,8 +703,8 @@
 
   const KANJI_SELECTION_KINDS = new Set(["term", "kanji"]);
 
-  // Groups keep their stable IDs through renames and membership edits; removed
-  // groups and removed or disabled dictionaries reset the clicked-kanji choice.
+  // Keep a disabled source selected so re-enabling it restores the same route.
+  // Removed groups, dictionaries or capabilities reset the clicked-kanji choice.
   function normaliseKanjiClickSelection(value, dictionaries, groups) {
     const selection = typeof value === "string" ? { title: value, kind: "" } : value;
     if (selection?.kind === "tabGroup") {
@@ -716,7 +716,7 @@
     if (!KANJI_SELECTION_KINDS.has(kind)) {
       kind = selected && hasCapability(selected, "kanji") ? "kanji" : "term";
     }
-    if (!selected || selected.enabled === false || !hasCapability(selected, kind)) return "";
+    if (!selected || !hasCapability(selected, kind)) return "";
     return KANJI_SELECTION_KINDS.has(selection.kind) ? value : { title: selection.title, kind };
   }
 

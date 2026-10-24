@@ -84,6 +84,22 @@ test("dictionary selections still resolve to one capability", () => {
   assert.equal(resolveKanjiDictionary("", dictionaries, groups), null);
 });
 
+test("disabling a selected kanji source preserves its route until it is enabled again", () => {
+  const { normaliseDictionarySelections } = globalThis.HDReaderOptions;
+  for (const kind of ["term", "kanji"]) {
+    const selected = { title: "Kanji source", kind };
+    const source = dictionary("source", selected.title, { [kind === "term" ? "termCount" : "kanjiCount"]: 1 });
+    const disabled = [{ ...source, enabled: false }];
+    const options = normaliseDictionarySelections({ kanjiClickDictionary: selected }, disabled);
+    assert.deepEqual(options.kanjiClickDictionary, selected);
+    assert.equal(resolveKanjiDictionary(options.kanjiClickDictionary, disabled), null);
+    assert.deepEqual(resolveKanjiDictionary(options.kanjiClickDictionary, [source]), selected);
+    assert.equal(normaliseDictionarySelections(options, []).kanjiClickDictionary, "", "removal prunes the route");
+    assert.equal(normaliseDictionarySelections(options, [dictionary("source", selected.title, { pitchCount: 1 })])
+      .kanjiClickDictionary, "", "losing the selected capability prunes the route");
+  }
+});
+
 test("definition text follows the page lookup mode unless a child popup trigger is chosen", () => {
   assert.equal(DEFAULT_OPTIONS.definitionLookupMode, "inherit");
   assert.deepEqual(DEFINITION_LOOKUP_MODES, ["inherit", "activation", "click"]);

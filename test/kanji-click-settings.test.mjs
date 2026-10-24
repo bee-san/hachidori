@@ -123,3 +123,18 @@ test("a saved group keeps a focused chooser through rerenders and resets when th
   assert.equal(select.value, "");
   assert.equal(select.querySelector("optgroup[label=Groups]"), null, "no groups, no group choices");
 });
+
+test("Settings keeps a disabled kanji source selected and restores its choice when re-enabled", t => {
+  const selection = { title: BEES.title, kind: "term" };
+  const { window, select, writes, state } = fixture(t, selection);
+  const value = JSON.stringify(selection);
+  window.adoptState({ ...state(3, [GROUP]), dictionaries: [KANJIDIC, { ...BEES, enabled: false }] });
+  assert.equal(JSON.stringify(window.currentOptions().kanjiClickDictionary), value);
+  assert.equal(select.value, value);
+  assert.match(select.selectedOptions[0].textContent, /not available/u);
+  assert.equal(writes.length, 0);
+  window.adoptState(state(4, [GROUP]));
+  assert.equal(select.value, value);
+  assert.equal(select.selectedOptions[0].textContent, BEES.title);
+  assert.equal(JSON.stringify(window.currentOptions().kanjiClickDictionary), value);
+});
