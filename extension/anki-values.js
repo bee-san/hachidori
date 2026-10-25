@@ -31,13 +31,29 @@ const VALUE_ALIASES = { definition: "glossary", "main-definition": "glossary-fir
 const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, dictionary)
   ? request.dictionaryAliases[dictionary] : dictionary;
 
-function expressionFurigana(term, plain) {
-  return globalThis.HDGlossary.termFurigana(term).map(({ text, reading }, index) => {
+function furiganaHtml(segments, plain) {
+  return segments.map(({ text, reading }, index) => {
     if (!reading) return escape(text);
     const prefix = index ? " " : "";
     return plain ? `${prefix}${escape(text)}[${escape(reading)}]`
       : `<ruby>${escape(text)}<rt>${escape(reading)}</rt></ruby>`;
   }).join("");
+}
+
+const expressionFurigana = (term, plain) => furiganaHtml(globalThis.HDGlossary.termFurigana(term), plain);
+
+// The furigana of `text` from its hd_segment spans: each word read as its
+// first headword, as a hover would show it, and the text between them bare.
+function spanFurigana(text, spans) {
+  const segments = [];
+  let position = 0;
+  for (const { start, length, candidates } of spans) {
+    if (start > position) segments.push({ text: text.slice(position, start), reading: "" });
+    segments.push(...globalThis.HDGlossary.matchedFurigana(candidates[0], text.slice(start, start + length)));
+    position = start + length;
+  }
+  if (position < text.length) segments.push({ text: text.slice(position), reading: "" });
+  return segments;
 }
 
 const frequencyNumber = frequency => globalThis.HDGlossary.frequencyNumber(frequency);
@@ -196,6 +212,19 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     request.sentence.slice(request.matchOffset, request.matchOffset + request.matched.length),
     request.sentence.slice(request.matchOffset + request.matched.length)].map(escape);
   const sentence = () => { const [prefix, body, suffix] = parts(); return `${prefix}<b>${body}</b>${suffix}`; };
+  // The matched word takes the reading of the chosen result; the text around
+  // it is read from the spans of the Anki worker's hd_segment request. Without
+  // spans (the relay API) the sentence is left without furigana.
+  const sentenceFurigana = plain => {
+    if (!request.sentenceSegments) return sentence();
+    const { sentence: text, matchOffset } = request;
+    const end = matchOffset + request.matched.length;
+    const [prefixSpans, suffixSpans] = request.sentenceSegments;
+    const prefix = furiganaHtml(spanFurigana(text.slice(0, matchOffset), prefixSpans), plain);
+    const body = furiganaHtml(globalThis.HDGlossary.matchedFurigana(term, text.slice(matchOffset, end)), plain);
+    const suffix = furiganaHtml(spanFurigana(text.slice(end), suffixSpans), plain);
+    return `${prefix}<b>${body}</b>${suffix}`;
+  };
   const firstDictionary = () => term.glossaries[0]?.dictionary || "";
   // The relay API and older linked browsers send no address. Like Yomitan's
   // anki-note-data-creator.js, a missing or non-string one is blank.
@@ -230,9 +259,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     // Yomitan's getMedia keeps a multi-line selection's breaks visible in the HTML field.
     "popup-selection-text": () => escape(request.popupSelectionText).replaceAll("\n", "<br>\n"), "search-query": () => escape(request.searchQuery),
     "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence,
-    // GSM falls back to highlighted text when its optional native tokenizer is
-    // unavailable. There is no MeCab/native-helper dependency in the extension.
-    "sentence-furigana": sentence, "sentence-furigana-plain": sentence,
+    "sentence-furigana": () => sentenceFurigana(false), "sentence-furigana-plain": () => sentenceFurigana(true),
     "cloze-prefix": () => parts()[0], "cloze-body": () => parts()[1], "cloze-suffix": () => parts()[2],
     frequencies: () => frequencyHtml(request),
     "frequency-harmonic-rank": () => frequencyAggregate(term, "rank-based", true),

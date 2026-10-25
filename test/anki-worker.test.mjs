@@ -787,6 +787,41 @@ test("worker selects the requested Template for destination, fields and screensh
     }, tags: ["hachidori"] }]);
 });
 
+test("a sentence furigana template segments the text around the match with the hover's options", async () => {
+  const segmentRequests = [];
+  let fields = null;
+  const options = globalThis.HDReaderOptions.normaliseOptions({ scanLength: 12, frequencyDictionary: "F",
+    anki: { model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{sentence-furigana-plain}", overwriteMode: "overwrite" } } } });
+  const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front"],
+    models: ["Basic"], decks: ["Default"], errors: [] }),
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "addNote") { fields = params.note.fields; return 12; }
+      if (action === "notesInfo") return [{ noteId: 12, modelName: "Basic",
+        fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
+      throw new Error(`Unexpected ${action}`);
+    } };
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(), readDictionaries: async () => [],
+    engine: async message => {
+      if (message.type !== "hd_segment") return { generation: 3, ready: true, loading: false };
+      segmentRequests.push(message);
+      return { generation: 3, segments: [{ id: 0, spans: [] }, { id: 1, spans: [
+        { start: 0, length: 1, candidates: [{ expression: "が", reading: "が" }] },
+        { start: 1, length: 2, candidates: [{ expression: "居る", reading: "いる" }] }] }] };
+    },
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates, {}), media: [] }),
+  });
+  const { configKey } = await service.status();
+  const result = await service.submit({ configKey, term: { expression: "猫", reading: "ねこ" }, sentence: "猫がいる。",
+    generation: 3, trace: [], matched: "猫", matchOffset: 0, popupSelectionText: "", searchQuery: "猫",
+    documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [] });
+  assert.equal(result.state, "added");
+  assert.equal(fields.Front, "<b>猫[ねこ]</b>がいる。");
+  assert.deepEqual(segmentRequests.at(-1), { type: "hd_segment", chunks: [{ id: 0, text: "" }, { id: 1, text: "がいる。" }],
+    scanLength: 12, options: { frequencyDictionary: "F", frequencyOrder: "auto", personalDictionary: true } });
+});
+
 test("a recorded Netflix line is held until the note is written and stored as its own WAV, beside the screenshot", async () => {
   const uploads = [], deletions = [];
   let refuse = false, duplicate = false, lostReply = false, check = { canAdd: true }, fields = null;
