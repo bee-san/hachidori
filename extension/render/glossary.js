@@ -784,6 +784,28 @@
       : segmentFurigana(expression, reading);
   }
 
+  // Yomitan's distributeFuriganaInflected: the furigana of `matched`, the text a
+  // lookup matched for the term. The reading covers the stem shared by the
+  // dictionary form and the matched text; the inflected ending has none. Text
+  // spelled from the reading (いる for 居る, ダメ for 駄目) needs none at all.
+  function matchedFurigana(term, matched) {
+    const { expression, reading } = term;
+    if (matched === expression) return termFurigana(term);
+    const stemLength = (text) => {
+      let length = 0;
+      while (length < text.length && length < matched.length
+        && toHiragana(text[length]) === toHiragana(matched[length])) length += 1;
+      return length;
+    };
+    const stem = stemLength(expression);
+    const readingStem = stemLength(reading);
+    if (readingStem > 0 && readingStem >= stem) return [{ text: matched, reading: "" }];
+    const ending = expression.slice(stem);
+    if (stem === 0 || !reading.endsWith(ending)) return [{ text: matched, reading }];
+    return [...segmentFurigana(expression.slice(0, stem), reading.slice(0, reading.length - ending.length)),
+      { text: matched.slice(stem), reading: "" }];
+  }
+
   // `furigana` is the term's furigana from the engine, if any (termFurigana).
   function appendExpressionRuby(
     documentRef,
@@ -1983,6 +2005,7 @@
     getFuriganaKanaSegments,
     isMoraPitchHigh,
     isRecord,
+    matchedFurigana,
     normalizeMediaPath,
     parseStructuredLink,
     parseTagList,

@@ -167,20 +167,6 @@ function cardFormat(template) {
   };
 }
 
-// Yomitan's distributeFuriganaInflected: the reading covers the stem shared by
-// the dictionary form and the matched text; the inflected ending has none.
-function furiganaSegments(term, matched) {
-  const { segmentFurigana, termFurigana } = globalThis.HDGlossary;
-  const { expression, reading } = term;
-  if (matched === expression) return termFurigana(term);
-  let stem = 0;
-  while (stem < expression.length && stem < matched.length && expression[stem] === matched[stem]) stem += 1;
-  const ending = expression.slice(stem);
-  if (stem === 0 || !reading.endsWith(ending)) return [{ text: matched, reading }];
-  return [...segmentFurigana(expression.slice(0, stem), reading.slice(0, reading.length - ending.length)),
-    { text: matched.slice(stem), reading: "" }];
-}
-
 function fileName(title) {
   const safe = String(title).replaceAll(/[\\/:*?"<>|\u0000-\u001f]/gu, "_").trim();
   return `${safe || "dictionary"}.hachidori.zip`;
@@ -293,7 +279,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
           position += step.length;
           continue;
         }
-        for (const segment of furiganaSegments(best.term, best.matched)) {
+        for (const segment of globalThis.HDGlossary.matchedFurigana(best.term, best.matched)) {
           if (segment.reading === "") plain(segment.text);
           else segments.push({ text: segment.text, reading: segment.reading });
         }
