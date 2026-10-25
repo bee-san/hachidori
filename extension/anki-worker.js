@@ -15,6 +15,8 @@ async function releaseCapturedMedia({ writeResources, invoke }) {
   await Promise.all(filenames.map(filename => invoke("deleteMediaFile", { filename }, 10_000).catch(() => undefined)));
 }
 
+const SENTENCE_FURIGANA_MARKERS = new Set(["sentence-furigana", "sentence-furigana-plain"]);
+
 // Media the reader captures for one mining action. Each kind is held under its
 // own token until the note is written, then stored inside the queued write.
 const CAPTURED_MEDIA = {
@@ -72,8 +74,27 @@ export function createAnkiWorkerService({
       ...(clientSpeech ? { clientSpeech } : {}),
     });
   };
-  const render = (request, templates, audio, resources) => offscreen({ type: "hd_anki_fields", request, templates, audio,
-    dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true });
+  // The words of the text before and after the match, split as a hover splits
+  // them, for templates that ask for the sentence with furigana.
+  async function sentenceSegments(request, templates) {
+    if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template.value)
+      .some(name => SENTENCE_FURIGANA_MARKERS.has(name)))) return null;
+    const options = await readOptions();
+    const end = request.matchOffset + request.matched.length;
+    const reply = await engine({
+      type: "hd_segment",
+      chunks: [{ id: 0, text: request.sentence.slice(0, request.matchOffset) }, { id: 1, text: request.sentence.slice(end) }],
+      scanLength: options.scanLength,
+      options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder,
+        personalDictionary: options.personalDictionaryEnabled },
+    });
+    return reply.segments.map(segment => segment.spans);
+  }
+  const render = async (request, templates, audio, resources) => {
+    const segments = await sentenceSegments(request, templates);
+    return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
+      templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true });
+  };
 
   // One pending item of each kind at a time: a later capture supersedes an
   // earlier one, and a note that is written consumes it. Nothing is uploaded
