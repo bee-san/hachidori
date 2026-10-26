@@ -669,6 +669,10 @@ async function clickRevealCase() {
   };
   try {
     const blurred = await blurredLookup("一回", 1);
+    // Hit testing is where a definition scan starts; count it.
+    let caretCalls = 0;
+    window.document.caretPositionFromPoint = () => { caretCalls += 1; return null; };
+    const unscanned = harness.driver.resolveDefinitionCandidate(1, 1) === null && caretCalls === 0;
     harness.hoverDefinitions();
     await new Promise(done => setTimeout(done, 1300));
     const kept = harness.blurState() === "blurred" && plays() === 0;
@@ -677,6 +681,9 @@ async function clickRevealCase() {
     outcomes["click reveal ignores hover and the delay, and a click reveals once and plays the held result"] =
       blurred && kept && click.defaultPrevented && harness.blurState() === "revealed" && plays() === 1
       && isPlain(definitions()) && !definitions().hasAttribute("tabindex");
+    harness.driver.resolveDefinitionCandidate(1, 1);
+    outcomes["words in definitions blurred until clicked are not scanned until the reveal"] =
+      unscanned && caretCalls === 1;
 
     const keyboard = [];
     for (const [index, key] of ["Enter", " "].entries()) {
