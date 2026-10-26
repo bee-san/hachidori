@@ -114,15 +114,17 @@ custom-button layout. Core still binds mining to the returned actions container.
 - With Definition blur's **On click only** reveal (#598), core's
   `HDPopup.createDefinitionReveal` marks a blurred lookup's definitions after
   each render and blur change, and removes the marks at the reveal. Each
-  `.gsm-hoshidicts-definitions` element (Default: its `.gsm-hoshidicts-glossary-card`,
-  because a list cannot be a button) gets `data-definition-reveal`,
+  `.gsm-hoshidicts-definitions` element gets `data-definition-reveal`,
   `role="button"`, `tabindex="0"` and the label "Reveal definitions", and its
-  element children become `inert`. Put definition content in child elements so
-  links and images are disabled until the reveal; text directly in that element,
-  as in Plain, stays readable only as the button's presentational content. A
-  blur `filter` on that element would blur its focus ring, so draw the ring on
-  an unfiltered ancestor, as the bundled themes do with
-  `:has(> [data-definition-reveal]:focus-visible)`, and give
+  element children become `inert`. (Default's definitions are a list, which
+  cannot be a button, so there the `.gsm-hoshidicts-glossary-card` holding the
+  list is the button and the list itself becomes `inert`.) Put definition
+  content in child elements so links and images are disabled until the reveal;
+  text directly in that element, as in Plain, stays readable only as the
+  button's presentational content. A blur `filter` on that element would blur
+  its focus ring, so draw the ring on an unfiltered ancestor with `:has()`, as
+  the bundled themes do (JL:
+  `.jl-entry:has(> [data-definition-reveal]:focus-visible)`), and give
   `[data-definition-reveal]` `cursor: pointer`. The bundled JL, Bee, Nazeka and
   Plain `theme.css` carry these rules locally; the hachidori-themes revision in
   `extension/vendor/themes/source.json` predates them, so an update from it must
