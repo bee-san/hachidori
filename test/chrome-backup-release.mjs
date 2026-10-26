@@ -847,7 +847,10 @@ async function popupChecks(name, browser, settings, source, restored, tabs) {
       revealed = await until(() => popup.definitionBlur(), value => value?.state === "revealed", 5_000);
     }
     const kanjiClicked = await popup.click(".gsm-hoshidicts-kanji-link");
-    const kanjiView = await until(() => popup.state(), value => value?.text.includes(GENERIC_KANJI_GLOSSARY) ?? false);
+    // The term view already shows the generic kanji dictionary's 食 entry, so
+    // wait for the clicked kanji's own view, which has Back.
+    const kanjiView = await until(() => popup.state(), value => value?.hasBack === true
+      && value.text.includes(GENERIC_KANJI_GLOSSARY));
     const native = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen",
       type: "hd_kanji", requestId: "backup-release-kanji", character: "食" }));
     check(name(RESTORED.kanji), kanjiClicked && kanjiView?.hasBack === true && kanjiView.text.includes(GENERIC_KANJI_GLOSSARY)
