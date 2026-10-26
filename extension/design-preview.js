@@ -65,6 +65,7 @@
     sampleRevealed = true;
     clearSampleBlurTimer();
     view.setDefinitionBlurState("revealed");
+    definitionReveal.sync();
   }
 
   function armSampleBlur() {
@@ -73,9 +74,11 @@
     sampleBlurTimer = setTimeout(() => { sampleBlurTimer = null; revealSample(); }, options.definitionBlurDelayMs);
   }
 
-  popup.addEventListener("mouseover", (event) => {
-    if (sampleBlurState() === "blurred" && event.target instanceof Element
-        && event.target.closest(".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary")) revealSample();
+  // Native kanji is outside term blur, so only a term sample is blurred.
+  const definitionReveal = HDPopup.createDefinitionReveal(popup, {
+    revealMode: () => options.definitionBlurReveal,
+    blurred: () => sampleTermView && sampleBlurState() === "blurred",
+    reveal: revealSample,
   });
 
   function positionPopup(resetToolbar = false) {
@@ -133,6 +136,7 @@
       sampleLookupStats = lookupStats;
       paintSampleLookupStats();
       updateSampleAudio();
+      definitionReveal.sync();
     },
   });
 
@@ -270,6 +274,8 @@
       sampleTermView = true;
       armSampleBlur();
     }
+    // The render's own callback ran before sampleTermView was set.
+    definitionReveal.sync();
   }
 
   window.HDDesignPreview = { update(nextOptions, nextState) {
@@ -301,6 +307,7 @@
         view.setDefinitionBlurState(sampleBlurState());
         armSampleBlur();
       }
+      definitionReveal.sync();
     }
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.popupTheme,
@@ -321,7 +328,10 @@
     if (changed) {
       if (!kanjiCharacter) termView = { ...view.captureTermView(), selectedDictionaryTab };
       renderSample(true);
-    } else view.updateDictionaryPresentation(context());
+    } else {
+      view.updateDictionaryPresentation(context());
+      definitionReveal.sync();
+    }
   } };
   window.addEventListener("pagehide", () => { clearSampleBlurTimer(); customStyle.destroy(); appearance.destroy(); view.destroy(); }, { once: true });
 }());

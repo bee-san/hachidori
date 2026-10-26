@@ -65,6 +65,9 @@ function renderDefinitionBlurControls() { // NOSONAR: existing complexity, kept 
   element("definition-blur-anki-help").hidden = !ankiEnabled;
   element("definition-blur-any-help").hidden = [countEnabled, ankiEnabled, frequencyEnabled].filter(Boolean).length < 2;
   element("definition-blur-help").hidden = !enabled;
+  element("definition-blur-reveal-help").textContent = options.definitionBlurReveal === "click"
+    ? "Only clicking a definition or the compact summary reveals it; with the keyboard, press Enter or Space on a definition."
+    : "Hovering a definition or the compact summary always reveals it.";
   renderDefinitionBlurFrequencyChoices();
   for (const [id, key, controlEnabled] of [["opt-blur-direction", "definitionBlurDirection", countEnabled],
     ["opt-blur-frequency-order", "definitionBlurFrequencyOrder", frequencyEnabled],

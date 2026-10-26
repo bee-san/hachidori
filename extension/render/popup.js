@@ -4583,6 +4583,69 @@
     return current;
   }
 
+  // Definition blur's reveal gestures, shared by the reader and the Design
+  // preview, which keep the blur decision itself. Hovering a definition or the
+  // compact summary reveals, except with the click reveal (#598): then only a
+  // click on one, or Enter or Space on a blurred definition, does. Meanwhile
+  // what they show is inert, so no link, image or disclosure in it can be
+  // focused, hovered or opened, and each definition is a labelled button in
+  // the Tab order (Default's card, as its list cannot be one). The compact
+  // summary is a click target only. Call sync() after every render and after a
+  // change to the blur state or the reveal mode.
+  const DEFINITION_REVEAL_TARGETS = ".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary";
+
+  function createDefinitionReveal(popup, { revealMode, blurred, reveal }) {
+    const clickOnly = () => revealMode() === "click";
+    const target = event => event.target?.closest?.(`${DEFINITION_REVEAL_TARGETS}, [data-definition-reveal]`);
+    popup.addEventListener("mouseover", (event) => {
+      if (!clickOnly() && blurred() && event.target?.closest?.(DEFINITION_REVEAL_TARGETS)) reveal();
+    });
+    // The press only reveals: it neither moves focus, which would pause page
+    // lookups, nor starts a selection, and the click opens no child popup.
+    popup.addEventListener("mousedown", (event) => {
+      if (event.button === 0 && clickOnly() && blurred() && target(event)) event.preventDefault();
+    }, true);
+    popup.addEventListener("click", (event) => {
+      if (!clickOnly() || !blurred() || !target(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      reveal();
+    }, true);
+    // A keybind that took the key keeps it, as it does from a native button.
+    popup.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented || (event.key !== "Enter" && event.key !== " ")
+          || !event.target?.hasAttribute?.("data-definition-reveal") || !clickOnly() || !blurred()) return;
+      event.preventDefault();
+      reveal();
+    });
+    function sync() {
+      const active = clickOnly() && blurred();
+      if (!active && !popup.querySelector("[data-definition-reveal]")) return;
+      for (const element of popup.querySelectorAll(DEFINITION_REVEAL_TARGETS)) {
+        const summary = element.matches(".gsm-hoshidicts-compact-definition-summary");
+        const control = summary ? element : element.closest(".gsm-hoshidicts-glossary-card") ?? element;
+        for (const content of control === element ? element.children : [element]) content.toggleAttribute("inert", active);
+        if (active) {
+          control.dataset.definitionReveal = "";
+          if (summary) continue;
+          control.tabIndex = 0;
+          control.setAttribute("role", "button");
+          control.setAttribute("aria-label", "Reveal definitions");
+        } else if (control.hasAttribute("data-definition-reveal")) {
+          delete control.dataset.definitionReveal;
+          if (summary) continue;
+          control.removeAttribute("role");
+          control.removeAttribute("aria-label");
+          // A revealed definition keeps the focus it has, so a keyboard
+          // reveal neither drops focus nor lets the popup close under it.
+          if (control.getRootNode().activeElement === control) control.tabIndex = -1;
+          else control.removeAttribute("tabindex");
+        }
+      }
+    }
+    return { sync };
+  }
+
   return {
     findDifferentDictionary,
     createPopupAppearance,
@@ -4592,6 +4655,7 @@
     scaleRect,
     popupCoordinateScale,
     createDictionaryDisplayNames,
+    createDefinitionReveal,
     createFrequencyTags,
     createPopupView,
     createLookupActions,

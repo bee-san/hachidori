@@ -12,3 +12,8 @@
 .gsm-hoshidicts-definitions + .gsm-hoshidicts-definitions { margin-top: 8px; }
 .plain-scroll[data-definition-blur="pending"] .gsm-hoshidicts-definitions,
 .plain-scroll[data-definition-blur="blurred"] .gsm-hoshidicts-definitions { filter: blur(5px); }
+/* Blurred definitions that a click reveals are a button (#598). The blur would
+   blur its focus ring too, so the popup shows it. */
+.plain-scroll:has(> [data-definition-reveal]:focus-visible) { outline: 2px solid var(--hoshidicts-accent); outline-offset: -2px; }
+.plain-scroll > [data-definition-reveal]:focus-visible { outline: none; }
+.gsm-hoshidicts-popup [data-definition-reveal] { cursor: pointer; }

@@ -812,7 +812,10 @@
       level.retired ||
       levels[level.depth] !== level ||
       !level.popup ||
-      level.popup.hidden
+      level.popup.hidden ||
+      // Hovering reveals blurred definitions before a scan reaches them; with
+      // the click reveal their words are not looked up until clicked.
+      (options.definitionBlurReveal === "click" && definitionsBlurred(level))
     ) {
       return null;
     }
@@ -1842,12 +1845,10 @@
       (event) => onPopupMouseMove(event, level),
       { capture: true, passive: true }
     );
-    popup.addEventListener("mouseover", (event) => {
-      const request = level.currentViewRequest;
-      if (request?.blur && request.blur.state !== "revealed" && event.target instanceof Element
-          && event.target.closest(".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary")) {
-        revealDefinitions(request, level);
-      }
+    level.definitionReveal = window.HDPopup.createDefinitionReveal(popup, {
+      revealMode: () => options.definitionBlurReveal,
+      blurred: () => definitionsBlurred(level),
+      reveal: () => revealDefinitions(level.currentViewRequest, level),
     });
     shadow.appendChild(popup);
     level.popup = popup;
@@ -1912,6 +1913,7 @@
 
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
+    level.definitionReveal.sync();
     // Keybinds index these like the view's entries; Show more grows the same
     // arrays and rebinds only the newly revealed controls. The count element
     // belongs to the initial render and stays until the next one.
@@ -2117,7 +2119,15 @@
   }
 
   function applyDefinitionBlurState(request, level) {
-    if (level.currentViewRequest === request && level.view) level.view.setDefinitionBlurState(request.blur.state);
+    if (level.currentViewRequest !== request || !level.view) return;
+    level.view.setDefinitionBlurState(request.blur.state);
+    level.definitionReveal.sync();
+  }
+
+  // Whether the level shows pending or blurred term definitions.
+  function definitionsBlurred(level) {
+    const blur = level.currentViewRequest?.blur;
+    return Boolean(blur) && blur.state !== "revealed";
   }
 
   function revealDefinitions(request, level) {
@@ -4039,17 +4049,22 @@
     }
   }
 
+  // A presentation update can replace a compact summary without a render.
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
       ...compactSummaryOptions(), ...imageSourceContext(), ...window.HDPopup.metadataOptions(options) };
     for (const level of levels) {
-      if (level.popup && !level.popup.hidden) level.view.updateDictionaryPresentation(context);
+      if (!level.popup || level.popup.hidden) continue;
+      level.view.updateDictionaryPresentation(context);
+      level.definitionReveal.sync();
     }
   }
 
   function flushDictionaryPresentation() {
     for (const level of levels) {
-      if (level.popup && !level.popup.hidden) level.view.flushDictionaryPresentation();
+      if (!level.popup || level.popup.hidden) continue;
+      level.view.flushDictionaryPresentation();
+      level.definitionReveal.sync();
     }
   }
 
@@ -4182,6 +4197,8 @@
         } else armDefinitionBlurTimer(request, level);
       }
     }
+    // The reveal mode decides whether blurred definitions are buttons.
+    if (optionsArrived || blurChanged) for (const level of levels) level.definitionReveal?.sync();
     audio?.update(options);
     mining?.update(options);
     wordStatusActions?.update(options);

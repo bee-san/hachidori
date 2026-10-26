@@ -2874,6 +2874,11 @@ html[data-hoshidicts-theme="girlypop"],
   user-select: none;
 }
 
+/* Blurred definitions that a click reveals (#598). */
+.gsm-hoshidicts-popup [data-definition-reveal] {
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gsm-hoshidicts-glossary-content,
   .gsm-hoshidicts-compact-definition-summary {
