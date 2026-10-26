@@ -721,6 +721,7 @@ async function restoreLeg(leg, { file, source, tabs }) {
   const label = leg === LEGS.released ? "restored" : "rerestored";
   const { browser, settings } = await openBrowser(EXTENSION, profile(label), label);
   anki.keys.clear();
+  anki.media.clear();
   anki.unexpected.length = 0;
   try {
     const before = await readBackup(settings);
@@ -883,11 +884,13 @@ async function popupChecks(name, browser, settings, source, restored, tabs) {
     const fields = minedNote?.fields ?? {};
     check(name(RESTORED.anki), mining && minedNote !== null && minedNote.deckName === ANKI_DECK && minedNote.modelName === "Basic"
       && fields.Front === "漢字" && fields.Reading === "かんじ" && fields.Back?.includes("Chinese character")
+      && [...anki.media].some(filename => fields.Back.includes(filename))
       && isDeepStrictEqual(minedNote.tags, ["hachidori", "round-trip"])
       && minedNote.options?.duplicateScope === "deck" && minedNote.options.allowDuplicate === true
       && minedNote.options.duplicateScopeOptions?.deckName === ANKI_DECK
       && isDeepStrictEqual([...anki.keys], [ANKI_API_KEY]) && anki.unexpected.length === 0,
-    JSON.stringify({ ready: ready?.controls?.[0], minedNote, keys: [...anki.keys], unexpected: anki.unexpected }));
+    JSON.stringify({ ready: ready?.controls?.[0], minedNote, media: [...anki.media], keys: [...anki.keys],
+      unexpected: anki.unexpected }));
 
     const thanks = await lookUp(tab, popup, "#thanks", "ありがとう");
     const threshold = options.definitionBlurThreshold;
