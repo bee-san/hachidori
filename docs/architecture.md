@@ -1429,12 +1429,13 @@ releases it once. A manual play while blurred spends it.
 `HDPopup.createDefinitionReveal` owns the reveal gestures for the reader and
 the Design preview. **On click only** (`definitionBlurReveal: "click"`, #598)
 ignores hover and has no deadline. A click on blurred definitions is captured,
-so it only reveals, and the reader does not scan their words. What they show is
-`inert` until then. Each `.gsm-hoshidicts-definitions` element (Default's card,
+so it only reveals, and the reader does not scan their words. Their child
+elements are `inert` until then. Each `.gsm-hoshidicts-definitions` element (Default's card,
 since a list cannot be a button) is a labelled button in the Tab order, and a
 revealed one keeps the focus it has; the compact summary is a click target only.
 Renderers whose blur filters that element itself draw its focus ring on the
-entry or popup, which the filter does not blur.
+entry or popup, which the filter does not blur (see the theme contract in
+[Popup themes](themes/README.md#version-2-view-contract)).
 Navigating away cancels only the live timer; Back and persisted `pageshow`
 re-arm its remaining time. Revealed requests never reblur. Anki option changes
 invalidate pending and completed maturity evidence through an options epoch,

@@ -111,6 +111,22 @@ custom-button layout. Core still binds mining to the returned actions container.
 - `updateDictionaryPresentation` edits dictionary labels without rebuilding
   definitions. Blur updates edit state only. A new lookup replaces content;
   Back carries scroll state. Default retains its existing incremental renderer.
+- With Definition blur's **On click only** reveal (#598), core's
+  `HDPopup.createDefinitionReveal` marks a blurred lookup's definitions after
+  each render and blur change, and removes the marks at the reveal. Each
+  `.gsm-hoshidicts-definitions` element (Default: its `.gsm-hoshidicts-glossary-card`,
+  because a list cannot be a button) gets `data-definition-reveal`,
+  `role="button"`, `tabindex="0"` and the label "Reveal definitions", and its
+  element children become `inert`. Put definition content in child elements so
+  links and images are disabled until the reveal; text directly in that element,
+  as in Plain, stays readable only as the button's presentational content. A
+  blur `filter` on that element would blur its focus ring, so draw the ring on
+  an unfiltered ancestor, as the bundled themes do with
+  `:has(> [data-definition-reveal]:focus-visible)`, and give
+  `[data-definition-reveal]` `cursor: pointer`. The bundled JL, Bee, Nazeka and
+  Plain `theme.css` carry these rules locally; the hachidori-themes revision in
+  `extension/vendor/themes/source.json` predates them, so an update from it must
+  keep them.
 - Switching retires action bindings, destroys the previous view and replaces its
   content/styles, then replays the latest model and view settings. Switching closes
   the Note editor; finish or cancel a draft before changing renderers. Obsolete request
