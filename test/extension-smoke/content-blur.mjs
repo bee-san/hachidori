@@ -644,6 +644,63 @@ async function definitionBlurCase() {
   return outcomes;
 }
 
+// On click only (#598): neither hover nor time reveals. A click, or Enter or
+// Space on the definitions, which are a labelled button only while blurred, does.
+async function clickRevealCase() {
+  const outcomes = {};
+  const options = { showLookupCounts: true, definitionBlurCountEnabled: true, definitionBlurDirection: "atLeast",
+    definitionBlurThreshold: 1, definitionBlurReveal: "click", definitionBlurDelayMs: 1000, audioAutoplay: true };
+  const harness = await createHarness(null, { holdLookupStats: true, options });
+  const window = harness.popup.ownerDocument.defaultView;
+  const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+  const definitions = () => harness.popup.querySelector(".gsm-hoshidicts-definitions");
+  const isButton = element => element.getAttribute("role") === "button" && element.tabIndex === 0
+    && element.getAttribute("aria-label") === "Reveal definitions";
+  const isPlain = element => !element.hasAttribute("role") && !element.hasAttribute("aria-label");
+  const blurredLookup = async (expression, count) => {
+    const operation = harness.driver.runLookup(harness.candidate);
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+    await operation;
+    const recorded = harness.take("hd_lookup_stats_record");
+    harness.reply(recorded, { descriptor: { generation: "statistics", revision: count },
+      statistics: { term: recorded.request.term, reading: recorded.request.reading, lookupCount: count } });
+    await harness.settle();
+    return harness.blurState() === "blurred" && isButton(definitions());
+  };
+  try {
+    const blurred = await blurredLookup("一回", 1);
+    harness.hoverDefinitions();
+    await new Promise(done => setTimeout(done, 1300));
+    const kept = harness.blurState() === "blurred" && plays() === 0;
+    const click = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    definitions().dispatchEvent(click);
+    outcomes["click reveal ignores hover and the delay, and a click reveals once and plays the held result"] =
+      blurred && kept && click.defaultPrevented && harness.blurState() === "revealed" && plays() === 1
+      && isPlain(definitions()) && !definitions().hasAttribute("tabindex");
+
+    const keyboard = [];
+    for (const [index, key] of ["Enter", " "].entries()) {
+      const ready = await blurredLookup(`鍵${index}`, 2 + index);
+      const control = definitions();
+      control.focus();
+      const press = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      control.dispatchEvent(press);
+      keyboard.push(ready && press.defaultPrevented && harness.blurState() === "revealed" && isPlain(control)
+        && control.getRootNode().activeElement === control && control.tabIndex === -1);
+    }
+    outcomes["Enter and Space on the focused blurred definitions reveal them and keep focus"] =
+      keyboard.every(Boolean) && plays() === 3;
+
+    const switched = await blurredLookup("切替", 4);
+    harness.emitOptions({ ...options, definitionBlurReveal: "hover" });
+    const plain = harness.blurState() === "blurred" && isPlain(definitions());
+    harness.hoverDefinitions();
+    outcomes["switching to hover reveal removes the button and hover reveals again"] =
+      switched && plain && harness.blurState() === "revealed";
+  } finally { harness.close(); }
+  return outcomes;
+}
+
 describe("content script: lookup counts and blur", () => {
   test("lookup statistics", async () => {
     const noteContent = await contentNoteStage({
@@ -657,7 +714,7 @@ describe("content script: lookup counts and blur", () => {
   test("definition blur", async () => {
     const noteContent = await contentNoteStage({
       definitionBlur: async () => ({ ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
-        ...await frequencyDefinitionBlurCase() }),
+        ...await frequencyDefinitionBlurCase(), ...await clickRevealCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.definitionBlur ?? {})) {
       check(name, passed === true, JSON.stringify(passed));

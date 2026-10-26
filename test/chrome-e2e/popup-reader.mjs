@@ -970,14 +970,12 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
-  async function ankiAccessibility(index = 0) {
+  // The accessibility node of the popup element `select` returns.
+  async function accessibility(select, argument) {
     const popup = await resolvePopupObject();
     if (!popup) return null;
     const { result, exceptionDetails } = await cdp.send("Runtime.callFunctionOn", {
-      objectId: popup.objectId, arguments: [{ value: index }],
-      functionDeclaration: function (buttonIndex) {
-        return this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex] ?? null;
-      }.toString(),
+      objectId: popup.objectId, arguments: [{ value: argument }], functionDeclaration: select.toString(),
     });
     if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text);
     if (!result.objectId) return null;
@@ -1003,6 +1001,16 @@ async function popupReader(page, depth = 0) {
       await cdp.send("Runtime.releaseObject", { objectId: result.objectId });
     }
   }
+  const ankiAccessibility = (index = 0) => accessibility(function (buttonIndex) {
+    return this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex] ?? null;
+  }, index);
+  // The first button that reveals definitions blurred until clicked (#598),
+  // given keyboard focus first when `focus` is set.
+  const definitionReveal = (focus = false) => accessibility(function (focus) {
+    const control = this.querySelector('[data-definition-reveal][role="button"]');
+    if (focus) control?.focus();
+    return control;
+  }, focus);
   async function lookupStatistics(action = "read") {
     const object = await resolvePopupObject();
     if (!object) return null;
@@ -1049,6 +1057,7 @@ async function popupReader(page, depth = 0) {
           definitionsPoint: rect && { x: rect.x + rect.width / 2, y: rect.y + Math.min(rect.height / 2, 12) },
           audioAttempted: Boolean(this.querySelector('.gsm-hoshidicts-audio-button[aria-busy]')),
           countText: this.querySelector(".gsm-hoshidicts-lookup-stats")?.textContent ?? "",
+          focusInside: this.contains(this.getRootNode().activeElement),
         };
       }.toString(),
     });
@@ -1070,7 +1079,7 @@ async function popupReader(page, depth = 0) {
   }
 
   return {
-    anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
+    anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionReveal, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
     lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, wordStatus, writeNote,
   };

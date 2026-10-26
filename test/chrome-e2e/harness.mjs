@@ -213,6 +213,7 @@ const PLANNED = [
   "definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed",
   "frequency blur uses native fixture values without recording counts or waiting for another signal",
   "blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled",
+  "definitions blurred until clicked ignore hover and the delay and reveal on Enter through a labelled button and on a click",
   "the Anki maturity blur condition persists independently of lookup counts",
   "a cold Anki duplicate index leaves the popup responsive while its first refresh is held",
   "cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests",
