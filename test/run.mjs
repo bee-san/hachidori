@@ -84,10 +84,13 @@ try {
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }
+  } else if (suite === "chrome-backup-release") {
+    // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
+    await run(suite, [`test/${suite}.mjs`]);
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast or install-chrome.",
+        + " chrome-overlay, chrome-theme-contrast, chrome-backup-release or install-chrome.",
     );
   }
 } catch (error) {

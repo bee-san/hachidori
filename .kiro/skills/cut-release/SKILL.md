@@ -100,6 +100,7 @@ Check every user-facing claim against the shipped code before committing:
 node scripts/check-release.mjs --tag <version>
 #   → "Hachidori <version>: Chrome <min> minimum, <cur> current; tag <version>"
 node --test test/release-compatibility.test.mjs
+node test/run.mjs chrome-backup-release   # the pinned previous release's backup restores here; re-pin after release
 git add extension/manifest.json docs/releases/<version>.md
 git commit -m "release: prepare Hachidori <version>"
 python3 scripts/package-store.py --output-dir /tmp/hachidori-release-<version>
