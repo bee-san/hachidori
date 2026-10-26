@@ -1424,8 +1424,18 @@ frequency leaves enabled count or Anki evidence pending; otherwise the request
 fails open immediately. The first count snapshot controls that visit's blur;
 later statistics rows cannot reverse it. The first audio result stays held
 while definitions are pending or blurred, and the reveal, whether from the
-decision, hover, the deadline or disabling blur, releases it once. A manual
-play while blurred spends it.
+decision, hover, a click, Enter or Space, the deadline or disabling blur,
+releases it once. A manual play while blurred spends it.
+`HDPopup.createDefinitionReveal` owns the reveal gestures for the reader and
+the Design preview. **On click only** (`definitionBlurReveal: "click"`, #598)
+ignores hover and has no deadline. A click on blurred definitions is captured,
+so it only reveals, and the reader does not scan their words. Their child
+elements are `inert` until then. Each `.gsm-hoshidicts-definitions` element (Default's card,
+since a list cannot be a button) is a labelled button in the Tab order, and a
+revealed one keeps the focus it has; the compact summary is a click target only.
+Renderers whose blur filters that element itself draw its focus ring on the
+entry or popup, which the filter does not blur (see the theme contract in
+[Popup themes](themes/README.md#version-2-view-contract)).
 Navigating away cancels only the live timer; Back and persisted `pageshow`
 re-arm its remaining time. Revealed requests never reblur. Anki option changes
 invalidate pending and completed maturity evidence through an options epoch,
@@ -1441,7 +1451,7 @@ or explicit order and its threshold while retaining an unavailable saved
 selection. A paused notice links to the count recording toggle when recording
 is disabled. Any active condition shows the common reveal controls. The Design
 preview passes fixed count, maturity and native frequency samples through the
-same helpers, hover and timer without making lookups or Anki requests.
+same helpers, reveal gestures and timer without making lookups or Anki requests.
 
 ## Word highlighting
 

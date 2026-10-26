@@ -307,6 +307,29 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
         && longBlurred?.state === "blurred" && disabled?.state === "revealed"
         && retained?.samePopup === true && retained.samePanel === true && retained.popupHidden === false,
       JSON.stringify({ hovered, timedBlurred, timedRevealed, elapsedMs, longBlurred, disabled, retained }));
+
+    // On click only (#598): neither hovering nor the 1 s delay reveals. The
+    // keyboard's Enter on the labelled button does, and so does a click.
+    await updateSettingsControls(settings, { "opt-blur-count": true, "opt-blur-delay": "1", "opt-blur-reveal": "click" });
+    await freshLookup();
+    const clickBlurred = await decided();
+    await tab.mouse.move(clickBlurred.definitionsPoint.x, clickBlurred.definitionsPoint.y);
+    const hoveredAndWaited = await waitForDefinitionBlur(popup, value => value?.state !== "blurred", 1_500);
+    const control = await popup.definitionReveal(true);
+    await tab.keyboard.press("Enter");
+    const keyRevealed = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
+    const controlAfterKey = await popup.definitionReveal();
+    await freshLookup();
+    const clickAgain = await decided();
+    await tab.mouse.click(clickAgain.definitionsPoint.x, clickAgain.definitionsPoint.y);
+    const clicked = await waitForDefinitionBlur(popup, value => value?.state === "revealed", 5_000);
+    check("definitions blurred until clicked ignore hover and the delay and reveal on Enter through a labelled button and on a click",
+      clickBlurred?.state === "blurred" && hoveredAndWaited?.state === "blurred"
+        && control?.role === "button" && control.name === "Reveal definitions" && control.focusable === true
+        && keyRevealed?.state === "revealed" && keyRevealed.focusInside && controlAfterKey === null
+        // A click only reveals: focus in the popup would pause page lookups.
+        && clickAgain?.state === "blurred" && clicked?.state === "revealed" && clicked.focusInside === false,
+      JSON.stringify({ clickBlurred, hoveredAndWaited, control, keyRevealed, controlAfterKey, clickAgain, clicked }));
   } finally {
     await popup.lookupStatistics("cleanup").catch(() => {});
     await updateSettingsControls(settings, original).catch(error => {

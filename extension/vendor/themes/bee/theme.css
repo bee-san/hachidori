@@ -102,6 +102,11 @@
 .gsm-hoshidicts-definitions, .jl-kanji-text { margin: 6px 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .jl-scroll[data-definition-blur="pending"] .gsm-hoshidicts-definitions,
 .jl-scroll[data-definition-blur="blurred"] .gsm-hoshidicts-definitions { filter: blur(5px); }
+/* Blurred definitions that a click reveals are a button (#598). The blur would
+   blur its focus ring too, so the entry shows it. */
+.jl-entry:has(> [data-definition-reveal]:focus-visible) { outline: 2px solid #5f3ba4; outline-offset: -2px; }
+.jl-entry > [data-definition-reveal]:focus-visible { outline: none; }
+.gsm-hoshidicts-popup [data-definition-reveal] { cursor: pointer; }
 .gsm-hoshidicts-anki-feedback { margin: 0 2px; font-size: 12px; }
 .gsm-hoshidicts-lookup-notice, .gsm-hoshidicts-lookup-failure { margin: 4px; }
 .gsm-hoshidicts-lookup-failure button { margin-left: 6px; padding: 1px 6px; background: #f2d6ec; border: 1px solid #95618c; border-radius: 3px; }
@@ -199,7 +204,8 @@
     forced-color-adjust: none;
     background: Highlight; color: HighlightText; border-color: Highlight;
   }
-  .gsm-hoshidicts-popup :is(button, input, textarea, a, summary):focus-visible { outline-color: Highlight; }
+  .gsm-hoshidicts-popup :is(button, input, textarea, a, summary):focus-visible,
+  .jl-entry:has(> [data-definition-reveal]:focus-visible) { outline-color: Highlight; }
   .jl-mora { border-color: CanvasText; }
 }
 

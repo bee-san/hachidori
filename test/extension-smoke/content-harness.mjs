@@ -119,6 +119,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
         lookupStats.hidden = true;
         const definitions = window.document.createElement("ol");
         definitions.className = "gsm-hoshidicts-definitions";
+        definitions.append(window.document.createElement("li"));
         const audioButton = window.document.createElement("button");
         audioButton.className = "gsm-hoshidicts-audio-button";
         callbacks.popup.append(lookupStats, definitions, audioButton);

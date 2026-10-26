@@ -705,7 +705,13 @@ async function settingsFrequencyStage() {
       await editControl(blurControl("opt-blur-reveal"), "hover");
       metadataDetails.push(blurControl("opt-blur-delay").disabled
         && blurControl("definition-blur-delay-control").hidden
+        && blurControl("definition-blur-reveal-help").textContent.startsWith("Hovering a definition")
         && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "hover" }));
+      await editControl(blurControl("opt-blur-reveal"), "click");
+      metadataDetails.push(blurControl("opt-blur-delay").disabled
+        && blurControl("definition-blur-delay-control").hidden
+        && blurControl("definition-blur-reveal-help").textContent.startsWith("Only clicking a definition")
+        && JSON.stringify(writes.at(-1).options) === JSON.stringify({ definitionBlurReveal: "click" }));
       // The toggles above leave the contour off and colours on: the dictionary
       // still picks the headword's colour, so it stays editable until both are off.
       metadataDetails.push(!pitch.disabled);

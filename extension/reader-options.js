@@ -233,7 +233,8 @@
   };
   // GSM PR #549 blurs at or above the threshold; Below is the issue #9 adaptation.
   const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];
-  const DEFINITION_BLUR_REVEALS = ["timed", "hover"];
+  // After a delay (hover reveals too), on hover only, or on click only (#598).
+  const DEFINITION_BLUR_REVEALS = ["timed", "hover", "click"];
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
   // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.

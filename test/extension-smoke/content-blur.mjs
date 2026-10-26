@@ -644,6 +644,88 @@ async function definitionBlurCase() {
   return outcomes;
 }
 
+// On click only (#598): neither hover nor time reveals. A click, or Enter or
+// Space on the definitions, which are a labelled button only while blurred, does.
+async function clickRevealCase() {
+  const outcomes = {};
+  const options = { showLookupCounts: true, definitionBlurCountEnabled: true, definitionBlurDirection: "atLeast",
+    definitionBlurThreshold: 1, definitionBlurReveal: "click", definitionBlurDelayMs: 1000, audioAutoplay: true };
+  const harness = await createHarness(null, { holdLookupStats: true, options });
+  const window = harness.popup.ownerDocument.defaultView;
+  const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+  const definitions = () => harness.popup.querySelector(".gsm-hoshidicts-definitions");
+  const isButton = element => element.getAttribute("role") === "button" && element.tabIndex === 0
+    && element.getAttribute("aria-label") === "Reveal definitions";
+  const isPlain = element => !element.hasAttribute("role") && !element.hasAttribute("aria-label");
+  const blurredLookup = async (expression, count) => {
+    const operation = harness.driver.runLookup(harness.candidate);
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: [harness.term(expression)] });
+    await operation;
+    const recorded = harness.take("hd_lookup_stats_record");
+    harness.reply(recorded, { descriptor: { generation: "statistics", revision: count },
+      statistics: { term: recorded.request.term, reading: recorded.request.reading, lookupCount: count } });
+    await harness.settle();
+    return harness.blurState() === "blurred" && isButton(definitions());
+  };
+  try {
+    const blurred = await blurredLookup("一回", 1);
+    // Hit testing is where a definition scan starts; count it.
+    let caretCalls = 0;
+    window.document.caretPositionFromPoint = () => { caretCalls += 1; return null; };
+    const unscanned = harness.driver.resolveDefinitionCandidate(1, 1) === null && caretCalls === 0;
+    harness.hoverDefinitions();
+    await new Promise(done => setTimeout(done, 1300));
+    const kept = harness.blurState() === "blurred" && plays() === 0;
+    const click = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    definitions().dispatchEvent(click);
+    outcomes["click reveal ignores hover and the delay, and a click reveals once and plays the held result"] =
+      blurred && kept && click.defaultPrevented && harness.blurState() === "revealed" && plays() === 1
+      && isPlain(definitions()) && !definitions().hasAttribute("tabindex");
+    harness.driver.resolveDefinitionCandidate(1, 1);
+    outcomes["words in definitions blurred until clicked are not scanned until the reveal"] =
+      unscanned && caretCalls === 1;
+
+    const keyboard = [];
+    for (const [index, key] of ["Enter", " "].entries()) {
+      const ready = await blurredLookup(`鍵${index}`, 2 + index);
+      const control = definitions();
+      control.focus();
+      const press = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      control.dispatchEvent(press);
+      keyboard.push(ready && press.defaultPrevented && harness.blurState() === "revealed" && isPlain(control)
+        && control.getRootNode().activeElement === control && control.getAttribute("tabindex") === "-1");
+    }
+    outcomes["Enter and Space on the focused blurred definitions reveal them and keep focus"] =
+      keyboard.every(Boolean) && plays() === 3;
+
+    const switched = await blurredLookup("切替", 4);
+    harness.emitOptions({ ...options, definitionBlurReveal: "hover" });
+    const plain = harness.blurState() === "blurred" && isPlain(definitions());
+    harness.hoverDefinitions();
+    outcomes["switching to hover reveal removes the button and hover reveals again"] =
+      switched && plain && harness.blurState() === "revealed";
+  } finally { harness.close(); }
+
+  // A frequency match is blurred before the view renders, so only the render's
+  // own sync can make the new definitions the button.
+  const frequency = await createHarness(null, { options: { showLookupCounts: false, definitionBlurFrequencyEnabled: true,
+    definitionBlurFrequencyDictionary: "Rank", definitionBlurFrequencyOrder: "auto", definitionBlurFrequencyThreshold: 120,
+    definitionBlurReveal: "click" } });
+  try {
+    frequency.emitState({ schemaVersion: 1, revision: 2, dictionaries: [genericPackage({ favorite: true }),
+      genericPackage({ id: "rank", title: "Rank", termCount: 0, frequencyCount: 1, frequencyMode: "rank-based" })] });
+    const operation = frequency.driver.runLookup(frequency.candidate);
+    frequency.reply(frequency.take("hd_lookup"), { dictionaryCount: 2, results: [frequency.term("順位", "Generic",
+      [{ dictionary: "Rank", frequencies: [{ value: 120, displayValue: "120" }] }])] });
+    await operation;
+    const control = frequency.popup.querySelector(".gsm-hoshidicts-definitions");
+    outcomes["definitions blurred before they render are the labelled button and their content is inert"] =
+      frequency.blurState() === "blurred" && isButton(control) && control.children.length > 0
+      && [...control.children].every(child => child.hasAttribute("inert"));
+  } finally { frequency.close(); }
+  return outcomes;
+}
+
 describe("content script: lookup counts and blur", () => {
   test("lookup statistics", async () => {
     const noteContent = await contentNoteStage({
@@ -657,7 +739,7 @@ describe("content script: lookup counts and blur", () => {
   test("definition blur", async () => {
     const noteContent = await contentNoteStage({
       definitionBlur: async () => ({ ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
-        ...await frequencyDefinitionBlurCase() }),
+        ...await frequencyDefinitionBlurCase(), ...await clickRevealCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.definitionBlur ?? {})) {
       check(name, passed === true, JSON.stringify(passed));

@@ -113,8 +113,15 @@ without contacting Anki, recording history or running another lookup.
 A frequency-only match renders blurred immediately. When frequency does not
 qualify while count or Anki evidence is still pending, definitions stay
 pending; when no checked condition qualifies, including unavailable checks,
-they reveal. Hovering a definition or the compact summary
-reveals in either mode. With the timed reveal, one deadline runs from the
+they reveal. **Reveal** chooses how blurred definitions are shown:
+**After a delay** (default) or **On hover only**, where hovering a definition or
+the compact summary also reveals, or **On click only** (#598), where hovering
+and time never do. With **On click only**, click a definition or the compact
+summary. Until then nothing inside them can be hovered, focused or opened, so a
+click there only reveals: it opens no link, image or nested lookup, and words in
+blurred definitions are not looked up. Each dictionary's blurred definitions are
+a **Reveal definitions** button in the Tab order; Enter or Space reveals them
+and keeps the focus. With the timed reveal, one deadline runs from the
 first display: navigating to a kanji entry or another word cancels the live
 timer, and Back continues with the remaining time rather than restarting, as
 does a page restored from the back/forward cache. The decision belongs to that
@@ -128,9 +135,9 @@ Automatic pronunciation waits until the definitions are revealed, so the audio
 does not give the reading away while they are blurred. The request-owned
 frequency groups, first count snapshot and Anki result decide the blur for the
 whole visit. A result that does not qualify reveals and plays at once; a
-blurred result plays once when hover, the deadline or disabling blur reveals
-it. Pressing the Audio button while blurred plays it then instead, and nothing
-replays at the reveal.
+blurred result plays once when hover, a click, Enter or Space, the deadline or
+disabling blur reveals it. Pressing the Audio button while blurred plays it then
+instead, and nothing replays at the reveal.
 
 Turning all three conditions off reveals open popups without touching a Note draft.
 Disabling lookup counts removes only the count rule. Changes to Anki settings

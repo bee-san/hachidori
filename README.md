@@ -66,7 +66,7 @@ Use the personal dictionary** and highlighting text no longer opens a popup.
 
 Sometimes we fall into a trap of looking up a word over & over again, but never learning it.
 
-Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it.
+Hachidori records how many times you have looked up a word and can blur it for you for a few seconds to force you to remember it. If you'd rather decide when to look, set it to reveal only when you click.
 
 It can even use anki.
 
