@@ -449,6 +449,26 @@ disables a command-line extension when it reloads).
 
 These run separately:
 
+- **`chrome-backup-release.mjs`** (`node test/run.mjs chrome-backup-release`)
+  restores a backup the previous release exported. It downloads that release's
+  Chrome ZIP into `test/tmp/releases/<version>/`, checks it against the
+  release's `SHA256SUMS` line and the SHA-256 pinned in the file, and unpacks it
+  with the vendored zip.js. In a fresh profile the released build imports five
+  dictionaries (the combined fixture, a rank-based frequency-only list with an
+  update source, a sorting dictionary, the generic kanji and the trained
+  fixtures), aliases, disables, favourites, reorders and groups them, saves a
+  personal source, checks for updates, sets the default and a per-dictionary
+  schedule, changes Reading, Design, Audio, Anki, keybind, backup and
+  experimental settings, counts lookups, marks a word known and one ignored, and
+  exports through a real Chrome download. This checkout restores that file
+  through Settings in a fresh profile: every item must come back equal, or
+  differ only by a documented rule the check asserts (switches restore by name,
+  a promoted switch becomes its setting, a newer setting keeps its default), and
+  work in real popups, mining through a fake AnkiConnect. It then saves the
+  newest blur Reveal choice its Settings offer, exports, and restores that
+  backup in another fresh profile, checking the same items. It downloads a
+  GitHub release, so it is not in the pull-request CI matrix: run it before a
+  release PR, and move its pinned release to each new one.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at
@@ -628,6 +648,7 @@ compiler. Nothing else needs a native compiler.
 | `HACHIDORI_ANKI_URL`, `HACHIDORI_CUSTOM_BUTTONS_*` | the real-Anki custom-buttons harness |
 | `HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK`, `HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK`, `HACHIDORI_SHARING_BENCHMARK` | write benchmark evidence to that path |
 | `HACHIDORI_BACKUP_BASELINE=HEAD` | `electron-backup.cjs` against the original Settings files |
+| `HACHIDORI_BACKUP_RELEASE`, `HACHIDORI_BACKUP_RELEASE_ZIP` | `chrome-backup-release.mjs`: another release as `"<version> <12-digit commit> <SHA-256 of its Chrome ZIP>"`, and a local copy of that ZIP, with the release's `SHA256SUMS` file beside it, for an offline run |
 | `HACHIDORI_*_SCREENSHOT`, `HACHIDORI_*_SCREENSHOTS`, `HACHIDORI_*_EVIDENCE`, `HACHIDORI_*_FILMSTRIP`, `HACHIDORI_THEME_OUTPUT` | an output path (or directory): the test that renders that state saves its PNG or JSON there. `grep -rn 'process.env.HACHIDORI_' test/` lists them; the launcher sets `HACHIDORI_DEINFLECTION_SCREENSHOT`, `HACHIDORI_SETTINGS_THEME_FILMSTRIP` and `HACHIDORI_SHARING_SCREENSHOTS` under `test/tmp/ci`. |
 
 ## Notes
