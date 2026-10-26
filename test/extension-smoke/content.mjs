@@ -81,6 +81,8 @@ async function staleKanjiResponseStage(invalidation) {
       styleGeneration = 0;
       rootLevel.popup = nextPopup;
       rootLevel.view = nextView;
+      // buildLevelUi installs the reveal controller with the popup.
+      rootLevel.definitionReveal = { sync() {} };
       highlighter = nextHighlighter;
       rootLevel.highlighter = nextHighlighter;
     },
