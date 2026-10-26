@@ -693,7 +693,7 @@ async function clickRevealCase() {
       const press = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
       control.dispatchEvent(press);
       keyboard.push(ready && press.defaultPrevented && harness.blurState() === "revealed" && isPlain(control)
-        && control.getRootNode().activeElement === control && control.tabIndex === -1);
+        && control.getRootNode().activeElement === control && control.getAttribute("tabindex") === "-1");
     }
     outcomes["Enter and Space on the focused blurred definitions reveal them and keep focus"] =
       keyboard.every(Boolean) && plays() === 3;
@@ -705,6 +705,24 @@ async function clickRevealCase() {
     outcomes["switching to hover reveal removes the button and hover reveals again"] =
       switched && plain && harness.blurState() === "revealed";
   } finally { harness.close(); }
+
+  // A frequency match is blurred before the view renders, so only the render's
+  // own sync can make the new definitions the button.
+  const frequency = await createHarness(null, { options: { showLookupCounts: false, definitionBlurFrequencyEnabled: true,
+    definitionBlurFrequencyDictionary: "Rank", definitionBlurFrequencyOrder: "auto", definitionBlurFrequencyThreshold: 120,
+    definitionBlurReveal: "click" } });
+  try {
+    frequency.emitState({ schemaVersion: 1, revision: 2, dictionaries: [genericPackage({ favorite: true }),
+      genericPackage({ id: "rank", title: "Rank", termCount: 0, frequencyCount: 1, frequencyMode: "rank-based" })] });
+    const operation = frequency.driver.runLookup(frequency.candidate);
+    frequency.reply(frequency.take("hd_lookup"), { dictionaryCount: 2, results: [frequency.term("順位", "Generic",
+      [{ dictionary: "Rank", frequencies: [{ value: 120, displayValue: "120" }] }])] });
+    await operation;
+    const control = frequency.popup.querySelector(".gsm-hoshidicts-definitions");
+    outcomes["definitions blurred before they render are the labelled button and their content is inert"] =
+      frequency.blurState() === "blurred" && isButton(control) && control.children.length > 0
+      && [...control.children].every(child => child.hasAttribute("inert"));
+  } finally { frequency.close(); }
   return outcomes;
 }
 

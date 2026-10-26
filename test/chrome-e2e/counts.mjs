@@ -327,7 +327,8 @@ async function checkDefinitionBlur({ settings, tab, popup }) {
       clickBlurred?.state === "blurred" && hoveredAndWaited?.state === "blurred"
         && control?.role === "button" && control.name === "Reveal definitions" && control.focusable === true
         && keyRevealed?.state === "revealed" && keyRevealed.focusInside && controlAfterKey === null
-        && clickAgain?.state === "blurred" && clicked?.state === "revealed",
+        // A click only reveals: focus in the popup would pause page lookups.
+        && clickAgain?.state === "blurred" && clicked?.state === "revealed" && clicked.focusInside === false,
       JSON.stringify({ clickBlurred, hoveredAndWaited, control, keyRevealed, controlAfterKey, clickAgain, clicked }));
   } finally {
     await popup.lookupStatistics("cleanup").catch(() => {});
