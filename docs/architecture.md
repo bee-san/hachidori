@@ -1672,12 +1672,28 @@ generation and gives every `hd_lookup` and `hd_lookup_dictionary` glossary a
 its part before `:`, one the bank lacks is category `default`, a repeated name
 is listed once, and the list is sorted by `order`, then name. `definitionTags`
 stays as the engine wrote it. The renderer draws `glossary.tags` with
-`data-category` and the notes as `title`, `reader.css` colours `expression`,
-`partOfSpeech`, `popular`, `frequent` and `archaism` with palette roles, and
-the Anki `{glossary}` label and `{tags}` and the API's `definitions[].tags` read
-the same array. A reply without `tags`, from an older sharing host, is drawn
-from `definitionTags` as category `default`. A dictionary imported before the
-tags were stored has none until it is imported again, and looks as before.
+`data-category` and the notes as `title`, and the Anki `{glossary}` label and
+`{tags}` and the API's `definitions[].tags` read the same array. A reply without
+`tags`, from an older sharing host, is drawn from `definitionTags` as category
+`default`. A dictionary imported before the tags were stored has none until it is
+imported again, and looks as before.
+
+Definition tags look as Yomitan draws them (#604): each is Yomitan's `.tag`, a
+bold label 11/14 the size of the text beside it, filled with Yomitan's colour for
+its category (`display.css` at yomidevs/yomitan@d3c54c1). As in Yomitan's
+`createTermEntry`, a definition's tags end with its dictionary's tag, category
+`dictionary`, labelled with the dictionary's display name and titled with its
+canonical title. A card holds one dictionary, so only its first definition has
+that tag, as with Yomitan's **Compact tags**, and the card has no title line.
+`reader.css` takes Yomitan's light colours in a light palette and its dark ones in
+a dark palette through `light-dark()`, whatever the palette's own colours; the
+grammar row and kanji tags keep their palette's pairs. Yomitan's white or
+`#f1f1f1` label is below 4.5:1 on some of its colours (1.95:1 on its light
+`expression` orange), so each of those is darkened, keeping its hue, only as far
+as 4.5:1 needs. The High contrast palette darkens Yomitan's dark colours as far
+as a white label needs for 7:1, as its text has. Custom CSS can set the
+`--tag-*-background-color` variables, for example to Yomitan's own values.
+Forced colours draw each tag's outline.
 
 Headword furigana follow Yomitan's `distributeFurigana`: the kana in a
 headword anchor its reading and each run of other characters takes the share
