@@ -2650,7 +2650,8 @@
     function focusEntryWithDifferentDictionary(nodes, index, sign) {
       const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
         ? [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")] : [];
-      const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title")?.title ?? "";
+      const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-definitions > .definition-item")
+        ?.dataset.dictionary ?? "";
       const search = entries => {
         const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf);
         return found ? scrollToEntry(entries, found.index, found.target) : false;
@@ -3713,11 +3714,6 @@
           // inside its own content collapse.
           const card = documentRef.createElement("div");
           card.className = "gsm-hoshidicts-glossary-card";
-          const title = documentRef.createElement("div");
-          title.className = "gsm-hoshidicts-glossary-card-title";
-          title.textContent = dictionaryDisplayNames?.get(dictionary) || dictionary;
-          title.title = dictionary;
-          card.appendChild(title);
           const definitions = documentRef.createElement("ol");
           definitions.className = "gsm-hoshidicts-definitions definition-list";
           definitions.dataset.count = String(glossaries.length);
@@ -3737,13 +3733,22 @@
             const definitionTags = Array.isArray(glossary.tags)
               ? glossary.tags
               : parseTagList(glossary.definitionTags).map((name) => ({ name }));
-            if (definitionTags.length > 0) {
+            // Yomitan's createTermEntry ends each definition's tags with its
+            // dictionary's tag. A card holds one dictionary, so only its first
+            // definition has one, as with Yomitan's Compact tags.
+            if (definitionTags.length > 0 || definitionIndex === 0) {
               const definitionTagRow = documentRef.createElement("div");
               definitionTagRow.className = "gsm-hoshidicts-definition-tags definition-tag-list";
               for (const tag of definitionTags) {
                 definitionTagRow.appendChild(
                   createTag(documentRef, tag.name, tag.notes, "definition", tag.category)
                 );
+              }
+              if (definitionIndex === 0) {
+                const dictionaryTag = createTag(documentRef, dictionaryDisplayNames?.get(dictionary) || dictionary,
+                  dictionary, "definition", "dictionary");
+                dictionaryTag.classList.add("gsm-hoshidicts-dictionary-tag");
+                definitionTagRow.appendChild(dictionaryTag);
               }
               definition.appendChild(definitionTagRow);
             }
@@ -3980,8 +3985,8 @@
           const entries = panel.querySelectorAll(":scope > .gsm-hoshidicts-entry");
           entries.forEach((entry) => {
             if (labelsChanged) {
-              for (const title of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card > .gsm-hoshidicts-glossary-card-title")) {
-                changed = updateLabel(title, names.get(title.title) || title.title) || changed;
+              for (const tag of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card .gsm-hoshidicts-dictionary-tag")) {
+                changed = updateLabel(tag, names.get(tag.title) || tag.title) || changed;
               }
             }
           });
