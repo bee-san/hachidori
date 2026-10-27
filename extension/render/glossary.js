@@ -322,8 +322,9 @@
   // kifuku. Unlike Yomitan, a word class counts only where the term's
   // expression ends as that class's dictionary form does, because some
   // dictionaries tag nouns and na-adjectives with one (自由, #608). This only
-  // takes kifuku away. The popup and {pitch-accent-categories} share it.
-  function pitchAccentCategory(reading, pitch, wordClasses = [], expression = "") {
+  // takes kifuku away. A kana term is written as its reading. The popup and
+  // {pitch-accent-categories} share it.
+  function pitchAccentCategory(reading, pitch, wordClasses = [], expression = reading) {
     const classes = new Set(wordClasses);
     const inflected = DICTIONARY_FORM_ENDINGS.some(([rule, ending]) => classes.has(rule) && ending.test(toHiragana(expression)))
       && !(classes.has("vs") && classes.has("n"));
@@ -524,7 +525,7 @@
   // and data-pitch-category its accent group from the term's word classes and
   // expression.
   function createPronunciationPitchAccent(documentRef, reading, pitch,
-    { text = true, position = true, graph = false, wordClasses = [], expression = "" } = {}) {
+    { text = true, position = true, graph = false, wordClasses = [], expression = reading } = {}) {
     const positions = pitchAccentPositions(pitch);
     const morae = splitPitchAccentMorae(reading);
     const node = documentRef.createElement("li");
