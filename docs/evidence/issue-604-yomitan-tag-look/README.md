@@ -101,3 +101,13 @@ Yomitan's own labels (`#ffffff` light, `#f1f1f1` dark) measure 3.43/4.83
 (`popular`), 2.09/3.21 (`frequent`), 3.96/4.99 (`archaism`), 3.83/4.48
 (`dictionary`), 2.48/3.43 (`frequency`) and 7.34/6.50 (`partOfSpeech`).
 `test/definition-tag-colors.test.mjs` asserts the shipped values.
+
+## Accessibility tree
+
+`ax-probe.mjs` renders a two-card lookup on `main` and on this branch and dumps
+Chrome's full accessibility tree, plain and with **On click only** blur active
+(`HDPopup.createDefinitionReveal`), then clicks the first card's title (`main`)
+or dictionary tag (branch). Both trees name each card's dictionary. While
+blurred, both expose two `button "Reveal definitions"`. On `main` the title text
+stays outside the inert list; on the branch the tag is inside it and returns with
+the definitions. The click calls `reveal()` once on both.
