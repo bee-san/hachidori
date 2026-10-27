@@ -103,6 +103,9 @@ test("every entry shows every pitch accent, however many frequency tags come fir
       assert.deepEqual(shown(f.popup), expected, `first 非常, ${what}`);
     }
   }
+  // Without a budget, a dictionary that lists one accent twice still draws it once.
+  f.render(result("非常", "ひじょう", [pitch("Pitch 1", 0, 0, 1)]));
+  assert.deepEqual(shown(f.popup), [["Pitch 1", "[0]", "[1]"]]);
 });
 
 test("a dictionary's accents share one group and a string pattern reads as its downstep", t => {
