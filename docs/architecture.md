@@ -1679,21 +1679,30 @@ Headword furigana follow Yomitan's `distributeFurigana`: the kana in a
 headword anchor its reading and each run of other characters takes the share
 between them. Where the kana leave more than one split, `segmentFurigana`, like
 Yomitan, puts the reading over the whole word: 好き嫌い could be 好(す)き嫌(きら)い
-or 好(すき)き嫌(ら)い. For such a headword the engine service gives the
-`hd_lookup` and `hd_lookup_dictionary` result a `term.furigana` split when
-exactly one split reads by its kanji's KANJIDIC readings (#459). A kanji reads
-as an on'yomi, or as a kun'yomi's stem, stem and okurigana, or masu-stem (す.く:
-す, すく, すき), each also with rendaku and with a final つ, ち, く, き or り as
-っ; 々 reads as the kanji before it, and a digit or letter never reads. Every
-other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json` holds
-the readings; the worker imports it as a JSON module on its first such headword
-and derives each kanji's forms when it is first needed.
+or 好(すき)き嫌(ら)い. The engine service gives an `hd_lookup` or
+`hd_lookup_dictionary` result a `term.furigana` split from its kanji's KANJIDIC
+readings where that split differs (`kanjiFurigana`). For such a headword it is
+the split when exactly one reads (#459). Then each run of two or more kanji is
+read one kanji at a time when exactly one split of its share reads (#605):
+二十四時間 is 二(に)十(じゅう)四(よ)時(じ)間(かん), where Yomitan puts にじゅうよじかん
+over the run. A run that no split reads, such as jukujikun (今日 きょう) or a run
+with a digit (２人 ふたり), keeps one ruby, as does a run that two splits read. A
+kanji reads as an on'yomi, or as a kun'yomi's stem, stem and okurigana,
+masu-stem (す.く: す, すく, すき), or stem with the start of its okurigana where a
+word leaves the rest unwritten (う.える: うえ in 植木 うえき), each also with
+rendaku (a voiced ち or つ also as じ or ず: 世界中 せかいじゅう) and with a final つ,
+ち, く, き or り as っ; 々 reads as the kanji before it, and a digit or letter never
+reads. Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
+holds the readings; the worker imports it as a JSON module on its first reply
+with a result and derives each kanji's forms when it is first needed.
 `scripts/kanji-readings.mjs` regenerates the table from the KANJIDIC archive
 pinned in `source.json` beside it; point that pin at a newer jmdict-yomitan
 release to update it. The popup headword's ruby,
 `{furigana}`/`{furigana-plain}` and the API's scanning parser read the split
 through `termFurigana`, which falls back to the local split when a term carries
 none, as from an older sharing host, or one that does not spell its expression.
+An inflected match's stem and the other words of `{sentence-furigana}` keep the
+local split.
 
 Each node-limit rejection reports its exact attempted value and configured
 limit. Structural paths remain exact for ordinary content and elide the middle

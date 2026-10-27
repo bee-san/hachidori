@@ -201,7 +201,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `experimental-features`, `experimental-settings` | The experimental-features registry and its switches. |
 | `fluent-icons`, `settings-fluent-icons` | The vendored Fluent subset, its provenance and use by controls. |
 | `frequency-presentation` | Yomitan-style frequency values and tags, abbreviations, averages and live controls. |
-| `furigana` | Headword furigana split by KANJIDIC readings. |
+| `furigana` | Headword furigana split by KANJIDIC readings: the one split that reads where the kana leave several (#459), and each run of kanji read one kanji at a time where one split reads (#605). |
 | `google-docs` | The Google Docs flag and its main-world script. |
 | `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. The Issue template workflow also runs it on relevant pull requests and pushes to `main`; that workflow's issue-event job enforces the template on opened, edited and reopened issues. |
 | `kanji-click-settings`, `kanji-group-mining`, `reader-options` | The clicked-kanji chooser and groups, `kanjiEntryResult` against the engine's `LookupResult`, and reader option normalisation. |
