@@ -681,8 +681,8 @@
   // How a run of kanji reads as `reading`: one form per character, in order.
   // 々 repeats the kanji before it; a character without readings (a digit, a
   // letter, 、) never reads. Where each character's share of the reading starts,
-  // then the reading's length, when exactly one split reads; false when more
-  // than one does; null when none does.
+  // then the reading's length, when exactly one split reads; an empty list when
+  // more than one does; null when none does.
   function readKanjiRun(text, reading, kanjiReadings) {
     // Where the characters so far can end in the reading, each with where the
     // last one's share starts there, or -1 where more than one split ends there.
@@ -704,7 +704,7 @@
       ends = next;
     }
     if (!ends.has(reading.length)) return null;
-    if (ends.get(reading.length) < 0) return false;
+    if (ends.get(reading.length) < 0) return [];
     const bounds = [];
     bounds[steps.length] = reading.length;
     for (let index = steps.length - 1; index >= 0; index -= 1) bounds[index] = steps[index].get(bounds[index + 1]);
@@ -823,7 +823,7 @@
       const bounds = characters.length > 1 && segment.reading
         ? readKanjiRun(characters, toHiragana(segment.reading), kanjiReadings)
         : null;
-      return Array.isArray(bounds)
+      return bounds?.length > 0
         ? characters.map((character, index) =>
           createFuriganaSegment(character, segment.reading.slice(bounds[index], bounds[index + 1])))
         : [segment];
