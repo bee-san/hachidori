@@ -339,28 +339,34 @@ function withDefinitionTags(reply) {
   return { ...reply, nativeJsonLength: reply.nativeJsonLength + tagJsonLength };
 }
 
-// A headword whose furigana split falls back to one ruby over the whole word
-// gets `term.furigana`, the split its kanji's KANJIDIC readings allow, when
-// exactly one does (#459). Every other reply stays as the engine wrote it. The
-// readings table is read on the first such headword and kept for the worker's
-// life; each kanji's readings are derived as it is needed.
+// A headword gets `term.furigana`, the split its kanji's KANJIDIC readings
+// give it (HDGlossary.kanjiFurigana), where that differs from the split the
+// renderer makes alone: where the kana leave more than one split, the one that
+// reads (#459), and each run of kanji read one kanji at a time (#605). Every
+// other reply stays as the engine wrote it. The readings table is imported as
+// the engine starts (startEngine), so the first lookup need not wait for it,
+// and kept for the worker's life; each kanji's readings are derived as it is
+// needed.
 let kanjiReadings = null;
 
+function importKanjiReadings() {
+  return import("./vendor/kanjidic/kanji-readings.json", { with: { type: "json" } });
+}
+
 export async function withFurigana(reply) {
-  const { createKanjiReadings, distributeFurigana } = globalThis.HDGlossary;
-  const unsplit = reply.results.filter((result) => result?.term
-    && distributeFurigana(result.term.expression, result.term.reading) === null);
-  if (unsplit.length === 0) return reply;
-  kanjiReadings ??= createKanjiReadings((await import("./vendor/kanjidic/kanji-readings.json",
-    { with: { type: "json" } })).default.readings);
+  if (reply.results.length === 0) return reply;
+  const { createKanjiReadings, kanjiFurigana } = globalThis.HDGlossary;
+  kanjiReadings ??= createKanjiReadings((await importKanjiReadings()).default.readings);
   let furiganaJsonLength = 0;
-  for (const { term } of unsplit) {
-    const furigana = distributeFurigana(term.expression, term.reading, kanjiReadings);
+  for (const result of reply.results) {
+    const term = result?.term;
+    const furigana = term ? kanjiFurigana(term.expression, term.reading, kanjiReadings) : null;
     if (furigana === null) continue;
     term.furigana = furigana;
     furiganaJsonLength += ',"furigana":'.length + JSON.stringify(furigana).length;
   }
-  return { ...reply, nativeJsonLength: reply.nativeJsonLength + furiganaJsonLength };
+  return furiganaJsonLength === 0 ? reply
+    : { ...reply, nativeJsonLength: reply.nativeJsonLength + furiganaJsonLength };
 }
 
 let tail = Promise.resolve();
@@ -4004,4 +4010,6 @@ export function startEngine() {
   // boot() never rejects: a failed start is latched in bootError, which
   // hd_status and every request needing the engine report.
   void serialise(boot);
+  // The first lookup's own import reports a failure (withFurigana).
+  importKanjiReadings().catch(() => {});
 }

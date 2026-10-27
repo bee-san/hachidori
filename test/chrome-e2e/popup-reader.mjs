@@ -216,15 +216,16 @@ async function popupReader(page, depth = 0) {
     }
   }
 
-  async function click(selector) {
+  // Clicks the selector's `index`th match in the popup, in document order.
+  async function click(selector, index = 0) {
     const object = await resolvePopupObject();
     if (object === null) return false;
     const { result } = await cdp.send("Runtime.callFunctionOn", {
       objectId: object.objectId,
       returnByValue: true,
-      arguments: [{ value: selector }],
-      functionDeclaration: `function (target) {
-        const element = this.querySelector(target);
+      arguments: [{ value: selector }, { value: index }],
+      functionDeclaration: `function (target, index) {
+        const element = this.querySelectorAll(target)[index];
         if (!element) return false;
         element.click();
         return true;

@@ -436,22 +436,27 @@ async function checkExternalLinks(browser, settings, tab, popup) {
       && evidence.afterInvalid === 1 && evidence.sourceUnchanged && evidence.restored, JSON.stringify(evidence));
 }
 
-// 好き嫌い's kana allow two splits of すききらい (#459). The engine worker reads
-// its kanji's KANJIDIC readings and sends the one that reads; the popup draws it.
+// 好き嫌い's kana allow two splits of すききらい (#459), and 二十四時間's one run of
+// kanji can be read one kanji at a time (#605). The engine worker reads their
+// kanji's KANJIDIC readings and sends the split that reads; the popup draws it.
 async function checkKanjiReadingFurigana(settings, tab, popup) {
   const fixture = kanjiReadingFuriganaFixture();
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
   await installMediaArchive(settings, fixture.archive);
-  let evidence;
-  try {
+  const lookUp = async (query, headword) => {
     const reply = await settings.evaluate(text => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen",
-      type: "hd_lookup", requestId: "e2e-kanji-reading-furigana", text, maxResults: 1 }), fixture.query);
-    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+      type: "hd_lookup", requestId: "e2e-kanji-reading-furigana", text, maxResults: 1 }), query);
+    await tab.$eval("#verb", (element, text) => { element.textContent = text; }, query);
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
-    const shown = await hoverForPopup(tab, popup, "#verb", { accept: state => state.plain.includes(fixture.query) });
-    evidence = { furigana: reply?.results?.[0]?.term?.furigana, rubies: shown?.furiganaAlignment.rubies,
-      headword: shown?.text.includes("好すき嫌きらい") };
+    const shown = await hoverForPopup(tab, popup, "#verb", { accept: state => state.plain.includes(query) });
+    return { furigana: reply?.results?.[0]?.term?.furigana, rubies: shown?.furiganaAlignment.rubies,
+      headword: shown?.text.includes(headword) };
+  };
+  let evidence;
+  try {
+    evidence = { ambiguous: await lookUp(fixture.query, "好すき嫌きらい"),
+      compound: await lookUp(fixture.compound, "二に十じゅう四よ時じ間かん") };
   } catch (error) {
     evidence = { error: error.message };
   } finally {
@@ -463,9 +468,13 @@ async function checkKanjiReadingFurigana(settings, tab, popup) {
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
   }
   check("an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
-    JSON.stringify(evidence) === JSON.stringify({ furigana: [{ text: "好", reading: "す" }, { text: "き", reading: "" },
-      { text: "嫌", reading: "きら" }, { text: "い", reading: "" }], rubies: 2, headword: true }),
-    JSON.stringify(evidence));
+    JSON.stringify(evidence.ambiguous) === JSON.stringify({ furigana: [{ text: "好", reading: "す" },
+      { text: "き", reading: "" }, { text: "嫌", reading: "きら" }, { text: "い", reading: "" }], rubies: 2,
+    headword: true }), JSON.stringify(evidence));
+  check("a kanji compound's furigana is read one kanji at a time by its KANJIDIC readings in the engine worker and the popup",
+    JSON.stringify(evidence.compound) === JSON.stringify({ furigana: [{ text: "二", reading: "に" },
+      { text: "十", reading: "じゅう" }, { text: "四", reading: "よ" }, { text: "時", reading: "じ" },
+      { text: "間", reading: "かん" }], rubies: 5, headword: true }), JSON.stringify(evidence));
 }
 
 // Issue #430: a custom link's %s is the sentence Anki gets, read the same way
