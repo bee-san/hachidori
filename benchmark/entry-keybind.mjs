@@ -4,11 +4,11 @@
 // real extension in Chrome, the keys sent through CDP's Input domain, and the
 // popup's scroll pane read in the page on every animation frame.
 //
-//   - single presses: with Alt held, ArrowDown is tapped one entry at a time
-//     to the tenth entry the pane can scroll to, then ArrowUp back to the first;
-//   - held: ArrowDown from the first entry, then ArrowUp from the tenth, each
-//     held for 1.5 s with an operating system's auto-repeat: a 500 ms delay,
-//     then a keydown with `repeat` set every 33 ms.
+//   - single presses: with Alt held, ArrowDown is tapped ten entries down, one
+//     at a time, then ArrowUp back to the first;
+//   - held: ArrowDown from the first entry, then ArrowUp from ten entries
+//     down, each held for 1.5 s with an operating system's auto-repeat: a
+//     500 ms delay, then a keydown with `repeat` set every 33 ms.
 //
 // A keydown's latency runs from its timestamp to the end of the main thread's
 // work for the first frame after its handlers ran, when that frame shows the
@@ -30,6 +30,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { summarizeValues } from "./lib.mjs";
 import { directoryContentSha256 } from "./system.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -99,13 +100,7 @@ function probe() {
 }
 
 const sleep = ms => new Promise(done => setTimeout(done, ms));
-const percentile = (values, p) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(p / 100 * sorted.length) - 1)] : null;
-};
-const round = value => value === null ? null : Math.round(value * 10) / 10;
-const summary = values => ({ n: values.length, p50: round(percentile(values, 50)), p95: round(percentile(values, 95)),
-  max: round(percentile(values, 100)) });
+const summary = values => values.length ? summarizeValues(values) : { n: 0 };
 
 // Each keydown against the frames sampled around it: the state before it, the
 // first frame after its handlers and whether that frame shows the pane moved.
@@ -251,7 +246,7 @@ async function session(variant, origin, index) {
       mkdirSync(SCREENSHOTS, { recursive: true });
       await tab.screenshot({ path: resolve(SCREENSHOTS, `${variant.name}-held-down.png`) });
     }
-    // Back to the tenth reachable entry with single presses, then hold Up.
+    // Back ten entries down with single presses, then hold Up.
     await tap("Home");
     for (let step = 0; step < steps; step += 1) await tap("ArrowDown");
     await sleep(300);
@@ -302,9 +297,9 @@ try {
       const held = name => ({ moved: row[name].keys.filter(key => key.moved).length,
         prevented: row[name].keys.filter(key => key.prevented).length, events: row[name].keys.length,
         pageScrolled: row[name].pageScrolled });
+      const { median, p95 } = summary(row.single.map(key => key.frameMs).filter(ms => ms !== null));
       console.log(JSON.stringify({ round: index, variant: variant.name, steps: row.steps, singleCorrect: row.singleCorrect,
-        single: summary(row.single.map(key => key.frameMs).filter(ms => ms !== null)),
-        heldDown: held("heldDown"), heldUp: held("heldUp"), heldMacOS: held("heldMacOS") }));
+        singleFrameMs: { median, p95 }, heldDown: held("heldDown"), heldUp: held("heldUp"), heldMacOS: held("heldMacOS") }));
     }
   }
 } finally {
@@ -314,16 +309,14 @@ try {
 // Pooled over every round of a variant.
 const report = Object.fromEntries(variants.map(({ name }) => {
   const own = rows.filter(row => row.variant === name);
-  const keys = (field, filter = () => true) => own.flatMap(row => field(row)).filter(filter);
-  const single = code => keys(row => row.single, key => key.code === code);
-  const held = (field, code) => {
+  const single = code => own.flatMap(row => row.single).filter(key => key.code === code);
+  const held = field => {
     const all = own.map(row => row[field].keys);
     return {
       eventsPerHold: summary(all.map(list => list.length)),
       preventedPerHold: summary(all.map(list => list.filter(key => key.prevented).length)),
       // Entries the pane moved through while the key was held.
       movesPerHold: summary(all.map(list => list.filter(key => key.moved).length)),
-      frameMs: summary(all.flat().filter(key => key.moved && key.code === code).map(key => key.frameMs)),
       repeatFrameMs: summary(all.flat().filter(key => key.moved && key.repeat).map(key => key.frameMs)),
       handlerMs: summary(all.flat().map(key => key.handlerMs)),
       pageScrolled: summary(own.map(row => row[field].pageScrolled)),
@@ -338,9 +331,9 @@ const report = Object.fromEntries(variants.map(({ name }) => {
         [field, summary(single(code).map(key => key[field]).filter(ms => ms !== null))])),
       prevented: single(code).filter(key => key.prevented).length, events: single(code).length,
     }])),
-    heldDown: held("heldDown", "ArrowDown"),
-    heldUp: held("heldUp", "ArrowUp"),
-    heldMacOS: held("heldMacOS", "ArrowDown"),
+    heldDown: held("heldDown"),
+    heldUp: held("heldUp"),
+    heldMacOS: held("heldMacOS"),
   }];
 }));
 writeFileSync(resolve(output, "summary.json"), JSON.stringify(report, null, 2));

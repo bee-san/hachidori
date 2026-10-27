@@ -252,11 +252,11 @@ Each `name=path` is an extension directory; every round
 order. The archive is imported and the word (`HACHIDORI_KEYBIND_WORD`, きかん)
 hovered, and once every result has rendered, with Alt held:
 
-- single presses: ArrowDown tapped to the tenth entry the pane can scroll to,
-  then ArrowUp back to the first, 200 ms apart;
-- held: ArrowDown from the first entry, then ArrowUp from the tenth, each held
-  for 1.5 s as an operating system repeats it: a 500 ms delay, then a keydown
-  with `repeat` every 33 ms.
+- single presses: ArrowDown tapped ten entries down, then ArrowUp back to the
+  first, 200 ms apart;
+- held: ArrowDown from the first entry, then ArrowUp from ten entries down,
+  each held for 1.5 s as an operating system repeats it: a 500 ms delay, then a
+  keydown with `repeat` every 33 ms.
 
 A keydown's latency runs from its timestamp to the end of the main thread's
 work for the first frame after its handlers, when that frame shows the pane at
