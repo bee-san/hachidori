@@ -168,8 +168,9 @@
       .filter(entry => entry.frequencyCount > 0 && !["Sample ranks", "Sample corpus"].includes(entry.title))
       .map(entry => ({ dictionary: entry.title, frequencies: [entry.frequencyMode === "occurrence-based"
         ? { value: 18240, displayValue: "18,240" } : { value: 120, displayValue: "120" }] }));
-    // Tag-bank tags in every category reader.css colours, sorted as the
-    // engine sends them, so each palette's tag colours show here.
+    // Tag-bank tags in Jitendex's four categories, a part of speech and one
+    // without a category, sorted as the engine sends them, so the tag colours
+    // show here in every palette.
     const sampleTag = (name, category, order, notes) => ({ name, category, order, score: 0, notes });
     const verbTags = [sampleTag("v1", "partOfSpeech", 0, "Ichidan verb"), sampleTag("vt", "default", 0, "")];
     const glossary = (dictionary, items, tags = verbTags) => ({ dictionary, glossary: JSON.stringify(items),

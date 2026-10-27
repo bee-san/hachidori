@@ -203,18 +203,28 @@ test("each term-bank row is a definition-item that carries its dictionary and ta
       // Jitendex writes the spaces inside a tag name as U+00A0 (#426).
       { dictionary: "D", glossary: JSON.stringify(["openly"]), definitionTags: "rarely\u00a0used\u00a0form ateji\u00a0form",
         termTags: "" },
+      { dictionary: "E [2026-10-03]", glossary: JSON.stringify(["to repair"]), definitionTags: "", termTags: "" },
     ] } }], { anchor: source, query: "直す", sentence: "直す", sourceElements: [source], matchOffset: 0 },
-  HDReaderOptions.normaliseOptions({}));
+  { ...HDReaderOptions.normaliseOptions({}), dictionaryPresentation: [{ title: "D", displayName: "Alias D" }] });
   const list = popup.querySelector(".gsm-hoshidicts-glossary-card > ol.definition-list");
   assert.equal(list.dataset.count, "3");
   const items = [...list.children];
   assert.deepEqual(items.map(item => [item.className, item.dataset.dictionary, item.dataset.index]),
     [["definition-item", "D", "0"], ["definition-item", "D", "1"], ["definition-item", "D", "2"]]);
   const tagNames = item => [...item.querySelectorAll(".definition-tag-list > *")].map(tag => tag.textContent);
-  assert.deepEqual(tagNames(items[0]), ["v5s", "vt"]);
+  // DisplayGenerator.createTermEntry (d3c54c1, L150-L192) ends every
+  // definition's tags with a "dictionary" tag, its title the dictionary's, and
+  // marks it redundant after that dictionary's first definition, which
+  // Compact tags hides (display.css L2046-L2048). A card is one dictionary, so
+  // only its first definition has one, labelled with the card's display name.
+  assert.deepEqual(tagNames(items[0]), ["v5s", "vt", "Alias D"]);
   assert.equal(items[1].querySelector(".definition-tag-list"), null);
   // DictionaryDatabase._splitField splits on U+0020 only.
   assert.deepEqual(tagNames(items[2]), ["rarely\u00a0used\u00a0form", "ateji\u00a0form"]);
+  assert.deepEqual([...popup.querySelectorAll(".gsm-hoshidicts-dictionary-tag")].map(tag => [tag.textContent, tag.title,
+    tag.dataset.category, tag.closest(".definition-item").dataset.index, tag === tag.parentNode.lastElementChild]),
+  [["Alias D", "D", "dictionary", "0", true], ["E", "E [2026-10-03]", "dictionary", "0", true]]);
+  assert.equal(popup.querySelector(".gsm-hoshidicts-glossary-card-title"), null);
   assert.deepEqual(items.map(item => item.querySelector(".gloss-list").dataset.count), ["1", "2", "1"]);
   assert.equal(popup.querySelector(".gsm-hoshidicts-expression").lang, "ja");
 });
@@ -285,9 +295,11 @@ test("definition tags expand from the tag bank as Yomitan's translator does and 
   } }], { anchor: source, query: "今日", sentence: "今日", sourceElements: [source], matchOffset: 0 },
   HDReaderOptions.normaliseOptions({}));
   // DisplayGenerator._createTag: the name, data-category and the notes as title.
+  // The card's first definition ends with its dictionary's tag.
   assert.deepEqual([...popup.querySelectorAll(".definition-item")].map(item =>
     [...item.querySelectorAll(".definition-tag-list > *")].map(tag => [tag.textContent, tag.dataset.category, tag.title])),
-  YOMITAN_TAGS.map(([, , tags]) => tags.map(([name, category, , , notes]) => [name, category, notes])));
+  YOMITAN_TAGS.map(([, , tags], index) => [...tags.map(([name, category, , , notes]) => [name, category, notes]),
+    ...index === 0 ? [["D", "dictionary", "D"]] : []]));
 });
 
 // distributeFurigana (ja/japanese.js) on [term, reading]: each segment as
