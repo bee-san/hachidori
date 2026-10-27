@@ -1,0 +1,30 @@
+{
+  "label": "after",
+  "非常に": [
+    {
+      "expression": "非常に",
+      "frequencyTags": 12,
+      "pitchDictionaries": [
+        "Pitch sample A"
+      ]
+    },
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchDictionaries": [
+        "Pitch sample A",
+        "Pitch sample B"
+      ]
+    }
+  ],
+  "非常": [
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchDictionaries": [
+        "Pitch sample A",
+        "Pitch sample B"
+      ]
+    }
+  ]
+}
