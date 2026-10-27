@@ -1200,7 +1200,9 @@ and drop in the pitch colour. Overline builds the morae with the badges'
 high morae and downstep hook in the text colour, with the same levels; nasal and
 devoice marks, `[n]` and the graph stay in the badges. The style is disabled
 while the reading's pitch is off. Definition blur blurs the reading with the
-furigana, and a kana headword's pitch lines wait for the reveal. Turning dictionary names off
+furigana, and a kana headword's pitch lines wait for the reveal. Under forced
+colours the contour keeps its lines on their own sides, in the system text
+colour, rather than boxing each mora in. Turning dictionary names off
 removes the tags. IPA shows transcriptions without source-name labels. Tooltips and
 accessibility labels retain source attribution, and visible pitch names and
 labels follow dictionary aliases in place. Unfilled tags, pitch names, pitch

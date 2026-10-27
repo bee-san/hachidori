@@ -1,7 +1,8 @@
 // The headword's pitch accent (#606) in real layout, with the production
 // renderer and reader stylesheet: a kanji headword keeps the furigana it has
 // with the pitch off and draws the pitch on its reading after it, a kana
-// headword draws it on its own kana, and blurred definitions hide both.
+// headword draws it on its own kana, blurred definitions hide both, and forced
+// colours keep its lines on their sides.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -64,6 +65,9 @@ export async function checkHeadwordPitch(browser) {
           lines: high?.classList.contains("pronunciation-mora")
             ? [style(high.querySelector(".pronunciation-mora-line")).borderTopColor]
             : [style(high)?.borderTopColor, style(low)?.borderBottomColor],
+          // A contour mora's other side, which only a forced colour would paint.
+          unused: high?.classList.contains("pronunciation-mora") ? []
+            : [style(high)?.borderBottomColor, style(low)?.borderTopColor],
           headword: { fontSize: style(expression).fontSize, colour: style(expression).color },
         };
       };
@@ -101,6 +105,18 @@ export async function checkHeadwordPitch(browser) {
         assert.deepEqual([blurred.contour.colour, blurred.headword], [kana.contour.colour, kana.headword]);
       }
       assert.deepEqual((await show(KANA, { pitchAccentFuriganaStyle })).lines, kana.lines);
+    }
+
+    // Forced colours (a Windows contrast theme) would paint each contour mora's
+    // unused, transparent side too and box it in. The lines keep their sides,
+    // in the system text colour, and blur still hides them.
+    await page.emulateMediaFeatures([{ name: "forced-colors", value: "active" }]);
+    for (const value of [KANJI, KANA]) {
+      const what = value.term.expression;
+      const forced = await show(value);
+      assert.ok(forced.lines.every(colour => colour && colour !== TRANSPARENT), `${what} ${JSON.stringify(forced.lines)}`);
+      assert.deepEqual(forced.unused, [TRANSPARENT, TRANSPARENT], what);
+      assert.deepEqual((await show(value, {}, "blurred")).lines, [TRANSPARENT, TRANSPARENT], what);
     }
   } finally {
     await page.close();

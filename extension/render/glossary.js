@@ -904,10 +904,11 @@
       ? pitchAccentCategory(pitchReading, selectedPitch.pitch, pitchOptions.wordClasses, expression)
       : null;
     const kana = !HAN_CHARACTER_PATTERN.test(expression) && toHiragana(pitchReading) === toHiragana(expression);
+    // The text the pitch is drawn on: a kana headword's own kana, else its own reading.
     const pitchText = kana ? expression : reading !== expression && reading;
+    const contourClass = kana ? "gsm-hoshidicts-pitch-contour" : "gsm-hoshidicts-pitch-reading gsm-hoshidicts-pitch-contour";
     const contour = selectedPitch && pitchOptions.enabled !== false && pitchText
-      ? createPitchContour(documentRef, pitchText, selectedPitch, pitchOptions.style, kana
-        ? "gsm-hoshidicts-pitch-contour" : "gsm-hoshidicts-pitch-reading gsm-hoshidicts-pitch-contour")
+      ? createPitchContour(documentRef, pitchText, selectedPitch, pitchOptions.style, contourClass)
       : null;
     if (contour && kana) {
       parent.appendChild(contour);

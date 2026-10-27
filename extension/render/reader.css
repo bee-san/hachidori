@@ -1861,6 +1861,25 @@ html[data-hoshidicts-theme="girlypop"],
   }
 }
 
+/* Forced colours would paint a contour mora's unused, transparent side as well
+   and box every mora in. The headword's pitch keeps its own lines instead, in
+   the system text colour, so blur can still make them transparent. */
+@media (forced-colors: active) {
+  .gsm-hoshidicts-pitch-contour {
+    --hoshidicts-pitch: CanvasText;
+    --pronunciation-annotation-color: CanvasText;
+  }
+
+  .gsm-hoshidicts-pitch-mora,
+  .gsm-hoshidicts-pitch-contour .pronunciation-mora-line {
+    forced-color-adjust: none;
+  }
+
+  .gsm-hoshidicts-pitch-mora {
+    color: CanvasText;
+  }
+}
+
 .gsm-hoshidicts-compact-definition-summary {
   min-width: min(180px, 100%);
   max-width: 100%;
