@@ -353,6 +353,7 @@ const PLANNED = [
   "compact definition text opens a nested lookup with the same close contract",
   "Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases",
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
+  "Pitch accent colours give a dictionary's i-adjective class to 高い but not to the na-adjective 自由",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "a custom link's %s is the hovered or selected word's sentence without ruby readings",
   "an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
