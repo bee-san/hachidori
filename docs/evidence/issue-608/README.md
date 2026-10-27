@@ -57,8 +57,12 @@ Every change is a kifuku pitch moved to its positional group. In the last row,
 adjective can end in; each is a suru noun (シュリンク `vs`), an onomatopoeic
 adverb (ぷすぷす `adv vs`) or a na-adjective or noun (恥知らず `adj-i`,
 スムース `adj-i`). The other changed pitches are on headwords that end in a kanji
-or another character no dictionary form ends in. No verb or i-adjective written
-in its dictionary form changed.
+or another character no dictionary form ends in. One of those is a verb: 得 う
+[1], the classical verb written in kanji alone, which 精選版 tags `v1`. It is the
+only all-kanji headword with a verb class and a verb-like reading among these
+pitches apart from 面倒 and 窮屈. JMdict tags it `v2a-s`, which neither Yomitan
+nor Hachidori counts, so with JMdict alone it was already atamadaka. No other
+verb or i-adjective changed.
 
 `parity.mjs` compares this PR with Yomitan's own functions over 14,994 cases (22
 words, every downstep and H/L pattern, 14 class sets): equal wherever every
