@@ -86,7 +86,8 @@ describe("clicked kanji", () => {
     await tab.keyboard.press("Escape");
     await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
     const duplicateTermState = await hover("#duplicate");
-    const clickedSecondDuplicate = await popup.click(".gsm-hoshidicts-kanji-link:nth-of-type(2)");
+    // The second 食 of 食(しょく)食(しょく), each kanji its own ruby (#605).
+    const clickedSecondDuplicate = await popup.click(".gsm-hoshidicts-kanji-link", 1);
     let duplicateKanjiState = null;
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const state = await popup.state();
