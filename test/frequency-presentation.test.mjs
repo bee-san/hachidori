@@ -326,7 +326,7 @@ test("every supplied frequency dictionary keeps its tag in the first and later e
   }
 });
 
-test("averaged hidden tags take no pitch budget, hide all-hidden groups and follow live toggles and aliases", t => {
+test("averaged hidden tags leave every pitch badge, hide all-hidden groups and follow live toggles and aliases", t => {
   const f = fixture(t);
   const pitch = dictionary => ({ dictionary, pitches: [{ position: 0, pattern: "", nasal: [], devoice: [] }],
     transcriptions: [] });
@@ -341,16 +341,18 @@ test("averaged hidden tags take no pitch budget, hide all-hidden groups and foll
   f.view.renderResults([RESULT, second], f.candidate, options);
   const entry = () => f.popup.querySelectorAll(".gsm-hoshidicts-entry")[1];
   const row = () => entry().querySelector(".gsm-hoshidicts-frequency-metadata");
-  const pitchBadges = () => entry().querySelectorAll(".gsm-hoshidicts-tag-pitch").length;
+  const pitchBadges = () => [...entry().querySelectorAll(".gsm-hoshidicts-tag-pitch")];
+  const badges = pitchBadges();
+  const sameBadges = () => pitchBadges().length === 3 && pitchBadges().every((badge, index) => badge === badges[index]);
   const individual = [...row().children].map(tag => tag.outerHTML);
   assert.equal(individual.length, 10);
-  assert.equal(pitchBadges(), 2, "ten frequency tags leave two of the twelve metadata tags for pitch");
+  assert.equal(badges.length, 3, "ten frequency tags leave every pitch badge (#607)");
   f.view.updateDictionaryPresentation({ ...options, averageFrequency: true });
   assert.equal(row().hidden, false);
   assert.deepEqual([...row().children].map(tag => [tag.dataset.dictionary, tag.hidden]),
     [["Rank average", false], ...sources.map(source => [source, true])]);
   assert.deepEqual([...row().children].slice(1).map(unhiddenHTML), individual);
-  assert.equal(pitchBadges(), 3, "hidden tags take none of the metadata budget");
+  assert.ok(sameBadges(), "averaging leaves the pitch badges in place");
   // An alias rename relabels the hidden source, not the average's unit.
   f.view.updateDictionaryPresentation({ ...options, averageFrequency: true,
     dictionaryPresentation: [{ ...presentation[0], displayName: "Renamed" }, ...presentation.slice(1)] });
@@ -358,7 +360,7 @@ test("averaged hidden tags take no pitch budget, hide all-hidden groups and foll
     .map(node => node.textContent), ["Avg rank", "Renamed"]);
   f.view.updateDictionaryPresentation({ ...options, averageFrequency: false });
   assert.deepEqual([...row().children].map(tag => tag.outerHTML), individual);
-  assert.equal(pitchBadges(), 2);
+  assert.ok(sameBadges());
 
   // With no value to average, only hidden tags remain: the row, the frequency
   // group and, unless grammar is shown, the capsule are hidden too.

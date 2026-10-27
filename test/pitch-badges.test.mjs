@@ -39,7 +39,7 @@ function fixture(t) {
   const candidate = { anchor: source, query: "昭和", sentence: source.textContent, sourceElements: [source], matchOffset: 0 };
   t.after(() => { view.destroy(); window.close(); });
   return { popup, view, render: (value = RESULT, options = {}) => {
-    view.renderResults([value], candidate, { ...HDReaderOptions.normaliseOptions({}), ...options });
+    view.renderResults([value].flat(), candidate, { ...HDReaderOptions.normaliseOptions({}), ...options });
     return [...popup.querySelectorAll(".pronunciation-group")];
   } };
 }
@@ -73,6 +73,36 @@ test("each pitch dictionary is a Yomitan pronunciation group named by its dictio
     ["しょ:low>high", "う:high>high", "わ:high>high"]);
   assert.deepEqual(levels(groups[1].querySelector(".pronunciation")),
     ["しょ:high>low", "う:low>low", "わ:low>low"]);
+});
+
+test("every entry shows every pitch accent, however many frequency tags come first (#607)", t => {
+  const f = fixture(t);
+  // A lookup of 非常に returns 非常 as a later entry. Every frequency list ranks
+  // both, and 非常 has more accents than the twelve-tag metadata display budget.
+  const frequencies = count => Array.from({ length: count }, (_, index) => ({ dictionary: `Rank ${index + 1}`,
+    frequencies: [{ value: index + 1, displayValue: String(index + 1) }] }));
+  const dictionaries = Array.from({ length: 7 }, (_, index) => `Pitch ${index + 1}`);
+  const word = result("非常", "ひじょう", dictionaries.map(dictionary => pitch(dictionary, 0, 1)));
+  const phrase = result("非常に", "ひじょうに", [pitch("Pitch 1", 0)]);
+  const shown = parent => [...parent.querySelectorAll(".pronunciation-group")].map(group => [group.dataset.dictionary,
+    ...[...group.querySelectorAll(".pronunciation-downstep-notation")].map(notation => notation.textContent)]);
+  const expected = dictionaries.map(dictionary => [dictionary, "[0]", "[1]"]);
+  for (const count of [0, 12, 20]) {
+    const ranked = value => ({ ...value, term: { ...value.term, frequencies: frequencies(count) } });
+    for (const averageFrequency of [false, true]) {
+      const options = { averageFrequency, expandAll: true };
+      const what = `${count} frequency lists, average ${averageFrequency}`;
+      f.render([ranked(phrase), ranked(word)], options);
+      const [first, later] = f.popup.querySelectorAll(".gsm-hoshidicts-entry");
+      assert.equal(later.querySelectorAll(".gsm-hoshidicts-frequency-metadata"
+        + " .gsm-hoshidicts-tag-frequency:not([data-frequency-average])").length, count, what);
+      assert.deepEqual(shown(first), [["Pitch 1", "[0]"]], what);
+      assert.deepEqual(shown(later), expected, `later 非常, ${what}`);
+      // Looked up on its own, 非常 is the first entry and shows the same.
+      f.render(ranked(word), options);
+      assert.deepEqual(shown(f.popup), expected, `first 非常, ${what}`);
+    }
+  }
 });
 
 test("a dictionary's accents share one group and a string pattern reads as its downstep", t => {

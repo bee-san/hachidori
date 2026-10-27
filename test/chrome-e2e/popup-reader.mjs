@@ -706,6 +706,12 @@ async function popupReader(page, depth = 0) {
             text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body =>
               [...body.querySelectorAll(".gloss-content")].map(content => content.textContent).join("")),
           })),
+          // The dictionaries of the entry's frequency tags and of the pitch
+          // accent groups it shows, in order.
+          frequencyDictionaries: [...entry.querySelectorAll(".gsm-hoshidicts-tag-frequency:not([data-frequency-average])")]
+            .map(tag => tag.dataset.dictionary),
+          pitchDictionaries: [...entry.querySelectorAll(".pronunciation-group")]
+            .filter(group => group.getClientRects().length > 0).map(group => group.dataset.dictionary),
         }));
         // Attribute insertion order is not DOM meaning. Compare the complete
         // ordered body DOM, retaining every node and attribute name/value.
