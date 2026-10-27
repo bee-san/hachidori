@@ -14,9 +14,11 @@
 // work for the first frame after its handlers ran, when that frame shows the
 // pane at another entry. Event Timing's durations (to the next paint; Chrome
 // reports 16 ms and over) are kept beside it. The keys carry `isSystemKey`, as
-// Alt combinations do on Windows and Linux, so an unhandled one scrolls nothing;
-// on macOS Option+ArrowDown pages the page down, so `prevented` is recorded too.
-// Every variant gets a fresh profile each round, in alternating order.
+// Alt combinations do on Windows and Linux, so an unhandled one scrolls nothing.
+// macOS does not mark Option+ArrowDown, and Blink pages an unhandled one down,
+// so a last hold of ArrowDown from the first entry goes without it and records
+// how far the page scrolled (`heldMacOS`). Every variant gets a fresh profile
+// each round, in alternating order.
 //
 //   git archive origin/main extension | tar -x -C /tmp/main
 //   HACHIDORI_KEYBIND_ARCHIVE=/path/to/jitendex-yomitan.zip \

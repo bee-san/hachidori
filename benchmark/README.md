@@ -265,10 +265,12 @@ wait for the frame and its rendering; Event Timing's duration to the next paint,
 which Chrome reports from 16 ms, is kept beside it. Single presses must land on
 each entry's header. A held key reports its keydowns, how many were handled
 (`prevented`) and how many moved the pane. The keys carry `isSystemKey`, as Alt
-combinations do on Windows and Linux; on macOS an unhandled Option+ArrowDown
-pages the page down instead. `raw.json` keeps every keydown and
-`summary.json` pools the rounds. Presentation after the main thread's frame,
-a physical keyboard's own repeat timing and other renderers are outside it.
+combinations do on Windows and Linux. macOS does not mark Option+ArrowDown, and
+Blink pages an unhandled one down, so a last hold of ArrowDown from the first
+entry goes without it and records how far the page scrolled (`heldMacOS`).
+`raw.json` keeps every keydown and `summary.json` pools the rounds.
+Presentation after the main thread's frame, a physical keyboard's own repeat
+timing and other renderers are outside it.
 
 ## Content-script injection per frame
 
