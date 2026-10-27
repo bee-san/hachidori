@@ -541,12 +541,15 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   };
   view.renderResults(tabResults, candidate, tabContext);
   // As in Yomitan, a dictionary card is never a disclosure: a fresh lookup and
-  // every tab projection show its definitions under a plain title.
+  // every tab projection show its definitions under their dictionary's tag.
   const cardDisclosures = () => [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card")]
-    .map((card) => ({ tag: card.tagName, title: card.firstElementChild.className,
-      label: card.firstElementChild.textContent, dictionary: card.firstElementChild.title,
-      collapsible: card.closest("details") !== null
-        || card.querySelector(".gsm-hoshidicts-definitions").closest("details") !== null }));
+    .map((card) => {
+      const tag = card.querySelector(".gsm-hoshidicts-dictionary-tag");
+      return { tag: card.tagName, row: tag?.parentNode.className, label: tag?.textContent, dictionary: tag?.title,
+        collapsible: card.closest("details") !== null
+          || card.querySelector(".gsm-hoshidicts-definitions").closest("details") !== null };
+    });
+  const dictionaryTags = () => [...popup.querySelectorAll(".gsm-hoshidicts-dictionary-tag")].map((tag) => tag.title);
   const freshCards = cardDisclosures();
   const allTabs = [...popup.querySelectorAll('[role="tab"]')];
   check("dictionary tabs include ordered nonempty groups and only ungrouped favourites",
@@ -564,19 +567,19 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     const tab = popup.querySelector(`[role="tab"]${selector}`);
     tab?.click();
     popup.querySelector(".gsm-hoshidicts-show-more")?.click();
-    tabProjections.push([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")]
-      .map((title) => title.title));
+    tabProjections.push(dictionaryTags());
     projectedCards.push(cardDisclosures());
   }
-  check("a new lookup and every tab projection show each dictionary card open under a plain title",
+  const row = "gsm-hoshidicts-definition-tags definition-tag-list";
+  check("a new lookup and every tab projection show each dictionary card open under its dictionary's tag",
     JSON.stringify(freshCards) === JSON.stringify([
-      { tag: "DIV", title: "gsm-hoshidicts-glossary-card-title", label: "All", dictionary: "Dictionary A", collapsible: false },
-      { tag: "DIV", title: "gsm-hoshidicts-glossary-card-title", label: "Dictionary C", dictionary: "Dictionary C", collapsible: false },
+      { tag: "DIV", row, label: "All", dictionary: "Dictionary A", collapsible: false },
+      { tag: "DIV", row, label: "Dictionary C", dictionary: "Dictionary C", collapsible: false },
     ])
       && JSON.stringify(projectedCards) === JSON.stringify([
-        [{ tag: "DIV", title: "gsm-hoshidicts-glossary-card-title", label: "Favourite B", dictionary: "Dictionary B", collapsible: false }],
-        [{ tag: "DIV", title: "gsm-hoshidicts-glossary-card-title", label: "Dictionary C", dictionary: "Dictionary C", collapsible: false }],
-        [{ tag: "DIV", title: "gsm-hoshidicts-glossary-card-title", label: "All", dictionary: "Dictionary A", collapsible: false }],
+        [{ tag: "DIV", row, label: "Favourite B", dictionary: "Dictionary B", collapsible: false }],
+        [{ tag: "DIV", row, label: "Dictionary C", dictionary: "Dictionary C", collapsible: false }],
+        [{ tag: "DIV", row, label: "All", dictionary: "Dictionary A", collapsible: false }],
       ]),
     JSON.stringify({ freshCards, projectedCards }));
   const sameTabPanel = popup.querySelector(".gsm-hoshidicts-tab-panel").firstElementChild;
@@ -602,8 +605,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
     const context = { ...tabContext, selectedDictionaryTab: selection, expandAll: true,
       onDictionaryTabSelected(value) { selected = value; } };
     view.renderResults(tabResults, candidate, context);
-    inheritedProjections.push([selected,
-      [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map((item) => item.title)]);
+    inheritedProjections.push([selected, dictionaryTags()]);
     selected = undefined;
     view.renderKanji({ ...kanji, entries: ["Dictionary A", "Dictionary C", "Dictionary B"]
       .map((dictionary) => ({ ...kanji.entries[0], dictionary })) }, candidate, context);
@@ -636,7 +638,7 @@ async function renderStage({ imageLookup, kanji, lookup, media }) {
   const nativeCard = popup.querySelector(".gsm-hoshidicts-glossary-card");
   const nativeContent = nativeCard?.querySelector(".gsm-hoshidicts-glossary-content");
   const nativeCardState = {
-    cards: [...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map((title) => title.title),
+    cards: dictionaryTags(),
     structured: nativeContent?.querySelector(".gloss-content")?.classList.contains("structured-content"),
     readings: [...nativeContent?.querySelectorAll("[data-sc-content=reading]") ?? []].map((node) => node.textContent),
     tags: nativeContent?.querySelector("[data-sc-content=tags]")?.textContent,
@@ -1962,12 +1964,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     live.push(popup.querySelector(firstGroup) === groupButton && document.activeElement === groupButton
       && groupButton.textContent === "Renamed group" && groupButton.previousElementSibling === popup.querySelector(secondGroup)
       && popup.querySelector("a[data-hoshidicts-query]") === anchor && popup.querySelector(".gsm-hoshidicts-glossary-card") === card
-      && card.querySelector(".gsm-hoshidicts-glossary-card-title").textContent === "Renamed" && fills === beforePresentation.fills && replays === beforePresentation.replays
+      && card.querySelector(".gsm-hoshidicts-dictionary-tag").textContent === "Renamed" && fills === beforePresentation.fills && replays === beforePresentation.replays
       && popup.querySelector('[role="tabpanel"]').getAttribute("aria-labelledby") === groupButton.id);
     groupButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     observeProjection("group tab", 2);
     live.push(selected?.groupId === "second" && document.activeElement === popup.querySelector(secondGroup)
-      && popup.querySelector(".gsm-hoshidicts-glossary-card-title").title === "Second");
+      && popup.querySelector(".gsm-hoshidicts-dictionary-tag").title === "Second");
     popup.querySelector(".gsm-hoshidicts-note-button").click();
     const draft = popup.querySelector("form");
     draft.elements.definition.value = "presentation draft";
@@ -1979,12 +1981,12 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     ] });
     view.updateDictionaryPresentation?.(changedMembers);
     live.push(popup.querySelector(secondGroup).textContent === "Second group"
-      && popup.querySelector(".gsm-hoshidicts-glossary-card-title").title === "Second"
+      && popup.querySelector(".gsm-hoshidicts-dictionary-tag").title === "Second"
       && popup.querySelector("form") === draft && !draft.hidden && draft.elements.definition.value === "presentation draft");
     view.closeNoteForm();
     observeProjection("live membership flush", 2);
     live.push(popup.querySelector(secondGroup).textContent === "Changed group"
-      && popup.querySelector(".gsm-hoshidicts-glossary-card-title").title === "First"
+      && popup.querySelector(".gsm-hoshidicts-dictionary-tag").title === "First"
       && popup.querySelector("form") === draft && draft.hidden && selected?.groupId === "second"
       && document.activeElement === popup.querySelector(".gsm-hoshidicts-note-button"));
     const protectedLink = popup.querySelector("a[data-hoshidicts-query]");
@@ -1993,7 +1995,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
     live.push(popup.querySelector("a[data-hoshidicts-query]") === protectedLink && protectedLink.isConnected);
     protectedLink.blur();
     await new Promise(resolve => setTimeout(resolve, 0));
-    live.push(popup.querySelector(".gsm-hoshidicts-glossary-card-title").title === "Second");
+    live.push(popup.querySelector(".gsm-hoshidicts-dictionary-tag").title === "Second");
     current = false;
     const staleAnchor = popup.querySelector("a[data-hoshidicts-query]");
     const staleFills = fills;
@@ -2038,7 +2040,7 @@ async function retainedNavigationRenderStage({ HDGlossary, HDPopup, document, wi
       && pronunciation.title === "Pitch alias (Pitch): たべる [1]");
     popup.querySelector(".gsm-hoshidicts-show-more").click();
     const secondary = popup.querySelectorAll("article")[1];
-    live.push(secondary.querySelector(".gsm-hoshidicts-glossary-card-title").textContent === "Second alias"
+    live.push(secondary.querySelector(".gsm-hoshidicts-dictionary-tag").textContent === "Second alias"
       && secondary.querySelector(".gsm-hoshidicts-frequency-source").textContent === "Rank alias"
       && secondary.querySelector(".gsm-hoshidicts-pitch-source").textContent === "Pitch alias"
       && secondary.querySelector(".gsm-hoshidicts-tag-pitch").title === "Pitch alias (Pitch): たべる [1]"

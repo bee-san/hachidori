@@ -324,20 +324,34 @@ async function checkDeinflectionDisclosure(settings, tab, popup) {
 }
 
 // Dictionary cards follow Yomitan: definitions are always shown, and only
-// disclosures a dictionary authors inside its own content collapse.
+// disclosures a dictionary authors inside its own content collapse. The card's
+// dictionary is a tag after its first definition's tags (#604), and every tag
+// there is a bold 11/14 label at 4.5:1 on Yomitan's colour for its category.
 async function checkGlossaryCardsOpen(tab, popup) {
   await tab.keyboard.press("Escape");
   await popup.waitForHidden();
   const rendered = await hoverForPopup(tab, popup, "#verb");
   const before = rendered === null ? null : await popup.glossaryCard();
   let after = null;
-  if (before) {
-    await tab.mouse.click(before.titlePoint.x, before.titlePoint.y);
+  if (before?.tagPoint) {
+    await tab.mouse.click(before.tagPoint.x, before.tagPoint.y);
     after = await popup.glossaryCard();
   }
-  check("dictionary cards render open under a plain title with no disclosure control",
+  const rgb = value => (/^rgb\((\d+), (\d+), (\d+)\)$/u.exec(value) ?? []).slice(1).map(Number);
+  const luminance = value => rgb(value).map(part => part / 255)
+    .map(part => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, part, index) => sum + part * [0.2126, 0.7152, 0.0722][index], 0);
+  const contrast = ({ background, color }) => {
+    const [lighter, darker] = [luminance(background), luminance(color)].sort((x, y) => y - x);
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  // reader.css's --tag-dictionary-background-color in each colour scheme.
+  const dictionaryColour = { light: "rgb(157, 90, 191)", dark: "rgb(143, 86, 172)" };
+  check("dictionary cards render open with their dictionary's tag, in Yomitan's colours, and no disclosure control",
     rendered !== null && before?.count >= 1 && before.tags.every(tag => tag === "DIV") && !before.inDisclosure
-      && before.titleTag === "DIV" && before.label.length > 0 && before.dictionary.length > 0
+      && before.titles === 0 && before.place && before.label.length > 0 && before.dictionary.length > 0
+      && before.row.at(-1).category === "dictionary" && before.row.at(-1).background === dictionaryColour[before.scheme]
+      && before.row.every(tag => tag.weight === "700" && Math.abs(tag.size - 11 / 14) < 0.001 && contrast(tag) >= 4.5)
       && before.cursor !== "pointer" && before.marker === "none" && before.bodyHeight > 0
       && after?.cardHeight === before.cardHeight && after.bodyHeight === before.bodyHeight,
     JSON.stringify({ before, after }));

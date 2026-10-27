@@ -305,11 +305,19 @@ describe("Settings library", () => {
         const previewHost = document.getElementById("design-preview")?.contentDocument?.getElementById("preview-host");
         const pitchSource = previewHost?.shadowRoot?.querySelector(".gsm-hoshidicts-pitch-source");
         const pitchStyle = pitchSource && getComputedStyle(pitchSource);
+        // The sample's definition tags and dictionary tags (#604), each label
+        // on its fill.
+        const definitionTags = [...previewHost?.shadowRoot?.querySelectorAll(".gsm-hoshidicts-tag-definition") ?? []];
         const result = {
           expectedTheme,
           selectedTheme: document.documentElement.dataset.hoshidictsTheme,
           previewTheme: previewHost?.dataset.hoshidictsTheme,
           pitchSourceContrast: pitchStyle ? contrast(pitchStyle.color, pitchStyle.backgroundColor) : 0,
+          definitionTagCategories: [...new Set(definitionTags.map(tag => tag.dataset.category))].sort(),
+          definitionTagContrast: Math.min(...definitionTags.map(tag => {
+            const style = getComputedStyle(tag);
+            return contrast(style.color, style.backgroundColor);
+          })),
           palette: root.getPropertyValue("--hoshidicts-palette-primary").trim(),
           scheme: root.colorScheme,
           paletteScheme: root.getPropertyValue("--hoshidicts-palette-color-scheme").trim(),
@@ -352,6 +360,14 @@ describe("Settings library", () => {
         && theme.pitchSourceContrast >= 4.5),
       JSON.stringify(themePalettes.map(({ expectedTheme, previewTheme, pitchSourceContrast }) =>
         ({ expectedTheme, previewTheme, pitchSourceContrast }))));
+    // The categories show that each kind of sample tag was drawn and measured.
+    const sampleTagCategories = ["archaism", "default", "dictionary", "expression", "frequent", "partOfSpeech", "popular"];
+    check("Design draws definition and dictionary tags at 4.5:1 text contrast in every popup theme and 7:1 in High contrast",
+      themePalettes.length === 42 && themePalettes.every(theme => theme.previewTheme === theme.expectedTheme
+        && JSON.stringify(theme.definitionTagCategories) === JSON.stringify(sampleTagCategories)
+        && theme.definitionTagContrast >= (theme.expectedTheme === "high-contrast" ? 7 : 4.5)),
+      JSON.stringify(themePalettes.map(({ expectedTheme, definitionTagCategories, definitionTagContrast }) =>
+        ({ expectedTheme, definitionTagCategories, definitionTagContrast }))));
   });
 
   step("the first Settings frame", async () => {
