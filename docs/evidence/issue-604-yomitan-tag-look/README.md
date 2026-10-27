@@ -2,7 +2,7 @@
 
 Evidence for the pull request that draws definition tags as Yomitan does and
 moves each card's dictionary name into its first definition's tag row. Branch
-head measured: `eaedc7f0` (on `main` `4745397e`); its `extension/` is unchanged
+head measured: `eaedc7f0` (on `main` `4745397e`); its extension JavaScript and CSS are unchanged
 since `832bc01d`. Nothing here ships in the
 extension; the scripts are scratch tools with this machine's paths in their
 first lines.
@@ -63,7 +63,7 @@ copies of `main`) showed the second tab's `renderResults` 0.1–0.4 ms slower
 than the first's whatever it renders, so each comparison was run twice with
 the trees in swapped tabs; the table averages the two positions.
 
-Chrome 152.0.7977.75, `main` `4745397e` against this branch's `extension/`
+Chrome 152.0.7977.75, `main` `4745397e` against this branch's extension JavaScript and CSS
 (unchanged since `832bc01d`), on a 64-core host shared with other jobs (load
 average 55–66). `performance.now()` is coarsened to 0.1 ms here. 600 samples
 per tab and palette in each of the two runs, 1,200 per tree:
