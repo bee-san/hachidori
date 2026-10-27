@@ -3053,10 +3053,8 @@
         "gsm-hoshidicts-metadata gsm-hoshidicts-pitch-metadata";
       const ipaRow = documentRef.createElement("div");
       ipaRow.className = "gsm-hoshidicts-metadata gsm-hoshidicts-ipa-metadata";
-      let frequencyCount = 0;
       function updateFrequency(context) {
-        // Every frequency dictionary keeps its tag (#505); the metadata
-        // display budget only limits the pitch badges after them.
+        // Every frequency dictionary keeps its tag (#505).
         const frequencyTags = includeFrequency ? createFrequencyTags(
           documentRef,
           result,
@@ -3067,13 +3065,8 @@
           context.compactFrequencyNumbers === true,
           context.showFrequencyTagsWithAverage === true
         ) : [];
-        // Hidden per-dictionary tags take no display budget from pitch badges.
-        const visibleCount = frequencyTags.filter(tag => !tag.hidden).length;
-        const countChanged = frequencyCount !== visibleCount;
-        frequencyCount = visibleCount;
         frequencyRow.replaceChildren(...frequencyTags);
-        frequencyRow.hidden = visibleCount === 0 && frequencyTags.length > 0;
-        return countChanged;
+        frequencyRow.hidden = frequencyTags.length > 0 && frequencyTags.every(tag => tag.hidden);
       }
       function updatePitch(context) {
         pitchRow.replaceChildren();
@@ -3093,13 +3086,14 @@
         const groups = documentRef.createElement("ol");
         groups.className = "pronunciation-group-list";
         const seen = new Set();
-        let count = frequencyCount;
+        // Every accent of every pitch dictionary, in the first entry and each
+        // later one alike, as Yomitan's createTermEntry appends every
+        // pronunciation group. Frequency tags take none of their place (#607).
         for (const group of result.term.pitches) {
           const pitches = group.pitches.filter((pitch) => {
             const key = JSON.stringify([group.dictionary, pitch.position, pitch.pattern]);
-            if (seen.has(key) || count >= maxMetadataTags) return false;
+            if (seen.has(key)) return false;
             seen.add(key);
-            count += 1;
             return true;
           });
           if (pitches.length > 0) {
@@ -3942,8 +3936,8 @@
             changed = true;
           }
           entryMetadata.forEach(({ header, metadata, grammarRow }, index) => {
-            const countChanged = frequencyChanged && index > 0 && metadata.updateFrequency(imageContext);
-            if (pitchChanged || countChanged) { metadata.updatePitch(imageContext); changed = true; }
+            if (frequencyChanged && index > 0) metadata.updateFrequency(imageContext);
+            if (pitchChanged) { metadata.updatePitch(imageContext); changed = true; }
             if (grammarChanged && grammarRow) renderGrammarRow(grammarRow, results[index], imageContext.hidePopupGrammarTags !== false);
             if (labelsChanged) {
               for (const row of metadata.rows) changed = updateMetadataLabels(row, results[index]) || changed;

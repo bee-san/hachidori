@@ -1218,9 +1218,13 @@ remains available; this is lazy presentation, not a source or data limit.
 Frequency tags never count against that budget for themselves (#505): every
 frequency dictionary a result carries keeps its tag in the first and every
 later entry, however many are installed and wherever they sit in the
-dictionary order. Their wrapped rows grow with the collection. Visible
-frequency tags still count against the budget for the pitch badges after
-them.
+dictionary order. Their wrapped rows grow with the collection. Pitch badges
+take no budget either (#607): every entry, first or later, shows every accent
+of every pitch dictionary the engine returned for it, as Yomitan's
+`createTermEntry` appends every pronunciation group
+(`ext/js/display/display-generator.js:82-137` at yomidevs/yomitan@d3c54c1). So
+非常, a later entry of a 非常に lookup, shows the pitch dictionaries it shows
+when looked up on its own, however many frequency tags precede them.
 
 Averages are Yomitan's: the floored harmonic mean of each dictionary's first
 value (`getFrequencyNumbers` and `getFrequencyHarmonic`,
@@ -1252,8 +1256,8 @@ with source names hidden, and each aggregate carries `data-frequency-average`
 that averages-off shows stays in the DOM after the aggregates, unchanged apart
 from the `hidden` attribute, unless **Show each dictionary's frequencies with
 the averages** (`showFrequencyTagsWithAverage`, off by default, so averages
-alone are Yomitan's) keeps them shown there. Hidden tags take no layout or metadata display
-budget, stay out of the accessibility tree and still follow alias renames.
+alone are Yomitan's) keeps them shown there. Hidden tags take no layout,
+stay out of the accessibility tree and still follow alias renames.
 Custom CSS can reveal them with
 `.gsm-hoshidicts-tag-frequency[hidden] { display: inline-flex; }`; a result with
 no value to average also hides its frequency group or row, which such a
