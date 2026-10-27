@@ -526,7 +526,9 @@ async function checkLaterEntryPitch(settings, tab, popup) {
     await popup.click(".gsm-hoshidicts-show-more");
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const value = await popup.dictionaryTabs();
-      if (value && !value.showMore && value.entries.some(entry => entry.expression === word[0])) return value.entries;
+      // This lookup's own entries, all shown: not the previous popup's.
+      if (value && !value.hidden && !value.showMore && value.entries[0]?.expression === text
+        && value.entries.some(entry => entry.expression === word[0])) return value.entries;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
     throw new Error(`${text} did not list ${word[0]}: ${JSON.stringify(await popup.dictionaryTabs())}`);
