@@ -303,13 +303,29 @@
     return String(typeof positions === "string" ? getDownstepPositions(positions) : positions);
   }
 
-  // Yomitan's getPitchCategory (japanese.js at 67db60d) with its
-  // isNonNounVerbOrAdjective: a pattern's category is its first downstep and
-  // any downstep of a verb or i-adjective is kifuku. The popup and
-  // {pitch-accent-categories} share it.
-  function pitchAccentCategory(reading, pitch, wordClasses = []) {
+  // The endings of the dictionary forms Yomitan's japanese-transforms.js
+  // (d3c54c1) deinflects each class to, with the classical forms dictionaries
+  // give the same classes (聞こゆ, 相語らふ, 遅し; サ変 期す, ザ変 禁ず). Any
+  // verb ending counts for the three verb classes, as a dictionary can give a
+  // verb another one (驚く as v1). Katakana reads as hiragana.
+  const VERB_ENDING = new RegExp(`[${U_ROW_KANA}ずづふゆ]$`, "u");
+  const SURU_ENDING = new RegExp(`(?:する|為る|ずる|${HAN_CHARACTER_PATTERN.source}[すず])$`, "u");
+  const DICTIONARY_FORM_ENDINGS = new Map([
+    ["v1", VERB_ENDING], ["v5", VERB_ENDING], ["vk", VERB_ENDING],
+    ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いし]$/u],
+  ]);
+
+  // Yomitan's getPitchCategory (japanese.js:367 at d3c54c1) with its
+  // isNonNounVerbOrAdjective (dictionary-data-util.js:320): a pattern's
+  // category is its first downstep and any downstep of a verb or i-adjective is
+  // kifuku. Unlike Yomitan, a word class counts only where the term's
+  // expression ends as that class's dictionary form does, because some
+  // dictionaries tag nouns and na-adjectives with one (自由, #608). This only
+  // takes kifuku away. The popup and {pitch-accent-categories} share it.
+  function pitchAccentCategory(reading, pitch, wordClasses = [], expression = "") {
     const classes = new Set(wordClasses);
-    const inflected = ["v1", "v5", "vk", "vs", "vz", "adj-i"].some(rule => classes.has(rule))
+    const text = toHiragana(expression);
+    const inflected = [...DICTIONARY_FORM_ENDINGS].some(([rule, ending]) => classes.has(rule) && ending.test(text))
       && !(classes.has("vs") && classes.has("n"));
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
@@ -505,15 +521,16 @@
   // display-generator.js _createPronunciationPitchAccent with templates-display.html
   // "pronunciation": one pitch accent's li.pronunciation. A notation the
   // options hide is not built. data-pronunciation is its `reading [n]` label,
-  // and data-pitch-category its accent group from the term's word classes.
+  // and data-pitch-category its accent group from the term's word classes and
+  // expression.
   function createPronunciationPitchAccent(documentRef, reading, pitch,
-    { text = true, position = true, graph = false, wordClasses = [] } = {}) {
+    { text = true, position = true, graph = false, wordClasses = [], expression = "" } = {}) {
     const positions = pitchAccentPositions(pitch);
     const morae = splitPitchAccentMorae(reading);
     const node = documentRef.createElement("li");
     node.className = "pronunciation";
     node.dataset.pitchAccentDownstepPosition = `${positions}`;
-    const category = pitchAccentCategory(reading, pitch, wordClasses);
+    const category = pitchAccentCategory(reading, pitch, wordClasses, expression);
     if (category) node.dataset.pitchCategory = category;
     node.dataset.pronunciationType = "pitch-accent";
     if (pitch.nasal.length > 0) node.dataset.nasalMoraPosition = pitch.nasal.join(" ");
@@ -844,7 +861,7 @@
       splitPitchAccentMorae(pitchReading).length
     );
     const category = selectedPitch
-      ? pitchAccentCategory(pitchReading, selectedPitch.pitch, pitchOptions.wordClasses)
+      ? pitchAccentCategory(pitchReading, selectedPitch.pitch, pitchOptions.wordClasses, expression)
       : null;
     const pitchedMorae = selectedPitch && pitchOptions.enabled !== false
       ? buildPitchAccentMorae(pitchReading, pitchAccentPositions(selectedPitch.pitch))

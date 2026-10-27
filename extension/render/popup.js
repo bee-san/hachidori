@@ -685,7 +685,8 @@
     list.dataset.count = String(pitches.length);
     pitches.forEach((pitch, index) => {
       const item = createPronunciationPitchAccent(documentRef, reading, pitch, { text: display.showPitchAccentText,
-        position: display.showPitchAccentPosition, graph: display.showPitchAccentGraph, wordClasses: display.wordClasses });
+        position: display.showPitchAccentPosition, graph: display.showPitchAccentGraph, wordClasses: display.wordClasses,
+        expression: display.expression });
       item.classList.add("gsm-hoshidicts-tag-pitch");
       item.dataset.index = String(index);
       item.dataset.dictionary = group.dictionary;
@@ -3084,8 +3085,9 @@
           showPitchAccentText: context.showPitchAccentText !== false,
           showPitchAccentPosition: context.showPitchAccentPosition !== false,
           showPitchAccentGraph: context.showPitchAccentGraph === true,
-          // Kifuku needs the term's word classes; no option changes a group.
+          // Kifuku needs the term's word classes and expression; no option changes a group.
           wordClasses: parseTagList(result.term.rules),
+          expression: String(result.term.expression || "").trim(),
         };
         const reading = String(result.term.reading || result.term.expression || "").trim();
         const groups = documentRef.createElement("ol");
