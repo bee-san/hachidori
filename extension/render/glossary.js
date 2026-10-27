@@ -57,6 +57,10 @@
   // in Unicode, and the は row's half-voiced kana follows that (発 はつ, ぱつ).
   const DAKUTEN_KANA = "かきくけこさしすせそたちつてとはひふへほ";
   const HANDAKUTEN_KANA = "はひふへほ";
+  // Modern kana usage writes a voiced ち or つ as じ or ず in a compound no
+  // longer felt as two words (世界中 せかいじゅう, 稲妻 いなずま), as ぢ or づ in
+  // others (鼻血 はなぢ).
+  const ZI_ZU_KANA = { ち: "じ", つ: "ず" };
   // A kun'yomi ending in an u-row kana has its masu-stem in the i row
   // (す.く, すき; きら.う, きらい).
   const U_ROW_KANA = "うくぐすつぬぶむる";
@@ -634,13 +638,16 @@
   // The ways a kanji can be read inside a word, from its KANJIDIC readings
   // (on'yomi in hiragana, kun'yomi with "." before the okurigana): each
   // reading; a kun'yomi's stem, stem and okurigana, and masu-stem (す.く: す,
-  // すく, すき); each of those with rendaku; and each of all these with a final
-  // つ, ち, く, き or り as っ (いっ, ぱっ).
+  // すく, すき), and its stem with the start of its okurigana, for a word that
+  // leaves the rest unwritten (う.える: うえ, as in 植木 うえき); each of those
+  // with rendaku; and each of all these with a final つ, ち, く, き or り as っ
+  // (いっ, ぱっ).
   function kanjiReadingForms(readings) {
     const forms = new Set();
     for (const reading of readings.split(" ")) {
       const [stem, okurigana = ""] = reading.split(".");
       forms.add(stem).add(stem + okurigana);
+      for (let length = 1; length < okurigana.length; length += 1) forms.add(stem + okurigana.slice(0, length));
       const row = okurigana === "" ? -1 : U_ROW_KANA.indexOf(okurigana.at(-1));
       if (row >= 0) forms.add(stem + okurigana.slice(0, -1) + I_ROW_KANA[row]);
     }
@@ -648,6 +655,7 @@
       const codePoint = form.codePointAt(0);
       if (DAKUTEN_KANA.includes(form[0])) forms.add(String.fromCodePoint(codePoint + 1) + form.slice(1));
       if (HANDAKUTEN_KANA.includes(form[0])) forms.add(String.fromCodePoint(codePoint + 2) + form.slice(1));
+      if (Object.hasOwn(ZI_ZU_KANA, form[0])) forms.add(ZI_ZU_KANA[form[0]] + form.slice(1));
     }
     for (const form of [...forms]) {
       if (SOKUON_KANA.includes(form.at(-1))) forms.add(`${form.slice(0, -1)}っ`);
@@ -670,25 +678,37 @@
     };
   }
 
-  // Whether a run of kanji reads as `reading`: one form per character, in
-  // order. 々 repeats the kanji before it; a character without readings (a
-  // digit, a letter, 、) never reads.
-  function readsAs(text, reading, kanjiReadings) {
-    // Where in the reading the characters so far can end.
-    let ends = new Set([0]);
+  // How a run of kanji reads as `reading`: one form per character, in order.
+  // 々 repeats the kanji before it; a character without readings (a digit, a
+  // letter, 、) never reads. Where each character's share of the reading starts,
+  // then the reading's length, when exactly one split reads; false when more
+  // than one does; null when none does.
+  function readKanjiRun(text, reading, kanjiReadings) {
+    // Where the characters so far can end in the reading, each with where the
+    // last one's share starts there, or -1 where more than one split ends there.
+    let ends = new Map([[0, 0]]);
+    const steps = [];
     let forms = NO_KANJI_READINGS;
     for (const character of text) {
       if (character !== "々") forms = kanjiReadings(character);
-      const next = new Set();
-      for (const end of ends) {
+      const next = new Map();
+      for (const [end, start] of ends) {
         for (const form of forms) {
-          if (reading.startsWith(form, end)) next.add(end + form.length);
+          if (!reading.startsWith(form, end)) continue;
+          const shareEnd = end + form.length;
+          next.set(shareEnd, next.has(shareEnd) || start < 0 ? -1 : end);
         }
       }
-      if (next.size === 0) return false;
+      if (next.size === 0) return null;
+      steps.push(next);
       ends = next;
     }
-    return ends.has(reading.length);
+    if (!ends.has(reading.length)) return null;
+    if (ends.get(reading.length) < 0) return false;
+    const bounds = [];
+    bounds[steps.length] = reading.length;
+    for (let index = steps.length - 1; index >= 0; index -= 1) bounds[index] = steps[index].get(bounds[index + 1]);
+    return bounds;
   }
 
   // With kanjiReadings, a non-kana group takes only a share of the reading
@@ -727,7 +747,7 @@
     let result = null;
     for (let index = reading.length; index >= group.text.length; index -= 1) {
       const segments = kanjiReadings === null
-        || readsAs(group.text, normalizedReading.substring(0, index), kanjiReadings)
+        || readKanjiRun(group.text, normalizedReading.substring(0, index), kanjiReadings) !== null
         ? segmentizeFurigana(
           reading.substring(index),
           normalizedReading.substring(index),
@@ -790,6 +810,37 @@
 
   function segmentFurigana(expression, reading) {
     return distributeFurigana(expression, reading) ?? [{ text: expression, reading }];
+  }
+
+  // A split with each run of two or more kanji read one kanji at a time where
+  // exactly one split of the run's reading reads (readKanjiRun): 二十四時間
+  // にじゅうよじかん is 二(に)十(じゅう)四(よ)時(じ)間(かん). A run that no split reads,
+  // such as jukujikun (今日 きょう) or a run with a digit (２人 ふたり), or that
+  // more than one does, keeps one ruby. `segments` itself where no run splits.
+  function splitKanjiRuns(segments, kanjiReadings) {
+    const split = segments.flatMap((segment) => {
+      const characters = Array.from(segment.text);
+      const bounds = characters.length > 1 && segment.reading
+        ? readKanjiRun(characters, toHiragana(segment.reading), kanjiReadings)
+        : null;
+      return Array.isArray(bounds)
+        ? characters.map((character, index) =>
+          createFuriganaSegment(character, segment.reading.slice(bounds[index], bounds[index + 1])))
+        : [segment];
+    });
+    return split.length === segments.length ? segments : split;
+  }
+
+  // The split a headword's kanji readings (createKanjiReadings) give it, or
+  // null where that is its local split (segmentFurigana): where the kana alone
+  // leave more than one split, the one that reads (#459), and each run of
+  // kanji read one kanji at a time (#605).
+  function kanjiFurigana(expression, reading, kanjiReadings) {
+    const local = distributeFurigana(expression, reading);
+    const segments = local ?? distributeFurigana(expression, reading, kanjiReadings);
+    if (segments === null) return null;
+    const furigana = splitKanjiRuns(segments, kanjiReadings);
+    return furigana === local ? null : furigana;
   }
 
   // A term's furigana: the engine's split (term.furigana, from the kanji
@@ -2003,6 +2054,7 @@
     getFuriganaKanaSegments,
     isMoraPitchHigh,
     isRecord,
+    kanjiFurigana,
     matchedFurigana,
     normalizeMediaPath,
     parseStructuredLink,
