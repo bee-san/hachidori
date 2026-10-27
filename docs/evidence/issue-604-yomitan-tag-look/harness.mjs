@@ -59,14 +59,15 @@ body { overflow: visible; padding: 8px; background: var(--background-color); }</
 
 async function hachidoriPage(browser, palette) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 620, height: 700, deviceScaleFactor: 2 });
+  await page.setViewport({ width: 620, height: 700, deviceScaleFactor: Number(process.env.HARNESS_DSF || 2) });
   if (process.env.HARNESS_FORCED) await page.emulateMediaFeatures([{ name: "forced-colors", value: "active" },
     { name: "prefers-color-scheme", value: process.env.HARNESS_FORCED }]);
   await page.setContent(`<!doctype html><meta charset="utf-8"><style>body{margin:0;background:${palette === "light" ? "#ffffff" : "#1e1e1e"}}</style><p id="word">今日</p><div id="host"></div>`);
   for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js"]) {
     await page.addScriptTag({ content: readFileSync(resolve(extensionDir, file), "utf8") });
   }
-  const css = readFileSync(resolve(extensionDir, "render/reader.css"), "utf8");
+  const css = readFileSync(resolve(extensionDir, "render/reader.css"), "utf8")
+    + (process.env.HARNESS_EXTRA_CSS ? `\n${readFileSync(process.env.HARNESS_EXTRA_CSS, "utf8")}` : "");
   await page.evaluate(({ css, rows, palette, layoutMode }) => {
     const host = document.querySelector("#host");
     const shadow = host.attachShadow({ mode: "open" });
@@ -82,14 +83,14 @@ async function hachidoriPage(browser, palette) {
       createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: HDGlossary.appendTextOnlyGlossary,
       parseTagList: HDGlossary.parseTagList, positionPopup() {} });
+    const appearance = HDPopup.createPopupAppearance(host);
+    appearance.update({ popupTheme: palette, popupWidthPx: 560, popupHeightPx: 640, popupScalePercent: 100,
+      popupOpacityPercent: 100, showPopupAudioButton: true, glossaryLayoutMode: layoutMode });
     view.renderResults([{ matched: "今日", deinflected: "今日", trace: [], preprocessorSteps: 0, term: {
       expression: "今日", reading: "きょう", rules: "", score: 0, frequencies: [], pitches: [],
       glossaries: rows.map(row => ({ dictionary: row.dictionary, glossary: JSON.stringify(row.glosses),
         definitionTags: row.tags.map(t => t.name).join(" "), termTags: "", tags: row.tags })),
     } }], { anchor: document.querySelector("#word"), query: "今日" }, HDReaderOptions.normaliseOptions({}));
-    const appearance = HDPopup.createPopupAppearance(host);
-    appearance.update({ popupTheme: palette, popupWidthPx: 560, popupHeightPx: 640, popupScalePercent: 100,
-      popupOpacityPercent: 100, showPopupAudioButton: true, glossaryLayoutMode: layoutMode });
     window.shadowQuery = (selector, all = false) => all ? [...shadow.querySelectorAll(selector)] : shadow.querySelector(selector);
   }, { css, rows: ROWS, palette, layoutMode: process.env.HARNESS_LAYOUT || "default" });
   await page.evaluate(() => document.fonts.ready);
@@ -134,7 +135,9 @@ try {
       return { x: rect.x, y: rect.y, width: rect.width, height: Math.min(rect.height, 420) };
     });
     await page.screenshot({ path: `${OUT}/${label}-${palette}-popup.png`, clip: popupBox });
-    report[`${label}/${palette}`] = { scheme, rows: await page.evaluate(`(${describeRows})(shadowQuery(".gsm-hoshidicts-popup"))`), tags: await page.evaluate(`(${describeTags})(shadowQuery(".gsm-hoshidicts-popup"))`),
+    report[`${label}/${palette}`] = { scheme,
+      cardHeights: await page.evaluate(() => shadowQuery(".gsm-hoshidicts-glossary-card", true).map(card => card.getBoundingClientRect().height)),
+      rows: await page.evaluate(`(${describeRows})(shadowQuery(".gsm-hoshidicts-popup"))`), tags: await page.evaluate(`(${describeTags})(shadowQuery(".gsm-hoshidicts-popup"))`),
       titles: await page.evaluate(() => shadowQuery(".gsm-hoshidicts-glossary-card-title", true).map(node => node.textContent)) };
     await page.close();
     if (label === "base") {

@@ -22,6 +22,14 @@ first lines.
   themes, with Compact tags off (Yomitan's default). It records each tag's
   computed colours, font, size and margins. `HARNESS_LAYOUT=compact` selects
   Compact glossaries and `HARNESS_FORCED=dark|light` emulates forced colours.
+  It applies the popup appearance before the first render, as `content.js` and
+  the Design preview do, and records each card's height. `HARNESS_DSF` sets the
+  device scale factor (default 2, as the screenshots). Card heights, `main` →
+  branch, Light palette: Jitendex 100.8 → 90.9 px at both scales; the three-row
+  JMdict card 255.2 → 241.9 px at scale 1 and 258.2 → 241.9 px at scale 2; with
+  Compact glossaries 59.6/59.8 → 44.0 px and 107.6/108.2 → 97.9 px (`main`'s
+  title line rounds differently at the two scales). `HARNESS_EXTRA_CSS` appends a
+  stylesheet, as Custom CSS does.
 - `compose.py` builds the comparison images below from those captures.
 - `tag-colours.mjs` derives the shipped colours: each of Yomitan's
   `--tag-*-background-color` values, darkened in OKLCH lightness only (hue and
