@@ -1681,9 +1681,10 @@ between them. Where the kana leave more than one split, `segmentFurigana`, like
 Yomitan, puts the reading over the whole word: 好き嫌い could be 好(す)き嫌(きら)い
 or 好(すき)き嫌(ら)い. The engine service gives an `hd_lookup` or
 `hd_lookup_dictionary` result a `term.furigana` split from its kanji's KANJIDIC
-readings where that split differs (`kanjiFurigana`). For such a headword it is
-the split when exactly one reads (#459). Then each run of two or more kanji is
-read one kanji at a time when exactly one split of its share reads (#605):
+readings (`kanjiFurigana`) where that differs from the local split. Where the
+kana leave more than one split, it is the one split that reads (#459). Then
+each run of two or more kanji is read one kanji at a time when exactly one split
+of its share reads (#605):
 二十四時間 is 二(に)十(じゅう)四(よ)時(じ)間(かん), where Yomitan puts にじゅうよじかん
 over the run. A run that no split reads, such as jukujikun (今日 きょう) or a run
 with a digit (２人 ふたり), keeps one ruby, as does a run that two splits read. A
