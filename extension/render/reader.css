@@ -1127,7 +1127,6 @@ html[data-hoshidicts-theme="girlypop"],
   --tag-dictionary-background-color: light-dark(#9d5abf, #8f56ac);
   --tag-frequency-background-color: light-dark(#29882d, #347d35);
   --tag-part-of-speech-background-color: #565656;
-  --tag-search-background-color: light-dark(#76767d, #69696e);
   --tag-pronunciation-dictionary-background-color: #6640be;
   /* Density tokens. The default is compact; a Comfortable density (or a theme)
      only needs to override these on the host. */
@@ -1221,7 +1220,6 @@ html[data-hoshidicts-theme="girlypop"],
   --tag-dictionary-background-color: #794095;
   --tag-frequency-background-color: #1a661e;
   --tag-part-of-speech-background-color: #565656;
-  --tag-search-background-color: #58585d;
   --tag-pronunciation-dictionary-background-color: #653fbd;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -2576,10 +2574,6 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-tag-definition[data-category="partOfSpeech"] {
   --tag-color: var(--tag-part-of-speech-background-color);
-}
-
-.gsm-hoshidicts-tag-definition[data-category="search"] {
-  --tag-color: var(--tag-search-background-color);
 }
 
 .gsm-hoshidicts-tag-definition[data-category="pronunciation-dictionary"] {

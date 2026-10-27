@@ -11,7 +11,10 @@ const css = readFileSync(new URL("../extension/render/reader.css", import.meta.u
 // display.css at yomidevs/yomitan@d3c54c1: --tag-text-color and each
 // --tag-*-background-color in its light (:root, L140-L152) and dark
 // (:root[data-theme=dark], L208-L220) themes, with the data-category that
-// paints it (L857-L886; "default" is every other category).
+// paints it (L857-L886; "default" is every other category). Yomitan's
+// "search" is for its own headword search tags, hidden by default
+// (L2043-L2045), so it is not ported; a definition tag in that category is
+// drawn as "default", Yomitan's colour for it too.
 const YOMITAN_TEXT = ["#ffffff", "#f1f1f1"];
 const YOMITAN_COLOURS = [
   ["default", null, "#8a8a91", "#69696e"],
@@ -23,7 +26,6 @@ const YOMITAN_COLOURS = [
   ["dictionary", "dictionary", "#aa66cc", "#9057ad"],
   ["frequency", "frequency", "#5cb85c", "#489148"],
   ["part-of-speech", "partOfSpeech", "#565656", "#565656"],
-  ["search", "search", "#8a8a91", "#69696e"],
   ["pronunciation-dictionary", "pronunciation-dictionary", "#6640be", "#6640be"],
 ];
 const SCHEMES = ["light", "dark"];
