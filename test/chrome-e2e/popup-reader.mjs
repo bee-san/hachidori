@@ -98,10 +98,11 @@ async function popupReader(page, depth = 0) {
         const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
         // The overline furigana style draws the pitch list's Yomitan text
         // instead: a line over each high mora and a hook where the pitch
-        // drops, both in the popup's text colour.
+        // drops, both in the popup's text colour. The headword draws them as
+        // each high mora's ::after.
         const overlines = [...(expression?.querySelectorAll('[data-pitch-style="overline"]'
-          + ' > .pronunciation-mora[data-pitch="high"] > .pronunciation-mora-line') ?? [])]
-          .map(line => view.getComputedStyle(line));
+          + ' > .pronunciation-mora[data-pitch="high"]') ?? [])]
+          .map(mora => view.getComputedStyle(mora, "::after"));
         return {
           hidden: this.hasAttribute("hidden"),
           height: this.getBoundingClientRect().height,

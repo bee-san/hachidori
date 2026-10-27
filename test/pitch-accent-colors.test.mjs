@@ -91,5 +91,5 @@ test("the five groups stay apart in each colour scheme, focus shows and forced c
   assert.match(focus, /outline: 2px solid currentColor;/u);
   // Forced colours do not repaint SVG strokes, so each group falls back to the
   // text colour a badge graph uses today.
-  assert.match(css, /@media \(forced-colors: active\) \{\s*\.gsm-hoshidicts-popup \[data-pitch-category\] \{\s*--hoshidicts-pitch-category: var\(--text-color\);\s*\}\s*\}/u);
+  assert.match(css, /@media \(forced-colors: active\) \{\s*\.gsm-hoshidicts-popup \[data-pitch-category\] \{\s*--hoshidicts-pitch-category: var\(--text-color\);\s*\}/u);
 });

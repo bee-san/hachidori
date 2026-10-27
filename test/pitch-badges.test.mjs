@@ -86,14 +86,14 @@ test("a dictionary's accents share one group and a string pattern reads as its d
   assert.deepEqual(levels(pronunciations[0]), ["は:low>high", "し:high>low"]);
   assert.deepEqual(levels(pronunciations[0]), levels(pronunciations[1]));
   assert.equal(pronunciations[0].title, "Kanjium: はし [2]");
-  // The furigana contour reads the same pattern: a drop after し, not heiban.
+  // The headword's pitch reads the same pattern: a drop after し, not heiban.
   const reading = f.popup.querySelector(".gsm-hoshidicts-pitch-reading");
   assert.equal(reading.dataset.pitchPosition, "2");
   assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-mora")]
     .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`), ["low:rise", "high:drop"]);
 });
 
-test("the overline furigana style draws the headword with the pronunciation list's Yomitan text", t => {
+test("the overline reading pitch style draws the headword's pitch with the pronunciation list's Yomitan text", t => {
   const f = fixture(t);
   const [group] = f.render(result("食べる", "たべる", [pitch("NHK", 2)]), { pitchAccentFuriganaStyle: "overline" });
   const expression = f.popup.querySelector(".gsm-hoshidicts-expression");
@@ -214,7 +214,7 @@ test("the headword and each badge carry their pitch accent group, contour or not
   ]) {
     assert.deepEqual(groupOf(expression, reading, [value], rules), [expected, expected], expression);
   }
-  // The headword follows the furigana's pitch; each badge keeps its own.
+  // The headword follows its reading's pitch; each badge keeps its own.
   const badges = () => [...f.popup.querySelectorAll(".pronunciation")].map(node => node.dataset.pitchCategory);
   const headword = () => f.popup.querySelector(".gsm-hoshidicts-expression");
   f.render(RESULT);

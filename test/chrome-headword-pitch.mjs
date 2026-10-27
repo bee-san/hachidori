@@ -53,7 +53,15 @@ export async function checkHeadwordPitch(browser) {
         const contour = expression.querySelector(".gsm-hoshidicts-pitch-contour");
         const level = name => contour?.querySelector(`[data-pitch-level="${name}"], [data-pitch="${name}"]`);
         const high = level("high"), low = level("low");
+        // What selecting the headword copies: the readings are not selectable.
+        const range = document.createRange();
+        range.selectNodeContents(expression);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        const copied = getSelection().toString();
+        getSelection().removeAllRanges();
         return {
+          copied,
           furigana: [...expression.querySelectorAll("ruby")].map(ruby => ruby.textContent),
           rt: style(expression.querySelector("rt")) && { colour: style(expression.querySelector("rt")).color,
             filter: style(expression.querySelector("rt")).filter },
@@ -61,9 +69,9 @@ export async function checkHeadwordPitch(browser) {
             filter: style(reading).filter, userSelect: style(reading).userSelect },
           contour: contour && { inHeadword: contour.parentElement === expression, text: contour.textContent,
             fontSize: style(contour).fontSize, colour: style(contour.firstElementChild).color },
-          // The contour's lines, or the Overline style's line over high morae.
+          // The contour's lines, or the Overline style's line over high morae (its ::after).
           lines: high?.classList.contains("pronunciation-mora")
-            ? [style(high.querySelector(".pronunciation-mora-line")).borderTopColor]
+            ? [getComputedStyle(high, "::after").borderTopColor]
             : [style(high)?.borderTopColor, style(low)?.borderBottomColor],
           // A contour mora's other side, which only a forced colour would paint.
           unused: high?.classList.contains("pronunciation-mora") ? []
@@ -91,13 +99,34 @@ export async function checkHeadwordPitch(browser) {
     assert.deepEqual([blurredKanji.rt.filter, blurredKanji.reading.filter], ["blur(5px)", "blur(5px)"]);
 
     // てくてく: no furigana and no reading; the headword's own kana carry the
-    // pitch, in its size and colour.
+    // pitch, in its size and colour, and copying the headword copies the word.
     for (const pitchAccentFuriganaStyle of ["contour", "overline"]) {
       const kana = await show(KANA, { pitchAccentFuriganaStyle });
       assert.deepEqual([kana.furigana, kana.reading], [[], null], pitchAccentFuriganaStyle);
       assert.deepEqual(kana.contour, { inHeadword: true, text: "てくてく", fontSize: kana.headword.fontSize,
         colour: kana.headword.colour }, pitchAccentFuriganaStyle);
       assert.ok(kana.lines.every(colour => colour && colour !== TRANSPARENT), JSON.stringify(kana.lines));
+      assert.deepEqual([kana.copied, (await show(KANJI, { pitchAccentFuriganaStyle })).copied], ["てくてく", "好き嫌い"],
+        pitchAccentFuriganaStyle);
+      // A double-click on the word selects the whole word, as it does with the
+      // pitch off. On the middle of a word's last character Chrome selects the
+      // line break after it instead, pitch or not, so that one is left out.
+      await show(KANA, { pitchAccentFuriganaStyle });
+      const moraCentres = await page.evaluate(() => [...document.querySelector("#host").shadowRoot
+        .querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-contour > *")].map(mora => {
+        const box = mora.getBoundingClientRect();
+        return [box.x + box.width / 2, box.y + box.height / 2];
+      }).slice(0, -1));
+      const doubleClicked = [];
+      for (const [x, y] of moraCentres) {
+        await page.mouse.click(x, y, { count: 2 });
+        doubleClicked.push(await page.evaluate(() => getSelection().toString()));
+        await page.evaluate(() => getSelection().removeAllRanges());
+        await page.mouse.move(0, 0);
+        // Past the double-click interval, so the next press starts a new click.
+        await new Promise(resolveWait => setTimeout(resolveWait, 600));
+      }
+      assert.deepEqual(doubleClicked, Array(3).fill("てくてく"), pitchAccentFuriganaStyle);
       // Blur cannot blur the word itself, so it hides only the pitch until the reveal.
       for (const blur of ["pending", "blurred"]) {
         const blurred = await show(KANA, { pitchAccentFuriganaStyle }, blur);
@@ -112,11 +141,14 @@ export async function checkHeadwordPitch(browser) {
     // in the system text colour, and blur still hides them.
     await page.emulateMediaFeatures([{ name: "forced-colors", value: "active" }]);
     for (const value of [KANJI, KANA]) {
-      const what = value.term.expression;
-      const forced = await show(value);
-      assert.ok(forced.lines.every(colour => colour && colour !== TRANSPARENT), `${what} ${JSON.stringify(forced.lines)}`);
-      assert.deepEqual(forced.unused, [TRANSPARENT, TRANSPARENT], what);
-      assert.deepEqual((await show(value, {}, "blurred")).lines, [TRANSPARENT, TRANSPARENT], what);
+      for (const pitchAccentFuriganaStyle of ["contour", "overline"]) {
+        const what = `${value.term.expression} ${pitchAccentFuriganaStyle}`;
+        const forced = await show(value, { pitchAccentFuriganaStyle });
+        assert.ok(forced.lines.every(colour => colour && colour !== TRANSPARENT), `${what} ${JSON.stringify(forced.lines)}`);
+        assert.deepEqual(forced.unused, forced.unused.map(() => TRANSPARENT), what);
+        assert.deepEqual((await show(value, { pitchAccentFuriganaStyle }, "blurred")).lines,
+          forced.lines.map(() => TRANSPARENT), what);
+      }
     }
   } finally {
     await page.close();

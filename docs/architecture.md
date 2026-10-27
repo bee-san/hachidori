@@ -1188,7 +1188,8 @@ draws the headword's pitch on its reading, not in its furigana (#606), which
 stays what it is with the pitch off: the reading follows the headword where
 Yomitan's *Term furigana and reading* display puts it (`.headword-reading-outer`
 in `ext/css/display.css` at yomidevs/yomitan@d3c54c1), at three quarters of the
-headword's size, half an em after it, in the furigana's colour. 好き嫌い reads
+headword's size, a quarter of the headword's size after it (Yomitan's 0.5em of
+its 14 px text beside a 2em headword), in the furigana's colour. 好き嫌い reads
 好(す)き嫌(きら)い, then すき＼きらい. A headword without kanji spelt in its
 reading's kana (てくてく, or テレビ read てれび) has no furigana and carries the
 pitch on its own kana, as JL marks one. A headword in kanji whose reading is
@@ -1199,8 +1200,11 @@ and drop in the pitch colour. Overline builds the morae with the badges'
 `createPronunciationText`, so the headword's pitch shows the badges' line over
 high morae and downstep hook in the text colour, with the same levels; nasal and
 devoice marks, `[n]` and the graph stay in the badges. The style is disabled
-while the reading's pitch is off. Definition blur blurs the reading with the
-furigana, and a kana headword's pitch lines wait for the reveal. Under forced
+while the reading's pitch is off. The reading is not selectable, like the
+furigana, so selecting or copying a headword gives the word, and a double-click
+on a kana headword selects it whole, as with the pitch off. Definition blur
+blurs the reading with the furigana, and a kana headword's pitch lines wait for
+the reveal. Under forced
 colours the contour keeps its lines on their own sides, in the system text
 colour, rather than boxing each mora in. Turning dictionary names off
 removes the tags. IPA shows transcriptions without source-name labels. Tooltips and

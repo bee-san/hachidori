@@ -1742,27 +1742,31 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 /* The headword's pitch accent is drawn on its reading after the headword
-   (#606), in the furigana's colour, at three quarters of the headword's size
-   and half an em after it, as Yomitan's "Term furigana and reading" display
-   places a reading (display.css: .headword-reading-outer). A headword spelt in
-   its reading's kana carries the contour on its own kana instead. */
+   (#606), in the furigana's colour, at three quarters of the headword's size,
+   as Yomitan's "Term furigana and reading" display places a reading
+   (display.css: .headword-reading-outer). Yomitan's 0.5em gap is in the 14 px
+   entry text beside a 2em headword, a quarter of the headword: a third of the
+   reading's own em. A headword spelt in its reading's kana carries the contour
+   on its own kana instead. */
 .gsm-hoshidicts-pitch-reading {
-  margin-inline-start: 0.5em;
+  margin-inline-start: calc(1em / 3);
   color: var(--text-color-light1);
   font-size: 0.75em;
   font-weight: 400;
   user-select: none;
 }
 
+/* An inline-block, as Yomitan's reading is: it moves to the next line whole
+   and wraps between morae only when it is longer than a line. Its morae are
+   inline-blocks too, not flex items, which a copy or a selection would split
+   onto a line each. */
 .gsm-hoshidicts-pitch-contour {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: stretch;
+  display: inline-block;
   line-height: 1;
-  white-space: nowrap;
 }
 
 .gsm-hoshidicts-pitch-mora {
+  display: inline-block;
   position: relative;
   margin-right: -1px;
   padding: 2px 1px;
@@ -1809,6 +1813,31 @@ html[data-hoshidicts-theme="girlypop"],
   padding-top: 0.3em;
 }
 
+/* The list's line and hook, drawn here as ::after with the same geometry
+   instead of by its empty, absolutely positioned line element: Chrome's word
+   selection stops at that element, so a double-click on a kana headword
+   selected only part of the word. */
+.gsm-hoshidicts-pitch-contour[data-pitch-style="overline"] > .pronunciation-mora > .pronunciation-mora-line {
+  display: none;
+}
+
+.gsm-hoshidicts-pitch-contour[data-pitch-style="overline"] > .pronunciation-mora[data-pitch="high"]::after {
+  position: absolute;
+  top: 0.1em;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 0.1em solid var(--pronunciation-annotation-color);
+  pointer-events: none;
+  content: "";
+}
+
+.gsm-hoshidicts-pitch-contour[data-pitch-style="overline"] > .pronunciation-mora[data-pitch="high"][data-pitch-next="low"]::after {
+  right: -0.1em;
+  height: 0.4em;
+  border-right: 0.1em solid var(--pronunciation-annotation-color);
+}
+
 .gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-expression rt,
 .gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-expression rt,
 .gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-pitch-reading,
@@ -1839,8 +1868,9 @@ html[data-hoshidicts-theme="girlypop"],
 
 /* The headword and its pitch lines (the contour, or the Overline style's
    line and hook) take the group of the pitch its reading shows. The reading
-   kana keep their muted colour: text that size needs 4.5:1. Blur hides that
-   pitch with the reading, so the colour waits too. */
+   kana keep their muted colour, not the group colours, which are chosen for
+   3:1: text that size would need 4.5:1. Blur hides that pitch with the
+   reading, so the colour waits too. */
 :host([data-hoshidicts-pitch-colors]) .gsm-hoshidicts-popup:not([data-definition-blur-state]) .gsm-hoshidicts-expression[data-pitch-category] {
   --hoshidicts-pitch: var(--hoshidicts-pitch-category);
   --pronunciation-annotation-color: var(--hoshidicts-pitch-category);
@@ -1854,24 +1884,22 @@ html[data-hoshidicts-theme="girlypop"],
 }
 
 /* Forced colours keep today's popup: they replace the headword's colours, but
-   not the SVG paint of a badge's graph, which would keep its group colour. */
+   not the SVG paint of a badge's graph, which would keep its group colour.
+   They would also paint a contour mora's unused, transparent side and box
+   every mora in, so the headword's pitch keeps its own lines instead, in the
+   system text colour, and blur can still make them transparent. */
 @media (forced-colors: active) {
   .gsm-hoshidicts-popup [data-pitch-category] {
     --hoshidicts-pitch-category: var(--text-color);
   }
-}
 
-/* Forced colours would paint a contour mora's unused, transparent side as well
-   and box every mora in. The headword's pitch keeps its own lines instead, in
-   the system text colour, so blur can still make them transparent. */
-@media (forced-colors: active) {
   .gsm-hoshidicts-pitch-contour {
     --hoshidicts-pitch: CanvasText;
     --pronunciation-annotation-color: CanvasText;
   }
 
   .gsm-hoshidicts-pitch-mora,
-  .gsm-hoshidicts-pitch-contour .pronunciation-mora-line {
+  .gsm-hoshidicts-pitch-contour > .pronunciation-mora::after {
     forced-color-adjust: none;
   }
 
