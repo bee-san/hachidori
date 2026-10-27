@@ -309,10 +309,11 @@
   // dictionary can give a word the wrong one of two related classes (驚く as
   // v1), v1, v5 and vk share every verb ending and vs and vz every suru and
   // zuru ending. An i-adjective ends in い: 講談社 日本語大辞典 gives adj-i to
-  // nouns ending in し (遠回し), so a classical one (遅し) does not count.
-  // Each kana also matches in katakana (ムカツク, キツイ).
+  // nouns ending in し (遠回し), so a classical one (遅し) does not count. A
+  // verb or adjective ending also matches in katakana (ムカツク, キツイ), but a
+  // suru one does not: ハッスル (精選版 vs) would end in one.
   const VERB_ENDING = /[うくぐすずつづぬふぶむゆるウクグスズツヅヌフブムユル]$/u;
-  const SURU_ENDING = new RegExp(`(?:[すス][るル]|為[るル]|[ずズ][るル]|${HAN_CHARACTER_PATTERN.source}[すずスズ])$`, "u");
+  const SURU_ENDING = new RegExp(`(?:する|為る|ずる|${HAN_CHARACTER_PATTERN.source}[すず])$`, "u");
   const DICTIONARY_FORM_ENDINGS = [
     ["v1", VERB_ENDING], ["v5", VERB_ENDING], ["vk", VERB_ENDING],
     ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いイ]$/u],

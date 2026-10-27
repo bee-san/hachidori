@@ -185,8 +185,9 @@ test("a verb or adjective class makes kifuku only on a headword that ends like t
   for (const [expression, reading, value, rules, expected] of [
     ["面倒", "めんどう", 3, "v5", "nakadaka"], ["料理", "りょうり", 1, "vs", "atamadaka"],
     ["ダンス", "ダンス", 1, "vs", "atamadaka"], ["静か", "しずか", 1, "adj-i", "atamadaka"],
-    // 講談社 日本語大辞典 tags nouns ending in し adj-i, so し is not an ending.
-    ["遠回し", "とおまわし", 3, "adj-i n", "nakadaka"],
+    // 講談社 日本語大辞典 tags nouns ending in し adj-i, so し is not an ending,
+    // and ハッスル (精選版 vs) ends in する only when read as hiragana.
+    ["遠回し", "とおまわし", 3, "adj-i n", "nakadaka"], ["ハッスル", "ハッスル", 1, "vs", "atamadaka"],
     // Verbs and i-adjectives stay kifuku, under another verb class too (驚く
     // tagged v1), in katakana, and in classical forms (聞こゆ, サ変, ザ変).
     ["驚く", "おどろく", 3, "v1", "kifuku"], ["来る", "くる", 1, "vk", "kifuku"],
