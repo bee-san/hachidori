@@ -62,7 +62,7 @@ and adjectives among them are seven pitches of classical words:
 - Six classical i-adjectives ending in し, from 古語 and 国語 dictionaries: 遅し,
   いぶせし, 未だし, 愛し かなし, 遥けし and 全し. Counting し would keep them
   kifuku, but 講談社 tags nouns ending in し `adj-i` (遠回し, 聞こえよがし,
-  お人好し, 引っ切り無し). With Jitendex and 講談社 installed, counting し kept 14
+  御人好し, 引っ切り無し). With Jitendex and 講談社 installed, counting し kept 14
   of those nouns' pitches kifuku and saved no real adjective, so only い counts.
 
 The rest are suru nouns (シュリンク and ハッスル `vs`; a suru ending matches only in
