@@ -513,7 +513,7 @@ async function checkLaterEntryPitch(settings, tab, popup) {
     ...frequencyTitles.map((title, index) => [title, { banks: false,
       termMeta: [rank(word, 100 + index), rank(phrase, 200 + index)] }]),
   ];
-  const original = await readSettingsControls(settings, ["opt-average-frequency", "opt-pitch-badge"]);
+  const original = await readSettingsControls(settings, ["opt-average-frequency", "opt-pitch-badge", "opt-max-results"]);
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
   const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
   const before = await status();
@@ -539,7 +539,9 @@ async function checkLaterEntryPitch(settings, tab, popup) {
       await installMediaArchive(settings, buildTitledZip(title, options));
       installed.push(title);
     }
-    await editSettingsControls(settings, { "opt-average-frequency": false, "opt-pitch-badge": true });
+    // The suite reads one result by default; 非常 is the second.
+    await editSettingsControls(settings, { "opt-average-frequency": false, "opt-pitch-badge": true,
+      "opt-max-results": "32" });
     later = (await entries(phrase[0], "extremely")).find(entry => entry.expression === word[0]);
     [alone] = await entries(word[0], "emergency");
   } finally {
