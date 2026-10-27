@@ -1741,39 +1741,31 @@ html[data-hoshidicts-theme="girlypop"],
   user-select: none;
 }
 
-.gsm-hoshidicts-pitch-ruby {
-  display: inline-flex;
-  flex-direction: column-reverse;
-  align-items: stretch;
-  /* Every segment's reading row is the same height, but a kanji segment's
-     base is 1px taller (its link's dotted underline). Top alignment keeps the
-     contour and the headword text on one row across segments. */
-  vertical-align: top;
-}
-
-.gsm-hoshidicts-pitch-base {
-  text-align: center;
-}
-
+/* The headword's pitch accent is drawn on its reading after the headword
+   (#606), in the furigana's colour, at three quarters of the headword's size
+   and half an em after it, as Yomitan's "Term furigana and reading" display
+   places a reading (display.css: .headword-reading-outer). A headword spelt in
+   its reading's kana carries the contour on its own kana instead. */
 .gsm-hoshidicts-pitch-reading {
-  display: block;
-  overflow: visible;
-  padding: 1px 0 2px;
+  margin-inline-start: 0.5em;
+  color: var(--text-color-light1);
+  font-size: 0.75em;
+  font-weight: 400;
+  user-select: none;
 }
 
 .gsm-hoshidicts-pitch-contour {
-  display: flex;
+  display: inline-flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  color: var(--text-color-light1);
+  line-height: 1;
   white-space: nowrap;
 }
 
 .gsm-hoshidicts-pitch-mora {
   position: relative;
-  flex: 1 1 auto;
   margin-right: -1px;
   padding: 2px 1px;
-  text-align: center;
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   line-height: 1;
@@ -1809,22 +1801,28 @@ html[data-hoshidicts-theme="girlypop"],
   content: "";
 }
 
-/* Design → Pitch accent → Furigana pitch style "overline": the pitch list's
+/* Design → Pitch accent → Reading pitch style "overline": the pitch list's
    Yomitan text (.pronunciation-mora and its line, display-pronunciation.css
-   below) in the headword's reading. Each mora fills its share of the segment,
-   as a contour mora does, so the overline runs on unbroken over kanji. The
-   reading's line height is 1, so the padding gives the line the room above the
-   kana that the list's 1.5 line height gives it. */
+   below). The contour's line height is 1, so the padding gives the line the
+   room above the kana that the list's 1.5 line height gives it. */
 .gsm-hoshidicts-pitch-contour[data-pitch-style="overline"] > .pronunciation-mora {
-  flex: 1 1 auto;
   padding-top: 0.3em;
-  text-align: center;
 }
 
 .gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-expression rt,
-.gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-expression rt {
+.gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-expression rt,
+.gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-pitch-reading,
+.gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-pitch-reading {
   filter: blur(5px);
   user-select: none;
+}
+
+/* Blur hides the headword's pitch with its reading. A kana headword draws the
+   pitch on the word itself, which stays readable, so its lines wait instead. */
+.gsm-hoshidicts-popup[data-definition-blur-state="pending"] .gsm-hoshidicts-pitch-contour,
+.gsm-hoshidicts-popup[data-definition-blur-state="blurred"] .gsm-hoshidicts-pitch-contour {
+  --hoshidicts-pitch: transparent;
+  --pronunciation-annotation-color: transparent;
 }
 
 .gsm-hoshidicts-popup [data-pitch-category="heiban"] { --hoshidicts-pitch-category: var(--hoshidicts-pitch-heiban); }
@@ -1839,10 +1837,10 @@ html[data-hoshidicts-theme="girlypop"],
   --pronunciation-annotation-color: var(--hoshidicts-pitch-category);
 }
 
-/* The headword and its furigana lines (the contour, or the Overline style's
-   line and hook) take the group of the pitch the furigana uses. The reading
-   kana keep their muted colour: 14 px text needs 4.5:1. Blur hides that pitch
-   with the reading, so the colour waits too. */
+/* The headword and its pitch lines (the contour, or the Overline style's
+   line and hook) take the group of the pitch its reading shows. The reading
+   kana keep their muted colour: text that size needs 4.5:1. Blur hides that
+   pitch with the reading, so the colour waits too. */
 :host([data-hoshidicts-pitch-colors]) .gsm-hoshidicts-popup:not([data-definition-blur-state]) .gsm-hoshidicts-expression[data-pitch-category] {
   --hoshidicts-pitch: var(--hoshidicts-pitch-category);
   --pronunciation-annotation-color: var(--hoshidicts-pitch-category);

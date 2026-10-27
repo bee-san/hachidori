@@ -1154,7 +1154,7 @@ before the change event completes.
 ## Popup metadata controls
 
 Design has independent controls for frequency source names, number
-abbreviation and averages, pitch contour and its preferred dictionary, pitch
+abbreviation and averages, the headword's pitch and its preferred dictionary, pitch
 badges and their dictionary names, and grammar tags. Frequency metadata defaults
 to Yomitan's values without dictionary names: each dictionary's own display
 value, such as `51,499` or `142位`, otherwise the plain number, and averages as
@@ -1170,7 +1170,7 @@ header or claiming a separate chrome row. The lower chrome row is reserved for
 dictionary tabs and is omitted when no tabs exist. Grammar tags default to
 hidden; opting in places them in the same result metadata group. Explicit saved
 display choices are preserved.
-Contour, pitch badges and pitch dictionary names remain on, and averages remain
+The headword's pitch, pitch badges and pitch dictionary names remain on, and averages remain
 off. IPA transcriptions and definition tags remain visible independently. Pitch
 badges are Yomitan's pronunciation markup (#364): one `li.pronunciation-group` per
 pitch dictionary starts with its `pronunciation-dictionary` tag, followed by each
@@ -1182,15 +1182,25 @@ Yomitan's defaults (text and position on, graph off); a hidden notation is not
 built. A string pattern such as `"LHL"`, which hoshidicts delivers beside a
 placeholder position of 0, is read with Yomitan's `isMoraPitchHigh` and
 `getDownstepPositions`, so it shows `[2]` like the integer form, in the badges,
-the furigana contour and the Anki pitch markers alike. `reading [n]` stays in
-every accent's tooltip and accessibility label. **Furigana pitch style** picks
-the headword's notation. Contour, the default, draws a line over high morae,
-under low ones and a stroke at each rise and drop in the pitch colour. Overline
-builds the reading's morae once with the badges' `createPronunciationText` and
-shares them out to the furigana segments, so the headword shows the badges'
-line over high morae and downstep hook in the text colour, with the same levels;
-nasal and devoice marks, `[n]` and the graph stay in the badges. The style is
-disabled while the furigana pitch is off. Turning dictionary names off
+the headword's pitch and the Anki pitch markers alike. `reading [n]` stays in
+every accent's tooltip and accessibility label. **Show pitch on the reading**
+draws the headword's pitch on its reading, not in its furigana (#606), which
+stays what it is with the pitch off: the reading follows the headword where
+Yomitan's *Term furigana and reading* display puts it (`.headword-reading-outer`
+in `ext/css/display.css` at yomidevs/yomitan@d3c54c1), at three quarters of the
+headword's size, half an em after it, in the furigana's colour. 好き嫌い reads
+好(す)き嫌(きら)い, then すき＼きらい. A headword without kanji spelt in its
+reading's kana (てくてく, or テレビ read てれび) has no furigana and carries the
+pitch on its own kana, as JL marks one. A headword in kanji whose reading is
+itself has no reading to show, as in Yomitan (`data-reading-is-same`), and no
+kana to carry a pitch. **Reading pitch style** picks the notation. Contour, the
+default, draws a line over high morae, under low ones and a stroke at each rise
+and drop in the pitch colour. Overline builds the morae with the badges'
+`createPronunciationText`, so the headword's pitch shows the badges' line over
+high morae and downstep hook in the text colour, with the same levels; nasal and
+devoice marks, `[n]` and the graph stay in the badges. The style is disabled
+while the reading's pitch is off. Definition blur blurs the reading with the
+furigana, and a kana headword's pitch lines wait for the reveal. Turning dictionary names off
 removes the tags. IPA shows transcriptions without source-name labels. Tooltips and
 accessibility labels retain source attribution, and visible pitch names and
 labels follow dictionary aliases in place. Unfilled tags, pitch names, pitch
@@ -1248,7 +1258,7 @@ sorting or lookup results.
 The preferred pitch source is a soft canonical-title preference: unavailable or
 disabled sources fall back to another usable pitch source. A committed rename
 follows the stable package ID, and actual removal clears the selection in the
-same background options/state write. Turning contour off remembers the source.
+same background options/state write. Turning the reading's pitch off remembers the source.
 
 **Show pitch accent colours** (#458, off by default as in jp-mining-note)
 colours by accent group: 平板 heiban blue, 頭高 atamadaka red, 中高 nakadaka
@@ -1266,11 +1276,11 @@ such as 料理 `vs`), and those keep the group their downstep gives (#608).
 Classical i-adjectives ending in し (遅し) do not count, because 講談社 also tags
 nouns such as 遠回し `adj-i`. The
 headword's `.gsm-hoshidicts-expression` carries `data-pitch-category` from the
-pitch its furigana uses (the pitch accent dictionary first, then the first pitch
-that fits the reading), whether or not the contour is drawn, and each badge's
+pitch its reading shows (the pitch accent dictionary first, then the first pitch
+that fits the reading), whether or not it is drawn, and each badge's
 `li.pronunciation` carries its own. The switch only sets
 `data-hoshidicts-pitch-colors` on the popup host: CSS then colours the headword,
-its kanji links and furigana lines (the contour, or the Overline style's line
+its kanji links and pitch lines (the contour, or the Overline style's line
 and hook), and each badge's overline, hook and graph.
 The reading kana, badge text and dictionary tag keep their colours. A headword
 waits for blurred definitions to be revealed, a focused kanji in a coloured
@@ -1674,7 +1684,7 @@ the readings; the worker imports it as a JSON module on its first such headword
 and derives each kanji's forms when it is first needed.
 `scripts/kanji-readings.mjs` regenerates the table from the KANJIDIC archive
 pinned in `source.json` beside it; point that pin at a newer jmdict-yomitan
-release to update it. The popup headword (plain ruby and pitch columns),
+release to update it. The popup headword's ruby,
 `{furigana}`/`{furigana-plain}` and the API's scanning parser read the split
 through `termFurigana`, which falls back to the local split when a term carries
 none, as from an older sharing host, or one that does not spell its expression.
@@ -2516,8 +2526,8 @@ reset keys. Fresh installs use AUTO and follow the live browser colour scheme;
 sparse upgrade profiles and explicit Hachidori choices keep the Hachidori
 palette. Other defaults are 560 × 420 px, 85% background opacity,
 one column, Automatic toolbar placement, summary off with three snippets and automatic sources, pitch
-contour/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, the Contour
-furigana pitch style, and frequency
+reading pitch/pitch badges/pitch dictionary names/pitch text and position/source highlighting on, the Contour
+reading pitch style, and frequency
 names/abbreviation/averages, each dictionary's tags beside the averages, the pitch graph, pitch accent colours and grammar tags off. Reset writes those keys through the existing sparse revision CAS;
 Reading preferences, dictionaries, groups, and update policy are untouched.
 The default renderer's density comes from `--hd-*` custom properties declared on

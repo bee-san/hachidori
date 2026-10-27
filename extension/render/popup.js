@@ -3337,7 +3337,7 @@
           },
           result.term.furigana
         );
-        // The group of the furigana's pitch: CSS colours it only while the
+        // The group of the reading's pitch: CSS colours it only while the
         // Show pitch accent colours host attribute is set.
         if (category) expression.dataset.pitchCategory = category;
         else delete expression.dataset.pitchCategory;
@@ -3395,8 +3395,8 @@
           const style = context.pitchAccentFuriganaStyle === "overline" ? "overline" : "contour";
           if (enabled === showPitchAccentFurigana && dictionary === pitchAccentFuriganaDictionary
             && style === pitchAccentFuriganaStyle) return false;
-          // The style shows only on a drawn contour, but the dictionary also
-          // picks the headword's pitch group, so it rebuilds with the contour off.
+          // The style shows only on a drawn pitch, but the dictionary also
+          // picks the headword's pitch group, so it rebuilds with the pitch off.
           const appearanceChanged = enabled !== showPitchAccentFurigana || enabled
             || dictionary !== pitchAccentFuriganaDictionary;
           // A kanji button is part of this ruby. Keep its identity until blur;

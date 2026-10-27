@@ -20,7 +20,7 @@ export const KEYBIND_OPTION_LABELS = {
   showFrequencyTagsWithAverage: "Show each dictionary's frequencies with the averages",
   showFrequencyDictionaryNames: "Show frequency dictionary names",
   compactFrequencyNumbers: "Abbreviate large frequency numbers",
-  showPitchAccentFurigana: "Show pitch in furigana",
+  showPitchAccentFurigana: "Show pitch on the reading",
   showPitchAccentBadge: "Show pitch badges",
   showPitchAccentDictionaryNames: "Show pitch dictionary names",
   showPitchAccentText: "Show pitch accent text",

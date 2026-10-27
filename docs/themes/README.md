@@ -160,7 +160,7 @@ are never declared.
 | Default | All (`"all"`) |
 | Nazeka | Clicked-kanji dictionary |
 | Plain | None |
-| JL | Background opacity, Clicked-kanji dictionary, Show pitch in furigana, Pitch accent dictionary |
+| JL | Background opacity, Clicked-kanji dictionary, Show pitch on the reading, Pitch accent dictionary |
 | Bee's Theme | JL's four, plus Image source, Image hover preview and Custom buttons |
 
 Settings shows the core controls and the selected theme's declared ones, and

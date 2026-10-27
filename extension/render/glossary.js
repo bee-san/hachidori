@@ -826,7 +826,45 @@
       { text: matched.slice(stem), reading: "" }];
   }
 
+  // The headword's pitch over `text`, its reading or its own kana: a row of
+  // morae with a line over high ones and under low ones and a stroke at each
+  // rise and drop, or with the "overline" style the pitch list's own Yomitan
+  // text. Nasal and devoice marks stay in the list: a nasal mark rewrites the
+  // kana. Null when the pitch does not fit the text's morae.
+  function createPitchContour(documentRef, text, { dictionary, pitch }, style, className) {
+    const positions = pitchAccentPositions(pitch);
+    const morae = buildPitchAccentMorae(text, positions);
+    if (!morae) return null;
+    const downstep = pitchAccentDownstep(pitch);
+    const contour = documentRef.createElement("span");
+    contour.className = className;
+    contour.dataset.pitchPosition = downstep;
+    if (dictionary) contour.dataset.pitchDictionary = dictionary;
+    contour.title = [dictionary, `Pitch accent ${downstep}`].filter(Boolean).join(" · ");
+    if (style === "overline") {
+      contour.dataset.pitchStyle = "overline";
+      contour.append(...createPronunciationText(documentRef, morae.map((mora) => mora.text), positions, [], []).children);
+      return contour;
+    }
+    for (const mora of morae) {
+      const span = documentRef.createElement("span");
+      span.className = "gsm-hoshidicts-pitch-mora";
+      span.dataset.pitchLevel = mora.level;
+      if (mora.transition) span.dataset.pitchTransition = mora.transition;
+      span.textContent = mora.text;
+      contour.appendChild(span);
+    }
+    return contour;
+  }
+
   // `furigana` is the term's furigana from the engine, if any (termFurigana).
+  // The pitch is not drawn in the furigana (#606), which stays as it is with the
+  // pitch off, but on the reading after the headword, where Yomitan's "Term
+  // furigana and reading" display puts it. A headword without kanji spelt in
+  // its reading's kana (てくてく, テレビ) carries the pitch on its own kana
+  // instead, with no furigana, as JL marks one. A headword in kanji whose
+  // reading is itself has no reading to show, as in Yomitan
+  // (data-reading-is-same), and no kana to carry the pitch.
   function appendExpressionRuby(
     documentRef,
     parent,
@@ -836,7 +874,6 @@
     pitchOptions = {},
     furigana = null
   ) {
-    const furiganaSegments = termFurigana({ expression, reading, furigana });
     const appendText = (target, text) => {
       for (const character of Array.from(text)) {
         if (!HAN_CHARACTER_PATTERN.test(character) || typeof onKanjiClick !== "function") {
@@ -857,7 +894,7 @@
       }
     };
     const pitchReading = reading || expression;
-    // The furigana's pitch also gives the headword's group, contour or not.
+    // The reading's pitch also gives the headword's group, drawn or not.
     const selectedPitch = selectPitchAccent(
       pitchOptions.groups,
       pitchOptions.dictionary,
@@ -866,79 +903,18 @@
     const category = selectedPitch
       ? pitchAccentCategory(pitchReading, selectedPitch.pitch, pitchOptions.wordClasses, expression)
       : null;
-    const pitchedMorae = selectedPitch && pitchOptions.enabled !== false
-      ? buildPitchAccentMorae(pitchReading, pitchAccentPositions(selectedPitch.pitch))
+    const kana = !HAN_CHARACTER_PATTERN.test(expression) && toHiragana(pitchReading) === toHiragana(expression);
+    const pitchText = kana ? expression : reading !== expression && reading;
+    const contour = selectedPitch && pitchOptions.enabled !== false && pitchText
+      ? createPitchContour(documentRef, pitchText, selectedPitch, pitchOptions.style, kana
+        ? "gsm-hoshidicts-pitch-contour" : "gsm-hoshidicts-pitch-reading gsm-hoshidicts-pitch-contour")
       : null;
-    if (pitchedMorae) {
-      const downstep = pitchAccentDownstep(selectedPitch.pitch);
-      // One column per furigana segment, so each reading sits over the text it
-      // reads. Kana segments get a column too, keeping the contour unbroken.
-      let segments = furiganaSegments.map((segment) => ({
-        text: segment.text,
-        moraCount: splitPitchAccentMorae(segment.reading || segment.text).length,
-      }));
-      if (
-        segments.reduce((total, segment) => total + segment.moraCount, 0) !==
-        pitchedMorae.length
-      ) {
-        segments = [{ text: expression, moraCount: pitchedMorae.length }];
-      }
-      const title = [
-        selectedPitch.dictionary,
-        `Pitch accent ${downstep}`,
-      ].filter(Boolean).join(" · ");
-      // "overline": the pitch list's own Yomitan text, built once for the
-      // whole reading so each mora keeps its word-level pitch and next pitch
-      // (見る [1] hooks み at the segment boundary), then shared out to the
-      // segments. Nasal and devoice marks stay in the list: a nasal mark
-      // rewrites the kana.
-      const overlineMorae = pitchOptions.style === "overline"
-        ? [...createPronunciationText(documentRef, pitchedMorae.map((mora) => mora.text),
-            pitchAccentPositions(selectedPitch.pitch), [], []).children]
-        : null;
-      let moraIndex = 0;
-      for (const segment of segments) {
-        const ruby = documentRef.createElement("ruby");
-        ruby.className = "gsm-hoshidicts-pitch-ruby";
-        const base = documentRef.createElement("span");
-        base.className = "gsm-hoshidicts-pitch-base";
-        appendText(base, segment.text);
-        ruby.appendChild(base);
-
-        const rt = documentRef.createElement("rt");
-        rt.className = "gsm-hoshidicts-pitch-reading";
-        rt.dataset.pitchPosition = downstep;
-        if (selectedPitch.dictionary) {
-          rt.dataset.pitchDictionary = selectedPitch.dictionary;
-        }
-        rt.title = title;
-
-        const contour = documentRef.createElement("span");
-        contour.className = "gsm-hoshidicts-pitch-contour";
-        if (overlineMorae) {
-          contour.dataset.pitchStyle = "overline";
-          contour.append(...overlineMorae.slice(moraIndex, moraIndex + segment.moraCount));
-        } else {
-          for (const mora of pitchedMorae.slice(moraIndex, moraIndex + segment.moraCount)) {
-            const span = documentRef.createElement("span");
-            span.className = "gsm-hoshidicts-pitch-mora";
-            span.dataset.pitchLevel = mora.level;
-            if (mora.transition) {
-              span.dataset.pitchTransition = mora.transition;
-            }
-            span.textContent = mora.text;
-            contour.appendChild(span);
-          }
-        }
-        moraIndex += segment.moraCount;
-        rt.appendChild(contour);
-        ruby.appendChild(rt);
-        parent.appendChild(ruby);
-      }
+    if (contour && kana) {
+      parent.appendChild(contour);
       return category;
     }
 
-    for (const segment of furiganaSegments) {
+    for (const segment of termFurigana({ expression, reading, furigana })) {
       if (!segment.reading) {
         appendText(parent, segment.text);
         continue;
@@ -950,6 +926,7 @@
       ruby.appendChild(rt);
       parent.appendChild(ruby);
     }
+    if (contour) parent.appendChild(contour);
     return category;
   }
 
