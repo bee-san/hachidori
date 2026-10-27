@@ -647,8 +647,10 @@ export function buildAtomicReplacementZip(revision, definition, overrides = {}) 
 export function kanjiReadingFuriganaFixture() {
   const title = 'kanji-reading-furigana-fixture';
   const query = '好き嫌い';
-  const archive = buildTitledZip(title, { terms: [[query, 'すききらい', '', '', 0, ['likes and dislikes'], 1, '']] });
-  return { title, query, archive };
+  const compound = '二十四時間';
+  const archive = buildTitledZip(title, { terms: [[query, 'すききらい', '', '', 0, ['likes and dislikes'], 1, ''],
+    [compound, 'にじゅうよじかん', '', '', 0, ['24 hours'], 2, '']] });
+  return { title, query, compound, archive };
 }
 
 export function externalLinksFixture(destinationUrl) {

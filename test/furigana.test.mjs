@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Kanji-aware furigana (#459): where the kana alone leave more than one split,
 // the split whose kanji runs read by their KANJIDIC readings wins, if it is the
-// only one. The engine adds it to the lookup reply; the popup, Anki and the
-// API read it through termFurigana.
+// only one. Each run of kanji is then read one kanji at a time where exactly
+// one split of its reading reads (#605). The engine adds the result to the
+// lookup reply; the popup, Anki and the API read it through termFurigana.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
@@ -14,7 +15,7 @@ import { resolve } from "node:path";
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
-const { createKanjiReadings, distributeFurigana, segmentFurigana } = require("../extension/render/glossary.js");
+const { createKanjiReadings, distributeFurigana, kanjiFurigana, segmentFurigana } = require("../extension/render/glossary.js");
 
 // Rows of the shipped table for the kanji below.
 const READINGS = {
@@ -22,6 +23,12 @@ const READINGS = {
   致: "ち いた.す", 長: "ちょう なが.い おさ", 間: "かん けん あいだ ま あい", 指: "し ゆび さ.す さ.し",
   示: "じ し しめ.す", 聞: "ぶん もん き.く き.こえる", 取: "しゅ と.る と.り とり ど.り",
   果: "か は.たす はた.す は.てる は.て", 物: "ぶつ もつ もの", 王: "おう のう", 様: "よう しょう さま さん",
+  二: "に じ ふた ふた.つ ふたたび", 十: "じゅう じっ じゅっ とお と そ", 四: "し よ よ.つ よっ.つ よん",
+  時: "じ とき どき", 人: "じん にん ひと り と", 世: "せい せ そう よ", 界: "かい", 中: "ちゅう なか うち あた.る",
+  植: "しょく う.える う.わる", 木: "ぼく もく き こ", 今: "こん きん いま", 日: "にち じつ ひ び か",
+  印: "いん しるし じるし しる.す", 度: "ど と たく たび た.い", 命: "めい みょう いのち", 恩: "おん",
+  思: "し おも.う おもえら.く おぼ.す", 出: "しゅつ すい で.る で だ.す い.でる い.だす",
+  𠮟: "しつ しち か しか.る", 責: "せき せ.める",
 };
 const pairs = segments => segments?.map(({ text, reading }) => (reading ? [text, reading] : [text])) ?? null;
 const SPLITS = [
@@ -53,7 +60,40 @@ test("readings leave a settled split alone and keep one ruby where no single spl
   assert.deepEqual(pairs(segmentFurigana("果物の王様", "くだもののおうさま")), [["果物の王様", "くだもののおうさま"]]);
 });
 
-test("the shipped KANJIDIC table matches its source record and splits 好き嫌い and お願い致します", () => {
+// Each run of kanji read one kanji at a time (#605), on top of the split above.
+const PER_KANJI = [
+  // The issue's example.
+  ["二十四時間", "にじゅうよじかん", [["二", "に"], ["十", "じゅう"], ["四", "よ"], ["時", "じ"], ["間", "かん"]]],
+  // 々 reads as the kanji before it, here with rendaku.
+  ["人々", "ひとびと", [["人", "ひと"], ["々", "びと"]]],
+  // A voiced ち or つ may be written じ or ず.
+  ["世界中", "せかいじゅう", [["世", "せ"], ["界", "かい"], ["中", "じゅう"]]],
+  // A kanji takes the part of its okurigana that a compound leaves unwritten.
+  ["植木", "うえき", [["植", "うえ"], ["木", "き"]]],
+  // A katakana reading keeps its script; a kanji beyond U+FFFF is one character.
+  ["印度", "インド", [["印", "イン"], ["度", "ド"]]],
+  ["𠮟責", "しっせき", [["𠮟", "しっ"], ["責", "せき"]]],
+  // The kana leave two splits (#459); then 恩人 is read one kanji at a time.
+  ["命の恩人", "いのちのおんじん", [["命", "いのち"], ["の"], ["恩", "おん"], ["人", "じん"]]],
+];
+
+test("each run of kanji is read one kanji at a time where exactly one split of its reading reads", () => {
+  const kanjiReadings = createKanjiReadings(READINGS);
+  for (const [expression, reading, expected] of PER_KANJI) {
+    assert.deepEqual(pairs(kanjiFurigana(expression, reading, kanjiReadings)), expected, expression);
+  }
+  // 好き嫌い's split (#459) has no run of kanji left to read.
+  assert.deepEqual(kanjiFurigana("好き嫌い", "すききらい", kanjiReadings), SUKIKIRAI);
+  // null keeps the local split. No split of 今日 reads (jukujikun), nor of ２人
+  // (a digit has no readings); 思出 reads as 思(おもい)出(だ) and as 思(おも)出(いだ);
+  // 聞き取り has no run of kanji, and no split of 果物の王様 reads (#459).
+  for (const [expression, reading] of [["今日", "きょう"], ["２人", "ふたり"], ["思出す", "おもいだす"],
+    ["聞き取り", "ききとり"], ["果物の王様", "くだもののおうさま"], ["ありがとう", "ありがとう"]]) {
+    assert.equal(kanjiFurigana(expression, reading, kanjiReadings), null, expression);
+  }
+});
+
+test("the shipped KANJIDIC table matches its source record and splits 好き嫌い, お願い致します and 二十四時間", () => {
   const table = readFileSync(new URL("../extension/vendor/kanjidic/kanji-readings.json", import.meta.url));
   const source = JSON.parse(readFileSync(new URL("../extension/vendor/kanjidic/source.json", import.meta.url), "utf8"));
   assert.equal(createHash("sha256").update(table).digest("hex"), source.files["kanji-readings.json"].sha256);
@@ -61,17 +101,22 @@ test("the shipped KANJIDIC table matches its source record and splits 好き嫌�
   for (const [expression, reading, expected] of SPLITS.slice(0, 2)) {
     assert.deepEqual(pairs(distributeFurigana(expression, reading, kanjiReadings)), expected, expression);
   }
+  const [expression, reading, expected] = PER_KANJI[0];
+  assert.deepEqual(pairs(kanjiFurigana(expression, reading, kanjiReadings)), expected);
 });
 
-test("the engine adds term.furigana only where the plain split falls back, and counts it in the reply", async () => {
+test("the engine adds term.furigana only where the kanji readings change the split, and counts it in the reply", async () => {
   const { withFurigana } = await import("../extension/engine-service.js");
   const term = (expression, reading) => ({ matched: expression, term: { expression, reading, glossaries: [] } });
   const kikitori = term("聞き取り", "ききとり");
-  const reply = await withFurigana({ results: [term("好き嫌い", "すききらい"), kikitori], dictionaryCount: 1,
-    nativeJsonLength: 100 });
+  const reply = await withFurigana({ results: [term("好き嫌い", "すききらい"), kikitori,
+    term("二十四時間", "にじゅうよじかん")], dictionaryCount: 1, nativeJsonLength: 100 });
+  const perKanji = reply.results[2].term.furigana;
   assert.deepEqual(reply.results[0].term.furigana, SUKIKIRAI);
   assert.deepEqual(reply.results[1], term("聞き取り", "ききとり"));
-  assert.equal(reply.nativeJsonLength, 100 + `,"furigana":${JSON.stringify(SUKIKIRAI)}`.length);
+  assert.deepEqual(pairs(perKanji), PER_KANJI[0][2]);
+  assert.equal(reply.nativeJsonLength, 100 + `,"furigana":${JSON.stringify(SUKIKIRAI)}`.length
+    + `,"furigana":${JSON.stringify(perKanji)}`.length);
   const settled = { results: [kikitori], dictionaryCount: 1, nativeJsonLength: 100 };
   assert.equal(await withFurigana(settled), settled);
 });
