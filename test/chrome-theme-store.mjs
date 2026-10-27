@@ -271,7 +271,7 @@ try {
   // Design's pitch switch repaints JL's marker in the open popup and the preview,
   // without another lookup: the probed block survives. It is clicked in place,
   // because bringing Settings to the front would blur the page and close its popup.
-  assert.ok((await designShown()).includes("Show pitch in furigana"));
+  assert.ok((await designShown()).includes("Show pitch on the reading"));
   await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-entry").dataset.pitchProbe = ""; });
   const popupMarks = await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-mora").length);
   const previewMarks = await preview.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelectorAll(".jl-mora").length);

@@ -63,38 +63,38 @@ async function popupReader(page, depth = 0) {
         const noteFormRect = noteForm?.getBoundingClientRect();
         const noteActionsRect = noteActions?.getBoundingClientRect();
         // Each headword reading must be centred over the text it reads (た over
-        // 食, not over 食べ), and pitch contours must join into one line. Chrome
-        // reports a native <rt>'s whole column for its text, wherever ruby-align
-        // draws the glyphs, so plain ruby can only be checked through its style.
-        // Pitch ruby is laid out as flex boxes, whose text geometry is real.
+        // 食, not over 食べ). Chrome reports a native <rt>'s whole column for its
+        // text, wherever ruby-align draws the glyphs, so plain ruby can only be
+        // checked through its style. The pitch is not in the furigana (#606): it
+        // is drawn on the reading after the headword, as one row of morae that
+        // starts after the headword's text, on its line, clear of its furigana.
         const expression = this.querySelector(".gsm-hoshidicts-expression");
-        const pitchRubies = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-ruby") ?? [])];
+        const pitchReadings = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-reading") ?? [])];
         const textRects = node => {
           const range = this.ownerDocument.createRange();
           const walker = this.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
           const rects = [];
           while (walker.nextNode()) {
+            if (walker.currentNode.parentElement.closest("rt, .gsm-hoshidicts-pitch-reading")) continue;
             range.selectNodeContents(walker.currentNode);
             rects.push(range.getBoundingClientRect());
           }
           return rects;
         };
-        const textCentre = node => {
-          const rects = textRects(node);
-          return (Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2;
-        };
         const spread = values => values.length ? Math.max(...values) - Math.min(...values) : 0;
-        const pitchCentring = pitchRubies.map(ruby => Math.abs(
-          textCentre(ruby.querySelector("rt")) - textCentre(ruby.querySelector(".gsm-hoshidicts-pitch-base"))));
-        const contourRects = pitchRubies
-          .map(ruby => ruby.querySelector(".gsm-hoshidicts-pitch-contour").getBoundingClientRect());
-        const contourGaps = contourRects.slice(1)
-          .map((rect, index) => Math.abs(rect.left - contourRects[index].right));
-        // A kanji segment's base is taller than a kana one (its link has a
-        // dotted underline), yet every segment's contour and text must share
-        // one row. A rise or drop must also span the 2px lines it joins, or
-        // its outer corner is notched: its border image fills the mora's
-        // padding box and reaches out by its own borders, the lines' width.
+        const overlaps = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5
+          && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+        const headwordText = expression ? textRects(expression) : [];
+        const readingRect = pitchReadings[0]?.getBoundingClientRect();
+        const readingBeside = pitchReadings.length === 1 && headwordText.length > 0
+          && readingRect.left >= Math.max(...headwordText.map(rect => rect.right)) - 0.5
+          && headwordText.every(rect => readingRect.top < rect.bottom && rect.top < readingRect.bottom)
+          && [...expression.querySelectorAll("rt")].every(rt => !overlaps(rt.getBoundingClientRect(), readingRect));
+        const contourRects = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-contour > *") ?? [])]
+          .map(mora => mora.getBoundingClientRect());
+        // A rise or drop must span the 2px lines it joins, or its outer corner
+        // is notched: its border image fills the mora's padding box and
+        // reaches out by its own borders, the lines' width.
         const transitions = [...(expression?.querySelectorAll(".gsm-hoshidicts-pitch-mora[data-pitch-transition]") ?? [])];
         // The overline furigana style draws the pitch list's Yomitan text
         // instead: a line over each high mora and a hook where the pitch
@@ -161,12 +161,10 @@ async function popupReader(page, depth = 0) {
           furiganaAlignment: {
             rubyAlign: expression ? view.getComputedStyle(expression).rubyAlign : null,
             rubies: expression?.querySelectorAll("ruby").length ?? 0,
-            pitchRubies: pitchRubies.length,
-            pitchCentring: Math.max(0, ...pitchCentring),
-            contourGap: Math.max(0, ...contourGaps),
+            readings: [...(expression?.querySelectorAll("rt") ?? [])].map(rt => rt.textContent),
+            pitchReadings: pitchReadings.length,
+            readingBeside,
             contourTopSpread: spread(contourRects.map(rect => rect.top)),
-            baseTextSpread: spread(pitchRubies.flatMap(ruby =>
-              textRects(ruby.querySelector(".gsm-hoshidicts-pitch-base")).map(rect => rect.top))),
             transitions: transitions.length,
             transitionsCoverLines: transitions.every(mora => {
               const stroke = view.getComputedStyle(mora, "::after");
@@ -779,8 +777,10 @@ async function popupReader(page, depth = 0) {
             hiddenFrequencyDictionaries: [...this.querySelectorAll(".gsm-hoshidicts-tag-frequency[hidden]")]
               .filter(tag => tag.getClientRects().length === 0).map(tag => tag.dataset.dictionary),
             pitch: this.querySelectorAll(".gsm-hoshidicts-tag-pitch").length,
-            ruby: [...this.querySelectorAll(".gsm-hoshidicts-pitch-reading")].map(node => node.dataset.pitchDictionary),
-            rubyStyles: [...this.querySelectorAll(".gsm-hoshidicts-pitch-contour")]
+            // The headword's pitch (#606: on the reading after it, or on a kana
+            // headword's own kana): its dictionary and its style.
+            headwordPitch: [...this.querySelectorAll(".gsm-hoshidicts-pitch-contour")].map(node => node.dataset.pitchDictionary),
+            headwordPitchStyles: [...this.querySelectorAll(".gsm-hoshidicts-pitch-contour")]
               .map(node => node.dataset.pitchStyle ?? "contour"),
             ipa: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].map(node => node.textContent),
             ipaFits: [...this.querySelectorAll(".gsm-hoshidicts-ipa-body")].every(node => {

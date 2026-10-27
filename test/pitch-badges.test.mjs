@@ -98,14 +98,16 @@ test("the overline furigana style draws the headword with the pronunciation list
   const [group] = f.render(result("食べる", "たべる", [pitch("NHK", 2)]), { pitchAccentFuriganaStyle: "overline" });
   const expression = f.popup.querySelector(".gsm-hoshidicts-expression");
   const card = f.popup.querySelector(".gsm-hoshidicts-glossary-card");
+  // One reading after the headword, whose furigana stays た over 食 (#606).
   const contours = [...expression.querySelectorAll(".gsm-hoshidicts-pitch-contour")];
-  const segments = contours.map(levels);
-  assert.deepEqual(segments, [["た:low>high"], ["べ:high>low", "る:low>low"]]);
-  assert.deepEqual(segments.flat(), levels(group.querySelector(".pronunciation")), "the same levels as the list");
+  assert.deepEqual(contours.map(levels), [["た:low>high", "べ:high>low", "る:low>low"]]);
+  assert.deepEqual(levels(contours[0]), levels(group.querySelector(".pronunciation")), "the same levels as the list");
   assert.ok(contours.every(contour => contour.dataset.pitchStyle === "overline"));
+  assert.deepEqual([...expression.querySelectorAll("rt")].map(rt => rt.textContent), ["た"]);
   assert.equal(expression.querySelectorAll(".gsm-hoshidicts-pitch-mora").length, 0);
   assert.equal(expression.querySelectorAll(".pronunciation-mora > .pronunciation-mora-line").length, 3);
   const reading = expression.querySelector(".gsm-hoshidicts-pitch-reading");
+  assert.equal(reading, contours[0]);
   assert.equal(reading.dataset.pitchPosition, "2");
   assert.equal(reading.dataset.pitchDictionary, "NHK");
   assert.equal(reading.title, "NHK · Pitch accent 2");
@@ -114,10 +116,6 @@ test("the overline furigana style draws the headword with the pronunciation list
     .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`), ["low:rise", "high:drop", "low:"]);
   assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card,
     "a style switch keeps the definitions");
-  // 見る [1] drops at the segment boundary: み, the first segment's last mora, hooks.
-  f.render(result("見る", "みる", [pitch("NHK", 1)]), { pitchAccentFuriganaStyle: "overline" });
-  assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-contour")]
-    .map(levels), [["み:high>low"], ["る:low>low"]]);
 });
 
 test("the text, position and graph toggles update an open popup without replacing definitions", t => {
@@ -230,13 +228,47 @@ test("the headword and each badge carry their pitch accent group, contour or not
   assert.equal(headword().dataset.pitchCategory, "heiban");
   // Colours do not need the contour, and the dictionary still chooses the group.
   f.render(RESULT, { showPitchAccentFurigana: false });
-  assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-ruby"), null);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-contour"), null);
   assert.equal(headword().dataset.pitchCategory, "heiban");
   f.view.updateDictionaryPresentation({ showPitchAccentFurigana: false, pitchAccentFuriganaDictionary: "Daijirin" });
-  assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-ruby"), null);
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-contour"), null);
   assert.equal(headword().dataset.pitchCategory, "atamadaka");
   assert.deepEqual(badges(), ["heiban", "atamadaka"]);
   // A headword with no pitch that fits its reading has no group.
   f.render(result("昭和", "しょうわ", [pitch("NHK", 7)]));
   assert.equal(headword().dataset.pitchCategory, undefined);
+});
+
+test("a headword spelt in its reading's kana carries its own pitch, and one spelt in kanji needs a reading (#606)", t => {
+  const f = fixture(t);
+  const expression = () => f.popup.querySelector(".gsm-hoshidicts-expression");
+  const morae = node => [...node.querySelectorAll(".gsm-hoshidicts-pitch-mora")]
+    .map(mora => `${mora.textContent}:${mora.dataset.pitchLevel}`);
+  // てくてく [1]: no furigana and no reading beside it; its own kana are the contour.
+  const tekuteku = result("てくてく", "てくてく", [pitch("NHK", 1)]);
+  f.render(tekuteku);
+  const [contour, ...rest] = expression().children;
+  assert.deepEqual(rest, []);
+  assert.equal(expression().querySelector("ruby, .gsm-hoshidicts-pitch-reading"), null);
+  assert.ok(contour.matches("span.gsm-hoshidicts-pitch-contour"), contour.outerHTML);
+  assert.deepEqual(morae(contour), ["て:high", "く:low", "て:low", "く:low"]);
+  assert.deepEqual([contour.dataset.pitchPosition, contour.dataset.pitchDictionary, contour.title],
+    ["1", "NHK", "NHK · Pitch accent 1"]);
+  assert.equal(expression().textContent, "てくてく");
+  assert.equal(expression().dataset.pitchCategory, "atamadaka");
+  f.render(tekuteku, { pitchAccentFuriganaStyle: "overline" });
+  assert.deepEqual(levels(expression()), ["て:high>low", "く:low>low", "て:low>low", "く:low>low"]);
+  assert.equal(expression().querySelector(".gsm-hoshidicts-pitch-reading"), null);
+  f.render(tekuteku, { showPitchAccentFurigana: false });
+  assert.equal(expression().innerHTML, "てくてく");
+  // A katakana headword read in hiragana is spelt in its reading's kana too.
+  f.render(result("テレビ", "てれび", [pitch("NHK", 1)]));
+  assert.equal(expression().querySelector("ruby, .gsm-hoshidicts-pitch-reading"), null);
+  assert.deepEqual(morae(expression()), ["テ:high", "レ:low", "ビ:low"]);
+  // As Yomitan's data-reading-is-same hides the reading, a kanji headword
+  // whose reading is itself has none to carry the pitch, and kanji are not morae.
+  f.render(result("昭和", "", [pitch("NHK", 0)]));
+  assert.equal(expression().querySelector(".gsm-hoshidicts-pitch-contour, ruby"), null);
+  assert.equal(expression().textContent, "昭和");
+  assert.equal(expression().querySelectorAll(".gsm-hoshidicts-kanji-link").length, 2);
 });

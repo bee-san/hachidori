@@ -532,8 +532,9 @@ These run separately:
 - **`chrome-theme-store.mjs`** is a focused theme-store check; `electron-backup.cjs`
   is a real-Electron overlay backup regression (see its header).
 - `chrome-action-row`, `chrome-audio-chooser`, `chrome-compact-summary`,
-  `chrome-dynamic-headword`, `chrome-glossary-layout`, `chrome-lookup-count-layout`,
-  `chrome-structured-table`, `chrome-popup-resize`, `chrome-library-navigation`,
+  `chrome-dynamic-headword`, `chrome-glossary-layout`, `chrome-headword-pitch`,
+  `chrome-lookup-count-layout`, `chrome-structured-table`, `chrome-popup-resize`,
+  `chrome-library-navigation`,
   `chrome-settings-first-frame`, `chrome-settings-feedback-scenarios`,
   `chrome-dictionary-management-scenarios`, `chrome-dictionary-rank-scenarios` and
   `chrome-backup-scenarios.mjs` are scenarios `chrome-e2e.mjs` calls; each

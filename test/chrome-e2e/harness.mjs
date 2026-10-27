@@ -23,6 +23,7 @@ import { REORDER_CHECKS } from "../chrome-dictionary-management-scenarios.mjs";
 import { DICTIONARY_RANK_CHECK } from "../chrome-dictionary-rank-scenarios.mjs";
 import { DYNAMIC_HEADWORD_CHECK } from "../chrome-dynamic-headword.mjs";
 import { COMPACT_GLOSSARIES_CHECK } from "../chrome-glossary-layout.mjs";
+import { HEADWORD_PITCH_CHECK } from "../chrome-headword-pitch.mjs";
 import {
   LIBRARY_NAVIGATION_CHECK,
   LIBRARY_TAB_GEOMETRY_CHECK,
@@ -348,6 +349,7 @@ const PLANNED = [
   STRUCTURED_TABLE_CHECK,
   ACTION_ROW_CHECK,
   DYNAMIC_HEADWORD_CHECK,
+  HEADWORD_PITCH_CHECK,
   LOOKUP_COUNT_LAYOUT_CHECK,
   AUDIO_CHOOSER_CHECK,
   "compact definition text opens a nested lookup with the same close contract",

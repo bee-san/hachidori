@@ -1373,7 +1373,7 @@ async function imageSourceRenderStage({ HDGlossary, HDPopup, document, window, c
     view.flushDictionaryPresentation();
     check("local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush",
       latestLabels && beforeFlush === beforeTab + 2 && requests.length === beforeFlush
-        && !popup.querySelector(".gsm-hoshidicts-frequency-source, .gsm-hoshidicts-tag-pitch, .gsm-hoshidicts-pitch-ruby, .gsm-hoshidicts-primary-grammar")
+        && !popup.querySelector(".gsm-hoshidicts-frequency-source, .gsm-hoshidicts-tag-pitch, .gsm-hoshidicts-pitch-contour, .gsm-hoshidicts-primary-grammar")
         && Boolean(popup.querySelector(".gsm-hoshidicts-tag-ipa")),
       JSON.stringify({ latestLabels, beforeTab, beforeFlush, requests: requests.length }));
 
