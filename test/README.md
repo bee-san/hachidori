@@ -191,6 +191,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option. |
 | `debug-info`, `debug-log` | The debug report's contents without reader content; the log's capture, redaction, named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
 | `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
+| `definition-tag-colors` | Definition tags take Yomitan's colour for their category, each at 4.5:1 for its label in light and dark palettes (#604). |
 | `dictionary-import`, `dictionary-import-errors` | Revision comparison, MDX loss-count notes, and mmap/writeback failures that cleanup cannot hide. |
 | `dictionary-import-attempts` | A Settings import's turn at the engine (#578): it waits while the engine starts or a change holds it, polling with backoff up to a 30-minute timeout, and Cancel ends the wait at once; a failed attempt is retried up to three times, never after the library changed and never for memory, storage or engine-start failures. |
 | `dictionary-index-storage` | The hash-index budget: smallest tables stay resident, stable ties, enabled packages counted once, 65 MiB with **Use less ram by default** and 32 MiB in Low memory mode. |
@@ -222,7 +223,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee): their DOM, actions, tabs, Notes and the Design settings each theme declares. |
 | `toolbar` | The toolbar toggle and its revision conflicts. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
-| `yomitan-parity` | The renderer against Yomitan's own output at 67db60d, written inline. |
+| `yomitan-parity` | The renderer against Yomitan's own output at 67db60d (each card's dictionary tag at d3c54c1), written inline. |
 
 `anki_note_type_upstream_test.py` is the one Python test. The Anki note-type
 compatibility workflow runs it with

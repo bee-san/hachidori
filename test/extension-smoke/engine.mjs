@@ -163,28 +163,14 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const definitionTagRule = readerCss.match(/^\.gsm-hoshidicts-tag-definition \{([^}]+)\}/mu)?.[1];
     const metadataValueRules = ["tag-frequency", "pitch-source"].map(kind => [...readerCss
       .matchAll(new RegExp(`^\\.gsm-hoshidicts-${kind} \\{([^}]+)\\}`, "gmu"))].map(match => match[1]).join("\n"));
-    check("pronunciation and frequency values use the theme foreground while filled definition badges retain their paired foreground",
+    check("pronunciation and frequency values use the theme foreground while filled definition tags keep Yomitan's label colour",
       /color: var\(--text-color\);/u.test(tagRule)
         && metadataValueRules.every(rule => /color: var\(--text-color\);/u.test(rule))
         && /--pronunciation-annotation-color: var\(--text-color\);/u.test(readerCss)
-        && /color: var\(--hoshidicts-tag-text\);/u.test(definitionTagRule)
+        && /color: var\(--tag-text-color\);/u.test(definitionTagRule)
         && /--text-color: var\(--hoshidicts-text\);/u.test(readerCss)
         && /--hoshidicts-text: var\(--hoshidicts-palette-base-content\);/u.test(readerCss));
-    // Yomitan's tag categories (#426) on each palette's colour and content pair.
-    const categoryRule = category => readerCss.match(new RegExp(
-      `^\\.gsm-hoshidicts-tag-definition\\[data-category="${category}"\\] \\{([^}]+)\\}`, "mu"))?.[1] ?? "";
-    check("definition tags take their tag-bank category's palette pair; an archaism is tinted and other categories stay neutral",
-      [["expression", "expression", "secondary"], ["partOfSpeech", "part-of-speech", "accent"],
-        ["popular", "popular", "primary"], ["frequent", "frequent", "info"]].every(([category, token, role]) =>
-        categoryRule(category).includes(`background: var(--tag-${token}-background-color);`)
-          && categoryRule(category).includes(`color: var(--hoshidicts-tag-${token}-text);`)
-          && readerCss.includes(`--tag-${token}-background-color: var(--hoshidicts-palette-${role});`)
-          && readerCss.includes(`--hoshidicts-tag-${token}-text: var(--hoshidicts-palette-${role}-content);`))
-        && /border: 1px solid var\(--hoshidicts-palette-error\);/u.test(categoryRule("archaism"))
-        && /background: color-mix\(in srgb, var\(--hoshidicts-palette-error\) 12%, var\(--hoshidicts-palette-base-100\)\);/u
-          .test(categoryRule("archaism"))
-        && /color: var\(--text-color\);/u.test(categoryRule("archaism"))
-        && ["default", "dictionary", "name"].every(category => categoryRule(category) === ""));
+    // test/definition-tag-colors.test.mjs pins each tag category's colour (#604).
     const metadataDefaults = {
       averageFrequency: false, showFrequencyDictionaryNames: false,
       showPitchAccentFurigana: true, pitchAccentFuriganaDictionary: "",

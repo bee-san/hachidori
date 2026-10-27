@@ -418,8 +418,9 @@ async function popupReader(page, depth = 0) {
     return result.value ?? null;
   }
 
-  // A dictionary card is a plain box, as in Yomitan: its title is a label, not
-  // a control, and its definitions are laid out without any activation.
+  // A dictionary card is a plain box, as in Yomitan: its dictionary's tag is a
+  // label, not a control, and its definitions are laid out without any
+  // activation. The tags of that row are measured as drawn.
   async function glossaryCard() {
     const object = await resolvePopupObject();
     if (object === null) return null;
@@ -429,23 +430,35 @@ async function popupReader(page, depth = 0) {
         const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
         const card = cards[0];
         if (!card) return null;
-        const title = card.querySelector(":scope > .gsm-hoshidicts-glossary-card-title");
+        const tag = card.querySelector(".gsm-hoshidicts-dictionary-tag");
+        if (!tag) return { count: cards.length, tag: null };
         const view = this.ownerDocument.defaultView;
         await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
-        const rect = title.getBoundingClientRect();
+        const rect = tag.getBoundingClientRect();
+        const row = tag.parentNode;
         const body = card.querySelector(".gsm-hoshidicts-definitions");
+        const rowSize = Number.parseFloat(view.getComputedStyle(row).fontSize);
         return {
           count: cards.length,
           tags: cards.map(other => other.tagName),
           inDisclosure: cards.some(other => other.closest("details") !== null),
-          label: title.textContent,
-          dictionary: title.title,
-          titleTag: title.tagName,
-          cursor: view.getComputedStyle(title).cursor,
-          marker: view.getComputedStyle(title, "::before").content,
+          titles: this.querySelectorAll(".gsm-hoshidicts-glossary-card-title").length,
+          label: tag.textContent,
+          dictionary: tag.title,
+          // Yomitan's place for it: after the first definition's own tags.
+          place: row.matches(".definition-tag-list") && row.parentNode === body.firstElementChild
+            && tag === row.lastElementChild,
+          scheme: view.getComputedStyle(card).colorScheme,
+          row: [...row.children].map(node => {
+            const style = view.getComputedStyle(node);
+            return { category: node.dataset.category, background: style.backgroundColor, color: style.color,
+              weight: style.fontWeight, size: Number.parseFloat(style.fontSize) / rowSize };
+          }),
+          cursor: view.getComputedStyle(tag).cursor,
+          marker: view.getComputedStyle(tag, "::before").content,
           cardHeight: card.getBoundingClientRect().height,
           bodyHeight: body.getBoundingClientRect().height,
-          titlePoint: { x: rect.x + 6, y: rect.y + rect.height / 2 },
+          tagPoint: { x: rect.x + 6, y: rect.y + rect.height / 2 },
         };
       }`,
     });
@@ -699,8 +712,8 @@ async function popupReader(page, depth = 0) {
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
             ?.querySelector(".gsm-hoshidicts-expression")?.getAttribute("aria-label"),
           cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => ({
-            dictionary: card.querySelector(".gsm-hoshidicts-glossary-card-title").title,
-            label: card.querySelector(".gsm-hoshidicts-glossary-card-title").textContent,
+            dictionary: card.querySelector(".gsm-hoshidicts-dictionary-tag").title,
+            label: card.querySelector(".gsm-hoshidicts-dictionary-tag").textContent,
             bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
             // Each body's visible text: Yomitan's gloss separators are hidden.
             text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body =>

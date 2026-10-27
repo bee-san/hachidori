@@ -254,7 +254,7 @@ async function designPreviewStage() {
     update();
     kanjiSource &&= JSON.stringify([...popup.querySelectorAll('[role="tab"]')].map(tab => tab.textContent))
       === JSON.stringify(["All", "Second", "Unrelated renamed dictionary"])
-      && JSON.stringify([...popup.querySelectorAll(".gsm-hoshidicts-glossary-card-title")].map(title => title.title))
+      && JSON.stringify([...popup.querySelectorAll(".gsm-hoshidicts-dictionary-tag")].map(tag => tag.title))
         === JSON.stringify(["Second", "First"])
       && popup.textContent.includes("ショク · ジキ") && popup.textContent.includes("sample single-kanji entry")
       && query("form") === kanjiNote;
