@@ -305,9 +305,10 @@
 
   // The endings of the dictionary forms Yomitan's japanese-transforms.js
   // (d3c54c1) deinflects each class to, with the classical forms dictionaries
-  // give the same classes (聞こゆ, 相語らふ, 遅し; サ変 期す, ザ変 禁ず). Any
-  // verb ending counts for the three verb classes, as a dictionary can give a
-  // verb another one (驚く as v1). Katakana reads as hiragana.
+  // give the same classes (聞こゆ, 相語らふ, 遅し; サ変 期す, ザ変 禁ず). As a
+  // dictionary can give a word the wrong one of two related classes (驚く as
+  // v1), v1, v5 and vk share every verb ending and vs and vz every suru and
+  // zuru ending. Katakana reads as hiragana.
   const VERB_ENDING = new RegExp(`[${U_ROW_KANA}ずづふゆ]$`, "u");
   const SURU_ENDING = new RegExp(`(?:する|為る|ずる|${HAN_CHARACTER_PATTERN.source}[すず])$`, "u");
   const DICTIONARY_FORM_ENDINGS = [
