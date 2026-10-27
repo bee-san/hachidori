@@ -27,7 +27,7 @@ ones that give nouns or na-adjectives a verb or adjective class:
 | Dictionary | Rules on nouns and na-adjectives |
 |---|---|
 | 講談社 日本語大辞典 第二版 (and 双解版) | `adj-i` on na-adjectives: 自由 `adj-i n`, 静か, 綺麗, 好き, 大切 |
-| 精選版 日本国語大辞典 (MarvNC's copy) | `vs` on 10,337 headwords that do not end in する (料理, 授業, ランク, わくわく) |
+| 精選版 日本国語大辞典 (MarvNC's copy) | `vs` on 10,338 headwords that end in neither する nor 為る (料理, 授業, ランク, わくわく) |
 | 旺文社標準国語辞典 第八版 | `vs` on 7,398 such headwords, 7,145 of them also `n`, which Yomitan already excludes |
 | 漢字源 | `v5` on na-adjectives and nouns: 面倒, 陽気, 嫌, 坐 |
 
@@ -48,41 +48,53 @@ sources: NHK2016, 三省堂, 大辞林, 大辞泉 and 新明解 pitch dictionari
 |---|---:|---:|
 | Jitendex 2026-10-03 | 15,720 | 0 |
 | + JMdict, Bee's Ultimate Grammar, 新明解 8, 三省堂 8, NHK term dictionary | 20,485 | 0 |
-| + 精選版 日本国語大辞典, 漢字源 | 30,784 | 3,073 kifuku → positional |
-| Jitendex + 講談社 日本語大辞典 | 34,149 | 1,482 kifuku → positional, 自由 [2] → nakadaka |
-| Jitendex, JMdict, 新明解 8, 三省堂 8, NHK term dictionary, 精選版, 漢字源, and seven ixodid dictionaries (講談社 日本語大辞典, 旺文社標準国語辞典, 学研 新世紀ビジュアル大辞典 and four 古語 dictionaries) | 93,442 | 2,625 kifuku → positional |
+| + 精選版 日本国語大辞典, 漢字源 | 30,784 | 3,074 kifuku → positional |
+| Jitendex + 講談社 日本語大辞典 | 34,149 | 1,496 kifuku → positional, 自由 [2] → nakadaka |
+| Jitendex, JMdict, 新明解 8, 三省堂 8, NHK term dictionary, 精選版, 漢字源, and seven ixodid dictionaries (講談社 日本語大辞典, 旺文社標準国語辞典, 学研 新世紀ビジュアル大辞典 and four 古語 dictionaries) | 93,442 | 2,648 kifuku → positional |
 
-Every change is a kifuku pitch moved to its positional group. In the last row,
-285 of the changed pitches are on headwords that end in a kana a verb or
-adjective can end in; each is a suru noun (シュリンク `vs`), an onomatopoeic
-adverb (ぷすぷす `adv vs`) or a na-adjective or noun (恥知らず `adj-i`,
-スムース `adj-i`). The other changed pitches are on headwords that end in a kanji
-or another character no dictionary form ends in. One of those is a verb: 得 う
-[1], the classical verb written in kanji alone, which 精選版 tags `v1`. It is the
-only all-kanji headword with a verb class and a verb-like reading among these
-pitches apart from 面倒 and 窮屈. JMdict tags it `v2a-s`, which neither Yomitan
-nor Hachidori counts, so with JMdict alone it was already atamadaka. No other
-verb or i-adjective changed.
+Every change is a kifuku pitch moved to its positional group. The only verbs
+and adjectives among them are seven pitches of classical words:
+
+- 得 う [1], the classical verb written in kanji alone. 大修館新全訳古語辞典,
+  学研全訳古語辞典 and 旺文社古語辞典 tag it `v1`. JMdict's tag, `v2a-s`, is one
+  neither Yomitan nor Hachidori counts, so with JMdict alone it was already
+  atamadaka.
+- Six classical i-adjectives ending in し, from 古語 and 国語 dictionaries: 遅し,
+  いぶせし, 未だし, 愛し かなし, 遥けし and 全し. Counting し would keep them
+  kifuku, but 講談社 tags nouns ending in し `adj-i` (遠回し, 聞こえよがし,
+  お人好し, 引っ切り無し). With Jitendex and 講談社 installed, counting し kept 14
+  of those nouns' pitches kifuku and saved no real adjective, so only い counts.
+
+The rest are suru nouns (シュリンク `vs`), onomatopoeic adverbs (ぷすぷす
+`adv vs`), and nouns and na-adjectives (遠回し `adj-i n`, スムース `adj-i`).
 
 `parity.mjs` compares this PR with Yomitan's own functions over 14,994 cases (22
 words, every downstep and H/L pattern, 14 class sets): equal wherever every
-class fits the headword (10,436), otherwise only kifuku turned positional
-(4,558), and 0 other differences.
+class fits the headword (10,398), otherwise only kifuku turned positional
+(4,596), and 0 other differences.
 
 ## Timing
 
 `bench.mjs` times `pitchAccentCategory` itself, main and this PR alternating
-round by round (21 rounds each, Node 22.23.1, a shared 64-core host at load
-about 71). Median ns per call, two runs:
+round by round (31 rounds each, Node 22.23.1, a shared 64-core host at load
+60-70). Median ns per call, two runs each:
 
 | Input | main | this PR |
 |---|---:|---:|
-| 93,442 pitches of terms with a class | 249, 291 | 374, 415 |
-| every Jitendex term with a pitch in NHK2016 or Kanjium (`dump-all.py`) | 320, 307 | 368, 362 |
+| 37,917 pitches of terms with a verb or adjective class (worst case) | 216, 204 | 224, 216 |
+| 93,442 pitches of terms with any class (`dump.py`) | 275, 272 | 287, 281 |
+| 125,054 Jitendex terms with a pitch in NHK2016 or Kanjium (`dump-all.py`) | 314, 317 | 311, 315 |
+
+The classifier tests word classes only for a downstep that can be kifuku, and its
+endings match katakana themselves, so it never converts the expression. Earlier
+heads of this PR converted it with `toHiragana`: 448 ns on the worst case before
+the reorder (f7ba133e), and 745-846 ns when every expression was converted up
+front (29f3e7d1). `fuzz.mjs` found the final endings equal to
+`toHiragana` followed by the hiragana endings on 400,000 random mixed-script
+expressions, and every one of the 93,442 real pitches classifies the same.
 
 `render-bench.mjs` renders a 16-result reply (each result with a class and three
 pitches, so 64 classifications) through the production view and `reader.css`,
 main and this PR in two pages of one Chrome 152, alternating, 300 samples after
-20 warm-ups. Median `renderResults` 6.4 / 6.6 ms on main and 6.6 / 6.7 ms on
-this PR; with forced style and layout 19.1 / 19.6 ms and 19.1 / 20.3 ms. The
-expected cost, 64 × about 0.1 µs, is far below the run-to-run spread.
+20 warm-ups. Median `renderResults` 6.7 / 6.5 ms on main and 6.6 / 6.4 ms on
+this PR; with forced style and layout 19.8 / 18.7 ms and 19.1 / 18.7 ms.
