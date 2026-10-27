@@ -53,7 +53,9 @@ export async function checkHeadwordPitch(browser) {
         const contour = expression.querySelector(".gsm-hoshidicts-pitch-contour");
         const level = name => contour?.querySelector(`[data-pitch-level="${name}"], [data-pitch="${name}"]`);
         const high = level("high"), low = level("low");
-        // What selecting the headword copies: the readings are not selectable.
+        // The text selecting the whole headword gives. (Chrome 128's
+        // Selection.toString still includes user-select: none text, which a
+        // copy leaves out, so only a kana headword's is compared.)
         const range = document.createRange();
         range.selectNodeContents(expression);
         getSelection().removeAllRanges();
@@ -106,8 +108,7 @@ export async function checkHeadwordPitch(browser) {
       assert.deepEqual(kana.contour, { inHeadword: true, text: "てくてく", fontSize: kana.headword.fontSize,
         colour: kana.headword.colour }, pitchAccentFuriganaStyle);
       assert.ok(kana.lines.every(colour => colour && colour !== TRANSPARENT), JSON.stringify(kana.lines));
-      assert.deepEqual([kana.copied, (await show(KANJI, { pitchAccentFuriganaStyle })).copied], ["てくてく", "好き嫌い"],
-        pitchAccentFuriganaStyle);
+      assert.equal(kana.copied, "てくてく", pitchAccentFuriganaStyle);
       // A double-click on the word selects the whole word, as it does with the
       // pitch off. On the middle of a word's last character Chrome selects the
       // line break after it instead, pitch or not, so that one is left out.
