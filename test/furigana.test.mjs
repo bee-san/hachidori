@@ -85,10 +85,12 @@ test("each run of kanji is read one kanji at a time where exactly one split of i
   // 好き嫌い's split (#459) has no run of kanji left to read.
   assert.deepEqual(kanjiFurigana("好き嫌い", "すききらい", kanjiReadings), SUKIKIRAI);
   // null keeps the local split. No split of 今日 reads (jukujikun), nor of ２人
-  // (a digit has no readings); 思出 reads as 思(おもい)出(だ) and as 思(おも)出(いだ);
-  // 聞き取り has no run of kanji, and no split of 果物の王様 reads (#459).
+  // (a digit has no readings). 思出 reads as 思(おもい)出(だ) and as 思(おも)出(いだ):
+  // in 思出す that is the whole run, and in 思出人 the 人 after it still leaves
+  // the run two splits. 聞き取り has no run of kanji, and no split of 果物の王様
+  // reads (#459).
   for (const [expression, reading] of [["今日", "きょう"], ["２人", "ふたり"], ["思出す", "おもいだす"],
-    ["聞き取り", "ききとり"], ["果物の王様", "くだもののおうさま"], ["ありがとう", "ありがとう"]]) {
+    ["思出人", "おもいだひと"], ["聞き取り", "ききとり"], ["果物の王様", "くだもののおうさま"], ["ありがとう", "ありがとう"]]) {
     assert.equal(kanjiFurigana(expression, reading, kanjiReadings), null, expression);
   }
 });
