@@ -1,0 +1,53 @@
+{
+  "before 非常に": [
+    {
+      "expression": "非常に",
+      "frequencyTags": 12,
+      "pitchGroups": [
+        "Pitch sample A [0]"
+      ]
+    },
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchGroups": []
+    }
+  ],
+  "before 非常": [
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchGroups": [
+        "Pitch sample A [0]",
+        "Pitch sample B [0] [1]"
+      ]
+    }
+  ],
+  "after 非常に": [
+    {
+      "expression": "非常に",
+      "frequencyTags": 12,
+      "pitchGroups": [
+        "Pitch sample A [0]"
+      ]
+    },
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchGroups": [
+        "Pitch sample A [0]",
+        "Pitch sample B [0] [1]"
+      ]
+    }
+  ],
+  "after 非常": [
+    {
+      "expression": "非常",
+      "frequencyTags": 12,
+      "pitchGroups": [
+        "Pitch sample A [0]",
+        "Pitch sample B [0] [1]"
+      ]
+    }
+  ]
+}

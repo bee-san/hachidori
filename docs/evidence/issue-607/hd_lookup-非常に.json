@@ -1,0 +1,311 @@
+{
+  "results": [
+    {
+      "matched": "非常に",
+      "deinflected": "非常に",
+      "trace": [],
+      "term": {
+        "expression": "非常に",
+        "reading": "ひじょうに",
+        "rules": "",
+        "score": 0,
+        "glossaries": [
+          {
+            "dictionary": "Sample terms",
+            "glossary": "[\"very; extremely\"]",
+            "definitionTags": "adv",
+            "termTags": ""
+          }
+        ],
+        "frequencies": [
+          {
+            "dictionary": "Frequency 01",
+            "frequencies": [
+              {
+                "value": 2041,
+                "displayValue": "2041"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 02",
+            "frequencies": [
+              {
+                "value": 2082,
+                "displayValue": "2082"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 03",
+            "frequencies": [
+              {
+                "value": 2123,
+                "displayValue": "2123"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 04",
+            "frequencies": [
+              {
+                "value": 2164,
+                "displayValue": "2164"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 05",
+            "frequencies": [
+              {
+                "value": 2205,
+                "displayValue": "2205"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 06",
+            "frequencies": [
+              {
+                "value": 2246,
+                "displayValue": "2246"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 07",
+            "frequencies": [
+              {
+                "value": 2287,
+                "displayValue": "2287"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 08",
+            "frequencies": [
+              {
+                "value": 2328,
+                "displayValue": "2328"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 09",
+            "frequencies": [
+              {
+                "value": 2369,
+                "displayValue": "2369"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 10",
+            "frequencies": [
+              {
+                "value": 2410,
+                "displayValue": "2410"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 11",
+            "frequencies": [
+              {
+                "value": 2451,
+                "displayValue": "2451"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 12",
+            "frequencies": [
+              {
+                "value": 2492,
+                "displayValue": "2492"
+              }
+            ]
+          }
+        ],
+        "pitches": [
+          {
+            "dictionary": "Pitch sample A",
+            "pitches": [
+              {
+                "position": 0,
+                "pattern": "",
+                "nasal": [],
+                "devoice": []
+              }
+            ],
+            "transcriptions": []
+          }
+        ]
+      },
+      "preprocessorSteps": 0
+    },
+    {
+      "matched": "非常",
+      "deinflected": "非常",
+      "trace": [],
+      "term": {
+        "expression": "非常",
+        "reading": "ひじょう",
+        "rules": "",
+        "score": 0,
+        "glossaries": [
+          {
+            "dictionary": "Sample terms",
+            "glossary": "[\"emergency\"]",
+            "definitionTags": "n",
+            "termTags": ""
+          }
+        ],
+        "frequencies": [
+          {
+            "dictionary": "Frequency 01",
+            "frequencies": [
+              {
+                "value": 1037,
+                "displayValue": "1037"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 02",
+            "frequencies": [
+              {
+                "value": 1074,
+                "displayValue": "1074"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 03",
+            "frequencies": [
+              {
+                "value": 1111,
+                "displayValue": "1111"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 04",
+            "frequencies": [
+              {
+                "value": 1148,
+                "displayValue": "1148"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 05",
+            "frequencies": [
+              {
+                "value": 1185,
+                "displayValue": "1185"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 06",
+            "frequencies": [
+              {
+                "value": 1222,
+                "displayValue": "1222"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 07",
+            "frequencies": [
+              {
+                "value": 1259,
+                "displayValue": "1259"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 08",
+            "frequencies": [
+              {
+                "value": 1296,
+                "displayValue": "1296"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 09",
+            "frequencies": [
+              {
+                "value": 1333,
+                "displayValue": "1333"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 10",
+            "frequencies": [
+              {
+                "value": 1370,
+                "displayValue": "1370"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 11",
+            "frequencies": [
+              {
+                "value": 1407,
+                "displayValue": "1407"
+              }
+            ]
+          },
+          {
+            "dictionary": "Frequency 12",
+            "frequencies": [
+              {
+                "value": 1444,
+                "displayValue": "1444"
+              }
+            ]
+          }
+        ],
+        "pitches": [
+          {
+            "dictionary": "Pitch sample A",
+            "pitches": [
+              {
+                "position": 0,
+                "pattern": "",
+                "nasal": [],
+                "devoice": []
+              }
+            ],
+            "transcriptions": []
+          },
+          {
+            "dictionary": "Pitch sample B",
+            "pitches": [
+              {
+                "position": 0,
+                "pattern": "",
+                "nasal": [],
+                "devoice": []
+              },
+              {
+                "position": 1,
+                "pattern": "",
+                "nasal": [],
+                "devoice": []
+              }
+            ],
+            "transcriptions": []
+          }
+        ]
+      },
+      "preprocessorSteps": 0
+    }
+  ],
+  "dictionaryCount": 15
+}
