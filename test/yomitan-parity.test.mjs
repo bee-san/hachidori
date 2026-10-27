@@ -212,7 +212,7 @@ test("each term-bank row is a definition-item that carries its dictionary and ta
   assert.deepEqual(items.map(item => [item.className, item.dataset.dictionary, item.dataset.index]),
     [["definition-item", "D", "0"], ["definition-item", "D", "1"], ["definition-item", "D", "2"]]);
   const tagNames = item => [...item.querySelectorAll(".definition-tag-list > *")].map(tag => tag.textContent);
-  // DisplayGenerator.createTermEntry (d3c54c1, L148-L190) ends every
+  // DisplayGenerator.createTermEntry (d3c54c1, L150-L192) ends every
   // definition's tags with a "dictionary" tag, its title the dictionary's, and
   // marks it redundant after that dictionary's first definition, which
   // Compact tags hides (display.css L2046-L2048). A card is one dictionary, so
