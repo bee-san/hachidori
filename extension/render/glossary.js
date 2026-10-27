@@ -310,10 +310,10 @@
   // verb another one (驚く as v1). Katakana reads as hiragana.
   const VERB_ENDING = new RegExp(`[${U_ROW_KANA}ずづふゆ]$`, "u");
   const SURU_ENDING = new RegExp(`(?:する|為る|ずる|${HAN_CHARACTER_PATTERN.source}[すず])$`, "u");
-  const DICTIONARY_FORM_ENDINGS = new Map([
+  const DICTIONARY_FORM_ENDINGS = [
     ["v1", VERB_ENDING], ["v5", VERB_ENDING], ["vk", VERB_ENDING],
     ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いし]$/u],
-  ]);
+  ];
 
   // Yomitan's getPitchCategory (japanese.js:367 at d3c54c1) with its
   // isNonNounVerbOrAdjective (dictionary-data-util.js:320): a pattern's
@@ -324,8 +324,7 @@
   // takes kifuku away. The popup and {pitch-accent-categories} share it.
   function pitchAccentCategory(reading, pitch, wordClasses = [], expression = "") {
     const classes = new Set(wordClasses);
-    const text = toHiragana(expression);
-    const inflected = [...DICTIONARY_FORM_ENDINGS].some(([rule, ending]) => classes.has(rule) && ending.test(text))
+    const inflected = DICTIONARY_FORM_ENDINGS.some(([rule, ending]) => classes.has(rule) && ending.test(toHiragana(expression)))
       && !(classes.has("vs") && classes.has("n"));
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
