@@ -1694,7 +1694,7 @@ word leaves the rest unwritten (う.える: うえ in 植木 うえき), each al
 rendaku (a voiced ち or つ also as じ or ず: 世界中 せかいじゅう) and with a final つ,
 ち, く, き or り as っ; 々 reads as the kanji before it, and a digit or letter never
 reads. Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
-holds the readings; the worker imports it as a JSON module as the engine starts,
+holds the readings; the engine service imports it as a JSON module as it starts,
 off the first lookup's reply, and derives each kanji's forms when it is first
 needed.
 `scripts/kanji-readings.mjs` regenerates the table from the KANJIDIC archive
