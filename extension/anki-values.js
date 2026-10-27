@@ -101,7 +101,7 @@ function pitchCategories(term) {
   const reading = term.reading || term.expression;
   const wordClasses = uniqueTokens([term.rules]);
   const categories = term.pitches.flatMap(group => group.pitches.map(pitch =>
-    globalThis.HDGlossary.pitchAccentCategory(reading, pitch, wordClasses)));
+    globalThis.HDGlossary.pitchAccentCategory(reading, pitch, wordClasses, term.expression)));
   return [...new Set(categories.filter(Boolean))].join(",");
 }
 

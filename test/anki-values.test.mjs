@@ -288,6 +288,13 @@ test("pitch, part-of-speech, tags and transcriptions keep source meanings and ma
   assert.equal(await render(source, "{audio}", { audio: "[sound:chosen.mp3]" }), "[sound:chosen.mp3]");
 });
 
+test("{pitch-accent-categories} takes kifuku from a word class only where the headword ends like it (#608)", async () => {
+  const term = (expression, reading, rules) => ({ ...request().term, expression, reading, rules,
+    pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [{ position: 2, pattern: "", nasal: [], devoice: [] }] }] });
+  assert.equal(await render(request({ term: term("自由", "じゆう", "v5") }), "{pitch-accent-categories}"), "nakadaka");
+  assert.equal(await render(request({ term: term("食べる", "たべる", "v1") }), "{pitch-accent-categories}"), "kifuku");
+});
+
 test("the screenshot marker references only a stored picture and escapes its filename", async () => {
   assert.equal(await render(request({}), "{screenshot}"), "");
   assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{screenshot}"),

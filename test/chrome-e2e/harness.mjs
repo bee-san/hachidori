@@ -358,6 +358,7 @@ const PLANNED = [
   "an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
+  "Pitch accent colours give a dictionary's i-adjective class to 高い but not to the na-adjective 自由",
   "a grouped favourite uses only its group tab",
   "selected term dictionary wins even when maximum results is one",
   "Back preserves the complete clicked-kanji drill-down history",

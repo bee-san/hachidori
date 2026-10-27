@@ -293,6 +293,45 @@ async function checkFrequencyDirection(browser, settings, tab, popup) {
     JSON.stringify({ evidence, metadata, manualSurvived, cleaned }));
 }
 
+// 講談社 日本語大辞典 gives na-adjectives such as 自由 the i-adjective class
+// ("adj-i n"). Through the real engine and popup, 自由 [2] keeps its nakadaka
+// colour and the i-adjective 高い [2], with the same class, stays kifuku (#608).
+async function checkPitchAccentGroups(settings, tab, popup) {
+  const title = "Pitch accent groups";
+  const words = [["自由", "じゆう", "adj-i n", "nakadaka"], ["高い", "たかい", "adj-i", "kifuku"]];
+  const archive = buildTitledZip(title, {
+    terms: words.map(([expression, reading, rules], index) => [expression, reading, "", rules, 0, [expression], index, ""]),
+    termMeta: words.map(([expression, reading]) => [expression, "pitch", { reading, pitches: [{ position: 2 }] }]),
+  });
+  const original = await readSettingsControls(settings, ["opt-pitch-colors", "opt-pitch-badge"]);
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const groups = [];
+  try {
+    await installMediaArchive(settings, archive);
+    await editSettingsControls(settings, { "opt-pitch-colors": true, "opt-pitch-badge": true });
+    for (const [expression] of words) {
+      await tab.bringToFront();
+      await tab.keyboard.press("Escape");
+      await tab.$eval("#verb", (element, text) => { element.textContent = text; }, expression);
+      await hoverForPopup(tab, popup, "#verb", { accept: state => state.plain.includes(expression) });
+      groups.push(await popup.pitchGroups());
+    }
+  } finally {
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, original);
+    const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+      target: "hoshidicts-offscreen", type: "hd_remove", title,
+    }), title);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    if (!removed.ok) throw new Error(removed.error);
+  }
+  check("Pitch accent colours give a dictionary's i-adjective class to 高い but not to the na-adjective 自由",
+    groups.length === 2 && groups.every((group, index) => group?.headword === words[index][3] && group.inGroupColour
+      && group.badges.length === 1 && group.badges[0] === words[index][3])
+      && groups[0].colour !== groups[1].colour, JSON.stringify(groups));
+}
+
 async function checkPopupMetadata(browser, settings, tab, popup) {
   const controls = ["opt-frequency-names", "opt-frequency-compact", "opt-average-frequency", "opt-pitch-furigana",
     "opt-pitch-dictionary", "opt-pitch-furigana-style", "opt-pitch-badge", "opt-grammar-tags", "opt-popup-width",
@@ -466,5 +505,9 @@ describe("frequency, metadata and audio", () => {
   step("popup audio", async () => {
     await checkPopupAudio(page, tab, popup, browser);
     await tab.keyboard.press("Escape");
+  });
+
+  step("pitch accent groups", async () => {
+    await checkPitchAccentGroups(page, tab, popup);
   });
 });

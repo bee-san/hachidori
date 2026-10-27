@@ -1063,6 +1063,33 @@ async function popupReader(page, depth = 0) {
     });
     return reply.result.value;
   }
+  // Show pitch accent colours: the primary headword's and its badges' accent
+  // groups, and the colour the headword is drawn in. A custom property computes
+  // to its substituted value, so the headword's group variable reads as the
+  // group's own colour pair.
+  async function pitchGroups() {
+    const object = await resolvePopupObject();
+    if (!object) return null;
+    const reply = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: function () {
+        const view = this.ownerDocument.defaultView;
+        const expression = this.querySelector(".gsm-hoshidicts-expression");
+        const style = expression && view.getComputedStyle(expression);
+        const group = expression?.dataset.pitchCategory ?? null;
+        return {
+          headword: group,
+          badges: [...this.querySelector(".gsm-hoshidicts-entry")?.querySelectorAll(".pronunciation") ?? []]
+            .map(badge => badge.dataset.pitchCategory ?? null),
+          colour: style?.color ?? null,
+          inGroupColour: group !== null && style.color !== view.getComputedStyle(this).color
+            && style.getPropertyValue("--hoshidicts-pitch-category").trim()
+              === style.getPropertyValue(`--hoshidicts-pitch-${group}`).trim(),
+        };
+      }.toString(),
+    });
+    return reply.result.value;
+  }
   // Where the popup actually is on the page, for assertions about what a
   // screenshot of that page may contain.
   async function rect() {
@@ -1080,7 +1107,7 @@ async function popupReader(page, depth = 0) {
 
   return {
     anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionReveal, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
-    lookupStatistics, nested, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
+    lookupStatistics, nested, pitchGroups, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, wordStatus, writeNote,
   };
 }

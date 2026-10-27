@@ -1256,7 +1256,15 @@ orange, 尾高 odaka green and 起伏 kifuku purple. `HDGlossary.pitchAccentCate
 ports Yomitan's `getPitchCategory` with `isNonNounVerbOrAdjective`, and
 `{pitch-accent-categories}` uses the same helper, so the popup and the card
 agree: a downstep on a `v1`, `v5`, `vk`, `vs`, `vz` or `adj-i` term that is not
-also `vs` and `n` is kifuku, and a pattern counts its first downstep. The
+also `vs` and `n` is kifuku, and a pattern counts its first downstep. Unlike
+Yomitan, a class counts only when the term's expression ends as that class's
+dictionary form does: a verb class in an u-row kana and `adj-i` in い, each in
+hiragana or katakana, and `vs` or `vz` in する, 為る, ずる or a kanji followed by
+す or ず. Some dictionaries give nouns and na-adjectives one of these classes
+(講談社 日本語大辞典 tags 自由 `adj-i`, 精選版 日本国語大辞典 tags suru nouns
+such as 料理 `vs`), and those keep the group their downstep gives (#608).
+Classical i-adjectives ending in し (遅し) do not count, because 講談社 also tags
+nouns such as 遠回し `adj-i`. The
 headword's `.gsm-hoshidicts-expression` carries `data-pitch-category` from the
 pitch its furigana uses (the pitch accent dictionary first, then the first pitch
 that fits the reading), whether or not the contour is drawn, and each badge's
