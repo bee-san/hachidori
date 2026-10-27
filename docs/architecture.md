@@ -1692,7 +1692,9 @@ grammar row and kanji tags keep their palette's pairs. Yomitan's white or
 `expression` orange), so each of those is darkened, keeping its hue, only as far
 as 4.5:1 needs. The High contrast palette darkens Yomitan's dark colours as far
 as a white label needs for 7:1, as its text has. Custom CSS can set the
-`--tag-*-background-color` variables, for example to Yomitan's own values.
+`--tag-*-background-color` variables on `.gsm-hoshidicts-popup`, for example to
+Yomitan's own values; High contrast keeps its own unless the rule also names
+`:host([data-hoshidicts-theme="high-contrast"]) .gsm-hoshidicts-popup`.
 Forced colours draw each tag's outline.
 
 Headword furigana follow Yomitan's `distributeFurigana`: the kana in a
