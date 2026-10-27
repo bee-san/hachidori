@@ -48,9 +48,9 @@ sources: NHK2016, 三省堂, 大辞林, 大辞泉 and 新明解 pitch dictionari
 |---|---:|---:|
 | Jitendex 2026-10-03 | 15,720 | 0 |
 | + JMdict, Bee's Ultimate Grammar, 新明解 8, 三省堂 8, NHK term dictionary | 20,485 | 0 |
-| + 精選版 日本国語大辞典, 漢字源 | 30,784 | 3,074 kifuku → positional |
+| + 精選版 日本国語大辞典, 漢字源 | 30,784 | 3,075 kifuku → positional |
 | Jitendex + 講談社 日本語大辞典 | 34,149 | 1,496 kifuku → positional, 自由 [2] → nakadaka |
-| Jitendex, JMdict, 新明解 8, 三省堂 8, NHK term dictionary, 精選版, 漢字源, and seven ixodid dictionaries (講談社 日本語大辞典, 旺文社標準国語辞典, 学研 新世紀ビジュアル大辞典 and four 古語 dictionaries) | 93,442 | 2,648 kifuku → positional |
+| Jitendex, JMdict, 新明解 8, 三省堂 8, NHK term dictionary, 精選版, 漢字源, and seven ixodid dictionaries (講談社 日本語大辞典, 旺文社標準国語辞典, 学研 新世紀ビジュアル大辞典 and four 古語 dictionaries) | 93,442 | 2,649 kifuku → positional |
 
 Every change is a kifuku pitch moved to its positional group. The only verbs
 and adjectives among them are seven pitches of classical words:
@@ -65,7 +65,8 @@ and adjectives among them are seven pitches of classical words:
   お人好し, 引っ切り無し). With Jitendex and 講談社 installed, counting し kept 14
   of those nouns' pitches kifuku and saved no real adjective, so only い counts.
 
-The rest are suru nouns (シュリンク `vs`), onomatopoeic adverbs (ぷすぷす
+The rest are suru nouns (シュリンク and ハッスル `vs`; a suru ending matches only in
+hiragana, so ハッスル does not end in する), onomatopoeic adverbs (ぷすぷす
 `adv vs`), and nouns and na-adjectives (遠回し `adj-i n`, スムース `adj-i`).
 
 `parity.mjs` compares this PR with Yomitan's own functions over 14,994 cases (22
@@ -81,17 +82,20 @@ round by round (31 rounds each, Node 22.23.1, a shared 64-core host at load
 
 | Input | main | this PR |
 |---|---:|---:|
-| 37,917 pitches of terms with a verb or adjective class (worst case) | 216, 204 | 224, 216 |
+| 37,917 pitches of terms with a verb or adjective class (worst case) | 216, 204, 215, 220 | 224, 216, 230, 229 |
 | 93,442 pitches of terms with any class (`dump.py`) | 275, 272 | 287, 281 |
 | 125,054 Jitendex terms with a pitch in NHK2016 or Kanjium (`dump-all.py`) | 314, 317 | 311, 315 |
 
-The classifier tests word classes only for a downstep that can be kifuku, and its
-endings match katakana themselves, so it never converts the expression. Earlier
+That is about 10-30 ns per call over main on the worst case (the audit measured
++20-30 ns). The classifier tests word classes only for a downstep that can be
+kifuku, and its verb and adjective endings match katakana themselves, so it
+never converts the expression. Earlier
 heads of this PR converted it with `toHiragana`: 448 ns on the worst case before
 the reorder (f7ba133e), and 745-846 ns when every expression was converted up
-front (29f3e7d1). `fuzz.mjs` found the final endings equal to
+front (29f3e7d1). `fuzz.mjs` found those endings equal to
 `toHiragana` followed by the hiragana endings on 400,000 random mixed-script
-expressions, and every one of the 93,442 real pitches classifies the same.
+expressions. The suru ending then dropped its katakana (the audit's N7), which
+changes one real pitch, ハッスル [1].
 
 `render-bench.mjs` renders a 16-result reply (each result with a class and three
 pitches, so 64 classifications) through the production view and `reader.css`,
