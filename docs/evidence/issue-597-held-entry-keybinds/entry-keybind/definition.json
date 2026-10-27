@@ -1,0 +1,41 @@
+{
+  "revision": "6466b7a707a52c92df2bd3bf0c76b75df380f254",
+  "node": "v22.23.1",
+  "cpu": "AMD EPYC 9R14",
+  "logicalCpus": 64,
+  "load": [
+    5.1,
+    5.88,
+    11.55
+  ],
+  "chromeExecutable": "<repo>/test/tmp/browsers/chrome/linux-152.0.7977.75/chrome-linux64/chrome",
+  "rounds": 5,
+  "word": "きかん",
+  "steps": 10,
+  "hold": {
+    "delayMs": 500,
+    "intervalMs": 33,
+    "repeats": 31
+  },
+  "options": {
+    "lookupMode": "hover"
+  },
+  "archive": {
+    "path": "<data>/jitendex-yomitan.zip",
+    "bytes": 38831822,
+    "sha256": "e914c76596220dffc6ee0c069cd05992f03adb2988c12c3cebe817a3ac271356"
+  },
+  "variants": [
+    {
+      "name": "main",
+      "extension": "<main 5f986e47>/extension",
+      "sha256": "e3ed3a4cb5f8ec44e3cd58f12f523ca10a42450ef7b747a9984931f30f78f836"
+    },
+    {
+      "name": "branch",
+      "extension": "<branch 8e80033c>/extension",
+      "sha256": "692ff95d2d97b06c5d5eec3d03d5da7a0aaf48e21da3b4ffee4580eeac890598"
+    }
+  ],
+  "harnessSha256": "abb00da531219264931d9ff650fa22ddd0cdf912ac6f659223cfa6ecfed143b7"
+}
