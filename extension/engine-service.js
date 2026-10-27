@@ -343,16 +343,20 @@ function withDefinitionTags(reply) {
 // give it (HDGlossary.kanjiFurigana), where that differs from the split the
 // renderer makes alone: where the kana leave more than one split, the one that
 // reads (#459), and each run of kanji read one kanji at a time (#605). Every
-// other reply stays as the engine wrote it. The readings table is read on the
-// first reply with a result and kept for the worker's life; each kanji's
-// readings are derived as it is needed.
+// other reply stays as the engine wrote it. The readings table is imported as
+// the engine starts (startEngine), so the first lookup need not wait for it,
+// and kept for the worker's life; each kanji's readings are derived as it is
+// needed.
 let kanjiReadings = null;
+
+function importKanjiReadings() {
+  return import("./vendor/kanjidic/kanji-readings.json", { with: { type: "json" } });
+}
 
 export async function withFurigana(reply) {
   if (reply.results.length === 0) return reply;
   const { createKanjiReadings, kanjiFurigana } = globalThis.HDGlossary;
-  kanjiReadings ??= createKanjiReadings((await import("./vendor/kanjidic/kanji-readings.json",
-    { with: { type: "json" } })).default.readings);
+  kanjiReadings ??= createKanjiReadings((await importKanjiReadings()).default.readings);
   let furiganaJsonLength = 0;
   for (const result of reply.results) {
     const term = result?.term;
@@ -4006,4 +4010,6 @@ export function startEngine() {
   // boot() never rejects: a failed start is latched in bootError, which
   // hd_status and every request needing the engine report.
   void serialise(boot);
+  // The first lookup's own import reports a failure (withFurigana).
+  importKanjiReadings().catch(() => {});
 }
