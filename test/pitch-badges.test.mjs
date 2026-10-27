@@ -169,6 +169,33 @@ test("aliases relabel the dictionary tag in place and the names switch hides it 
   assert.ok(card.isConnected && f.popup.querySelector(".gsm-hoshidicts-glossary-card") === card);
 });
 
+test("a verb or adjective class makes kifuku only on a headword that ends like that class (#608)", t => {
+  const f = fixture(t);
+  const groupOf = (expression, reading, value, rules) => {
+    f.render(result(expression, reading, [pitch("NHK", value)], rules));
+    return [f.popup.querySelector(".gsm-hoshidicts-expression").dataset.pitchCategory,
+      f.popup.querySelector(".pronunciation").dataset.pitchCategory];
+  };
+  // Some dictionaries give nouns and na-adjectives a verb or adjective class:
+  // they keep the group their downstep gives. 面倒's reading ends like a godan
+  // verb but its headword does not, and a suru noun is not a suru verb.
+  for (const rules of ["v1", "v5", "vk", "vs", "vz", "adj-i"]) {
+    assert.deepEqual(groupOf("自由", "じゆう", 2, rules), ["nakadaka", "nakadaka"], rules);
+  }
+  for (const [expression, reading, value, rules, expected] of [
+    ["面倒", "めんどう", 3, "v5", "nakadaka"], ["料理", "りょうり", 1, "vs", "atamadaka"],
+    ["ダンス", "ダンス", 1, "vs", "atamadaka"], ["静か", "しずか", 1, "adj-i", "atamadaka"],
+    // Verbs and i-adjectives stay kifuku, under another verb class too (驚く
+    // tagged v1), in katakana, and in classical サ変 and ザ変 forms.
+    ["驚く", "おどろく", 3, "v1", "kifuku"], ["来る", "くる", 1, "vk", "kifuku"],
+    ["愛する", "あいする", 3, "vs", "kifuku"], ["期す", "きす", 1, "vs", "kifuku"],
+    ["信ずる", "しんずる", 3, "vz", "kifuku"], ["禁ず", "きんず", 1, "vz", "kifuku"],
+    ["キツイ", "キツイ", 2, "adj-i", "kifuku"],
+  ]) {
+    assert.deepEqual(groupOf(expression, reading, value, rules), [expected, expected], expression);
+  }
+});
+
 test("the headword and each badge carry their pitch accent group, contour or not", t => {
   const f = fixture(t);
   const groupOf = (expression, reading, pitches, rules) => {
@@ -208,31 +235,4 @@ test("the headword and each badge carry their pitch accent group, contour or not
   // A headword with no pitch that fits its reading has no group.
   f.render(result("昭和", "しょうわ", [pitch("NHK", 7)]));
   assert.equal(headword().dataset.pitchCategory, undefined);
-});
-
-test("a verb or adjective class makes kifuku only on a headword that ends like that class (#608)", t => {
-  const f = fixture(t);
-  const groupOf = (expression, reading, value, rules) => {
-    f.render(result(expression, reading, [pitch("NHK", value)], rules));
-    return [f.popup.querySelector(".gsm-hoshidicts-expression").dataset.pitchCategory,
-      f.popup.querySelector(".pronunciation").dataset.pitchCategory];
-  };
-  // Some dictionaries give nouns and na-adjectives a verb or adjective class:
-  // they keep the group their downstep gives. 面倒's reading ends like a godan
-  // verb but its headword does not, and a suru noun is not a suru verb.
-  for (const rules of ["v1", "v5", "vk", "vs", "vz", "adj-i"]) {
-    assert.deepEqual(groupOf("自由", "じゆう", 2, rules), ["nakadaka", "nakadaka"], rules);
-  }
-  for (const [expression, reading, value, rules, expected] of [
-    ["面倒", "めんどう", 3, "v5", "nakadaka"], ["料理", "りょうり", 1, "vs", "atamadaka"],
-    ["ダンス", "ダンス", 1, "vs", "atamadaka"], ["静か", "しずか", 1, "adj-i", "atamadaka"],
-    // Verbs and i-adjectives stay kifuku, under another verb class too (驚く
-    // tagged v1), in katakana, and in classical サ変 and ザ変 forms.
-    ["驚く", "おどろく", 3, "v1", "kifuku"], ["来る", "くる", 1, "vk", "kifuku"],
-    ["愛する", "あいする", 3, "vs", "kifuku"], ["期す", "きす", 1, "vs", "kifuku"],
-    ["信ずる", "しんずる", 3, "vz", "kifuku"], ["禁ず", "きんず", 1, "vz", "kifuku"],
-    ["キツイ", "キツイ", 2, "adj-i", "kifuku"],
-  ]) {
-    assert.deepEqual(groupOf(expression, reading, value, rules), [expected, expected], expression);
-  }
 });
