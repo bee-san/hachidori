@@ -235,6 +235,41 @@ Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
 elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
 summaries are on, so those timings include the summary walkers.
 
+## Entry moves on Alt+ArrowDown/ArrowUp (#597)
+
+`entry-keybind.mjs` times Go to next and previous entry in the real extension:
+keys sent through CDP's Input domain to a hover popup of a real dictionary's
+results, and the popup's scroll pane read from the page every animation frame.
+
+```sh
+git archive origin/main extension | tar -x -C /tmp/main
+HACHIDORI_KEYBIND_ARCHIVE=/path/to/jitendex-yomitan.zip \
+  node benchmark/entry-keybind.mjs /tmp/entry-keybind main=/tmp/main/extension branch=extension
+```
+
+Each `name=path` is an extension directory; every round
+(`HACHIDORI_KEYBIND_ROUNDS`, 5) gives each a fresh profile, alternating their
+order. The archive is imported and the word (`HACHIDORI_KEYBIND_WORD`, きかん)
+hovered, and once every result has rendered, with Alt held:
+
+- single presses: ArrowDown tapped to the tenth entry the pane can scroll to,
+  then ArrowUp back to the first, 200 ms apart;
+- held: ArrowDown from the first entry, then ArrowUp from the tenth, each held
+  for 1.5 s as an operating system repeats it: a 500 ms delay, then a keydown
+  with `repeat` every 33 ms.
+
+A keydown's latency runs from its timestamp to the end of the main thread's
+work for the first frame after its handlers, when that frame shows the pane at
+another entry. It is split into the wait for the main thread, the handlers, the
+wait for the frame and its rendering; Event Timing's duration to the next paint,
+which Chrome reports from 16 ms, is kept beside it. Single presses must land on
+each entry's header. A held key reports its keydowns, how many were handled
+(`prevented`) and how many moved the pane. The keys carry `isSystemKey`, as Alt
+combinations do on Windows and Linux; on macOS an unhandled Option+ArrowDown
+pages the page down instead. `raw.json` keeps every keydown and
+`summary.json` pools the rounds. Presentation after the main thread's frame,
+a physical keyboard's own repeat timing and other renderers are outside it.
+
 ## Content-script injection per frame
 
 `content-injection.mjs` measures what the manifest's content scripts cost every
