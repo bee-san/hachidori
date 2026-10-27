@@ -305,15 +305,17 @@
 
   // The endings of the dictionary forms Yomitan's japanese-transforms.js
   // (d3c54c1) deinflects each class to, with the classical forms dictionaries
-  // give the same classes (聞こゆ, 相語らふ, 遅し; サ変 期す, ザ変 禁ず). As a
+  // give the same classes (聞こゆ, 相語らふ; サ変 期す, ザ変 禁ず). As a
   // dictionary can give a word the wrong one of two related classes (驚く as
   // v1), v1, v5 and vk share every verb ending and vs and vz every suru and
-  // zuru ending. Katakana reads as hiragana.
-  const VERB_ENDING = new RegExp(`[${U_ROW_KANA}ずづふゆ]$`, "u");
-  const SURU_ENDING = new RegExp(`(?:する|為る|ずる|${HAN_CHARACTER_PATTERN.source}[すず])$`, "u");
+  // zuru ending. An i-adjective ends in い: 講談社 日本語大辞典 gives adj-i to
+  // nouns ending in し (遠回し), so a classical one (遅し) does not count.
+  // Each kana also matches in katakana (ムカツク, キツイ).
+  const VERB_ENDING = /[うくぐすずつづぬふぶむゆるウクグスズツヅヌフブムユル]$/u;
+  const SURU_ENDING = new RegExp(`(?:[すス][るル]|為[るル]|[ずズ][るル]|${HAN_CHARACTER_PATTERN.source}[すずスズ])$`, "u");
   const DICTIONARY_FORM_ENDINGS = [
     ["v1", VERB_ENDING], ["v5", VERB_ENDING], ["vk", VERB_ENDING],
-    ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いし]$/u],
+    ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いイ]$/u],
   ];
 
   // Yomitan's getPitchCategory (japanese.js:367 at d3c54c1) with its
@@ -325,13 +327,12 @@
   // takes kifuku away. A kana term is written as its reading. The popup and
   // {pitch-accent-categories} share it.
   function pitchAccentCategory(reading, pitch, wordClasses = [], expression = reading) {
-    const classes = new Set(wordClasses);
-    const inflected = DICTIONARY_FORM_ENDINGS.some(([rule, ending]) => classes.has(rule) && ending.test(toHiragana(expression)))
-      && !(classes.has("vs") && classes.has("n"));
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
     if (Number.isNaN(position) || position < 0) return null;
-    if (inflected) return "kifuku";
+    const classes = new Set(wordClasses);
+    if (!(classes.has("vs") && classes.has("n"))
+      && DICTIONARY_FORM_ENDINGS.some(([rule, ending]) => classes.has(rule) && ending.test(expression))) return "kifuku";
     if (position === 1) return "atamadaka";
     return position >= splitPitchAccentMorae(reading).length ? "odaka" : "nakadaka";
   }
