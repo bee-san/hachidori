@@ -495,6 +495,79 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     evidence.length === 8 && evidence.every(Boolean), JSON.stringify(evidence));
 }
 
+// #607: a lookup of 非常に lists 非常 as a later entry, whose twelve
+// frequency tags come before its pitch accents. It shows the pitch accent
+// dictionaries it shows when looked up on its own.
+async function checkLaterEntryPitch(settings, tab, popup) {
+  const word = ["非常", "ひじょう"];
+  const phrase = ["非常に", "ひじょうに"];
+  const pitchTitles = ["Later entry pitch A", "Later entry pitch B"];
+  const frequencyTitles = Array.from({ length: 12 }, (_, index) => `Later entry frequency ${index + 1}`);
+  const pitch = (...positions) => [word[0], "pitch", { reading: word[1], pitches: positions.map(position => ({ position })) }];
+  const rank = ([expression, reading], value) => [expression, "freq", { reading, frequency: { value, displayValue: String(value) } }];
+  const archives = [
+    ["Later entry words", { terms: [[...phrase, "", "", 0, ["extremely (later entry fixture)"], 1, ""],
+      [...word, "", "", 0, ["emergency (later entry fixture)"], 2, ""]] }],
+    [pitchTitles[0], { banks: false, termMeta: [pitch(0)] }],
+    [pitchTitles[1], { banks: false, termMeta: [pitch(0, 1)] }],
+    ...frequencyTitles.map((title, index) => [title, { banks: false,
+      termMeta: [rank(word, 100 + index), rank(phrase, 200 + index)] }]),
+  ];
+  const original = await readSettingsControls(settings, ["opt-average-frequency", "opt-pitch-badge", "opt-max-results"]);
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+  const before = await status();
+  const installed = [];
+  async function entries(text, gloss) {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.$eval("#verb", (element, value) => { element.textContent = value; }, text);
+    await hoverForPopup(tab, popup, "#verb", { accept: value => value.plain.includes(gloss) });
+    await popup.click(".gsm-hoshidicts-show-more");
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const value = await popup.dictionaryTabs();
+      // This lookup's own entries, all shown: not the previous popup's.
+      if (value && !value.hidden && !value.showMore && value.entries[0]?.expression === text
+        && value.entries.some(entry => entry.expression === word[0])) return value.entries;
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    throw new Error(`${text} did not list ${word[0]}: ${JSON.stringify(await popup.dictionaryTabs())}`);
+  }
+  let later;
+  let alone;
+  let cleaned;
+  try {
+    for (const [title, options] of archives) {
+      await installMediaArchive(settings, buildTitledZip(title, options));
+      installed.push(title);
+    }
+    // The suite reads one result by default; 非常 is the second.
+    await editSettingsControls(settings, { "opt-average-frequency": false, "opt-pitch-badge": true,
+      "opt-max-results": "32" });
+    later = (await entries(phrase[0], "extremely")).find(entry => entry.expression === word[0]);
+    [alone] = await entries(word[0], "emergency");
+  } finally {
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, original);
+    for (const title of installed) {
+      const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    cleaned = (await status()).dictionaryCount === before.dictionaryCount;
+    await tab.keyboard.press("Escape");
+  }
+  const shown = entry => entry && { expression: entry.expression, frequencyDictionaries: entry.frequencyDictionaries,
+    pitchDictionaries: entry.pitchDictionaries };
+  check("a later entry shows the pitch accent dictionaries it shows on its own after twelve frequency tags",
+    frequencyTitles.every(title => later?.frequencyDictionaries.includes(title))
+      && pitchTitles.every(title => later.pitchDictionaries.includes(title))
+      && alone?.expression === word[0] && JSON.stringify(later.pitchDictionaries) === JSON.stringify(alone.pitchDictionaries)
+      && cleaned,
+    JSON.stringify({ later: shown(later), alone: shown(alone), cleaned }));
+}
+
 describe("frequency, metadata and audio", () => {
   step("frequency direction", async () => {
     await checkFrequencyDirection(browser, page, tab, popup);
@@ -502,6 +575,10 @@ describe("frequency, metadata and audio", () => {
 
   step("popup metadata", async () => {
     await checkPopupMetadata(browser, page, tab, popup);
+  });
+
+  step("later entry pitch accents", async () => {
+    await checkLaterEntryPitch(page, tab, popup);
   });
 
   step("popup audio", async () => {
