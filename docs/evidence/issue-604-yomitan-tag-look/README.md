@@ -111,3 +111,10 @@ or dictionary tag (branch). Both trees name each card's dictionary. While
 blurred, both expose two `button "Reveal definitions"`. On `main` the title text
 stays outside the inert list; on the branch the tag is inside it and returns with
 the definitions. The click calls `reveal()` once on both.
+
+## Theme contrast filmstrip
+
+`theme-contrast.png` is `node test/run.mjs chrome-theme-contrast` (45/45 rows) on
+the PR head `eaedc7f0`. That suite measures dictionary images and word
+highlights, which this change does not touch; the tag contrast is the table
+above and `test/definition-tag-colors.test.mjs`.
