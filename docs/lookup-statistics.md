@@ -58,8 +58,10 @@ unavailable until you unlink.
 
 ## Definition blur
 
-Settings → Reading → Definition blur hides definitions, compact summaries and
-reading furigana behind a blur until you recall the word. Its three conditions
+Settings → Reading → Definition blur hides definitions, compact summaries,
+reading furigana and the headword's pitch reading behind a blur until you
+recall the word; a headword written in kana stays readable and only its pitch
+lines wait. Its three conditions
 are off by default and can be enabled independently; a match from any checked
 condition qualifies. **Blur by lookup count** needs lookup counts. Choose **At least**
 to blur words looked up the threshold number of times (default 5) or more, or

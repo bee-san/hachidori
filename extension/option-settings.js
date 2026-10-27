@@ -191,7 +191,7 @@ function renderMetadataControls() {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
   }
   renderDefinitionBlurControls();
-  // The dictionary picks the furigana's pitch, which also gives the headword's colour.
+  // The dictionary picks the reading's pitch, which also gives the headword's colour.
   renderPreferredDictionary("opt-pitch-dictionary", options.pitchAccentFuriganaDictionary,
     "pitch", "Automatic — first available pitch", options.showPitchAccentFurigana || options.showPitchAccentColors);
   // Like the dictionary picker, a focused style keeps its draft until blur.

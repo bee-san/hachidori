@@ -248,7 +248,7 @@ function designControls(document) {
 }
 const CORE_DESIGN = ["# Appearance", "Theme", "Width", "Height", "Scale", "Highlight the word on the page"];
 const JL_DESIGN = ["# Appearance", "Theme", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
-  "# Definitions", "Clicked-kanji dictionary", "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary"];
+  "# Definitions", "Clicked-kanji dictionary", "# Pitch accent", "Show pitch on the reading", "Pitch accent dictionary"];
 
 test("Design shows the core controls and only the settings the selected theme declares", t => {
   const f = fixture(t, "design");
@@ -261,7 +261,7 @@ test("Design shows the core controls and only the settings the selected theme de
     bee: ["# Appearance", "Theme", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
       "# Definitions", "Compact glossaries", "Image source", "Image hover preview", "Clicked-kanji dictionary",
       "# Frequency labels", "Show frequency dictionary names", "Abbreviate large numbers (51.5k)", "Show frequency averages",
-      "# Pitch accent", "Show pitch in furigana", "Pitch accent dictionary", "Furigana pitch style", "# Custom buttons"],
+      "# Pitch accent", "Show pitch on the reading", "Pitch accent dictionary", "Reading pitch style", "# Custom buttons"],
     default: everything,
   };
   for (const [slug, controls] of Object.entries(expected)) {

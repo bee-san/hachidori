@@ -76,7 +76,7 @@ test("the engine adds term.furigana only where the plain split falls back, and c
   assert.equal(await withFurigana(settled), settled);
 });
 
-test("the popup headword draws the engine's split as ruby and as one pitch column per segment", t => {
+test("the popup headword draws the engine's split as ruby, the same with its pitch drawn on the reading after it", t => {
   const { window } = new JSDOM('<p>好き嫌い</p><div id="popup"></div>',
     { pretendToBeVisual: true, runScripts: "outside-only", url: "https://extension.test/" });
   for (const file of ["reader-options.js", "external-links.js", "render/glossary.js", "render/popup.js"]) {
@@ -99,22 +99,34 @@ test("the popup headword draws the engine's split as ruby and as one pitch colum
     return popup.querySelector(".gsm-hoshidicts-expression");
   };
   const markup = expression => expression.innerHTML.replaceAll(/<button[^>]*>/gu, "<button>");
-  assert.equal(markup(render(SUKIKIRAI)),
-    "<ruby><button>好</button><rt>す</rt></ruby>き<ruby><button>嫌</button><rt>きら</rt></ruby>い");
+  const ruby = "<ruby><button>好</button><rt>す</rt></ruby>き<ruby><button>嫌</button><rt>きら</rt></ruby>い";
+  assert.equal(markup(render(SUKIKIRAI)), ruby);
   // A split that does not spell the headword, from a stale or linked term, is not drawn.
   for (const furigana of [[{ text: "好き", reading: "すき" }], [{ text: "好き嫌い", reading: 1 }], "好(す)き"]) {
     assert.equal(markup(render(furigana)), "<ruby><button>好</button>き<button>嫌</button>い<rt>すききらい</rt></ruby>",
       JSON.stringify(furigana));
   }
-  const columns = [...render(SUKIKIRAI, { showPitchAccentFurigana: true }).querySelectorAll(".gsm-hoshidicts-pitch-ruby")];
-  assert.deepEqual(columns.map(ruby => [ruby.querySelector(".gsm-hoshidicts-pitch-base").textContent,
-    ruby.querySelectorAll(".gsm-hoshidicts-pitch-mora").length]), [["好", 1], ["き", 1], ["嫌", 2], ["い", 1]]);
+  // #606: drawing the pitch leaves the furigana as it is without it, so き and
+  // い are not read again, and draws すき＼きらい on the reading after the word.
+  const pitched = render(SUKIKIRAI, { showPitchAccentFurigana: true });
+  const reading = pitched.lastElementChild;
+  assert.ok(reading.matches("span.gsm-hoshidicts-pitch-reading.gsm-hoshidicts-pitch-contour"), reading.outerHTML);
+  assert.equal(markup(pitched).replace(reading.outerHTML, ""), ruby);
+  assert.deepEqual([...reading.children].map(mora => [mora.className, mora.textContent, mora.dataset.pitchLevel,
+    mora.dataset.pitchTransition]), [["gsm-hoshidicts-pitch-mora", "す", "low", "rise"],
+    ["gsm-hoshidicts-pitch-mora", "き", "high", "drop"], ["gsm-hoshidicts-pitch-mora", "き", "low", undefined],
+    ["gsm-hoshidicts-pitch-mora", "ら", "low", undefined], ["gsm-hoshidicts-pitch-mora", "い", "low", undefined]]);
+  assert.deepEqual([reading.dataset.pitchPosition, reading.dataset.pitchDictionary, reading.title],
+    ["2", "NHK", "NHK · Pitch accent 2"]);
   assert.deepEqual([...popup.querySelectorAll(".pronunciation-group")].map(group => group.dataset.dictionary), ["NHK"]);
-  // The Overline style shares the reading's morae out to the same segments,
-  // and the headword keeps the pitch group of its furigana's accent.
+  // The Overline style draws the same reading with the pitch list's Yomitan
+  // text, and the headword keeps the pitch group of its reading's accent.
   const overline = render(SUKIKIRAI, { showPitchAccentFurigana: true, pitchAccentFuriganaStyle: "overline" });
-  assert.deepEqual([...overline.querySelectorAll(".gsm-hoshidicts-pitch-contour")]
-    .map(contour => [contour.dataset.pitchStyle, contour.textContent]), [["overline", "す"], ["overline", "き"],
-    ["overline", "きら"], ["overline", "い"]]);
+  const overlineReading = overline.lastElementChild;
+  assert.equal(markup(overline).replace(overlineReading.outerHTML, ""), ruby);
+  assert.deepEqual([overlineReading.className, overlineReading.dataset.pitchStyle,
+    [...overlineReading.children].map(mora => `${mora.className}:${mora.textContent}`).join(" ")],
+  ["gsm-hoshidicts-pitch-reading gsm-hoshidicts-pitch-contour", "overline",
+    "pronunciation-mora:す pronunciation-mora:き pronunciation-mora:き pronunciation-mora:ら pronunciation-mora:い"]);
   assert.equal(overline.dataset.pitchCategory, "nakadaka");
 });

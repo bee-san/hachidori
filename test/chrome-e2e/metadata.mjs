@@ -362,7 +362,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await tab.bringToFront();
     await hoverForPopup(tab, popup, "#verb");
     const normal = await expectMetadata(value => value.frequencyNames.length > 0 && value.pitch > 0
-      && value.ruby.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
+      && value.headwordPitch.length > 0 && value.grammar > 0 && value.ipa.includes("tabeɾɯ"));
     evidence.push(normal.rect.width === 560 && !normal.metadata.clippedFrequencies
       && normal.metadata.frequencyTagsUniform && normal.metadata.insidePrimaryEntry && normal.metadata.outsideHeader && normal.metadata.insideResult
       && normal.metadata.plain
@@ -394,7 +394,7 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await editSettingsControls(settings, { "opt-frequency-names": false, "opt-pitch-furigana": false,
       "opt-pitch-badge": false, "opt-grammar-tags": false });
     const hidden = await expectMetadata(value => value.frequencyNames.length === 0 && value.pitch === 0
-      && value.ruby.length === 0 && value.grammar === 0);
+      && value.headwordPitch.length === 0 && value.grammar === 0);
     const plainFurigana = (await popup.state())?.furiganaAlignment;
     await editSettingsControls(settings, { "opt-popup-width": "280", "opt-popup-toolbar": "bottom" });
     const defaultNarrow = await expectState(value => value.rect.width === 280 && value.toolbar === "bottom"
@@ -403,7 +403,8 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
     await expectState(value => value.rect.width === 560 && value.toolbar === "top");
     const retained = await popup.retainedControls();
     evidence.push(hidden.metadata.ipa.includes("tabeɾɯ") && hidden.metadata.definitionTags === before.metadata.definitionTags
-      && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchRubies === 0
+      && plainFurigana?.rubyAlign === "center" && plainFurigana.rubies === 1 && plainFurigana.pitchReadings === 0
+      && JSON.stringify(plainFurigana.readings) === '["た"]'
       && hidden.metadata.frequencyTagsUniform && hidden.metadata.frequencyText.length > 0
       && hidden.metadata.besideLookupCount
       && defaultNarrow.metadata.frequencyTagsUniform && !defaultNarrow.metadata.clippedFrequencies
@@ -434,28 +435,29 @@ async function checkPopupMetadata(browser, settings, tab, popup) {
       && normal.metadata.hiddenFrequencyDictionaries.length === 0
       && averaged.sameCards && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     await editSettingsControls(settings, { "opt-pitch-furigana": true, "opt-pitch-dictionary": "hachidori-fixture" });
-    const contour = await expectMetadata(value => value.ruby.includes("hachidori-fixture") && value.pitch === 0);
+    const contour = await expectMetadata(value => value.headwordPitch.includes("hachidori-fixture") && value.pitch === 0);
     const contourState = await popup.state();
+    // #606: the furigana stays た over 食, as with the pitch off, and たべる
+    // follows the headword with the pitch.
     evidence.push(contour.metadata.grammar === 0 && contour.metadata.ipa.includes("tabeɾɯ")
-      && contourState?.furiganaAlignment?.pitchRubies === 2
-      && contourState.furiganaAlignment.pitchCentring <= 1 && contourState.furiganaAlignment.contourGap <= 1
-      && contourState.furiganaAlignment.contourTopSpread < 0.5 && contourState.furiganaAlignment.baseTextSpread < 0.5
+      && contourState?.furiganaAlignment?.pitchReadings === 1 && contourState.furiganaAlignment.rubies === 1
+      && JSON.stringify(contourState.furiganaAlignment.readings) === JSON.stringify(plainFurigana.readings)
+      && contourState.furiganaAlignment.readingBeside && contourState.furiganaAlignment.contourTopSpread < 0.5
       && contourState.furiganaAlignment.transitions === 2 && contourState.furiganaAlignment.transitionsCoverLines
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     // 食べる [2] in Overline: one line, over べ, ending in the downstep hook.
-    const furiganaStyle = style => expectMetadata(value => value.rubyStyles.length === 2
-      && value.rubyStyles.every(current => current === style));
+    const furiganaStyle = style => expectMetadata(value => value.headwordPitchStyles.length === 1
+      && value.headwordPitchStyles.every(current => current === style));
     await editSettingsControls(settings, { "opt-pitch-furigana-style": "overline" });
     const overline = await furiganaStyle("overline");
     const overlineState = (await popup.state())?.furiganaAlignment;
     await editSettingsControls(settings, { "opt-pitch-furigana-style": "contour" });
     const contourAgain = await furiganaStyle("contour");
     const overlineKept = await popup.retainedControls();
-    evidence.push(overline.sameCards && contourAgain.sameCards && overline.metadata.ruby.includes("hachidori-fixture")
-      && overlineState?.pitchRubies === 2 && overlineState.transitions === 0
+    evidence.push(overline.sameCards && contourAgain.sameCards && overline.metadata.headwordPitch.includes("hachidori-fixture")
+      && overlineState?.pitchReadings === 1 && overlineState.rubies === 1 && overlineState.transitions === 0
       && overlineState.overlines === 1 && overlineState.hooks === 1 && overlineState.overlinesInTextColour
-      && overlineState.pitchCentring <= 1 && overlineState.contourGap <= 1
-      && overlineState.contourTopSpread < 0.5 && overlineState.baseTextSpread < 0.5
+      && overlineState.readingBeside && overlineState.contourTopSpread < 0.5
       && overlineKept.sameForm && overlineKept.mounted && overlineKept.draft === "Keep the metadata draft"
       && JSON.stringify(await counts()) === JSON.stringify(beforeRequests));
     if (process.env.HACHIDORI_METADATA_POPUP_SCREENSHOT) {

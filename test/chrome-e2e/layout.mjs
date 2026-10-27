@@ -14,6 +14,7 @@ import { AUDIO_CHOOSER_CHECK, checkAudioChooser } from "../chrome-audio-chooser.
 import { checkCompactSummaryLayout } from "../chrome-compact-summary.mjs";
 import { checkDynamicHeadword, DYNAMIC_HEADWORD_CHECK } from "../chrome-dynamic-headword.mjs";
 import { checkCompactGlossaries, COMPACT_GLOSSARIES_CHECK } from "../chrome-glossary-layout.mjs";
+import { checkHeadwordPitch, HEADWORD_PITCH_CHECK } from "../chrome-headword-pitch.mjs";
 import {
   checkLookupCountLayout,
   LOOKUP_COUNT_LAYOUT_CHECK,
@@ -412,6 +413,11 @@ describe("popup layout", () => {
   step("the dynamic headword", async () => {
     await checkDynamicHeadword(browser, { screenshotDirectory: process.env.HACHIDORI_DYNAMIC_HEADWORD_SCREENSHOTS });
     check(DYNAMIC_HEADWORD_CHECK, true);
+  });
+
+  step("the headword pitch", async () => {
+    await checkHeadwordPitch(browser);
+    check(HEADWORD_PITCH_CHECK, true);
   });
 
   step("the lookup count layout", async () => {
