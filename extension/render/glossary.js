@@ -323,15 +323,27 @@
     ["vs", SURU_ENDING], ["vz", SURU_ENDING], ["adj-i", /[いイ]$/u],
   ];
 
+  // Within one accent phrase the pitch never rises again after it falls, so a
+  // pattern that does spans more than one phrase: 二十四時間 に＼じゅう・よじ＼かん
+  // is HLLLHLL, an atamadaka phrase then a nakadaka one. The pattern does not
+  // mark where the second phrase starts, and 十人十色 じゅ＼うにん・と＼いろ is
+  // HLLLHLL too, with an atamadaka second phrase, so neither the word nor each
+  // phrase can be given a group from it (#596).
+  const MULTIPLE_ACCENT_PHRASES = /HL+H/u;
+
   // Yomitan's getPitchCategory (japanese.js:367 at d3c54c1) with its
   // isNonNounVerbOrAdjective (dictionary-data-util.js:320): a pattern's
   // category is its first downstep and any downstep of a verb or i-adjective is
   // kifuku. Unlike Yomitan, a word class counts only where the term's
   // expression ends as that class's dictionary form does, because some
   // dictionaries tag nouns and na-adjectives with one (自由, #608). This only
-  // takes kifuku away. A kana term is written as its reading. The popup and
-  // {pitch-accent-categories} share it.
+  // takes kifuku away. Also unlike Yomitan, a pattern of more than one accent
+  // phrase has no category, where Yomitan takes its first phrase's. A kana
+  // term is written as its reading. The popup and {pitch-accent-categories}
+  // share it.
   function pitchAccentCategory(reading, pitch, wordClasses = [], expression = reading) {
+    const positions = pitchAccentPositions(pitch);
+    if (typeof positions === "string" && MULTIPLE_ACCENT_PHRASES.test(positions)) return null;
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
     if (Number.isNaN(position) || position < 0) return null;
