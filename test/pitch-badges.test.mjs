@@ -272,6 +272,43 @@ test("the headword and each badge carry their pitch accent group, contour or not
   assert.equal(headword().dataset.pitchCategory, undefined);
 });
 
+test("a pattern of more than one accent phrase has no pitch accent group (#596)", t => {
+  const f = fixture(t);
+  const groupOf = (expression, reading, pattern, rules = "") => {
+    f.render(result(expression, reading, [pitch("NHK", entry(0, pattern))], rules));
+    return [f.popup.querySelector(".gsm-hoshidicts-expression").dataset.pitchCategory,
+      f.popup.querySelector(".pronunciation").dataset.pitchCategory];
+  };
+  // A pitch that rises again after it falls starts another accent phrase, and
+  // the pattern does not say where: 二十四時間 に＼じゅう・よじ＼かん (NHK [1・2])
+  // and 十人十色 じゅ＼うにん・と＼いろ ([1・1]) are both HLLLHLL, but their
+  // second phrases are nakadaka and atamadaka. Also one downstep then a rise
+  // (一子相伝 [1・0]), a verb's phrases (我を張る [0・0]), the particle's level
+  // (月雪花 [2・2・2]) and a rise in the particle's level alone, which no one
+  // phrase gives (昭和 HLLH).
+  for (const [expression, reading, pattern, rules] of [
+    ["二十四時間", "にじゅうよじかん", "HLLLHLL"], ["十人十色", "じゅうにんといろ", "HLLLHLL"],
+    ["一子相伝", "いっしそうでん", "HLLLHHH"], ["我を張る", "がをはる", "LHLH", "v5"],
+    ["月雪花", "つきゆきはな", "LHLHLHL"], ["昭和", "しょうわ", "HLLH"],
+  ]) {
+    assert.deepEqual(groupOf(expression, reading, pattern, rules), [undefined, undefined], expression);
+  }
+  // The reading still draws that pitch, with both drops.
+  f.render(result("二十四時間", "にじゅうよじかん", [pitch("NHK", entry(0, "HLLLHLL"))]));
+  assert.equal(f.popup.querySelector(".gsm-hoshidicts-pitch-reading").dataset.pitchPosition, "1,5");
+  assert.deepEqual([...f.popup.querySelectorAll(".gsm-hoshidicts-expression .gsm-hoshidicts-pitch-mora")]
+    .map(mora => `${mora.dataset.pitchLevel}:${mora.dataset.pitchTransition ?? ""}`),
+  ["high:drop", "low:", "low:", "low:rise", "high:drop", "low:", "low:"]);
+  // A pattern of one phrase keeps its group, with or without the particle's level.
+  for (const [expression, reading, pattern, rules, expected] of [
+    ["人生", "じんせい", "HLLL", "", "atamadaka"], ["弱点", "じゃくてん", "LHHL", "", "nakadaka"],
+    ["道具", "どうぐ", "LHHL", "", "odaka"], ["自然", "しぜん", "LHHH", "", "heiban"],
+    ["驚く", "おどろく", "LHHL", "v5", "kifuku"],
+  ]) {
+    assert.deepEqual(groupOf(expression, reading, pattern, rules), [expected, expected], expression);
+  }
+});
+
 test("a headword spelt in its reading's kana carries its own pitch, and one spelt in kanji needs a reading (#606)", t => {
   const f = fixture(t);
   const expression = () => f.popup.querySelector(".gsm-hoshidicts-expression");

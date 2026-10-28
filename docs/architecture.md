@@ -1286,7 +1286,20 @@ hiragana or katakana, and `vs` or `vz` in する, 為る, ずる or a kanji foll
 (講談社 日本語大辞典 tags 自由 `adj-i`, 精選版 日本国語大辞典 tags suru nouns
 such as 料理 `vs`), and those keep the group their downstep gives (#608).
 Classical i-adjectives ending in し (遅し) do not count, because 講談社 also tags
-nouns such as 遠回し `adj-i`. The
+nouns such as 遠回し `adj-i`. A pattern that rises again after its first
+downstep is not one accent phrase and has no group (#596). Usually it is
+several: 二十四時間 に＼じゅう・よじ＼かん is HLLLHLL, an atamadaka phrase and a
+nakadaka one, but so is 十人十色 じゅ＼うにん・と＼いろ, whose phrases are both
+atamadaka, so the pattern tells neither where a phrase starts nor what it is.
+Yomitan's H/L strings also allow non-standard pitches, which no group
+describes either. Such a pattern's badge, and a headword whose reading shows
+it, keep the colours they have with the switch off, and
+`{pitch-accent-categories}` leaves it out; Yomitan gives it its first
+downstep's group. A pattern whose next phrase starts high after a high mora
+(十字を切る [0・1], LHHHHL) looks like one phrase and keeps its downstep's
+group. A downstep number is one phrase's accent, and Yomitan's schema reads a
+list of them as different accents, so each keeps its group, even where a
+dictionary lists a word's phrases that way (Kanjium's 二十四時間 [1, 2]). The
 headword's `.gsm-hoshidicts-expression` carries `data-pitch-category` from the
 pitch its reading shows (the pitch accent dictionary first, then the first pitch
 that fits the reading), whether or not it is drawn, and each badge's

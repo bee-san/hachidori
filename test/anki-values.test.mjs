@@ -295,6 +295,14 @@ test("{pitch-accent-categories} takes kifuku from a word class only where the he
   assert.equal(await render(request({ term: term("食べる", "たべる", "v1") }), "{pitch-accent-categories}"), "kifuku");
 });
 
+test("{pitch-accent-categories} gives no group to a pattern of more than one accent phrase (#596)", async () => {
+  // 二十四時間 に＼じゅう・よじ＼かん as one pattern, beside a [2] from the same dictionary.
+  const pitch = (position, pattern) => ({ position, pattern, nasal: [], devoice: [] });
+  const term = { ...request().term, expression: "二十四時間", reading: "にじゅうよじかん", rules: "",
+    pitches: [{ dictionary: "Pitch", transcriptions: [], pitches: [pitch(0, "HLLLHLL"), pitch(2, "")] }] };
+  assert.equal(await render(request({ term }), "{pitch-accent-categories}"), "nakadaka");
+});
+
 test("the screenshot marker references only a stored picture and escapes its filename", async () => {
   assert.equal(await render(request({}), "{screenshot}"), "");
   assert.equal(await render(request({ screenshot: { filename: "hachidori-screenshot-1.jpg" } }), "{screenshot}"),

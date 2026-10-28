@@ -329,12 +329,20 @@
   // kifuku. Unlike Yomitan, a word class counts only where the term's
   // expression ends as that class's dictionary form does, because some
   // dictionaries tag nouns and na-adjectives with one (自由, #608). This only
-  // takes kifuku away. A kana term is written as its reading. The popup and
+  // takes kifuku away. Also unlike Yomitan, a pattern that rises again after
+  // its first downstep has no category (#596). Within one accent phrase the
+  // pitch never rises after it falls, so such a pattern is not one phrase: it
+  // has several and does not say where the next one starts, 二十四時間
+  // に＼じゅう・よじ＼かん (atamadaka, then nakadaka) and 十人十色 じゅ＼うにん・と＼いろ
+  // (atamadaka twice) both being HLLLHLL, or it is a pitch no group describes.
+  // A kana term is written as its reading. The popup and
   // {pitch-accent-categories} share it.
   function pitchAccentCategory(reading, pitch, wordClasses = [], expression = reading) {
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";
     if (Number.isNaN(position) || position < 0) return null;
+    const positions = pitchAccentPositions(pitch);
+    if (typeof positions === "string" && positions.includes("H", position)) return null;
     const classes = new Set(wordClasses);
     if (!(classes.has("vs") && classes.has("n"))
       && DICTIONARY_FORM_ENDINGS.some(([rule, ending]) => classes.has(rule) && ending.test(expression))) return "kifuku";
