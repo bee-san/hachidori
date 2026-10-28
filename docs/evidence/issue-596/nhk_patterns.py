@@ -6,16 +6,24 @@
 # The NHK new accent dictionary (a Yomitan term dictionary) writes each
 # pronunciation as [a・b…] and katakana with ＼ at each drop and ・ between
 # accent phrases: 二十四時間 is ［1・2］ニ＼ジュー・ヨジ＼カン. This writes each
-# pronunciation whose morae match the reading as the Yomitan H/L pattern a
-# dictionary would give it, one level per mora from Yomitan's isMoraPitchHigh
-# for each phrase's own accent, without and with the following particle's
-# level, with each phrase's own accent group.
+# pronunciation of an entry's head block whose morae match the reading as the
+# Yomitan H/L pattern a dictionary would give it, one level per mora from
+# Yomitan's isMoraPitchHigh for each phrase's own accent, without and with the
+# following particle's level, with each phrase's own accent group.
+#
+# An entry's later blocks (after a blank line) are its conjugated forms and
+# particle examples (覚える: オボ＼エテ), not the headword's pronunciations, so
+# they are not read. Neither is a placeholder entry: its head block is empty
+# and its reading holds ○, 〜 or "A，B" (第○日 だい○にち, 日間 かかん，にちかん).
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
 import json, re, sys, zipfile
 
 # Several archives in circulation carry wrong CRC-32 fields; the data inflates.
 zipfile.ZipExtFile._update_crc = lambda self, data: None
 
 SMALL = set('ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ')
+KANA = re.compile(r'[\u3041-\u309a\u30a1-\u30fcー]+')
 
 
 def morae(kana):
@@ -57,39 +65,43 @@ def rows(path):
 
 archive, out = sys.argv[1], sys.argv[2]
 seen = set()
-kept = skipped = 0
+counts = {'kept': 0, 'kept, several phrases': 0, 'skipped: reading not kana': 0,
+          'skipped: pronunciation not kana': 0, 'skipped: morae differ from the reading': 0}
 with open(out, 'w', encoding='utf-8') as file:
     for row in rows(archive):
         expression, reading = row[0], row[1]
+        # ・ in a reading (韓国・朝鮮語) is not a mora; ○, 〜 and ， are not kana.
+        reading_kana = reading.replace('・', '')
         for text in row[5]:
             if not isinstance(text, str):
                 continue
-            for line in text.split('\n')[1:]:
-                # The first pronunciation of a line; later ones show a particle.
+            for line in text.split('\n\n')[0].split('\n')[1:]:
                 match = re.match(r'^ ・［([0-9・]+)］([^,]*)', line)
                 if not match:
                     continue
+                if not KANA.fullmatch(reading_kana):
+                    counts['skipped: reading not kana'] += 1
+                    continue
                 accents = [int(value) for value in match.group(1).split('・')]
-                kana = match.group(2).replace('＼', '')
-                phrases = kana.split('・')
-                # Placeholders (○), digits and notes are not a pronunciation.
-                if len(phrases) != len(accents) or not all(re.fullmatch(r'[\u3041-\u309a\u30a1-\u30fcー]+', p) for p in phrases):
-                    skipped += 1
+                phrases = match.group(2).replace('＼', '').split('・')
+                if len(phrases) != len(accents) or not all(KANA.fullmatch(p) for p in phrases):
+                    counts['skipped: pronunciation not kana'] += 1
                     continue
-                counts = [len(morae(p)) for p in phrases]
-                if sum(counts) != len(morae(reading)) or any(a > c for a, c in zip(accents, counts)):
-                    skipped += 1
+                lengths = [len(morae(p)) for p in phrases]
+                if sum(lengths) != len(morae(reading_kana)) or any(a > c for a, c in zip(accents, lengths)):
+                    counts['skipped: morae differ from the reading'] += 1
                     continue
-                levels = ''.join('H' if high(i, a) else 'L' for a, c in zip(accents, counts) for i in range(c))
-                particle = 'H' if high(counts[-1], accents[-1]) else 'L'
-                key = (expression, reading, tuple(accents), tuple(counts))
+                key = (expression, reading, tuple(accents), tuple(lengths))
                 if key in seen:
                     continue
                 seen.add(key)
-                kept += 1
+                levels = ''.join('H' if high(i, a) else 'L' for a, c in zip(accents, lengths) for i in range(c))
+                particle = 'H' if high(lengths[-1], accents[-1]) else 'L'
+                counts['kept'] += 1
+                counts['kept, several phrases'] += len(accents) > 1
                 file.write(json.dumps({
-                    'expression': expression, 'reading': reading, 'accents': accents, 'phraseMorae': counts,
+                    'expression': expression, 'reading': reading, 'accents': accents, 'phraseMorae': lengths,
                     'pattern': levels, 'patternWithParticle': levels + particle,
-                    'phraseGroups': [group(a, c) for a, c in zip(accents, counts)],
+                    'phraseGroups': [group(a, c) for a, c in zip(accents, lengths)],
                 }, ensure_ascii=False) + '\n')
-print(json.dumps({'kept': kept, 'skipped': skipped}))
+print(json.dumps(counts, ensure_ascii=False))
