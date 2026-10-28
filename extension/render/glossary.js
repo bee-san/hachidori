@@ -331,11 +331,12 @@
   // dictionaries tag nouns and na-adjectives with one (自由, #608). This only
   // takes kifuku away. Also unlike Yomitan, a pattern that rises again after
   // its first downstep has no category (#596). Within one accent phrase the
-  // pitch never rises after it falls, so such a pattern has more than one
-  // phrase, and it does not say where the next one starts: 二十四時間
+  // pitch never rises after it falls, so such a pattern is not one phrase: it
+  // has several and does not say where the next one starts, 二十四時間
   // に＼じゅう・よじ＼かん (atamadaka, then nakadaka) and 十人十色 じゅ＼うにん・と＼いろ
-  // (atamadaka twice) are both HLLLHLL. A kana term is written as its reading.
-  // The popup and {pitch-accent-categories} share it.
+  // (atamadaka twice) both being HLLLHLL, or it is a pitch no group describes.
+  // A kana term is written as its reading. The popup and
+  // {pitch-accent-categories} share it.
   function pitchAccentCategory(reading, pitch, wordClasses = [], expression = reading) {
     const position = Number(pitchAccentDownstep(pitch).split(",")[0]);
     if (position === 0) return "heiban";

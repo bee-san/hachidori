@@ -283,12 +283,13 @@ test("a pattern of more than one accent phrase has no pitch accent group (#596)"
   // the pattern does not say where: 二十四時間 に＼じゅう・よじ＼かん (NHK [1・2])
   // and 十人十色 じゅ＼うにん・と＼いろ ([1・1]) are both HLLLHLL, but their
   // second phrases are nakadaka and atamadaka. Also one downstep then a rise
-  // (一子相伝 [1・0]), a verb's phrases (我を張る [0・0]) and the particle's level
-  // (月雪花 [2・2・2]).
+  // (一子相伝 [1・0]), a verb's phrases (我を張る [0・0]), the particle's level
+  // (月雪花 [2・2・2]) and a rise in the particle's level alone, which no one
+  // phrase gives (昭和 HLLH).
   for (const [expression, reading, pattern, rules] of [
     ["二十四時間", "にじゅうよじかん", "HLLLHLL"], ["十人十色", "じゅうにんといろ", "HLLLHLL"],
     ["一子相伝", "いっしそうでん", "HLLLHHH"], ["我を張る", "がをはる", "LHLH", "v5"],
-    ["月雪花", "つきゆきはな", "LHLHLHL"],
+    ["月雪花", "つきゆきはな", "LHLHLHL"], ["昭和", "しょうわ", "HLLH"],
   ]) {
     assert.deepEqual(groupOf(expression, reading, pattern, rules), [undefined, undefined], expression);
   }
