@@ -49,9 +49,10 @@ NHK日本語発音アクセント新辞典 entry (a term dictionary that writes 
 ［1・2］ニ＼ジュー・ヨジ＼カン) into the H/L pattern a dictionary would give it,
 without and with the particle's level: 86,183 pronunciations, 1,728 of them of
 several phrases. An entry's later blocks are its conjugated forms and particle
-examples (覚える オボ＼エテ), so they are not read. Also skipped: 814 lines of
-template entries whose reading is not kana (〜あい, 第○日 だい○にち, 日間
-かかん，にちかん), and 200 lines whose morae differ from the row's reading, the
+examples (覚える オボ＼エテ), so they are not read. That also leaves out template
+entries such as 第○日 だい○にち and 日間 かかん，にちかん, whose head blocks are
+empty. Also skipped: 814 lines of suffix templates whose reading is not kana
+(〜あい), and 200 lines whose morae differ from the row's reading, the
 pronunciation of another reading of the entry (冠者 かじゃ listing カ＼ンジャ).
 A ・ in a reading (韓国・朝鮮語) is not a mora. `compare.mjs` classifies each with
 `main`'s and the PR's `HDGlossary.pitchAccentCategory`, as for a noun (no word

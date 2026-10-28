@@ -13,8 +13,9 @@
 #
 # An entry's later blocks (after a blank line) are its conjugated forms and
 # particle examples (覚える: オボ＼エテ), not the headword's pronunciations, so
-# they are not read. Neither is a placeholder entry: its head block is empty
-# and its reading holds ○, 〜 or "A，B" (第○日 だい○にち, 日間 かかん，にちかん).
+# they are not read. Nor are template entries: 第○日 だい○にち and 日間
+# かかん，にちかん have empty head blocks, and a suffix template's reading (〜あい)
+# is not kana.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json, re, sys, zipfile
