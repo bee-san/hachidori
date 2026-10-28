@@ -838,10 +838,12 @@ Several Yomitan actions are omitted because Hachidori has no matching feature:
 - copying the host selection, which the in-page popup never needs
 - caret scanning inside editors
 
-The content script matches a fresh keydown's physical code and exact modifier
-set as Yomitan's `HotkeyHandler` does. The first enabled binding in scope that
-handles the key prevents its default. Unmodified or Shift-only character keys
-stay with a focused text field, and auto-repeat remains ignored.
+The content script matches a keydown's physical code and exact modifier set as
+Yomitan's `HotkeyHandler` does. The first enabled binding in scope that handles
+the key prevents its default. Unmodified or Shift-only character keys stay with
+a focused text field. Yomitan also takes every auto-repeat, so holding
+Alt+ArrowDown keeps moving between entries; here an auto-repeat runs only the
+entry and dictionary moves, and every other action still ignores it.
 
 A wheel step over a popup is matched the same way, with its vertical direction
 as the key, and acts on that popup rather than the deepest one, as Yomitan's

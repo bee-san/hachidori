@@ -73,6 +73,11 @@
   ]);
   // MouseEvent.button values of Back and Forward, which navigate on release.
   const NAVIGATION_BUTTONS = new Set([3, 4]);
+  // Yomitan's HotkeyHandler takes every keydown, so a held Alt+ArrowDown keeps
+  // moving between entries (#597). Other actions still ignore auto-repeat,
+  // which would add notes, replay audio or flip options.
+  const REPEATING_KEYBIND_ACTIONS = new Set(["nextEntry", "previousEntry",
+    "nextEntryDifferentDictionary", "previousEntryDifferentDictionary"]);
   // Popup text that looks up child popups.
   const DEFINITION_TEXT_SELECTOR = ".gsm-hoshidicts-glossary-content, .gsm-hoshidicts-compact-definition-summary";
 
@@ -3895,7 +3900,8 @@
       if (!bind.enabled || bind.action === "" || (bind.key === null && bind.modifiers.length === 0)
           || bind.key !== key || bind.modifiers.join() !== modifiers.join()
           || !(bind.scopes.includes("web") || (popupScope && bind.scopes.includes("popup")))
-          || (characterInput && textFieldFocused())) continue;
+          || (characterInput && textFieldFocused())
+          || (event.repeat && !REPEATING_KEYBIND_ACTIONS.has(bind.action))) continue;
       if (runKeybindAction(bind, event, level) === false) continue;
       if (bind.action !== "close") event.preventDefault();
       return true;
@@ -3904,7 +3910,7 @@
   }
 
   function onKeyDown(event) {
-    if (disposed || event.repeat || runKeybinds(event)) {
+    if (disposed || runKeybinds(event) || event.repeat) {
       return;
     }
     if (!options.hoverEnabled) return;

@@ -1248,6 +1248,43 @@ async function wheelKeybindCase() {
   return result;
 }
 
+// Yomitan's HotkeyHandler takes every keydown (#597): holding a key that moves
+// between entries or dictionaries moves once per auto-repeat, and every other
+// keybind still acts once per press.
+async function keybindRepeatCase() {
+  const bind = (action, key, argument = "") =>
+    ({ action, argument, key, modifiers: ["alt"], scopes: ["popup"], enabled: true });
+  const harness = await createHarness(undefined, { options: { keybinds: [
+    bind("nextEntry", "ArrowDown", "1"), bind("previousEntry", "ArrowUp", "1"),
+    bind("nextEntryDifferentDictionary", "KeyN"), bind("playAudio", "KeyP"),
+  ] } });
+  try {
+    const window = harness.popup.ownerDocument.defaultView;
+    const press = (code, key, repeat) => {
+      const event = new window.KeyboardEvent("keydown",
+        { key, code, altKey: true, repeat, bubbles: true, cancelable: true });
+      window.document.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    await harness.initialLookup();
+    const held = [["ArrowDown", "ArrowDown", false], ["ArrowDown", "ArrowDown", true], ["ArrowDown", "ArrowDown", true],
+      ["ArrowUp", "ArrowUp", false], ["ArrowUp", "ArrowUp", true], ["KeyN", "n", false], ["KeyN", "n", true]]
+      .map(([code, key, repeat]) => press(code, key, repeat));
+    const steps = JSON.stringify(harness.entryFocus()) === JSON.stringify([
+      { offset: 1 }, { offset: 1 }, { offset: 1 }, { offset: -1 }, { offset: -1 }, { dictionary: 1 }, { dictionary: 1 }]);
+    const audioButton = harness.popup.querySelector(".gsm-hoshidicts-audio-button");
+    harness.callbacks().onResultsRendered({ audioButtons: [{ button: audioButton, result: harness.render().results[0] }],
+      miningActions: [] });
+    const played = press("KeyP", "p", false) && harness.take("hd_audio_play") !== null;
+    const replayed = press("KeyP", "p", true) || harness.take("hd_audio_play") !== null;
+    return { "holding an entry or dictionary move repeats it like Yomitan; other keybinds act once per press":
+      (held.every(Boolean) && steps && played && !replayed)
+        || { held, focus: harness.entryFocus(), played, replayed } };
+  } finally {
+    harness.close();
+  }
+}
+
 describe("content script: activation and keybinds", () => {
   test("activation, scan delays and departures", async () => {
     const noteContent = await contentNoteStage({
@@ -1262,7 +1299,7 @@ describe("content script: activation and keybinds", () => {
 
   test("keybinds", async () => {
     const noteContent = await contentNoteStage({
-      keybinds: async () => ({ ...await keybindCase(), ...await wheelKeybindCase() }),
+      keybinds: async () => ({ ...await keybindCase(), ...await keybindRepeatCase(), ...await wheelKeybindCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.keybinds ?? {})) {
       check(name, passed === true, JSON.stringify(passed));
