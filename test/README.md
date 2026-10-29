@@ -425,7 +425,7 @@ state; the scheduled-update cases create real near-future Chrome alarms.
   `dictionaryCount === 4` (every kind the combined fixture registers), and
   index and archive request counts for managed updates.
 
-The popup's shadow root is closed, and puppeteer's `pierce/` selectors find
+The normal popup's shadow root is closed, and puppeteer's `pierce/` selectors find
 nothing in it; CDP's `DOM.getDocument` with `pierce: true` does, so
 `popupReader()` goes through a session. The headword is furigana ruby, so
 `textContent` reads `食たべる`; `popupReader()` also returns a `plain` copy without
@@ -493,6 +493,14 @@ These run separately:
   non-loopback address and the pinned GitHub release, or
   `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a local
   archive instead.
+- **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
+  Dark Reader API build against the production popup. It checks Default, Light,
+  Dark, High contrast and Custom CSS while the page actually darkens, plus the
+  saved Custom JavaScript DOM-access opt-in. Before/after PNGs go to
+  `test/tmp/ci/dark-reader-*.png`. `chrome-popup-root.mjs` reads closed roots
+  through CDP without exposing them to page scripts. The API build exercises
+  Dynamic mode; Filter modes and the installed Dark Reader extension UI are
+  outside this check.
 - **`chrome-theme-contrast.mjs`** samples a monochrome and an untagged SVG in
   every palette plus emulated forced colors (3:1 normally, 20:1 forced) and the
   word-highlight lines on light and dark pages; `test/tmp/ci/theme-contrast.png`

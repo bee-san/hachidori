@@ -1,3 +1,4 @@
+import { popupRoot } from "./chrome-popup-root.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFileSync, mkdirSync } from "node:fs";
@@ -7,26 +8,25 @@ import { pathToFileURL } from "node:url";
 import { nestedLinksFixture } from "./make-fixture.mjs";
 
 export async function checkPopupResize(settings, tab) {
-  const selector = 'hachidori-host';
-  const read = () => tab.evaluate(selector => {
-    const popup = document.querySelector(selector)?.shadowRoot?.querySelector('.gsm-hoshidicts-popup');
+  const read = () => popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow?.querySelector('.gsm-hoshidicts-popup');
     if (!popup || popup.hidden) return null;
     const rect = popup.getBoundingClientRect();
     const handle = popup.querySelector('.gsm-hoshidicts-resize-handle');
     return { width: rect.width, height: rect.height, left: rect.left, top: rect.top,
       right: rect.right, bottom: rect.bottom, handle: Boolean(handle), text: popup.textContent };
-  }, selector);
+  });
   const open = async () => {
     await tab.evaluate(() => getSelection().selectAllChildren(document.getElementById('verb')));
-    await tab.waitForFunction(selector => {
-      const popup = document.querySelector(selector)?.shadowRoot?.querySelector('.gsm-hoshidicts-popup');
+    await popupRoot(tab).waitFor(popupShadow => {
+      const popup = popupShadow?.querySelector('.gsm-hoshidicts-popup');
       return popup && !popup.hidden && popup.textContent.includes('食');
-    }, {}, selector);
+    });
     await new Promise(done => setTimeout(done, 200));
   };
   const drag = async (dx, dy) => {
-    const point = await tab.evaluate(() => {
-      const rect = document.querySelector('hachidori-host').shadowRoot
+    const point = await popupRoot(tab).evaluate(popupShadow => {
+      const rect = popupShadow
         .querySelector('.gsm-hoshidicts-resize-handle').getBoundingClientRect();
       return { x: rect.x + rect.width * 0.65, y: rect.y + rect.height * 0.65 };
     });
@@ -134,18 +134,18 @@ export async function checkPopupResize(settings, tab) {
     word.textContent = query;
     getSelection().selectAllChildren(word);
   }, fixture.query);
-  await tab.waitForFunction(() => document.querySelector('hachidori-host').shadowRoot
+  await popupRoot(tab).waitFor(popupShadow => popupShadow
     .querySelector('a[data-hoshidicts-query]'));
   await drag(-90, -65);
-  const link = await tab.evaluate(() => {
-    const rect = document.querySelector('hachidori-host').shadowRoot
+  const link = await popupRoot(tab).evaluate(popupShadow => {
+    const rect = popupShadow
       .querySelector('a[data-hoshidicts-query]').getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   });
   await tab.mouse.click(link.x, link.y);
-  await tab.waitForFunction(() => document.querySelector('hachidori-host').shadowRoot
+  await popupRoot(tab).waitFor(popupShadow => popupShadow
     .querySelector('[data-hoshidicts-depth="1"]:not([hidden])'));
-  const childRect = () => tab.evaluate(() => document.querySelector('hachidori-host').shadowRoot
+  const childRect = () => popupRoot(tab).evaluate(popupShadow => popupShadow
     .querySelector('[data-hoshidicts-depth="1"]').getBoundingClientRect().toJSON());
   const child = await childRect();
   assert.ok(Math.abs(child.width - after.width) < 3 && Math.abs(child.height - after.height) < 3,
