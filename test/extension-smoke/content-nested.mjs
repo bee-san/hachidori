@@ -1730,6 +1730,9 @@ async function previewInvalidationCase() {
   const link = focused.popup.ownerDocument.createElement("a");
   link.href = "#";
   link.textContent = "Keyboard image owner";
+  // jsdom does not infer keyboard focus from a native key press.
+  const matches = link.matches.bind(link);
+  link.matches = selector => selector === ":focus-visible" || matches(selector);
   focused.popup.appendChild(link);
   focused.driver.scheduleHide();
   const pendingBeforeFocus = focused.driver.hideTimerPending();

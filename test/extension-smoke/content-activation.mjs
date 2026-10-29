@@ -216,6 +216,9 @@ async function activationCase() {
 
   const focusedControl = window.document.createElement("button");
   focusedControl.textContent = "Back";
+  // jsdom has no native mouse/keyboard :focus-visible heuristics.
+  const matches = focusedControl.matches.bind(focusedControl);
+  focusedControl.matches = selector => selector === ":focus-visible" || matches(selector);
   harness.popup.append(focusedControl);
   focusedControl.focus();
   move();
@@ -1072,6 +1075,54 @@ async function activationButtonCase() {
   return result;
 }
 
+async function audioPointerFocusCase() {
+  const result = {};
+  for (const keyboard of [false, true]) {
+    const harness = await createHarness(null, { options: { lookupMode: "hover", popupHideDelayMs: 0 } });
+    const window = harness.popup.ownerDocument.defaultView;
+    try {
+      await harness.initialLookup();
+      const button = harness.popup.querySelector(".gsm-hoshidicts-audio-button");
+      // A real mouse press focuses the button; jsdom's click() does not.
+      const matches = button.matches.bind(button);
+      button.matches = selector => selector === ":focus-visible" ? keyboard : matches(selector);
+      button.focus();
+      button.click();
+      harness.reply(harness.take("hd_audio_play"), { status: "success" });
+      await harness.settle();
+      harness.driver.setScanCandidate({ ...harness.candidate, query: "another word" });
+      harness.driver.onMouseMove({ target: harness.anchor, clientX: 20, clientY: 20, buttons: 0 });
+      await harness.settle();
+      const next = harness.take("hd_lookup");
+      result[keyboard ? "keyboard audio focus protects the popup from incidental hover"
+        : "mouse audio focus allows the next page word lookup after playback"] = keyboard ? next === null : next !== null;
+      if (next) harness.reply(next, { dictionaryCount: 1, results: [harness.term("another word")] });
+      await harness.settle();
+
+      await harness.initialLookup();
+      const current = harness.popup.querySelector(".gsm-hoshidicts-audio-button");
+      const currentMatches = current.matches.bind(current);
+      current.matches = selector => selector === ":focus-visible" ? keyboard : currentMatches(selector);
+      current.focus();
+      harness.driver.onMouseMove({ target: window.document.body, clientX: 500, clientY: 500, buttons: 0 });
+      harness.driver.scheduleHide();
+      result[keyboard ? "keyboard audio focus keeps ordinary hover dismissal from closing the popup"
+        : "mouse audio focus does not block ordinary hover dismissal"] = harness.popup.hidden !== keyboard;
+      // Outside text clicks defer dismissal until release, even with keyboard focus.
+      for (const type of ["mousedown", "mouseup", "click"]) {
+        harness.anchor.dispatchEvent(new window.MouseEvent(type, {
+          bubbles: true, composed: true, button: 0, buttons: type === "mousedown" ? 1 : 0,
+          clientX: 20, clientY: 20,
+        }));
+      }
+      result[`${keyboard ? "keyboard" : "mouse"} audio focus still allows outside-click dismissal`] = harness.popup.hidden;
+    } finally {
+      harness.close();
+    }
+  }
+  return result;
+}
+
 async function keybindCase() {
   const result = {};
   const press = (harness, code, key, init = {}) => {
@@ -1290,7 +1341,7 @@ describe("content script: activation and keybinds", () => {
     const noteContent = await contentNoteStage({
       activation: async () => ({ ...await activationCase(), ...await scanDelayCase(), ...await definitionScanDelayCase(),
         ...await cursorExitCase(), ...await activationButtonCase(),
-        ...await overlayDepartureCase(), ...await browserDepartureCase() }),
+        ...await overlayDepartureCase(), ...await browserDepartureCase(), ...await audioPointerFocusCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.activation ?? {})) {
       check(name, passed === true, JSON.stringify(passed));
