@@ -1,3 +1,4 @@
+import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * Nested lookups from definitions and internal links.
  *
@@ -388,8 +389,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await settle(500);
     }
     triggerEvidence.dragged = await child.state();
-    triggerEvidence.dragSelection = await tab.evaluate(() => {
-      const selection = document.querySelector("hachidori-host")?.shadowRoot?.getSelection?.();
+    triggerEvidence.dragSelection = await popupRoot(tab).evaluate(popupShadow => {
+      const selection = popupShadow.getSelection?.();
       const text = selection?.toString() ?? "";
       selection?.removeAllRanges();
       window.getSelection().removeAllRanges();

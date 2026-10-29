@@ -17,6 +17,7 @@ import { dirname, resolve } from "node:path";
 import { test as nodeTest } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ACTION_ROW_CHECK } from "../chrome-action-row.mjs";
+import { DARK_READER_CHECK } from "../chrome-dark-reader.mjs";
 import { AUDIO_CHOOSER_CHECK } from "../chrome-audio-chooser.mjs";
 import { BACKUP_CHROME_CHECKS } from "../chrome-backup-scenarios.mjs";
 import { REORDER_CHECKS } from "../chrome-dictionary-management-scenarios.mjs";
@@ -120,6 +121,7 @@ const WORD_HIGHLIGHT_CHECKS = [
 ];
 
 const PLANNED = [
+  DARK_READER_CHECK,
   DICTIONARY_RANK_CHECK,
   "dictionary pointer reorder and confirmed bulk removal persist across reload",
   ...REORDER_CHECKS,
@@ -325,7 +327,7 @@ const PLANNED = [
   "the popup stays in place while a chat feed or the page scrolls and after its source is removed",
   "switching to another tab and back keeps the popup, its Note draft and keyboard focus until Escape",
   "a click into one of the page's frames, same-origin or cross-site, still closes the popup",
-  "the content script attached its open-shadow host to the page",
+  "the content script isolates its popup in a closed shadow root",
   "the popup deinflects 食べたかった to 食べる",
   "deinflection disclosure exposes the real ordered trace and remains keyboard reachable",
   "dictionary cards render open with their dictionary's tag, in Yomitan's colours, and no disclosure control",

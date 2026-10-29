@@ -1,3 +1,4 @@
+import { popupRoot } from "./chrome-popup-root.mjs";
 // Focused check: Store availability, real hover, kanji/Back, and Default restore.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
@@ -112,7 +113,6 @@ try {
   tab.on("console", message => { if (["error", "warn"].includes(message.type())) console.log(message.type(), message.text()); });
   await tab.setViewport({ width: 1100, height: 800 });
   await tab.goto(`http://127.0.0.1:${server.address().port}`);
-  const popup = () => document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
   const hover = async () => {
     await tab.bringToFront();
     await tab.mouse.move(2, 2);
@@ -121,32 +121,34 @@ try {
       const box = range.getBoundingClientRect(); return { x: box.x + box.width * .2, y: box.y + box.height / 2 };
     });
     await tab.mouse.move(point.x, point.y);
-    await tab.waitForFunction(() => {
-      const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+    await popupRoot(tab).waitFor(popupShadow => {
+      const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
       return popup && !popup.hidden && popup.querySelector(".gsm-hoshidicts-entry");
     });
   };
   const screenshot = async name => {
-    const handle = await tab.evaluateHandle(popup);
-    await handle.asElement().screenshot({ path: resolve(output, `${name}.png`) });
-    await handle.dispose();
+    const clip = await popupRoot(tab).evaluate(root => {
+      const rect = root.querySelector(".gsm-hoshidicts-popup").getBoundingClientRect();
+      return { x: rect.x + scrollX, y: rect.y + scrollY, width: rect.width, height: rect.height };
+    });
+    await tab.screenshot({ path: resolve(output, `${name}.png`), clip });
   };
   console.log("hover");
   await hover();
-  await tab.waitForFunction(() => {
-    const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
+  await popupRoot(tab).waitFor(popupShadow => {
+    const button = popupShadow.querySelector(".gsm-hoshidicts-mine-button");
     return button && !button.hidden && button.dataset.state !== "checking" && !button.disabled;
   });
   await screenshot("default");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-note-button").click());
   await settings.bringToFront();
   await settings.click(".theme-store-card:nth-child(2) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "nazeka");
   console.log("hover");
   await hover();
-  await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".nazeka-reading")?.textContent === "たべる");
-  const evidence = await tab.evaluate(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  await popupRoot(tab).waitFor(popupShadow => popupShadow.querySelector(".nazeka-reading")?.textContent === "たべる");
+  const evidence = await popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const shadow = popup.getRootNode();
     return { defaultStyles: shadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))),
       dictionaryStyles: shadow.querySelectorAll("[data-hoshidicts-dictionary-style]").length,
@@ -162,15 +164,15 @@ try {
   assert.equal(evidence.richNodes, 0);
   assert.equal(evidence.background, "rgb(17, 17, 17)");
   await tab.keyboard.press("Escape");
-  assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), true,
+  assert.equal(await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-popup").hidden), true,
     "switching away from Note releases editing so Escape can close Nazeka");
   await hover();
-  await tab.waitForFunction(() => {
-    const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
+  await popupRoot(tab).waitFor(popupShadow => {
+    const button = popupShadow.querySelector(".gsm-hoshidicts-mine-button");
     return button && !button.hidden && button.dataset.state !== "checking" && !button.disabled;
   });
-  const controls = await tab.evaluate(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  const controls = await popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const audio = popup.querySelector(".gsm-hoshidicts-audio-button");
     const reading = popup.querySelector(".nazeka-reading").getBoundingClientRect();
     const audioBox = audio.getBoundingClientRect();
@@ -187,11 +189,11 @@ try {
   assert.equal(controls.mining, "ready");
   assert.equal(controls.mineAfterAudio, true);
   await screenshot("nazeka");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".nazeka-kanji-info"));
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-kanji-link").click());
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".nazeka-kanji-info"));
   await screenshot("nazeka-kanji");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").click());
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".nazeka-word"));
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-kanji-back").click());
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".nazeka-word"));
   await settings.bringToFront();
   await settings.waitForFunction(() => [...document.querySelectorAll(".theme-store-preview")].every(image => image.complete && image.naturalWidth > 0));
   const carousel = await settings.$eval(".theme-store-grid", node => ({ width: node.clientWidth, scroll: node.scrollWidth, flow: getComputedStyle(node).gridAutoFlow }));
@@ -230,9 +232,9 @@ try {
   assert.equal(await settings.$eval("#popup-theme-hint", node => node.checkVisibility() && node.textContent),
     "Plain uses only the settings shown here. Your other Design settings are kept for Default.");
   await hover();
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".plain-scroll"));
-  const plain = await tab.evaluate(() => {
-    const shadow = document.querySelector("hachidori-host").shadowRoot;
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".plain-scroll"));
+  const plain = await popupRoot(tab).evaluate(popupShadow => {
+    const shadow = popupShadow;
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     return { text: popup.textContent, controls: popup.querySelectorAll("button,img,a,.gsm-hoshidicts-expression,.nazeka-count").length,
       children: popup.querySelectorAll("*").length, entries: popup.querySelectorAll(".gsm-hoshidicts-entry").length,
@@ -250,12 +252,12 @@ try {
   await settings.click(".theme-store-card:nth-child(4) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "jl");
   await hover();
-  await tab.waitForFunction(() => {
-    const buttons = [...document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
+  await popupRoot(tab).waitFor(popupShadow => {
+    const buttons = [...popupShadow.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
     return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled && button.dataset.state === "ready");
   });
-  const jl = await tab.evaluate(() => {
-    const shadow = document.querySelector("hachidori-host").shadowRoot;
+  const jl = await popupRoot(tab).evaluate(popupShadow => {
+    const shadow = popupShadow;
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     const blocks = [...popup.querySelectorAll(".jl-entry")];
     return { blocks: blocks.length, tabs: [...popup.querySelectorAll(".jl-tab")].map(tab => tab.textContent),
@@ -272,14 +274,14 @@ try {
   // without another lookup: the probed block survives. It is clicked in place,
   // because bringing Settings to the front would blur the page and close its popup.
   assert.ok((await designShown()).includes("Show pitch on the reading"));
-  await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-entry").dataset.pitchProbe = ""; });
-  const popupMarks = await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-mora").length);
+  await popupRoot(tab).evaluate(popupShadow => { popupShadow.querySelector(".jl-entry").dataset.pitchProbe = ""; });
+  const popupMarks = await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelectorAll(".jl-mora").length);
   const previewMarks = await preview.evaluate(() => document.getElementById("preview-host").shadowRoot.querySelectorAll(".jl-mora").length);
   assert.ok(popupMarks > 0 && previewMarks > 0, "JL marks pitch in the popup and the preview");
   for (const shown of [false, true]) {
     await settings.$eval("#opt-pitch-furigana", input => input.click());
-    await tab.waitForFunction(count => {
-      const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    await popupRoot(tab).waitFor((popupShadow, count) => {
+      const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
       return !popup.hidden && !!popup.querySelector(".jl-entry[data-pitch-probe]") && popup.querySelectorAll(".jl-mora").length === count;
     }, {}, shown ? popupMarks : 0);
     await preview.waitForFunction(count => document.getElementById("preview-host").shadowRoot.querySelectorAll(".jl-mora").length === count,
@@ -308,9 +310,9 @@ try {
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "bee");
   await hover();
   await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsRenderer === "bee");
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-more-actions"));
-  const bee = await tab.evaluate(() => {
-    const shadow = document.querySelector("hachidori-host").shadowRoot;
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".bee-more-actions"));
+  const bee = await popupRoot(tab).evaluate(popupShadow => {
+    const shadow = popupShadow;
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     return { tabs: [...popup.querySelectorAll(".jl-tab")].map(node => node.textContent),
       rich: popup.querySelectorAll(".bee-rich-content > *").length,
@@ -329,8 +331,8 @@ try {
   assert.equal(bee.brackets, false, "Bee shows no JMdict tag brackets");
   assert.ok(bee.notes > 0 && bee.custom > 0 && bee.menus > 0, JSON.stringify(bee));
   assert.equal(bee.defaultStyles, false);
-  const icons = await tab.evaluate(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  const icons = await popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const audio = getComputedStyle(popup.querySelector(".gsm-hoshidicts-audio-button"), "::before");
     const describe = style => ({ width: style.width, height: style.height, color: style.backgroundColor, mask: style.maskImage });
     const buttons = [".gsm-hoshidicts-audio-button", ".gsm-hoshidicts-mine-button", ".gsm-hoshidicts-note-button",
@@ -388,7 +390,7 @@ try {
   assert.deepEqual(icons.order, ["gsm-hoshidicts-mine-button", "gsm-hoshidicts-audio-button", "gsm-hoshidicts-note-button"], JSON.stringify(icons.order));
   for (const button of icons.buttons.slice(1)) assert.deepEqual(button, icons.buttons[0], JSON.stringify(icons.buttons));
   assert.ok(icons.cursors.every(cursor => cursor === "pointer"), `every enabled control shows a pointer: ${JSON.stringify(icons.cursors)}`);
-  const tabGeometry = await tab.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".jl-tab")]
+  const tabGeometry = await popupRoot(tab).evaluate(popupShadow => [...popupShadow.querySelectorAll(".jl-tab")]
     .map(node => { const rect = node.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height }; }));
   assert.ok(tabGeometry.every(rect => rect.width > 0), "group tabs size to their labels like JL");
   assert.equal(tabGeometry[0].height, tabGeometry[1].height);
@@ -443,8 +445,8 @@ try {
   await hover();
   const contrast = [];
   const checkBeeContrast = async () => {
-    const checks = await tab.evaluate(() => {
-      const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+    const checks = await popupRoot(tab).evaluate(popupShadow => {
+      const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
       const canvas = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
       const rgba = value => {
         canvas.clearRect(0, 0, 1, 1); canvas.fillStyle = value; canvas.fillRect(0, 0, 1, 1);
@@ -500,9 +502,9 @@ try {
     contrast.push(...checks);
   };
   await tab.keyboard.press("Tab");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".jl-tab").focus());
   await checkBeeContrast();
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.activeElement?.blur());
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.activeElement?.blur());
   await screenshot("bee");
   const beeDesign = await settings.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
@@ -517,19 +519,19 @@ try {
   }, patch);
   await updateBeeDesign({ popupWidthPx: 300 });
   await hover();
-  await tab.waitForFunction(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  await popupRoot(tab).waitFor(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     return !popup.hidden && popup.querySelector(".bee-more-actions") && popup.getBoundingClientRect().width <= 300;
   });
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".jl-tab").focus());
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".jl-tab").focus());
   await screenshot("bee-readable-300");
-  await tab.evaluate(() => {
-    const more = document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions");
+  await popupRoot(tab).evaluate(popupShadow => {
+    const more = popupShadow.querySelector(".bee-more-actions");
     more.open = true; more.querySelector("summary").focus();
   });
   await checkBeeContrast();
   await screenshot("bee-readable-300-more");
-  await tab.evaluate(() => { document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-more-actions").open = false; });
+  await popupRoot(tab).evaluate(popupShadow => { popupShadow.querySelector(".bee-more-actions").open = false; });
   await updateBeeDesign({ popupWidthPx: beeDesign.popupWidthPx, glossaryLayoutMode: "compact" });
   await hover();
   await tab.waitForFunction(() => document.querySelector("hachidori-host").dataset.hoshidictsGlossaryLayout === "compact");
@@ -537,21 +539,21 @@ try {
   await updateBeeDesign(beeDesign);
   await hover();
   await tab.waitForFunction(() => !document.querySelector("hachidori-host").hasAttribute("data-hoshidicts-glossary-layout"));
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".bee-rich-content .gloss-list"));
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-note-button").click());
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector("form:not([hidden])"));
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".bee-rich-content .gloss-list"));
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-note-button").click());
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector("form:not([hidden])"));
   await checkBeeContrast();
   await screenshot("bee-note");
-  await tab.evaluate(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  await popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     popup.querySelector("form textarea").value = "Unfinished Bee meaning";
     const more = popup.querySelector(".bee-more-actions");
     more.open = true;
     more.querySelector("summary").focus();
   });
   await tab.keyboard.press("Escape");
-  assert.deepEqual(await tab.evaluate(() => {
-    const shadow = document.querySelector("hachidori-host").shadowRoot;
+  assert.deepEqual(await popupRoot(tab).evaluate(popupShadow => {
+    const shadow = popupShadow;
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     const more = popup.querySelector(".bee-more-actions");
     return { menu: more.open, popup: popup.hidden, note: popup.querySelector("form").hidden,
@@ -559,12 +561,12 @@ try {
   }), { menu: false, popup: false, note: false, draft: "Unfinished Bee meaning", focus: true },
   "the document-capture Escape handler closes More and restores focus before touching Note or popup");
   await tab.keyboard.press("Escape");
-  assert.equal(await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup").hidden), false,
+  assert.equal(await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-popup").hidden), false,
     "Escape closes Bee's Note editor before closing its popup");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-link").click());
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-kanji-link").click());
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".jl-kanji .bee-rich-content .gloss-list"));
   await screenshot("bee-kanji-rich");
-  await tab.evaluate(() => document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-kanji-back").focus());
+  await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gsm-hoshidicts-kanji-back").focus());
   await screenshot("bee-back-focus");
   const media = await tab.createCDPSession();
   for (const scheme of ["dark", "light"]) {
@@ -573,8 +575,8 @@ try {
     await screenshot(`bee-back-focus-forced-${scheme}`);
   }
   await media.send("Emulation.setEmulatedMedia", { features: [] });
-  const back = await tab.evaluate(() => {
-    const popup = document.querySelector("hachidori-host").shadowRoot.querySelector(".gsm-hoshidicts-popup");
+  const back = await popupRoot(tab).evaluate(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const rect = element => { const { left, top, bottom, width } = element.getBoundingClientRect(); return { left, top, bottom, width }; };
     return { back: rect(popup.querySelector(".gsm-hoshidicts-kanji-back")), popup: rect(popup), tabs: rect(popup.querySelector(".jl-tabs")) };
   });
@@ -584,18 +586,18 @@ try {
   await tab.evaluate(() => document.getElementById("word").textContent = "漢字");
   await tab.keyboard.press("Escape");
   await hover();
-  await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot.querySelector(".jl-spelling")?.textContent === "漢字");
-  await tab.waitForFunction(() => [...document.querySelector("hachidori-host")?.shadowRoot.querySelectorAll(".bee-rich-content img") ?? []]
+  await popupRoot(tab).waitFor(popupShadow => popupShadow.querySelector(".jl-spelling")?.textContent === "漢字");
+  await popupRoot(tab).waitFor(popupShadow => [...popupShadow.querySelectorAll(".bee-rich-content img") ?? []]
     .some(image => image.complete && image.naturalWidth > 0));
-  assert.ok(await tab.evaluate(() => !!document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content table")));
-  const imageBox = await tab.evaluate(() => {
-    const { left, top, width, height } = document.querySelector("hachidori-host").shadowRoot.querySelector(".bee-rich-content img").getBoundingClientRect();
+  assert.ok(await popupRoot(tab).evaluate(popupShadow => !!popupShadow.querySelector(".bee-rich-content table")));
+  const imageBox = await popupRoot(tab).evaluate(popupShadow => {
+    const { left, top, width, height } = popupShadow.querySelector(".bee-rich-content img").getBoundingClientRect();
     return { x: left + width / 2, y: top + height / 2 };
   });
   await tab.mouse.move(imageBox.x, imageBox.y);
-  await tab.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot.querySelector(".gsm-hoshidicts-image-hover-preview img"));
-  const enlarged = await tab.evaluate(() => {
-    const shadow = document.querySelector("hachidori-host").shadowRoot;
+  await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview img"));
+  const enlarged = await popupRoot(tab).evaluate(popupShadow => {
+    const shadow = popupShadow;
     const preview = shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
     const source = shadow.querySelector(".bee-rich-content img");
     return { sibling: preview.parentNode === shadow.querySelector(".gsm-hoshidicts-popup").parentNode,
@@ -605,7 +607,7 @@ try {
   assert.deepEqual(enlarged, { sibling: true, larger: true, sameSource: true, visible: true }, JSON.stringify(enlarged));
   await screenshot("bee-image-preview");
   await tab.mouse.move(0, 0);
-  await tab.waitForFunction(() => !document.querySelector("hachidori-host")?.shadowRoot.querySelector(".gsm-hoshidicts-image-hover-preview"));
+  await popupRoot(tab).waitFor(popupShadow => !popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview"));
   await hover();
   await checkBeeContrast();
   await screenshot("bee-structured-rich");
@@ -625,8 +627,8 @@ try {
   "Default shows every Design control and no theme hint");
   console.log("hover");
   await hover();
-  await tab.waitForFunction(() => {
-    const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+  await popupRoot(tab).waitFor(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     return popup && !popup.querySelector(".nazeka-word") && !popup.querySelector(".gsm-hoshidicts-result-chrome")?.hidden;
   });
   assert.deepEqual(errors, []);
