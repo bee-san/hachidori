@@ -1747,7 +1747,10 @@
       "z-index: 2147483647 !important",
     ].join("; ");
     applyPageZoom();
-    shadow = host.attachShadow({ mode: "open" });
+    // Dark Reader traverses open roots and rewrites their styles. Keep the
+    // reader's selected palette isolated unless the user explicitly needs DOM
+    // access for Custom JavaScript (which takes effect after a page reload).
+    shadow = host.attachShadow({ mode: options.customPopupJavascript ? "open" : "closed" });
 
     mountHost();
     appearance = window.HDPopup.createPopupAppearance(host);

@@ -1,3 +1,4 @@
+import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * Clicked-kanji navigation and kanji dictionary choices.
  *
@@ -147,8 +148,7 @@ describe("clicked kanji", () => {
     await popup.waitForHidden();
     await hover("#duplicate");
     const clicked = await popup.click(".gsm-hoshidicts-kanji-link");
-    await tab.waitForFunction(glossary => [...document.querySelectorAll("hachidori-host")]
-      .some(host => host.shadowRoot?.textContent.includes(glossary)), {}, GENERIC_KANJI_GLOSSARY);
+    await popupRoot(tab).waitFor((root, glossary) => root.textContent.includes(glossary), {}, GENERIC_KANJI_GLOSSARY);
     const restored = await popup.state();
     check(
       "re-enabling a selected term-only kanji dictionary restores its saved route",

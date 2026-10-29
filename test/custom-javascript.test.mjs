@@ -78,8 +78,3 @@ test("rapid edits are applied in order without duplicate registrations", async (
   ]);
   assert.deepEqual(registered, ["window.edit = 1;", "window.edit = 2;"]);
 });
-
-test("popup shadow DOM is open to the user script", async () => {
-  const source = await readFile(new URL("content.js", extension), "utf8");
-  assert.match(source, /host\.attachShadow\(\{ mode: "open" \}\)/u);
-});
