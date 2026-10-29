@@ -2427,7 +2427,7 @@
       }
       pointerInPopup = false;
       pointerLevel = null;
-      if (!hasProtectedNote() && !audio?.hasMenu() && !keyboardFocusInPopup()) hide();
+      if (!hasProtectedNote() && !audio?.hasMenu() && !popupFocusHoldsView()) hide();
     }, options.hidePopupOnCursorExitDelayMs);
   }
 
@@ -2447,7 +2447,7 @@
     const prune = () => {
       descendantTimer = null;
       if (!hasProtectedNote(depth) && (!pointerLevel || pointerLevel.depth < depth)
-          && !levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement))) {
+          && !(popupFocusHoldsView() && levels.slice(depth).some((child) => child.popup.contains(shadow.activeElement)))) {
         dismissLevels(depth);
       }
     };
@@ -2455,18 +2455,17 @@
     else descendantTimer = window.setTimeout(prune, delay);
   }
 
-  function popupHasFocus() {
-    return levels.some((level) => level.popup && !level.popup.hidden && level.popup.contains(shadow?.activeElement));
-  }
-
-  // Keyboard focus keeps a popup the pointer left, but not the focus Chrome
-  // leaves on a clicked button: Yomitan hides regardless of focus.
-  function keyboardFocusInPopup() {
-    return popupHasFocus() && shadow.activeElement.matches(":focus-visible");
+  // Keyboard navigation and editing keep the view; the focus a mouse click
+  // leaves on Audio or another button must not hold page scanning or dismissal.
+  function popupFocusHoldsView() {
+    const focused = shadow?.activeElement;
+    return levels.some(level => level.popup && !level.popup.hidden && level.popup.contains(focused))
+      && (focused.matches(":focus-visible")
+        || (isEditingElement(focused) && focused.localName !== "button"));
   }
 
   function focusBlocksScan(level) {
-    return popupHasFocus() && (!level
+    return popupFocusHoldsView() && (!level
       || (isEditingElement(shadow.activeElement) && shadow.activeElement.localName !== "button"));
   }
 
@@ -2543,14 +2542,14 @@
 
   function scheduleHide() {
     if (disposed || hasProtectedNote() || audio?.hasMenu() || !rootLevel.popup || rootLevel.popup.hidden
-        || popupHasFocus() || hideTimer !== null || transferTimer !== null) {
+        || popupFocusHoldsView() || hideTimer !== null || transferTimer !== null) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
     // time to cross it so the popup stays reachable and selectable.
     const dismiss = () => {
       hideTimer = null;
-      if (!hasProtectedNote() && !audio?.hasMenu() && !pointerInPopup && !popupHasFocus()) {
+      if (!hasProtectedNote() && !audio?.hasMenu() && !pointerInPopup && !popupFocusHoldsView()) {
         hide();
       }
     };
@@ -3529,7 +3528,7 @@
     pointerInPopup = false;
     pointerLevel = null;
     if (leavingChain) scheduleTransferCheck();
-    if (hasProtectedNote() || popupHasFocus()) {
+    if (hasProtectedNote() || popupFocusHoldsView()) {
       cancelCandidateScan();
       return;
     }
@@ -3712,7 +3711,7 @@
 
   function onSelectionChange() {
     if (disposed || !options.hoverEnabled || selectionDragActive || hasProtectedNote()
-        || popupHasFocus() || pageEditorFocused() || selectionIsUnchanged()) return;
+        || popupFocusHoldsView() || pageEditorFocused() || selectionIsUnchanged()) return;
     const selection = window.getSelection();
     if ([selection?.anchorNode, selection?.focusNode].some((node) =>
       node && (node === host || node.getRootNode() === shadow))) return;
@@ -4259,7 +4258,7 @@
       cancelCandidateScan();
       clearHideTimer();
       const popupLevel = activePointerLevel(lastPointer);
-      if (!hasProtectedNote() && !popupHasFocus() && (!pointerInPopup || popupLevel)) {
+      if (!hasProtectedNote() && !popupFocusHoldsView() && (!pointerInPopup || popupLevel)) {
         if (!(popupLevel ? definitionHoverAllowed() : activationAllowed())) {
           if (popupLevel) cancelPendingHover(popupLevel);
           else schedulePointerHide();
