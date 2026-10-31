@@ -4137,9 +4137,11 @@
     if (!hasProtectedNote()) activeSelectionCandidate = null;
     for (const level of levels) {
       level.view?.hideImagePreview();
+      // A docked search in flight carries on, the first one included, even
+      // before the popup is built: its reply is the search's result.
+      if (level === rootLevel && dock && (!level.popup || level.popup.inert || level.popup.hidden)) return;
       if (level.popup?.inert) {
-        // A docked lookup in flight carries on: its reply is the search's result.
-        if (level !== rootLevel || !dock) hide(level);
+        hide(level);
         return;
       }
       level.lookupToken += 1;

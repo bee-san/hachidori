@@ -51,15 +51,20 @@ async function dockedCase() {
       harness.callbacks().onResizeStart === null;
 
     const searching = driver.search(anchor.firstChild);
+    // A dictionary change while the first search is out does not drop it, nor
+    // does Escape, which goes on to the page: the reply is the search's result.
+    escape(window);
+    harness.emitState(harness.state(2));
     const searched = await answer(harness, [harness.term(anchor.textContent)]);
     await searching;
-    outcomes["a search looks its text up from the first character and fills the results area"] =
-      searched?.text === anchor.textContent && !popup.hidden && placed() && harness.render().kind === "terms";
+    outcomes["a search looks its text up from the first character and fills the results area, through Escape and a dictionary change while it is out"] =
+      searched?.text === anchor.textContent && !popup.hidden && placed() && harness.render().kind === "terms"
+        && harness.take("hd_lookup") === null;
 
     press(window, harness.dockElement);
     escape(window);
     outcomes["a press outside it and Escape keep the docked result, and Escape goes on to the page"] =
-      !popup.hidden && placed() && seen.join() === "Escape";
+      !popup.hidden && placed() && seen.join() === "Escape,Escape";
 
     const opened = harness.internalLink({ query: "読む" });
     await answer(harness, [harness.term("読む")]);
@@ -69,7 +74,7 @@ async function dockedCase() {
     const childClosed = !driver.popupAt(1);
     escape(window);
     outcomes["Escape closes a child popup of the docked result first, then goes on to the page"] =
-      childOpen && childClosed && !popup.hidden && seen.join() === "Escape,Escape";
+      childOpen && childClosed && !popup.hidden && seen.join() === "Escape,Escape,Escape";
 
     const pending = driver.search(anchor.firstChild);
     driver.onScroll();
@@ -85,7 +90,7 @@ async function dockedCase() {
     outcomes["a search that finds nothing says so in the results area"] = !popup.hidden && placed()
       && harness.render().kind === "notice" && harness.render().value === "No definition found. Add your own with the pencil.";
 
-    harness.emitState(harness.state(2));
+    harness.emitState(harness.state(3));
     const refreshed = await answer(harness, [harness.term(anchor.textContent)]);
     outcomes["a dictionary change looks the docked result up again instead of closing it"] =
       refreshed?.text === anchor.textContent && !popup.hidden && harness.render().kind === "terms";
