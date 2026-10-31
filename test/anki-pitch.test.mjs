@@ -33,6 +33,7 @@ for (const marker of ["pitch-accent-graphs", "pitch-accent-graphs-jj"]) {
     const root = await render("かたな", [group([pitch(0), pitch(1), pitch(2), pitch(3)])], marker);
     const graphs = [...root.querySelectorAll("svg")];
     assert.equal(graphs.length, 4);
+    assert.equal(root.querySelector("b"), null, "graph markers omit dictionary labels");
     const high = marker.endsWith("-jj") ? "10" : "25";
     assert.deepEqual(graphs.map(svg => [...svg.querySelectorAll(".pronunciation-graph-dot")]
       .map(dot => dot.getAttribute("cy") === high ? "H" : "L").join("")), ["LHH", "HLL", "LHL", "LHH"]);
@@ -79,10 +80,10 @@ test("absent, transcription-only, empty and invalid pitch data leave graph field
   }
 });
 
-test("graphs retain dictionary order and variants, escape labels and can repeat safely across fields", async () => {
+test("graphs retain dictionary order and variants, escape readings and can repeat safely across fields", async () => {
   const reading = '<&"';
   const root = await render(reading, [group([pitch(1), pitch(2)], '<Pitch & "A">'), group([pitch(0)], "B")], "pitch-accent-graphs-jj");
-  assert.deepEqual([...root.querySelectorAll("b")].map(node => node.textContent), ['<Pitch & "A">', "B"]);
+  assert.equal([...root.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join("").trim(), "");
   assert.equal(root.querySelectorAll("svg").length, 3);
   assert.equal(root.querySelector("svg").querySelector("title").textContent, `${reading}: pitch accent 1`);
   assert.deepEqual([...root.querySelector("svg").querySelectorAll("text")].map(node => node.textContent), [...reading]);
