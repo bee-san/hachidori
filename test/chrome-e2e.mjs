@@ -38,6 +38,7 @@ import "./chrome-e2e/anki.mjs";
 import "./chrome-e2e/kanji.mjs";
 import "./chrome-e2e/popup-content.mjs";
 import "./chrome-e2e/notes.mjs";
+import "./chrome-e2e/search.mjs";
 import "./chrome-e2e/updates.mjs";
 import "./chrome-e2e/restart.mjs";
 import "./chrome-e2e/memory.mjs";

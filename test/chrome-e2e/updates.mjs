@@ -7,7 +7,7 @@
  */
 
 // The scenario's previous file: its steps run before the ones here.
-import "./notes.mjs";
+import "./search.mjs";
 import { readFileSync } from "node:fs";
 import { describe } from "node:test";
 import { buildRecommendedZip, buildTitledZip, GENERIC_KANJI_TITLE } from "../make-fixture.mjs";
