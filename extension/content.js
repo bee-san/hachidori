@@ -2677,8 +2677,31 @@
 
   function backRenderOptions(request, level = rootLevel) {
     return request?.previous
-      ? { onBack: () => restoreTermRender(request.previous, request.returnFocus, level) }
+      ? { onBack: () => navigateBack(request, level) }
       : level === rootLevel ? {} : { onClose: () => hide(level) };
+  }
+
+  // The term view a kanji request returns to: its render and current viewport.
+  function termViewSnapshot(level) {
+    return level.activeTermRender && { ...level.activeTermRender, viewport: level.view.captureTermView?.() };
+  }
+
+  // Yomitan's DisplayHistory keeps the entry Back leaves as the next one. Back
+  // here leaves its request ahead of the term view it restores; Forward reopens
+  // that request as its kanji click did, and Back from there returns to the
+  // term view as Forward left it. A no-result notice or a failure in its place
+  // has no term view to return to, so Forward leaves the key alone.
+  function navigateBack(request, level) {
+    request.previous.request.next = request;
+    return restoreTermRender(request.previous, request.returnFocus, level);
+  }
+
+  function navigateForward(level) {
+    const request = level.currentViewRequest;
+    if (!request?.next || level.activeTermRender?.request !== request) return false;
+    request.next.previous = termViewSnapshot(level);
+    void executeViewRequest(request.next, level);
+    return true;
   }
 
   function renderTerms(
@@ -3057,10 +3080,7 @@
       highlightText: level.activeHighlightText || character,
       kanjiPayload: { character },
       kind: "kanji",
-      previous: level.activeTermRender && {
-        ...level.activeTermRender,
-        viewport: level.view.captureTermView?.(),
-      },
+      previous: termViewSnapshot(level),
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
       selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
       termPayloads: termSources.map((source) => ({
@@ -3864,6 +3884,8 @@
         return level.view.focusEntry({ dictionary: action === "nextEntryDifferentDictionary" ? 1 : -1 });
       case "historyBackward":
         return clickKeybindControl(level.popup.querySelector(".gsm-hoshidicts-kanji-back"));
+      case "historyForward":
+        return navigateForward(level);
       case "addNote":
       case "viewNotes": {
         // The entry's own button: the lookup row may also hold a shown result's row.

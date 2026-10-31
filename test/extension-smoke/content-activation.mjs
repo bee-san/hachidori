@@ -1377,17 +1377,22 @@ async function historyKeybindCase() {
     const nested = await openKanji();
     const backs = [await back(), await back()];
     const recorded = counted();
+    // Scrolled since the click: Back from the reopened view returns to it as it is now.
+    harness.setTermViewport({ expandAll: true, restoreScrollTop: 80 });
     const forwards = [await forward(), await forward(), await forward()];
     const backsAgain = [await back(), await back()];
+    const restored = harness.render().context;
     result["Alt+F reopens the exact request Back left without counting it again, and Back steps back from it"] =
       (backs[0] === kanji && backs[1] === term
         && forwards[0].prevented && forwards[0].looked && forwards[0].view === kanji
         && forwards[1].prevented && forwards[1].looked && forwards[1].view === nested
         && !forwards[2].prevented && !forwards[2].looked && forwards[2].view === nested
-        && backsAgain[0] === kanji && backsAgain[1] === term && counted() === recorded)
+        && backsAgain[0] === kanji && backsAgain[1] === term && counted() === recorded
+        && restored.expandAll === true && restored.restoreScrollTop === 80)
       || { backs: backs.map(request => [kanji, term].indexOf(request)), recorded, counted: counted(),
         forwards: forwards.map(({ view: request, ...rest }) => ({ ...rest, view: [term, kanji, nested].indexOf(request) })),
-        backsAgain: backsAgain.map(request => [kanji, term].indexOf(request)) };
+        backsAgain: backsAgain.map(request => [kanji, term].indexOf(request)),
+        restored: { expandAll: restored.expandAll, restoreScrollTop: restored.restoreScrollTop } };
 
     const clicked = await openKanji();
     const backFromClicked = await back();
@@ -1409,6 +1414,44 @@ async function historyKeybindCase() {
   return result;
 }
 
+// After a dictionary change, Back replays a selection lookup that now matches
+// nothing and shows a no-result notice. A view reopened from there would have
+// no term view for its Back to return to, so Forward leaves the key alone.
+async function historyNoticeCase() {
+  const harness = await createHarness();
+  try {
+    const window = harness.popup.ownerDocument.defaultView;
+    harness.emitOptions({ lookupMode: "hover", kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1,
+      results: [{ ...harness.term("食べる"), matched: harness.candidate.query }] });
+    await harness.settle();
+    const clicked = harness.driver.showKanji("食");
+    harness.reply(harness.take("hd_lookup_dictionary"), { generation: 3, results: [harness.term("食")] });
+    await clicked;
+    window.getSelection().removeAllRanges();
+    const back = harness.render().context.onBack?.();
+    const replay = harness.take("hd_lookup");
+    if (replay) harness.reply(replay, { generation: 3, dictionaryCount: 1, results: [] });
+    await back;
+    window.getSelection().selectAllChildren(harness.anchor);
+    const notice = harness.render().kind;
+    const event = new window.KeyboardEvent("keydown",
+      { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true });
+    window.document.dispatchEvent(event);
+    const reopened = harness.take("hd_lookup_dictionary");
+    await harness.settle();
+    return { "Forward leaves the key alone on the no-result notice Back can leave after a dictionary change":
+      (replay !== null && notice === "notice" && !event.defaultPrevented && reopened === null
+        && harness.render().kind === "notice")
+      || { replayed: replay !== null, notice, prevented: event.defaultPrevented, reopened: reopened !== null,
+        render: harness.render().kind } };
+  } finally {
+    harness.close();
+  }
+}
+
 describe("content script: activation and keybinds", () => {
   test("activation, scan delays and departures", async () => {
     const noteContent = await contentNoteStage({
@@ -1424,7 +1467,7 @@ describe("content script: activation and keybinds", () => {
   test("keybinds", async () => {
     const noteContent = await contentNoteStage({
       keybinds: async () => ({ ...await keybindCase(), ...await keybindRepeatCase(), ...await wheelKeybindCase(),
-        ...await historyKeybindCase() }),
+        ...await historyKeybindCase(), ...await historyNoticeCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.keybinds ?? {})) {
       check(name, passed === true, JSON.stringify(passed));
