@@ -376,6 +376,9 @@ struct WireOptions {
   std::string frequencyDictionary;
   std::string frequencyOrder;
   std::string primaryReading;
+  // Also return words that only frequency and pitch dictionaries have, with no
+  // glossaries (LookupOptions::metadata_only_terms, #620).
+  bool metadataOnlyTerms = false;
   // hdw_segment's own: a dictionary whose words the split leaves out, as a
   // hover leaves out the personal dictionary's results while Use the personal
   // dictionary is off. A lookup ignores it, as it does any other key.
@@ -417,6 +420,7 @@ LookupOptions parse_options(const char* options_json, std::string* excluded_dict
     options.primary_reading = wire.primaryReading;
   }
   options.frequency_order = parse_frequency_order(wire.frequencyOrder);
+  options.metadata_only_terms = wire.metadataOnlyTerms;
   if (excluded_dictionary != nullptr) {
     require_lookup_text_size(wire.excludedDictionary, "excludedDictionary");
     *excluded_dictionary = std::move(wire.excludedDictionary);
