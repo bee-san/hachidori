@@ -93,15 +93,18 @@ async function dockedCase() {
     const english = window.document.createElement("p");
     english.textContent = "eat";
     window.document.body.append(english);
+    const records = () => harness.sent.filter(request => request.type === "hd_lookup_stats_record").length;
+    const recorded = records();
+    // Every other option goes back to its default, maxResults among them (7 → 32).
     harness.emitOptions({ hoverEnabled: false, onlyScanJapaneseText: true });
-    // The new options change lookups, so the docked result looks itself up again.
-    await answer(harness, [harness.term(anchor.textContent)]);
-    const offStillShown = !popup.hidden;
+    const refreshedWithOptions = await answer(harness, [harness.term(anchor.textContent)]);
+    outcomes["a lookup option change looks the docked result up again with the new options without counting it again"] =
+      refreshedWithOptions?.maxResults === 32 && records() === recorded && !popup.hidden;
     const typed = driver.search(english.firstChild);
     const englishSearch = await answer(harness, []);
     await typed;
-    outcomes["a search works while lookups are off and looks up text that is not Japanese"] = offStillShown
-      && englishSearch?.text === "eat" && !popup.hidden && harness.render().value === "No definition found. Add your own with the pencil.";
+    outcomes["a search works while lookups are off and looks up text that is not Japanese"] =
+      englishSearch?.text === "eat" && !popup.hidden && harness.render().value === "No definition found. Add your own with the pencil.";
   } finally {
     harness.close();
   }

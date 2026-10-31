@@ -2379,11 +2379,18 @@
   }
 
   // What would retire a stale view looks the docked result up again instead,
-  // as Yomitan's search page searches again when its options change.
+  // with the current options, as Yomitan's search page searches again
+  // (Display.searchLast) when its options change. It stays the same request,
+  // so its visit is not counted twice.
   function refreshDockedView(level) {
-    if (level !== rootLevel || !dock || !level.currentViewRequest) return false;
+    const request = level.currentViewRequest;
+    if (level !== rootLevel || !dock || !request) return false;
     level.deferredDictionaryInvalidationRevision = -1;
-    void executeViewRequest(level.currentViewRequest, level).catch((error) => {
+    if (request.kind === "term") {
+      request.payload = termPayload(request.payload.text, request.exactSelection || request.candidate.linkAnchor === true,
+        request.payload.options.primaryReading);
+    }
+    void executeViewRequest(request, level).catch((error) => {
       console.debug("hachidori: the search result could not refresh", error);
     });
     return true;
@@ -2894,6 +2901,21 @@
     );
   }
 
+  // A term lookup's engine request, from the current options.
+  function termPayload(text, exactMatch, primaryReading) {
+    return {
+      maxResults: options.maxResults,
+      options: {
+        frequencyDictionary: options.frequencyDictionary,
+        frequencyOrder: options.frequencyOrder,
+        personalDictionary: options.personalDictionaryEnabled,
+        primaryReading,
+      },
+      scanLength: exactMatch ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
+      text,
+    };
+  }
+
   function runLookup(candidate, overrides = {}, level = rootLevel) {
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
     const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
@@ -2903,19 +2925,7 @@
       exactSelection,
       highlightText: overrides.keepHighlight === true ? level.activeHighlightText : undefined,
       kind: "term",
-      payload: {
-        maxResults: options.maxResults,
-        options: {
-          frequencyDictionary: options.frequencyDictionary,
-          frequencyOrder: options.frequencyOrder,
-          personalDictionary: options.personalDictionaryEnabled,
-          primaryReading: typeof overrides.primaryReading === "string"
-            ? overrides.primaryReading
-            : "",
-        },
-        scanLength: exactMatch ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
-        text,
-      },
+      payload: termPayload(text, exactMatch, typeof overrides.primaryReading === "string" ? overrides.primaryReading : ""),
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
       selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
