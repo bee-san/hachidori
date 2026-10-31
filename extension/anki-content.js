@@ -239,7 +239,7 @@
   // The action disables itself while it works, and Chrome then moves focus
   // out of the popup. Pressed from the keyboard, it gets focus back once it
   // is enabled again, unless the reader has focused something else since.
-  // A mouse press takes none back: focus in the popup would hold page hover.
+  // A mouse press takes none back.
   function keyboardFocusReturn(control) {
     if (!control.matches(":focus-visible")) return () => {};
     return () => {
