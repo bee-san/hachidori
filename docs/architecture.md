@@ -1006,7 +1006,8 @@ progress and takes its mining screenshots as it does the startup page's
 Not ported: Yomitan's clipboard monitor, which needs the `clipboardRead`
 permission; profiles; automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
-browser's history; and Shift-, Ctrl- and middle-clicks on the menu's Search.
+browser's history; the popup window's size, position and state settings; and
+Shift-, Ctrl- and middle-clicks on the menu's Search.
 
 ![The search page with a real result, the toolbar menu and the popup window](assets/search-page.png)
 
