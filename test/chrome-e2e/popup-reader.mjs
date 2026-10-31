@@ -711,14 +711,19 @@ async function popupReader(page, depth = 0) {
           expression: entry.dataset.expression,
           aria: (index === 0 ? this.querySelector(".gsm-hoshidicts-primary-header") : entry)
             ?.querySelector(".gsm-hoshidicts-expression")?.getAttribute("aria-label"),
-          cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => ({
-            dictionary: card.querySelector(".gsm-hoshidicts-dictionary-tag").title,
-            label: card.querySelector(".gsm-hoshidicts-dictionary-tag").textContent,
-            bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
-            // Each body's visible text: Yomitan's gloss separators are hidden.
-            text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body =>
-              [...body.querySelectorAll(".gloss-content")].map(content => content.textContent).join("")),
-          })),
+          cards: [...entry.querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => {
+            // Releases before #612 label a card with a title, not a dictionary
+            // tag; chrome-backup-release.mjs reads such a release's popup.
+            const tag = card.querySelector(".gsm-hoshidicts-dictionary-tag, :scope > .gsm-hoshidicts-glossary-card-title");
+            return {
+              dictionary: tag.title,
+              label: tag.textContent,
+              bodies: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.innerHTML),
+              // Each body's visible text: Yomitan's gloss separators are hidden.
+              text: [...card.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body =>
+                [...body.querySelectorAll(".gloss-content")].map(content => content.textContent).join("")),
+            };
+          }),
           // The dictionaries of the entry's frequency tags and of the pitch
           // accent groups it shows, in order.
           frequencyDictionaries: [...entry.querySelectorAll(".gsm-hoshidicts-tag-frequency:not([data-frequency-average])")]
