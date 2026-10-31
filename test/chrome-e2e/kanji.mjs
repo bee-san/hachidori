@@ -83,6 +83,64 @@ describe("clicked kanji", () => {
     );
   });
 
+  // Yomitan's Navigate forward in history (#609) on its default Alt+F, with
+  // Alt+B for Back. The Backs above left the generic kanji view ahead of the
+  // term results; a kanji clicked afresh has nothing ahead of it.
+  step("Forward reopens the view Back left", async () => {
+    await tab.evaluate(() => {
+      window.__historyKeys = [];
+      window.__recordHistoryKey = event => {
+        if (event.altKey && ["KeyB", "KeyF"].includes(event.code)) window.__historyKeys.push(event.defaultPrevented);
+      };
+      window.addEventListener("keydown", window.__recordHistoryKey);
+    });
+    const press = async (code, accept) => {
+      const pressed = await tab.evaluate(() => window.__historyKeys.length);
+      await tab.keyboard.down("Alt");
+      await tab.keyboard.press(code);
+      await tab.keyboard.up("Alt");
+      let state = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        state = await popup.state();
+        if (await tab.evaluate(count => window.__historyKeys.length > count, pressed) && accept(state)) break;
+        await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+      }
+      return state;
+    };
+    const onKanji = state => state?.text.includes(GENERIC_KANJI_GLOSSARY) && state.hasBack === true;
+    const onTerm = state => state?.text.includes("to eat") && !state.text.includes(GENERIC_KANJI_GLOSSARY);
+    try {
+      const forward = await press("KeyF", state => onKanji(state)
+        && state.focusedClass.includes("gsm-hoshidicts-kanji-back"));
+      const back = await press("KeyB", state => onTerm(state) && state.focusedClass.includes("gsm-hoshidicts-kanji-link"));
+      const reopened = await tab.evaluate(() => [...window.__historyKeys]);
+      check(
+        "Alt+F reopens the kanji view Back left with Back focused, and Alt+B returns from it",
+        onKanji(forward) && forward.focusedClass.includes("gsm-hoshidicts-kanji-back")
+          && onTerm(back) && back.focusedClass.includes("gsm-hoshidicts-kanji-link")
+          && JSON.stringify(reopened) === "[true,true]",
+        JSON.stringify({ forward, back, reopened }),
+      );
+      const clicked = await popup.click(".gsm-hoshidicts-kanji-link");
+      let clickedState = null;
+      for (let attempt = 0; attempt < 40 && !onKanji(clickedState); attempt += 1) {
+        await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+        clickedState = await popup.state();
+      }
+      const ahead = await press("KeyF", onKanji);
+      const returned = await press("KeyB", onTerm);
+      const keys = await tab.evaluate(() => [...window.__historyKeys]);
+      check(
+        "Alt+F is left to the page when nothing is ahead, as after a new kanji click",
+        clicked && onKanji(clickedState) && onKanji(ahead) && onTerm(returned)
+          && JSON.stringify(keys) === "[true,true,false,true]",
+        JSON.stringify({ clickedState, ahead, returned, keys }),
+      );
+    } finally {
+      await tab.evaluate(() => window.removeEventListener("keydown", window.__recordHistoryKey));
+    }
+  });
+
   step("a duplicate clicked kanji", async () => {
     await tab.keyboard.press("Escape");
     await new Promise(resolvePromise => setTimeout(resolvePromise, 100));

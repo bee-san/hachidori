@@ -372,6 +372,8 @@ const PLANNED = [
   "Back restores complete linked results, exact tab, scroll, highlight and toolbar without lookup",
   "Back restores the term results after a generic kanji lookup",
   "clicked-kanji navigation moves and restores keyboard focus",
+  "Alt+F reopens the kanji view Back left with Back focused, and Alt+B returns from it",
+  "Alt+F is left to the page when nothing is ahead, as after a new kanji click",
   "Back restores focus to the exact clicked duplicate kanji",
   "the Settings enabled control disables one logical package",
   "a disabled selected term dictionary falls back to native kanji",
