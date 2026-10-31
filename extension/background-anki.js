@@ -8,7 +8,7 @@ import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-proto
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
 import {
-  normaliseOptions, OPTIONS_KEY, sleep, relay, startupSender, workerReply, failureReply,
+  normaliseOptions, OPTIONS_KEY, sleep, relay, readerPageSender, workerReply, failureReply,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, getAnkiMining } from "./background-requests.js";
 import {
@@ -101,23 +101,23 @@ const ANKI_METHODS = { hd_anki_status: "status", hd_anki_view: "view", hd_anki_p
 // second waits once rather than losing its screenshot.
 const CAPTURE_VISIBLE_RETRY_MS = 600;
 
-// Startup messages can include or omit sender.tab. Chrome's live extension
-// contexts bind either shape to the same document.
-async function screenshotOwnedTab(sender, startup) {
+// Messages from the startup and search pages can include or omit sender.tab.
+// Chrome's live extension contexts bind either shape to the same document.
+async function screenshotOwnedTab(sender, readerPage) {
   let tabId = sender.tab?.id;
-  if (startup && typeof chrome.runtime.getContexts === "function") {
+  if (readerPage && typeof chrome.runtime.getContexts === "function") {
     const [context] = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentIds: [sender.documentId] });
     if (!context) throw new Error("The reading document changed before the screenshot.");
     tabId = context.tabId;
   }
   const tab = await chrome.tabs.get(tabId);
   if (tab?.active !== true) throw new Error("The reading tab is no longer the active tab.");
-  // Tabs hides extension-page URLs; startup's exact live document was checked above.
+  // Tabs hides extension-page URLs; such a page's exact live document was checked above.
   // The script URL can predate SPA navigation; sender.tab snapshots the current page.
-  if (!startup && (sender.frameId ?? 0) === 0 && tab.url !== (sender.tab?.url ?? sender.url)) {
+  if (!readerPage && (sender.frameId ?? 0) === 0 && tab.url !== (sender.tab?.url ?? sender.url)) {
     throw new Error("The reading tab moved to another page before the screenshot.");
   }
-  if (!startup) {
+  if (!readerPage) {
     // Address the exact content-script document, so a same-URL reload cannot
     // answer on its predecessor's behalf.
     const document = await chrome.tabs.sendMessage(tabId, {
@@ -147,14 +147,14 @@ async function captureNetflixPreviewInDocument(tab, sender) {
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 async function captureSenderViewport(sender, options) {
-  const startup = startupSender(sender);
-  if (typeof sender.tab?.id !== "number" && !startup) {
+  const readerPage = readerPageSender(sender);
+  if (typeof sender.tab?.id !== "number" && !readerPage) {
     throw new Error("Only a reading tab can be captured.");
   }
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
-    const tab = await screenshotOwnedTab(sender, startup);
-    const preview = options.experimental.netflixPreviewScreenshots === true && !startup && (sender.frameId ?? 0) === 0
+    const tab = await screenshotOwnedTab(sender, readerPage);
+    const preview = options.experimental.netflixPreviewScreenshots === true && !readerPage && (sender.frameId ?? 0) === 0
       && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url);
     let captured;
     try {
@@ -170,7 +170,7 @@ async function captureSenderViewport(sender, options) {
     }
     // Capturing stays bound to this window even if the active reading tab is
     // dragged to another one before the pixels return.
-    const afterCapture = await screenshotOwnedTab(sender, startup);
+    const afterCapture = await screenshotOwnedTab(sender, readerPage);
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
     }

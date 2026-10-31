@@ -2,6 +2,7 @@
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
 import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { openSearchPage } from "./search-window.js";
 
 // Settings → Advanced → Get debug info includes what failed here.
 captureDocumentActions(document, captureDebugLog(window, {
@@ -31,6 +32,7 @@ function render() {
   if (!options) return;
   elements["lookup-toggle"].setAttribute("aria-checked", String(options.hoverEnabled));
   elements["lookup-state"].textContent = options.hoverEnabled ? "On" : "Off";
+  elements["open-search"].hidden = !options.showToolbarSearchButton;
   const activeHint = options.lookupMode !== "hover"
     ? `Hold ${activationLabel(options.activationKey)} to scan` : "Hover over Japanese text to scan";
   elements["activation-hint"].textContent = options.hoverEnabled ? activeHint : "Lookups paused";
@@ -84,6 +86,10 @@ elements["lookup-toggle"].addEventListener("click", () => {
 });
 elements["open-settings"].addEventListener("click", () => {
   void run(async () => { await chrome.runtime.openOptionsPage(); window.close(); });
+});
+// Yomitan's action popup Search: the open search page, or a new tab with it.
+elements["open-search"].addEventListener("click", () => {
+  void run(async () => { await openSearchPage(chrome, "existingOrNewTab"); window.close(); });
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;

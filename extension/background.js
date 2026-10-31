@@ -5,7 +5,7 @@
 import {
   DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
-  ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, startupSender,
+  ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
   serialiseStorage, workerReply, failureReply,
 } from "./background-core.js";
 import {
@@ -47,6 +47,7 @@ import {
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyNetflixFlag } from "./netflix.js";
+import { openSearchPage } from "./search-window.js";
 
 /*
  * Service worker for Hachidori.
@@ -266,7 +267,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // pronunciation subsequently started by a different document.
       message = { ...message, owner: sender.documentId };
       if (["hd_audio_test", "hd_audio_play", "hd_audio_candidates"].includes(message.type)) {
-        operation = { ...message, tabId: sender.tab?.id, startup: startupSender(sender) };
+        operation = { ...message, tabId: sender.tab?.id, readerPage: readerPageSender(sender) };
         latestAudioOperation = operation;
         stillCurrent = () => latestAudioOperation === operation;
       } else if (message.type === "hd_audio_stop"
@@ -313,13 +314,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-audio-events") return false;
   const operation = latestAudioOperation;
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL(OFFSCREEN_DOCUMENT)
-      || !operation || (!operation.startup && operation.tabId === undefined) || operation.owner !== message.owner
+      || !operation || (!operation.readerPage && operation.tabId === undefined) || operation.owner !== message.owner
       || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
   const progress = { ...message, target: "hachidori-audio-content" };
-  // The packaged startup reader lives in an extension page, outside the
-  // content-script audience of tabs.sendMessage. Its controller accepts only
+  // The startup and search pages' readers live in extension pages, outside the
+  // content-script audience of tabs.sendMessage. Their controller accepts only
   // its active random request ID; the worker already checked the document owner.
-  const delivery = operation.startup ? chrome.runtime.sendMessage(progress)
+  const delivery = operation.readerPage ? chrome.runtime.sendMessage(progress)
     : chrome.tabs.sendMessage(operation.tabId, progress, { documentId: operation.owner });
   delivery.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
   return true;
@@ -481,11 +482,18 @@ const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
   "historyForward", "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord"]);
+// Yomitan's search page shortcuts (#610) and how each opens the page.
+const SEARCH_COMMANDS = new Map([["openSearchPage", "existingOrNewTab"],
+  ["openSearchPageCurrentTab", "existingOrCurrentTab"], ["openPopupWindow", "popup"]]);
 
 chrome.commands?.onCommand?.addListener((command, tab) => {
   if (command === "openSettingsPage") {
     chrome.runtime.openOptionsPage().catch((error) => {
       console.error("hachidori: could not open settings:", describeErrorOrJson(error));
+    });
+  } else if (SEARCH_COMMANDS.has(command)) {
+    openSearchPage(chrome, SEARCH_COMMANDS.get(command), tab).catch((error) => {
+      console.error("hachidori: could not open the search page:", describeErrorOrJson(error));
     });
   } else if (command === "toggleTextScanning") {
     toggleLookupsFromCommand().catch((error) => {

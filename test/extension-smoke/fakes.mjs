@@ -757,6 +757,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
+  const searchWindow = readFileSync(resolve(EXTENSION, "search-window.js"), "utf8").replace(/^export\s+/gmu, "");
   // The worker's modules run as one script, as background.js did before it was
   // split: each without its imports and exports, and each constant declared
   // before the module-load code that reads it.
@@ -790,7 +791,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n${searchWindow}\n`
       + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },
@@ -1125,8 +1126,9 @@ function loadStartupScript(window) {
   const dictionaryProgress = readFileSync(resolve(EXTENSION, "dictionary-progress.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
+  const readerPage = readFileSync(resolve(EXTENSION, "reader-page.js"), "utf8").replace(/^export\s+/gmu, "");
   const startup = readFileSync(resolve(EXTENSION, "startup.js"), "utf8")
-    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol|error-text|debug-log)\.js";\s*/gmu, "")
+    .replace(/^import .* from "\.\/(?:settings-dom|sharing-protocol|error-text|debug-log|reader-page)\.js";\s*/gmu, "")
     .replace(/^import .* from "\.\/recommended-install-client\.js";\s*/gmu, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")
     .replace(/import "\.\/visual-novel\.js";\s*/u, "")
@@ -1138,7 +1140,7 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/startup-practice\.js";\s*/u, "");
   // startup.js is a module with a top-level await; an async wrapper keeps that
   // legal in a classic-script eval and surfaces a load failure through its promise.
-  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${errorText}\n${startup}\n})()`);
+  return window.eval(`(async () => {\n${readerOptions}\n${localAudioSource}\n${recommended}\n${managedSource}\n${dictionaryProgress}\n${setupState}\n${localFileAccess}\n${practice}\n${errorText}\n${readerPage}\n${startup}\n})()`);
 }
 
 const mjs = resolve(EXTENSION, "vendor/hoshidicts.mjs");

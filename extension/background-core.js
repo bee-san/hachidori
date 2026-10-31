@@ -16,6 +16,7 @@ import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_T
 import { sameJsonValue } from "./json-value.js";
 import { boundResponseFailure, responseFits, responseLimitError } from "./response-limits.js";
 import { STARTUP_PAGE } from "./setup-state.js";
+import { SEARCH_PAGE } from "./search-window.js";
 
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
@@ -290,8 +291,19 @@ async function removeLegacyDictionaryRows(current, legacyDictionaries) {
   }
 }
 
+function extensionPageSender(sender, page) {
+  return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(page);
+}
+
 function startupSender(sender) {
-  return sender.id === chrome.runtime.id && sender.url?.split(/[?#]/u)[0] === chrome.runtime.getURL(STARTUP_PAGE);
+  return extensionPageSender(sender, STARTUP_PAGE);
+}
+
+// The extension pages that load the reader themselves: first-run setup's
+// practice and the search page (#610). tabs.sendMessage does not reach them,
+// and tabs hide their URLs.
+function readerPageSender(sender) {
+  return startupSender(sender) || extensionPageSender(sender, SEARCH_PAGE);
 }
 
 function optionsWriteConflict(message, options) {
@@ -362,5 +374,5 @@ export {
   UPDATE_SETTINGS_KEY, engineSender, ankiSettingsSender, writeLocalState, sleep, ensureOffscreen, relay,
   readDictionaryStorage, normaliseDictionarySelections, assertDictionaryState, assertOrdinaryCustomTransition,
   assertCustomDictionaryCasRequest, dictionaryCommit, optionsRevision, removeLegacyDictionaryRows, startupSender,
-  optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply, checkedOptionsResult, failureReply,
+  readerPageSender, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply, checkedOptionsResult, failureReply,
 };

@@ -9,9 +9,10 @@ const background = readFileSync(new URL("../extension/background.js", import.met
 const manifest = JSON.parse(readFileSync(new URL("../extension/manifest.json", import.meta.url), "utf8"));
 
 function worker(stored) {
-  const writes = [], queued = [], errors = [], tabMessages = [];
+  const writes = [], queued = [], errors = [], tabMessages = [], searches = [];
   let onCommand = null, openedSettings = 0;
   const context = vm.createContext({
+    openSearchPage: async (api, mode, tab) => { searches.push({ mode, tab }); },
     sharingReady: Promise.resolve(),
     sharingLinked: false,
     WORKER_TARGET: "hoshidicts-worker",
@@ -30,7 +31,7 @@ function worker(stored) {
   });
   vm.runInContext(background.slice(background.indexOf("// Yomitan's native browser shortcuts"),
     background.indexOf("// Alarms may be cleared across browser restarts")), context);
-  return { writes, queued, errors, tabMessages, command: (name, tab) => onCommand(name, tab),
+  return { writes, queued, errors, tabMessages, searches, command: (name, tab) => onCommand(name, tab),
     settle: async () => {
       // The toggle first waits for sharing initialization before joining the queue.
       await new Promise(resolveDone => setImmediate(resolveDone));
@@ -58,18 +59,38 @@ test("browser commands toggle lookups through the queued revisioned write and op
 
   const other = worker({ revision: 1, hoverEnabled: false });
   other.command("openSettingsPage");
-  other.command("openSearchPage");
+  other.command("openPreferences");
   await new Promise(resolveDone => setImmediate(resolveDone));
   assert.equal(other.openedSettings(), 1);
   assert.equal(other.queued.length, 0, "only the toggle writes options");
   assert.deepEqual(other.errors, []);
 });
 
+// Issue #610: Yomitan's three search page shortcuts, with its suggested Alt+Insert.
+const SEARCH_COMMANDS = { openSearchPage: "existingOrNewTab", openSearchPageCurrentTab: "existingOrCurrentTab",
+  openPopupWindow: "popup" };
+
+test("search page browser commands open the search page in a new tab, the current tab or a popup window", async () => {
+  assert.equal(manifest.commands.openSearchPage.suggested_key.default, "Alt+Insert");
+  for (const name of ["openSearchPageCurrentTab", "openPopupWindow"]) {
+    assert.equal(manifest.commands[name].suggested_key, undefined, `${name} has no suggested key, as in Yomitan`);
+  }
+  const commands = worker({ revision: 1 });
+  for (const name of Object.keys(SEARCH_COMMANDS)) commands.command(name, { id: 9 });
+  await new Promise(resolveDone => setImmediate(resolveDone));
+  assert.deepEqual(JSON.parse(JSON.stringify(commands.searches)),
+    Object.values(SEARCH_COMMANDS).map(mode => ({ mode, tab: { id: 9 } })));
+  assert.deepEqual(commands.tabMessages, [], "no search command reaches the reader");
+  assert.equal(commands.queued.length, 0);
+  assert.deepEqual(commands.errors, []);
+});
+
 test("popup-action browser commands reach the active tab's reader as keybind actions", () => {
   const argumentFree = globalThis.HDReaderOptions.KEYBIND_ACTIONS
     .filter(({ id, argument }) => id !== "" && id !== "toggleOption" && !["audioSource", "option"].includes(argument))
     .map(({ id }) => id);
-  const readerCommands = Object.keys(manifest.commands).filter(name => !["toggleTextScanning", "openSettingsPage"].includes(name));
+  const readerCommands = Object.keys(manifest.commands)
+    .filter(name => !["toggleTextScanning", "openSettingsPage", ...Object.keys(SEARCH_COMMANDS)].includes(name));
   assert.deepEqual([...readerCommands].sort(), argumentFree.sort(), "every keybind action without a chosen argument is a browser command");
 
   const commands = worker({ revision: 1 });
