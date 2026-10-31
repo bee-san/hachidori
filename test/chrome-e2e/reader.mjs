@@ -11,7 +11,9 @@ import "./custom-dictionary.mjs";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe } from "node:test";
+import { checkDarkReader, DARK_READER_CHECK } from "../chrome-dark-reader.mjs";
 import { checkPopupResize } from "../chrome-popup-resize.mjs";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { check, diagnostics, HIGHLIGHT_NAME, step } from "./harness.mjs";
 import { replacedPackage } from "./import.mjs";
 import { hoverForPopup, popupReader } from "./popup-reader.mjs";
@@ -333,9 +335,8 @@ describe("reader", () => {
         if (event.altKey) setTimeout(() => window.__altWheelsCancelled.push(event.defaultPrevented));
       }, true);
     });
-    const readAltWheelPane = () => tab.evaluate(() => {
-      const scroll = document.querySelector("hachidori-host")?.shadowRoot
-        ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+    const readAltWheelPane = () => popupRoot(tab).evaluate(popupShadow => {
+      const scroll = popupShadow.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
       if (!scroll) return null;
       const origin = scroll.getBoundingClientRect().top - scroll.scrollTop;
       // Where entry navigation lands: a later entry's own header slides under
@@ -347,9 +348,8 @@ describe("reader", () => {
         rect: scroll.getBoundingClientRect().toJSON(), pageY: window.scrollY, pageWheels: window.__pageWheels,
         cancelled: [...window.__altWheelsCancelled] };
     });
-    const altWheelScrolledTo = top => tab.waitForFunction(value => {
-      const scroll = document.querySelector("hachidori-host")?.shadowRoot
-        ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+    const altWheelScrolledTo = top => popupRoot(tab).waitFor((popupShadow, value) => {
+      const scroll = popupShadow.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
       return scroll && Math.abs(scroll.scrollTop - value) <= 1;
     }, { timeout: 2000 }, top).catch(() => null);
     const altWheelPopup = await hover("#verb", { accept: state => state.text.includes("unrelated term-dictionary definition") });
@@ -392,12 +392,12 @@ describe("reader", () => {
     verb = await hover("#verb");
     check("hovering an inflected verb shows a popup", verb !== null,
       "no .gsm-hoshidicts-popup appeared within 12 hover attempts");
-    const hostPresent = verb === null ? false : await tab.evaluate(() => {
+    const hostPresent = verb === null ? false : await popupRoot(tab).evaluate(popupShadow => {
       const host = document.querySelector("hachidori-host");
-      return !!host && host.isConnected && host.shadowRoot instanceof ShadowRoot;
+      return !!host && host.isConnected && popupShadow.mode === "closed" && host.shadowRoot === null;
     });
-    check("the content script attached its open-shadow host to the page", hostPresent,
-      "no connected <hachidori-host> with an open shadow root");
+    check("the content script isolates its popup in a closed shadow root", hostPresent,
+      "no connected <hachidori-host> with a closed shadow root");
 
     // Read through a default rather than under an `if`: a popup that never appeared
     // must fail these three as well, not quietly remove them from the total.
@@ -416,6 +416,10 @@ describe("reader", () => {
         && replacedPackage?.title === "hachidori-fixture",
       `popup tabs: ${JSON.stringify(verbState.tabs)}`,
     );
+  });
+  step("Dark Reader popup isolation", async () => {
+    await checkDarkReader(page, pageUrl);
+    check(DARK_READER_CHECK, true);
   });
 });
 

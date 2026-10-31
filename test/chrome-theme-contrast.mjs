@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { popupRoot } from "./chrome-popup-root.mjs";
 import { buildTitledZip, monochromeImageFixture } from "./make-fixture.mjs";
 import "../extension/reader-options.js";
 
@@ -309,20 +310,18 @@ try {
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       });
       await tab.mouse.move(point.x, point.y);
-      await tab.waitForFunction(theme => {
-        const root = document.querySelector("hachidori-host")?.shadowRoot;
-        const images = root?.querySelectorAll(".gloss-image-link img");
-        return root?.host.dataset.hoshidictsTheme === theme && images?.length === 2
+      await popupRoot(tab).waitFor((root, theme) => {
+        const images = root.querySelectorAll(".gloss-image-link img");
+        return root.host.dataset.hoshidictsTheme === theme && images.length === 2
           && [...images].every(image => image.naturalWidth === 100);
       }, {}, expectedTheme);
       // Natural dimensions can be available before the CSS mask is painted.
-      await tab.evaluate(async () => {
-        await Promise.all([...document.querySelector("hachidori-host").shadowRoot.querySelectorAll(".gloss-image-link img")]
+      await popupRoot(tab).evaluate(async popupShadow => {
+        await Promise.all([...popupShadow.querySelectorAll(".gloss-image-link img")]
           .map(image => image.decode()));
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
-      const state = await tab.evaluate(() => {
-        const root = document.querySelector("hachidori-host").shadowRoot;
+      const state = await popupRoot(tab).evaluate(root => {
         const popup = root.querySelector(".gsm-hoshidicts-popup");
         const images = [...root.querySelectorAll(".gloss-image-link img")];
         const colour = new OffscreenCanvas(1, 1).getContext("2d");
@@ -340,11 +339,10 @@ try {
       for (let attempt = 0; attempt < 2; attempt++) {
         const imagePoint = centre(cardRect);
         if (attempt === 0) await tab.mouse.move(imagePoint.x, imagePoint.y);
-        else await tab.$eval("hachidori-host", host => host.shadowRoot.querySelector(".gloss-image-link").focus());
+        else await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gloss-image-link").focus());
         try {
-          await tab.waitForFunction(() => {
-            const preview = document.querySelector("hachidori-host")?.shadowRoot
-              ?.querySelector(".gsm-hoshidicts-image-hover-preview");
+          await popupRoot(tab).waitFor(popupShadow => {
+            const preview = popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview");
             return preview?.querySelector("img")?.naturalWidth === 100;
           }, { timeout: 7500 });
           break;
@@ -352,17 +350,15 @@ try {
           if (attempt === 1) throw new Error(`${scenario.name}: preview did not open`, { cause: error });
           await tab.mouse.move(2, 2);
           await tab.mouse.move(point.x, point.y);
-          await tab.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot
-            ?.querySelectorAll(".gloss-image-link img")?.length === 2);
+          await popupRoot(tab).waitFor(popupShadow => popupShadow.querySelectorAll(".gloss-image-link img").length === 2);
         }
       }
-      const preview = await tab.evaluate(() => {
-        const node = document.querySelector("hachidori-host").shadowRoot
-          .querySelector(".gsm-hoshidicts-image-hover-preview");
+      const preview = await popupRoot(tab).evaluate(popupShadow => {
+        const node = popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview");
         return { rect: node.getBoundingClientRect().toJSON(), appearance: node.dataset.appearance };
       });
       const { png: previewPng, pixels: [previewInk] } = await sample(tab, [centre(preview.rect)]);
-      await tab.$eval("hachidori-host", host => host.shadowRoot.activeElement?.blur());
+      await popupRoot(tab).evaluate(popupShadow => popupShadow.activeElement?.blur());
       await tab.mouse.move(2, 2);
       const words = [];
       for (const word of wordTabs) words.push(await sampleWords(word.page, expectedTheme, scenario.forced));

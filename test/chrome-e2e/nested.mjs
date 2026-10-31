@@ -9,6 +9,7 @@
 // The scenario's previous file: its steps run before the ones here.
 import "./popup.mjs";
 import { describe } from "node:test";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { nestedLinksFixture } from "../make-fixture.mjs";
 import { check, HIGHLIGHT_NAME, step } from "./harness.mjs";
 import { forceSourceFallback, hoverForPopup, popupReader } from "./popup-reader.mjs";
@@ -388,8 +389,8 @@ async function checkNestedLinks(settings, tab, popup, browser) {
       await settle(500);
     }
     triggerEvidence.dragged = await child.state();
-    triggerEvidence.dragSelection = await tab.evaluate(() => {
-      const selection = document.querySelector("hachidori-host")?.shadowRoot?.getSelection?.();
+    triggerEvidence.dragSelection = await popupRoot(tab).evaluate(popupShadow => {
+      const selection = popupShadow.getSelection?.();
       const text = selection?.toString() ?? "";
       selection?.removeAllRanges();
       window.getSelection().removeAllRanges();

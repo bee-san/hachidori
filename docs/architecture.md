@@ -3,13 +3,20 @@
 Hachidori uses a WebAssembly dictionary engine in a Chrome Manifest V3
 extension, with a service worker and offscreen document.
 
+The normal reader popup uses a closed shadow root so page extensions such as
+Dark Reader cannot rewrite its palette, dictionary styles or Custom CSS.
+Saving non-empty **Design → Custom JavaScript** opts into an open root so those
+scripts retain their existing `host.shadowRoot` access; Dark Reader can also
+reach that root. Reload the reading page after adding or clearing a script.
+The Design preview remains open inside its extension page.
+
 ## Runtime layout
 
 ```text
 web page
   └─ content.js, with content-scan.js and content-dictionaries.js
        ├─ scans Japanese text near the pointer
-       ├─ renders the popup in a closed shadow root
+       ├─ renders the popup in an isolated shadow root
        └─ appends popup Note entries to the managed custom source
 
 settings.html / content.js

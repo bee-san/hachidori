@@ -9,6 +9,7 @@
 // The scenario's previous file: its steps run before the ones here.
 import "./counts.mjs";
 import { describe } from "node:test";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { externalLinksFixture, kanjiReadingFuriganaFixture } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
 import { hoverForPopup } from "./popup-reader.mjs";
@@ -41,17 +42,16 @@ async function checkFrameAndFullscreenPopups(tab, popup, pageUrl) {
     for (let attempt = 0; attempt < 12 && !frameResult; attempt += 1) {
       await tab.mouse.move(2, 2);
       await tab.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
-      await frame.waitForFunction(() => {
-        const host = document.querySelector("hachidori-host");
-        const panel = host?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+      await popupRoot(tab, frame.url()).waitFor(popupShadow => {
+        const panel = popupShadow.querySelector(".gsm-hoshidicts-popup");
         return panel && !panel.hidden && panel.textContent.includes("食べる");
       }, { timeout: 1500 }).then(() => { frameResult = true; }).catch(() => {});
     }
-    frameResult = frameResult && await tab.evaluate(() => {
-      const topPopup = document.querySelector("hachidori-host")?.shadowRoot
-        ?.querySelector(".gsm-hoshidicts-popup");
+    // No host in the top document means no top-level popup either.
+    frameResult = frameResult && (await popupRoot(tab).evaluate(popupShadow => {
+      const topPopup = popupShadow.querySelector(".gsm-hoshidicts-popup");
       return !topPopup || topPopup.hidden;
-    });
+    }) ?? true);
   } finally {
     await tab.$eval("#lookup-frame", element => element.remove());
   }
@@ -73,10 +73,10 @@ async function checkFrameAndFullscreenPopups(tab, popup, pageUrl) {
     await tab.click("#fullscreen-button");
     await tab.waitForFunction(() => !!document.fullscreenElement, { timeout: 5000 });
     opened = await hoverForPopup(tab, popup, "#fullscreen-verb");
-    fullscreenResult = await tab.evaluate(() => {
+    fullscreenResult = await popupRoot(tab).evaluate(popupShadow => {
       const player = document.getElementById("fullscreen-player");
       const host = document.querySelector("#fullscreen-player > hachidori-host");
-      const panel = host?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+      const panel = popupShadow.querySelector(".gsm-hoshidicts-popup");
       const rect = panel?.getBoundingClientRect();
       return { mounted: host?.parentElement === player, visible: panel && !panel.hidden,
         hit: rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.localName : null };
@@ -115,8 +115,8 @@ async function checkPopupStaysInPlace(tab, popup) {
     document.body.firstElementChild.before(feed);
     document.body.style.minHeight = "6000px";
   });
-  const box = () => tab.evaluate(() => {
-    const panel = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+  const box = () => popupRoot(tab).evaluate(popupShadow => {
+    const panel = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const rect = panel?.getBoundingClientRect();
     return rect && !panel.hidden ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
   });

@@ -420,6 +420,23 @@ async function externalLinksCase() {
 }
 
 describe("content script: popup", () => {
+  test("popup style isolation and custom JavaScript access", async () => {
+    const result = await contentNoteStage({ isolation: async () => {
+      const outcomes = {};
+      for (const customPopupJavascript of ["", "document.body.dataset.custom = 'yes';"]) {
+        const harness = await createHarness(null, { options: { customPopupJavascript } });
+        try {
+          const root = harness.popup.getRootNode();
+          const custom = customPopupJavascript !== "";
+          outcomes[custom ? "saved Custom JavaScript retains popup DOM access" : "normal popups keep their styles in a closed shadow root"] =
+            root.mode === (custom ? "open" : "closed") && root.host.shadowRoot === (custom ? root : null);
+        } finally { harness.close(); }
+      }
+      return outcomes;
+    } });
+    for (const [name, passed] of Object.entries(result?.isolation ?? {})) check(name, passed, String(passed));
+  });
+
   test("popup visibility events", async () => {
     const noteContent = await contentNoteStage({
       popupVisibility: async () => (await popupVisibilityCase()),

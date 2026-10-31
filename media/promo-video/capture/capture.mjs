@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { answerAnkiConnect } from "../../../test/anki-connect-fake.mjs";
+import { exposePopupRoot } from "../../../test/chrome-popup-root.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
@@ -111,8 +112,7 @@ async function moveMouse(page, x, y) {
   pointer = { x: Math.round(x), y: Math.round(y) };
 }
 async function popupRects(page) {
-  return page.evaluate(() => [...(document.querySelector("hachidori-host")?.shadowRoot
-    ?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
+  return page.evaluate(() => [...(window.__popupRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
     .filter(node => !node.hidden && node.getBoundingClientRect().width > 0)
     .map(node => { const box = node.getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, height: box.height }; }));
 }
@@ -120,7 +120,7 @@ async function popupRects(page) {
 // matched inside the visible popup; the first rendered match wins.
 async function markRects(page, marks) {
   const rects = await page.evaluate(marks => {
-    const popup = [...(document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
+    const popup = [...(window.__popupRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
       .find(node => !node.hidden && node.getBoundingClientRect().width > 0);
     const found = {};
     for (const [name, selector] of Object.entries(marks)) {
@@ -167,7 +167,7 @@ function noteSummary(note) {
 // wait until its shadow tree has been quiet for a moment.
 async function settled(page, quietMs = 500) {
   await page.evaluate(quiet => new Promise(done => {
-    const root = document.querySelector("hachidori-host")?.shadowRoot;
+    const root = window.__popupRoot;
     if (!root) { setTimeout(done, quiet); return; }
     let timer = setTimeout(finish, quiet);
     const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(finish, quiet); });
@@ -175,7 +175,7 @@ async function settled(page, quietMs = 500) {
     const cap = setTimeout(finish, 6000);
     function finish() { observer.disconnect(); clearTimeout(cap); done(); }
   }), quietMs);
-  await page.evaluate(() => Promise.all([...(document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll("img") ?? [])]
+  await page.evaluate(() => Promise.all([...(window.__popupRoot?.querySelectorAll("img") ?? [])]
     .map(image => image.decode().catch(() => {}))));
 }
 async function glyph(page, selector, index = 0, fraction = 0.45) {
@@ -222,8 +222,10 @@ async function hover(page, selector, expected, { index = 0, rest = null } = {}) 
     await sleep(attempt ? 250 : 120);
     await moveMouse(page, point.x, point.y + (attempt % 2));
     try {
+      // The first lookup builds the host whose closed root the page reads.
+      await exposePopupRoot(page, { timeout: 5000 });
       await page.waitForFunction(expected => {
-        const popup = [...(document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
+        const popup = [...(window.__popupRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
           .find(node => !node.hidden && node.getBoundingClientRect().width > 0);
         if (!popup) return false;
         if (expected.text) return popup.innerText.includes(expected.text);
@@ -250,7 +252,7 @@ async function hide(page) {
 // Click an element inside the popup's shadow root with the real mouse.
 async function clickInPopup(page, selector) {
   const box = await page.evaluate(selector => {
-    const node = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(selector);
+    const node = window.__popupRoot?.querySelector(selector);
     if (!node) return null;
     const rect = node.getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -381,8 +383,7 @@ try {
   // Click the first kanji of the headword. Bee's Ultimate Kanji Dictionary is a
   // term dictionary, so the kanji opens as a term result with a Back button.
   await clickInPopup(reading, ".gsm-hoshidicts-kanji-link");
-  await reading.waitForFunction(() => !!document.querySelector("hachidori-host")?.shadowRoot
-    ?.querySelector(".gsm-hoshidicts-kanji-back"), { timeout: 10_000 });
+  await reading.waitForFunction(() => !!window.__popupRoot?.querySelector(".gsm-hoshidicts-kanji-back"), { timeout: 10_000 });
   await settled(reading);
   await shoot(reading, "lookup-3-kanji", { marks: { back: "popup:.gsm-hoshidicts-kanji-back", entry: "popup:.gsm-hoshidicts-entry" } });
   await hide(reading);
@@ -421,14 +422,13 @@ try {
   await scrollTo(reading, "#line-promise", 150);
   await hover(reading, "#w-promise", "約束");
   await reading.waitForFunction(() => {
-    const button = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-mine-button");
+    const button = window.__popupRoot?.querySelector(".gsm-hoshidicts-mine-button");
     return button && !button.hidden && button.dataset.state === "ready";
   }, { timeout: 20_000 });
   await settled(reading);
   await shoot(reading, "anki-2-ready", { marks: { mine: "popup:.gsm-hoshidicts-mine-button" } });
   await clickInPopup(reading, ".gsm-hoshidicts-mine-button");
-  await reading.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot
-    ?.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state === "success", { timeout: 30_000 });
+  await reading.waitForFunction(() => window.__popupRoot?.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state === "success", { timeout: 30_000 });
   await settled(reading);
   await shoot(reading, "anki-4-added", { marks: { mine: "popup:.gsm-hoshidicts-mine-button", feedback: "popup:.gsm-hoshidicts-mining-feedback" } });
   manifest.anki.note = noteSummary([...anki.notes.values()].at(-1));
@@ -444,7 +444,7 @@ try {
   for (let step = 1; step <= 8; step++) await moveMouse(reading, first.x + (last.x - first.x) * step / 8, first.y);
   await reading.mouse.up();
   await reading.waitForFunction(() => {
-    const popup = [...(document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
+    const popup = [...(window.__popupRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
       .find(node => !node.hidden && node.getBoundingClientRect().width > 0);
     return !!popup?.querySelector(".gsm-hoshidicts-note-button");
   }, { timeout: 15_000 });
@@ -452,13 +452,13 @@ try {
   await shoot(reading, "custom-0-selected", { marks: { word: "#w-name", notice: "popup:.gsm-hoshidicts-lookup-notice", pencil: "popup:.gsm-hoshidicts-note-button" } });
   await clickInPopup(reading, ".gsm-hoshidicts-note-button");
   await reading.waitForFunction(() => {
-    const form = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-note-form");
+    const form = window.__popupRoot?.querySelector(".gsm-hoshidicts-note-form");
     return form && !form.hidden;
   });
   await settled(reading, 300);
   await shoot(reading, "custom-1-form", { marks: { form: "popup:.gsm-hoshidicts-note-form:not([hidden])" } });
   const focusField = name => reading.evaluate(name => {
-    const root = document.querySelector("hachidori-host").shadowRoot;
+    const root = window.__popupRoot;
     [...root.querySelectorAll(`.gsm-hoshidicts-note-form:not([hidden]) .gsm-hoshidicts-note-${name}`)].at(-1).focus();
   }, name);
   await focusField("reading");
@@ -472,7 +472,7 @@ try {
   await shoot(reading, "custom-3-typed", { marks: { form: "popup:.gsm-hoshidicts-note-form:not([hidden])", save: "popup:.gsm-hoshidicts-note-form:not([hidden]) .gsm-hoshidicts-note-save" } });
   await clickInPopup(reading, ".gsm-hoshidicts-note-form:not([hidden]) .gsm-hoshidicts-note-save");
   await reading.waitForFunction(text => {
-    const popup = [...(document.querySelector("hachidori-host")?.shadowRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
+    const popup = [...(window.__popupRoot?.querySelectorAll(".gsm-hoshidicts-popup") ?? [])]
       .find(node => !node.hidden && node.getBoundingClientRect().width > 0);
     return !!popup && popup.textContent.includes(text) && !popup.querySelector(".gsm-hoshidicts-note-form:not([hidden])");
   }, { timeout: 30_000 }, "narrator's friend");
@@ -488,14 +488,12 @@ try {
   let blurred = false;
   for (let visit = 0; visit < 8 && !blurred; visit++) {
     await hover(reading, "#w-usual", "相変わらず");
-    blurred = await reading.evaluate(() => [...document.querySelector("hachidori-host").shadowRoot
-      .querySelectorAll("[data-definition-blur-state]")].some(node => node.dataset.definitionBlurState === "blurred"));
+    blurred = await reading.evaluate(() => [...window.__popupRoot.querySelectorAll("[data-definition-blur-state]")].some(node => node.dataset.definitionBlurState === "blurred"));
     if (!blurred) await hide(reading);
   }
   if (!blurred) throw new Error("Definitions never blurred");
   await shoot(reading, "blur-0-blurred", { marks: { stats: "popup:.gsm-hoshidicts-lookup-stats", definitions: "popup:.gsm-hoshidicts-definitions" } });
-  await reading.waitForFunction(() => ![...document.querySelector("hachidori-host").shadowRoot
-    .querySelectorAll("[data-definition-blur-state]")].some(node => ["blurred", "pending"].includes(node.dataset.definitionBlurState)),
+  await reading.waitForFunction(() => ![...window.__popupRoot.querySelectorAll("[data-definition-blur-state]")].some(node => ["blurred", "pending"].includes(node.dataset.definitionBlurState)),
   { timeout: 15_000 });
   await settled(reading);
   await shoot(reading, "blur-1-revealed", { marks: { stats: "popup:.gsm-hoshidicts-lookup-stats", definitions: "popup:.gsm-hoshidicts-definitions" } });
