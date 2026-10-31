@@ -26,12 +26,14 @@ const status = document.getElementById("search-status");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where
-// the reader can look up its other words, and blurs the box.
+// the reader can look up its other words, and blurs the box. The results
+// cover the hint, which would show through a translucent popup.
 function search() {
   const text = input.value.trim();
   if (!reader || !text) return;
   query.textContent = text;
   query.hidden = false;
+  status.hidden = true;
   input.blur();
   void reader.search(query.firstChild);
 }
