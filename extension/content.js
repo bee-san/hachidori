@@ -2455,13 +2455,16 @@
     else descendantTimer = window.setTimeout(prune, delay);
   }
 
+  function popupHasFocus() {
+    return levels.some((level) => level.popup && !level.popup.hidden && level.popup.contains(shadow?.activeElement));
+  }
+
   // Keyboard navigation and editing keep the view; the focus a mouse click
   // leaves on Audio or another button must not hold page scanning or dismissal.
   function popupFocusHoldsView() {
     const focused = shadow?.activeElement;
-    return levels.some(level => level.popup && !level.popup.hidden && level.popup.contains(focused))
-      && (focused.matches(":focus-visible")
-        || (isEditingElement(focused) && focused.localName !== "button"));
+    return popupHasFocus() && (focused.matches(":focus-visible")
+      || (isEditingElement(focused) && focused.localName !== "button"));
   }
 
   function focusBlocksScan(level) {
@@ -3709,9 +3712,13 @@
     return true;
   }
 
+  // Pressing a link in the popup moves the page selection into it, and Chrome
+  // reports that selection at the host's place in the page rather than as the
+  // host. The focus the press gives the link marks the change as the popup's
+  // own, so any focus counts here, not only keyboard focus.
   function onSelectionChange() {
     if (disposed || !options.hoverEnabled || selectionDragActive || hasProtectedNote()
-        || popupFocusHoldsView() || pageEditorFocused() || selectionIsUnchanged()) return;
+        || popupHasFocus() || pageEditorFocused() || selectionIsUnchanged()) return;
     const selection = window.getSelection();
     if ([selection?.anchorNode, selection?.focusNode].some((node) =>
       node && (node === host || node.getRootNode() === shadow))) return;

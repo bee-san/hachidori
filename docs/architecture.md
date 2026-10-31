@@ -2259,10 +2259,15 @@ focused owner.
 There is no document-wide observer, polling or per-image observer.
 
 Keyboard focus (`:focus-visible`) and editing inside the popup protect its view
-from page hover and dismissal. Focus left on a mouse-clicked button, including
-Audio after playback, does neither. The same rule applies to child pruning and
-page selection lookups. Genuine focus departure rearms hover dismissal. Focusout waits for removal/focus transfer to settle so
-replacing a focused Note form cannot schedule dismissal of its refreshed result.
+from page hover and dismissal, and keep a focused child when the pointer
+returns to its parent. Focus left on a mouse-clicked button, including Audio
+after playback, does none of these. Page selection changes are different: while
+anything in the popup has focus, a change is the popup's own. Pressing a link
+in the popup moves the selection into it, which Chrome reports at the host's
+place in the page, and the link's focus keeps a selection lookup's popup open
+for the click. Genuine focus departure rearms hover dismissal. Focusout waits
+for removal/focus transfer to settle so replacing a focused Note form cannot
+schedule dismissal of its refreshed result.
 A control that disables itself while it works, such as an Anki action or the
 lookup failure's Retry, loses focus without the reader leaving, so its
 focusout schedules no dismissal either.
@@ -2778,7 +2783,7 @@ Otherwise it resolves to Add or the green View in Anki book action.
 An action disables itself while it saves or opens Anki. Pressed from the
 keyboard, it keeps the popup open and gets focus back once it is enabled
 again, unless focus has moved elsewhere, so Enter can then open the note it
-added. A mouse press takes no keyboard focus back, so page hover can resume.
+added. A mouse press takes no focus back.
 Missing Template IDs remain visible as disabled errors and send no Anki
 request.
 The content controller preflights each Template's rendered candidates in one
