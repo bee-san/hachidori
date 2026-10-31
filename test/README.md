@@ -369,7 +369,7 @@ Its steps run in this order, in one profile:
 | `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
 | `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, popup audio; mining to a fake AnkiConnect. |
-| `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
+| `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation, Back and Forward on Alt+B and Alt+F; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
 | `restart.mjs` | Backups and atomic replacement in Chrome, then `SIGKILL` and a relaunch on the same profile: settings, counts, setup, the library, OPFS and lookups survive; removal. |
 | `memory.mjs`, `media.mjs`, `file-access.mjs` | Low memory mode, the RAM default, entry and hash storage; lookup bounds, deep structured content and dictionary media; saved-page setup with Chrome's file access. |
