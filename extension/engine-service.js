@@ -243,6 +243,9 @@ function lookupOptionsJson(options, extra = {}) {
     frequencyDictionary: boundedText(options?.frequencyDictionary, "frequency dictionary", MAX_LOOKUP_TEXT_BYTES, false),
     frequencyOrder: FREQUENCY_ORDERS.includes(options?.frequencyOrder) ? options.frequencyOrder : "auto",
     primaryReading: boundedText(options?.primaryReading, "primary reading", MAX_LOOKUP_TEXT_BYTES, false),
+    // Words that only frequency and pitch dictionaries have (#620). The engine
+    // never returns them from hdw_lookup_dictionary.
+    metadataOnlyTerms: options?.metadataOnlyTerms === true,
     ...extra,
   });
 }

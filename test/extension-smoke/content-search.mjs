@@ -148,6 +148,14 @@ async function dockedCase() {
     const refreshedWithOptions = await answer(harness, [harness.term(anchor.textContent)]);
     outcomes["a lookup option change looks the docked result up again with the new options without counting it again"] =
       refreshedWithOptions?.maxResults === 32 && records() === recorded && !popup.hidden;
+    // So does showing words that only frequency or pitch dictionaries have (#620).
+    harness.emitOptions({ hoverEnabled: false, onlyScanJapaneseText: true, showMetadataOnlyResults: true });
+    const refreshedWithMetadata = await answer(harness, [harness.term(anchor.textContent)]);
+    outcomes["showing words without definitions looks the docked result up again asking for them"] =
+      refreshedWithMetadata?.options.metadataOnlyTerms === true && refreshedWithOptions?.options.metadataOnlyTerms === false
+      && !popup.hidden;
+    harness.emitOptions({ hoverEnabled: false, onlyScanJapaneseText: true });
+    await answer(harness, [harness.term(anchor.textContent)]);
     const typed = driver.search(english.firstChild);
     const englishSearch = await answer(harness, []);
     await typed;

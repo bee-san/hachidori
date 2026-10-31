@@ -568,6 +568,96 @@ async function checkLaterEntryPitch(settings, tab, popup) {
     JSON.stringify({ later: shown(later), alone: shown(alone), cleaned }));
 }
 
+// #620: Reading → Results → Show words that only frequency or pitch
+// dictionaries have. 東京 has a definition and 東京タワー only a frequency row
+// and a pitch row. Off, a hover on 東京タワー shows 東京; on, 東京タワー is the
+// first entry, with both dictionaries' tags and no definition card, and 東京
+// keeps its card after it.
+async function checkMetadataOnlyResults(settings, tab, popup) {
+  const terms = "Metadata-only words";
+  const frequency = "Metadata-only frequency";
+  const pitch = "Metadata-only pitch";
+  const reading = "とうきょうタワー";
+  const archives = [
+    [terms, { terms: [["東京", "とうきょう", "", "", 0, ["Tokyo (metadata-only fixture)"], 1, ""]] }],
+    [frequency, { banks: false, frequencyMode: "rank-based", termMeta: [["東京タワー", "freq",
+      { reading, frequency: { value: 5000, displayValue: "5000" } }]] }],
+    [pitch, { banks: false, termMeta: [["東京タワー", "pitch", { reading, pitches: [{ position: 5 }] }]] }],
+  ];
+  const original = await readSettingsControls(settings, ["opt-metadata-only-results", "opt-pitch-badge",
+    "opt-average-frequency", "opt-max-results"]);
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
+  const before = await status();
+  const installed = [];
+  // Every entry of a hover on 東京タワー whose first entry is `first`.
+  async function entries(first, accept) {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await hoverForPopup(tab, popup, "#verb", { accept });
+    await popup.click(".gsm-hoshidicts-show-more");
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const value = await popup.dictionaryTabs();
+      if (value && !value.hidden && !value.showMore && value.entries[0]?.expression === first) return value.entries;
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    throw new Error(`東京タワー did not settle: ${JSON.stringify(await popup.dictionaryTabs())}`);
+  }
+  const shown = list => list?.map(entry => ({ expression: entry.expression, cards: entry.cards.map(card => card.dictionary),
+    frequencyDictionaries: entry.frequencyDictionaries, pitchDictionaries: entry.pitchDictionaries }));
+  // HACHIDORI_METADATA_ONLY_SCREENSHOTS names a directory for the popup with
+  // the option off and on, and the Settings control.
+  const screenshots = process.env.HACHIDORI_METADATA_ONLY_SCREENSHOTS;
+  const capturePopup = async name => {
+    if (screenshots) await tab.screenshot({ path: `${screenshots}/${name}.png`, clip: await popup.rect() });
+  };
+  let off;
+  let on;
+  let cleaned;
+  try {
+    for (const [title, options] of archives) {
+      await installMediaArchive(settings, buildTitledZip(title, options));
+      installed.push(title);
+    }
+    // The suite reads one result by default, and the words with definitions
+    // come after one that has none.
+    await editSettingsControls(settings, { "opt-metadata-only-results": false, "opt-pitch-badge": true,
+      "opt-average-frequency": false, "opt-max-results": "32" });
+    await tab.$eval("#verb", element => { element.textContent = "東京タワー"; });
+    off = shown(await entries("東京", value => !value.plain.includes("タワー")));
+    await capturePopup("popup-off");
+    await editSettingsControls(settings, { "opt-metadata-only-results": true });
+    if (screenshots) {
+      await settings.bringToFront();
+      const results = await settings.evaluateHandle(() =>
+        document.getElementById("opt-metadata-only-results").closest("fieldset"));
+      await results.screenshot({ path: `${screenshots}/settings.png` });
+    }
+    on = shown(await entries("東京タワー", value => value.plain.includes("タワー")));
+    await capturePopup("popup-on");
+  } finally {
+    await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
+    await editSettingsControls(settings, original);
+    for (const title of installed) {
+      const removed = await settings.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title,
+      }), title);
+      if (!removed.ok) throw new Error(removed.error);
+    }
+    cleaned = (await status()).dictionaryCount === before.dictionaryCount;
+    await tab.keyboard.press("Escape");
+  }
+  check("a word only frequency and pitch dictionaries have is the first entry, without definitions, only while Settings asks for it",
+    JSON.stringify(off) === JSON.stringify([{ expression: "東京", cards: [terms], frequencyDictionaries: [],
+      pitchDictionaries: [] }])
+      && JSON.stringify(on) === JSON.stringify([
+        { expression: "東京タワー", cards: [], frequencyDictionaries: [frequency], pitchDictionaries: [pitch] },
+        ...off,
+      ])
+      && cleaned,
+    JSON.stringify({ off, on, cleaned }));
+}
+
 describe("frequency, metadata and audio", () => {
   step("frequency direction", async () => {
     await checkFrequencyDirection(browser, page, tab, popup);
@@ -579,6 +669,10 @@ describe("frequency, metadata and audio", () => {
 
   step("later entry pitch accents", async () => {
     await checkLaterEntryPitch(page, tab, popup);
+  });
+
+  step("words only frequency and pitch dictionaries have", async () => {
+    await checkMetadataOnlyResults(page, tab, popup);
   });
 
   step("popup audio", async () => {
