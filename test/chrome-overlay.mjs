@@ -508,6 +508,8 @@ try {
     keepOpenHidden: document.getElementById("opt-lookup-sticky-row").hidden,
     localFilePromptHidden: document.getElementById("settings-local-file-access").hidden,
     localFilePromptEmpty: document.getElementById("settings-local-file-access").childElementCount === 0,
+    // The search page opens from Chrome's shortcuts and toolbar menu (#610).
+    searchPageHidden: document.getElementById("search-page-settings").hidden,
   }));
   const guardedRequests = await settings.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
@@ -526,7 +528,7 @@ try {
   assert.equal(ankiSettings.screenshotEnabled, false);
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
   assert.deepEqual(readingSettings, { readingEnabled: true, activationKey: "", keepOpenHidden: true,
-    localFilePromptHidden: true, localFilePromptEmpty: true }, "a seeded overlay shows No key");
+    localFilePromptHidden: true, localFilePromptEmpty: true, searchPageHidden: true }, "a seeded overlay shows No key");
   assert.ok(guardedRequests.ok === false && guardedRequests.error.includes("only from lookup popups"),
   JSON.stringify(guardedRequests));
   // Setup never opens in an overlay: the host has no tab to show it in.

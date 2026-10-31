@@ -214,6 +214,9 @@ function configureBrowserUi() {
     customJavascript.dataset.settingsUnavailable = "true";
     customJavascript.hidden = true;
   }
+  // The search page opens from the browser's shortcuts and toolbar menu,
+  // which an overlay host does not have.
+  if (!HOST_CAPABILITIES.browserShortcuts) element("search-page-settings").hidden = true;
 }
 
 function sectionHasPendingWork(id) {
