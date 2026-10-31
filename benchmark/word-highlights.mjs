@@ -26,6 +26,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { cpus, loadavg, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { answerAnkiConnect } from "../test/anki-connect-fake.mjs";
+import { exposePopupRoot } from "../test/chrome-popup-root.mjs";
 import { REFERENCE_LINES } from "../test/segmentation-reference.mjs";
 import "../extension/reader-options.js";
 
@@ -164,6 +165,11 @@ async function session(variant, origin) {
       }
       Object.assign(result, { firstMarkMs: first, settledMs: settled, ranges: last });
     }
+    // The popup's shadow root is closed: a first, untimed hover builds its
+    // host, and the page is handed the root for the observer below.
+    const first = await (await page.$("#t0")).boundingBox();
+    await page.mouse.move(first.x + first.width * 0.25, first.y + first.height / 2);
+    await exposePopupRoot(page, { timeout: 10_000 });
     // One hover: Escape closes the last popup and the pointer leaves for blank
     // header space, then enters the word; the latency runs from its mousemove
     // to the popup showing the word.
@@ -171,7 +177,7 @@ async function session(variant, origin) {
       await page.mouse.move(1200, 30);
       await page.keyboard.press("Escape");
       await page.waitForFunction(() => {
-        const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+        const popup = window.__popupRoot.querySelector(".gsm-hoshidicts-popup");
         return !popup || popup.hidden;
       }, { polling: 20, timeout: 5000 });
       const box = await (await page.$(`#t${index}`)).boundingBox();
@@ -180,18 +186,13 @@ async function session(variant, origin) {
           let moved = null;
           document.addEventListener("mousemove", event => { moved ??= event.timeStamp; }, { capture: true, once: true });
           const observer = new MutationObserver(() => {
-            const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+            const popup = window.__popupRoot.querySelector(".gsm-hoshidicts-popup");
             if (moved !== null && popup && !popup.hidden && popup.textContent.includes(word)) {
               observer.disconnect();
               resolveShown(performance.now() - moved);
             }
           });
-          const watch = () => {
-            const host = document.querySelector("hachidori-host");
-            if (host) observer.observe(host.shadowRoot, { subtree: true, childList: true, attributes: true, characterData: true });
-            else requestAnimationFrame(watch);
-          };
-          watch();
+          observer.observe(window.__popupRoot, { subtree: true, childList: true, attributes: true, characterData: true });
         });
       }, TARGETS[index]);
       await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);

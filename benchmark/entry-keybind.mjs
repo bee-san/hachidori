@@ -32,6 +32,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { exposePopupRoot } from "../test/chrome-popup-root.mjs";
 import { summarizeValues } from "./lib.mjs";
 import { directoryContentSha256 } from "./system.mjs";
 
@@ -59,11 +60,11 @@ const SCREENSHOTS = process.env.HACHIDORI_KEYBIND_SCREENSHOTS;
 const PAGE = `<!doctype html><html lang="ja"><meta charset="utf-8"><body style="margin:0;min-height:400vh">
 <p id="word" style="font:32px serif;margin:60px">${WORD}</p></body></html>`;
 
-// The page's own world: the pane is in the content script's open shadow root.
+// The page's own world: the pane is in the content script's closed shadow
+// root, which session() hands the page once the first lookup has built it.
 function probe() {
   const keys = [], frames = [], timings = [];
-  const pane = () => document.querySelector("hachidori-host")?.shadowRoot
-    ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+  const pane = () => window.__popupRoot?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
   const moves = event => event.altKey && ["ArrowDown", "ArrowUp"].includes(event.code);
   // Capture on the window runs before the content script's capture on the
   // document; the bubbling listener runs after it.
@@ -170,6 +171,7 @@ async function session(variant, origin, index) {
     });
     await tab.mouse.move(point.x, point.y + 200);
     await tab.mouse.move(point.x, point.y);
+    await exposePopupRoot(tab, { timeout: 60_000 });
     // Every result rendered, with nothing left behind Show more.
     await tab.waitForFunction(() => {
       const scroll = window.__keybindProbe.pane();

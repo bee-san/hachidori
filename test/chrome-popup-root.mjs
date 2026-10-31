@@ -45,3 +45,18 @@ export function popupRoot(page, documentUrl = page.url()) {
   }
   return { evaluate, waitFor };
 }
+
+// Benchmarks and the promo capture read the popup from the page's own code: an
+// animation-frame loop, a MutationObserver. Once the content script has built
+// its host, this hands that code the root as `window.__popupRoot`. Detaching
+// the session then turns off the DOM agent DOM.getDocument enabled, which would
+// otherwise report every later popup mutation over CDP during a measurement.
+export async function exposePopupRoot(page, options) {
+  try {
+    await popupRoot(page).waitFor(root => { window.__popupRoot = root; return true; }, options);
+  } finally {
+    const session = sessions.get(page);
+    sessions.delete(page);
+    await (await session).detach();
+  }
+}
