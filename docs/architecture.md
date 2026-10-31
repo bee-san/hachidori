@@ -991,7 +991,8 @@ or a click into a frame. Escape first closes a Note form, a menu or a child
 popup, as everywhere, and then goes on to the page, which focuses and selects
 the box, as Yomitan's search-scope Focus search box hotkey does on Escape. As
 on Yomitan's search page, a character typed while focus is outside a text field
-or control goes into the box, and text pasted outside a text field is searched.
+or control goes into the box, Ctrl+U clears the box, and text pasted outside a
+text field is searched.
 
 **Staying current.** A lookup sent for the docked result finishes even when
 the pointer moves on. A dictionary change or a lookup option change looks the

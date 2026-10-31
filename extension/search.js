@@ -48,29 +48,36 @@ function focusedElement() {
   return focused;
 }
 
+function clear() {
+  input.value = "";
+  input.focus();
+}
+
 document.getElementById("search-form").addEventListener("submit", (event) => {
   event.preventDefault();
   search();
 });
 input.addEventListener("keydown", (event) => {
   // Enter searches and Shift+Enter starts a line. An IME's Enter confirms its text.
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
   search();
 });
-document.getElementById("search-clear").addEventListener("click", () => {
-  input.value = "";
-  input.focus();
-});
+document.getElementById("search-clear").addEventListener("click", clear);
 // As on Yomitan's search page, Escape focuses the box and selects its text
-// (its focusSearchBox hotkey), and a character typed elsewhere goes into it.
-// The reader has already taken any key it handles, such as an Escape that
-// closes a child popup.
+// (its focusSearchBox hotkey), a character typed elsewhere goes into it, and
+// Ctrl+U clears it. The reader has already taken any key it handles, such as
+// an Escape that closes a child popup.
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.isComposing) return;
   if (event.key === "Escape") {
     input.focus();
     input.select();
+    return;
+  }
+  if (event.ctrlKey && event.key === "u") {
+    event.preventDefault();
+    clear();
     return;
   }
   const typed = (event.key.length === 1 && event.key !== " ") || event.key === "Backspace";

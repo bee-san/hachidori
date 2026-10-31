@@ -190,6 +190,11 @@ describe("search page", () => {
     await searchTab.click(".search-header h1");
     await searchTab.keyboard.press("a");
     const typed = await pageState(searchTab);
+    await searchTab.click(".search-header h1");
+    await searchTab.keyboard.down("Control");
+    await searchTab.keyboard.press("u");
+    await searchTab.keyboard.up("Control");
+    const cleared = await pageState(searchTab);
     await searchTab.evaluate(() => {
       const data = new DataTransfer();
       data.setData("text/plain", "漢字");
@@ -199,11 +204,11 @@ describe("search page", () => {
     const pastedPage = await pageState(searchTab);
     await searchFor(searchTab, "ぬるぽ");
     const missed = await popup.waitForVisible(15_000, state => state.text.includes("No definition found"));
-    check("a key typed elsewhere on the search page goes into its box, text pasted outside it is searched, and a miss says so in the results area",
-      typed.focused && typed.value === "食べたかったa"
+    check("a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
+      typed.focused && typed.value === "食べたかったa" && cleared.focused && cleared.value === ""
         && pasted !== null && pasted.plain.includes("漢字") && pastedPage.value === "漢字" && pastedPage.query === "漢字"
         && missed !== null && fills(await popup.rect(), (await pageState(searchTab)).area),
-      JSON.stringify({ typed, pasted: pasted?.plain.slice(0, 120), pastedPage, missed: missed?.text.slice(0, 120) }));
+      JSON.stringify({ typed, cleared, pasted: pasted?.plain.slice(0, 120), pastedPage, missed: missed?.text.slice(0, 120) }));
 
     await searchFor(searchTab, "食べる");
     await popup.waitForVisible(15_000, state => state.plain.includes("食べる") && state.text.includes("to eat"));
