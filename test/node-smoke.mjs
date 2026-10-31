@@ -1710,6 +1710,56 @@ check('a frequency that separates the readings still outranks dictionary order',
   );
 });
 
+check('words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620)', () => {
+  // 東京 has a definition; 東京タワー only a frequency row and a pitch row. With
+  // the option off (and from an options string without the key) a lookup shows
+  // what the definitions give; on, 東京タワー comes first with both rows and
+  // no glossaries, and 東京 keeps its own result.
+  const TERMS = 'metadata-only-terms';
+  const FREQ = 'metadata-only-frequency';
+  const PITCH = 'metadata-only-pitch';
+  const archives = [
+    [TERMS, buildTitledZip(TERMS, { terms: [['東京', 'とうきょう', '', '', 0, ['Tokyo'], 1, '']] })],
+    [FREQ, buildTitledZip(FREQ, {
+      banks: false,
+      frequencyMode: 'rank-based',
+      termMeta: [['東京タワー', 'freq', { reading: 'とうきょうタワー', frequency: { value: 5000, displayValue: '5000' } }]],
+    })],
+    [PITCH, buildTitledZip(PITCH, {
+      banks: false,
+      termMeta: [['東京タワー', 'pitch', { reading: 'とうきょうタワー', pitches: [{ position: 5 }] }]],
+    })],
+  ];
+  for (const [title, bytes] of archives) {
+    const zipPath = `/work/${title}.zip`;
+    M.FS.writeFile(zipPath, bytes);
+    ok(hdwImport(zipPath, '/dicts').success, lastError());
+  }
+  reset();
+  eq(addDict(`/dicts/${TERMS}`, 0), 1, lastError());
+  eq(addDict(`/dicts/${FREQ}`, 1), 1, lastError());
+  eq(addDict(`/dicts/${PITCH}`, 2), 1, lastError());
+  const terms = (response) => response.results.map((result) =>
+    `${result.term.expression}/${result.term.reading}${result.term.glossaries.length === 0 ? '*' : ''}`);
+  const on = JSON.stringify({ frequencyOrder: 'auto', primaryReading: '', metadataOnlyTerms: true });
+  const off = JSON.stringify({ frequencyOrder: 'auto', primaryReading: '', metadataOnlyTerms: false });
+  same(terms(lookup('東京タワー', 32, 16, AUTO_OPTIONS)), ['東京/とうきょう'], 'an options string without the key');
+  same(terms(lookup('東京タワー', 32, 16, off)), ['東京/とうきょう'], 'metadataOnlyTerms false');
+  const response = lookup('東京タワー', 32, 16, on);
+  same(terms(response), ['東京タワー/とうきょうタワー*', '東京/とうきょう'], 'metadataOnlyTerms true');
+  const [first] = response.results;
+  eq(first.matched, '東京タワー', 'matched');
+  eq(first.deinflected, '東京タワー', 'deinflected');
+  same(first.trace, [], 'trace');
+  eq(first.term.rules, '', 'rules');
+  same(first.term.frequencies, [{ dictionary: FREQ, frequencies: [{ value: 5000, displayValue: '5000' }] }],
+    'frequencies');
+  same(first.term.pitches, [{ dictionary: PITCH, pitches: [{ position: 5, pattern: '', nasal: [], devoice: [] }],
+    transcriptions: [] }], 'pitches');
+  same(terms(lookupDictionary('東京タワー', `/dicts/${TERMS}`, 32, 16, on)), ['東京/とうきょう'],
+    'hdw_lookup_dictionary answers its one term dictionary');
+});
+
 G('long keys beyond the scan length');
 
 const LONG_KEY_DIR = `/dicts/${LONG_KEY_TITLE}`;
