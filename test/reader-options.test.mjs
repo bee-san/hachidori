@@ -157,6 +157,21 @@ test("compact glossaries default off and keep only Yomitan's two popup layout va
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("glossaryLayoutMode"), "not a boolean hotkey toggle");
 });
 
+test("words that only frequency or pitch dictionaries have stay hidden by default (#620)", () => {
+  const { DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.showMetadataOnlyResults, false);
+  assert.equal(normaliseOptions({}).showMetadataOnlyResults, false, "missing");
+  assert.equal(normaliseOptions({ showMetadataOnlyResults: true }).showMetadataOnlyResults, true);
+  assert.deepEqual(validateOptionsPatch({ showMetadataOnlyResults: true }), { showMetadataOnlyResults: true });
+  for (const garbage of ["yes", 1, null]) {
+    assert.equal(normaliseOptions({ showMetadataOnlyResults: garbage }).showMetadataOnlyResults, false,
+      `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ showMetadataOnlyResults: garbage }), /invalid reader option/);
+  }
+  assert.ok(KEYBIND_TOGGLE_OPTIONS.includes("showMetadataOnlyResults"), "Toggle option can flip it");
+  assert.ok(!DESIGN_OPTION_KEYS.includes("showMetadataOnlyResults"), "a Reading option, not reset with Design");
+});
+
 test("the furigana pitch style defaults to the contour and keeps only its two values", () => {
   const { PITCH_ACCENT_FURIGANA_STYLES, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
   assert.equal(DEFAULT_OPTIONS.pitchAccentFuriganaStyle, "contour");

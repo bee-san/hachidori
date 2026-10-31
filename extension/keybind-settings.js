@@ -8,6 +8,7 @@ export const KEYBIND_OPTION_LABELS = {
   personalDictionaryEnabled: "Use the personal dictionary",
   showNoResultNotice: "Show a popup when a selection has no definition",
   hidePopupOnCursorExit: "Hide popup on cursor exit",
+  showMetadataOnlyResults: "Show words that only frequency or pitch dictionaries have",
   audioAutoplay: "Automatically play the first lookup result",
   sourceHighlightEnabled: "Highlight the word on the page",
   showPopupAudioButton: "Show the audio button",

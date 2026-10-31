@@ -726,6 +726,75 @@ async function clickRevealCase() {
   return outcomes;
 }
 
+// #620: a word that only frequency and pitch dictionaries have arrives without
+// glossaries. Lookups ask for such words only while the option is on, and a
+// first result without definitions has nothing for definition blur to hide.
+async function metadataOnlyResultsCase() {
+  const outcomes = {};
+  // The harness's own lookup options are repeated, so that only the new
+  // option changes when it is turned on.
+  const options = { frequencyDictionary: "Frequency A", frequencyOrder: "descending", maxResults: 7, scanLength: 9,
+    lookupMode: "hover", showLookupCounts: false, definitionBlurFrequencyEnabled: true, definitionBlurFrequencyDictionary: "Rank",
+    definitionBlurFrequencyOrder: "auto", definitionBlurFrequencyThreshold: 120, definitionBlurReveal: "click",
+    audioAutoplay: true };
+  const harness = await createHarness(null, { options });
+  const plays = () => harness.sent.filter(request => request.type === "hd_audio_play").length;
+  const rank = [{ dictionary: "Rank", frequencies: [{ value: 120, displayValue: "120" }] }];
+  const defined = expression => harness.term(expression, "Generic", rank);
+  const metadataOnly = expression => ({ ...defined(expression), term: { ...defined(expression).term, glossaries: [] } });
+  const rendered = expression => harness.renders.some(render => render.results?.[0]?.term.expression === expression);
+  const lookup = async (results) => {
+    const operation = harness.driver.runLookup(harness.candidate);
+    const item = harness.take("hd_lookup");
+    harness.reply(item, { dictionaryCount: 2, results });
+    await operation;
+    return item;
+  };
+  try {
+    harness.emitState({ schemaVersion: 1, revision: 2, dictionaries: [genericPackage({ favorite: true }),
+      genericPackage({ id: "rank", title: "Rank", termCount: 0, frequencyCount: 1, frequencyMode: "rank-based" })] });
+    const operation = harness.driver.runLookup(harness.candidate);
+    const pending = harness.take("hd_lookup");
+    const off = pending?.request.options.metadataOnlyTerms;
+    harness.emitOptions({ ...options, showMetadataOnlyResults: true });
+    harness.reply(pending, { dictionaryCount: 2, results: [defined("古い答え")] });
+    await operation;
+    await harness.settle();
+    const on = await lookup([metadataOnly("東京タワー"), defined("東京")]);
+    outcomes["lookups ask for words without definitions only while the option is on, and turning it on retires a lookup on its way"] =
+      off === false && !rendered("古い答え") && on.request.options.metadataOnlyTerms === true;
+    outcomes["a first result without definitions is never blurred and plays at once, whatever follows it"] =
+      rendered("東京タワー") && harness.blurState() === "revealed" && plays() === 1;
+    await lookup([defined("東京"), metadataOnly("東京タワー")]);
+    outcomes["a defined first result is still blurred when a word without definitions follows it"] =
+      harness.blurState() === "blurred" && plays() === 1;
+  } finally { harness.close(); }
+  // JL, Bee's Theme and Plain draw only definitions and Crystal hides a result
+  // without any, so with them a lookup asks for words with definitions only, as
+  // with the option off. A page opens with
+  // each theme: jsdom cannot import the bundled renderers, so its theme host
+  // warns once while opening and keeps Default, and only what the lookup asks
+  // for matters here.
+  const asked = {};
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    for (const popupTheme of ["jl", "bee", "plain", "nazeka", "crystal"]) {
+      const themed = await createHarness(null, { options: { ...options, showMetadataOnlyResults: true, popupTheme } });
+      try {
+        const operation = themed.driver.runLookup(themed.candidate);
+        const item = themed.take("hd_lookup");
+        asked[popupTheme] = item?.request.options.metadataOnlyTerms;
+        themed.reply(item, { dictionaryCount: 1, results: [themed.term("東京")] });
+        await operation;
+      } finally { themed.close(); }
+    }
+  } finally { console.warn = warn; }
+  outcomes["with JL, Bee's Theme, Plain or Crystal a lookup asks for words with definitions only"] = JSON.stringify(asked)
+    === JSON.stringify({ jl: false, bee: false, plain: false, nazeka: true, crystal: false });
+  return outcomes;
+}
+
 describe("content script: lookup counts and blur", () => {
   test("lookup statistics", async () => {
     const noteContent = await contentNoteStage({
@@ -739,7 +808,7 @@ describe("content script: lookup counts and blur", () => {
   test("definition blur", async () => {
     const noteContent = await contentNoteStage({
       definitionBlur: async () => ({ ...await definitionBlurCase(), ...await ankiMaturityBlurCase(),
-        ...await frequencyDefinitionBlurCase(), ...await clickRevealCase() }),
+        ...await frequencyDefinitionBlurCase(), ...await clickRevealCase(), ...await metadataOnlyResultsCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.definitionBlur ?? {})) {
       check(name, passed === true, JSON.stringify(passed));

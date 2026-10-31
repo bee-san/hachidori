@@ -59,6 +59,7 @@ const TOGGLE_CONTROLS = {
   personalDictionaryEnabled: "opt-personal-dictionary",
   showNoResultNotice: "opt-no-result-notice",
   hidePopupOnCursorExit: "opt-hide-on-cursor-exit",
+  showMetadataOnlyResults: "opt-metadata-only-results",
   audioAutoplay: "opt-audio-autoplay",
   sourceHighlightEnabled: "opt-source-highlight",
   showPopupAudioButton: "opt-popup-audio-button",

@@ -465,6 +465,7 @@ function renderOptions() {
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
   renderPersonalDictionaryControls();
   element("opt-no-result-notice").checked = options.showNoResultNotice;
+  element("opt-metadata-only-results").checked = options.showMetadataOnlyResults;
   renderCursorExitControls();
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
@@ -595,6 +596,10 @@ function attachOptionHandlers() {
   });
   element("opt-no-result-notice").addEventListener("change", (event) => {
     options.showNoResultNotice = event.target.checked;
+    writeOptions();
+  });
+  element("opt-metadata-only-results").addEventListener("change", (event) => {
+    options.showMetadataOnlyResults = event.target.checked;
     writeOptions();
   });
   element("opt-hide-on-cursor-exit").addEventListener("change", (event) => {

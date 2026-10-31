@@ -50,6 +50,7 @@
     keybindModifiers,
     keybindWheelKey,
     normaliseActivationKey,
+    popupRenderer,
     projectContentOptions,
   } = globalThis.HDReaderOptions;
   const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
@@ -2183,12 +2184,15 @@
   // Before the stored settings arrive the decision stays pending, like the
   // audio controller's own options hold, so a first lookup cannot reveal or
   // auto-play against defaults that the stored settings then contradict.
+  // Blur decides on the first result, and a word that only frequency and
+  // pitch dictionaries have (#620) has no definitions to hide, so a request
+  // whose first result has none is never blurred.
   function beginDefinitionBlur(request, level, results) {
     clearDefinitionBlurTimer(level);
     if (!request) return;
     if (!request.blur) {
       const awaitingOptions = optionsStorageRevision < 0;
-      const active = awaitingOptions || definitionBlurActive();
+      const active = (awaitingOptions || definitionBlurActive()) && results[0]?.term?.glossaries?.length > 0;
       request.blur = { state: active ? "pending" : "revealed", displayedAt: Date.now(), awaitingOptions,
         lookupCount: undefined, ankiMature: undefined, autoplayHeld: active,
         frequency: snapshotDefinitionBlurFrequency(results) };
@@ -2909,6 +2913,13 @@
     );
   }
 
+  // JL and Bee's Theme draw a result's definitions dictionary by dictionary,
+  // Plain draws only definitions, and Crystal hides a result without any, so
+  // a word that only frequency and pitch dictionaries have (#620) would leave
+  // them nothing to show. With them a lookup asks for words with definitions
+  // only, as with the option off.
+  const DEFINITION_ONLY_RENDERERS = new Set(["jl", "bee", "plain", "crystal"]);
+
   // A term lookup's engine request, from the current options.
   function termPayload(text, exactMatch, primaryReading) {
     return {
@@ -2916,6 +2927,8 @@
       options: {
         frequencyDictionary: options.frequencyDictionary,
         frequencyOrder: options.frequencyOrder,
+        metadataOnlyTerms: options.showMetadataOnlyResults
+          && !DEFINITION_ONLY_RENDERERS.has(popupRenderer(options.popupTheme)),
         personalDictionary: options.personalDictionaryEnabled,
         primaryReading,
       },
@@ -4267,6 +4280,7 @@
     const personalChanged = next.personalDictionaryEnabled !== options.personalDictionaryEnabled;
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
+      || next.showMetadataOnlyResults !== options.showMetadataOnlyResults
       || personalChanged
       || JSON.stringify(next.kanjiClickDictionary) !== JSON.stringify(options.kanjiClickDictionary);
     const activationChanged = next.lookupMode !== options.lookupMode || next.activationKey !== options.activationKey

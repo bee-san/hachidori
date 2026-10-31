@@ -122,6 +122,9 @@
     // Yomitan's scanning.hidePopupOnCursorExit and hidePopupOnCursorExitDelay.
     hidePopupOnCursorExit: false,
     hidePopupOnCursorExitDelayMs: 160,
+    // Reading → Results: also show words that only frequency and pitch
+    // dictionaries have, without definitions (#620).
+    showMetadataOnlyResults: false,
     popupNestingMaxDepth: 10,
     popupTheme: "default",
     popupToolbarPosition: "auto",
