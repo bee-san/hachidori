@@ -11,7 +11,9 @@ import { popupRoot } from "./chrome-popup-root.mjs";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 export const DARK_READER_CHECK = "Dark Reader darkens the page without recolouring normal popups and custom scripts retain DOM access";
 
-export async function checkDarkReader(settings, tab, popup) {
+// A tab of its own: Dark Reader patches the page's prototypes, and the suite's
+// reading tab keeps its open popup for the steps after this one.
+export async function checkDarkReader(settings, pageUrl) {
   const saved = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const writeOptions = options => settings.evaluate(async patch => {
     const { options } = await chrome.storage.local.get("options");
@@ -19,10 +21,9 @@ export async function checkDarkReader(settings, tab, popup) {
       baseRevision: options.revision, options: patch });
     if (!reply.ok) throw new Error(reply.error);
   }, options);
-  const originalStyle = await tab.$eval("body", body => body.getAttribute("style"));
   const output = resolve("test/tmp/ci");
   await mkdir(output, { recursive: true });
-  await tab.addScriptTag({ path: require.resolve("darkreader") });
+  const tab = await settings.browser().newPage();
   const darkReader = enabled => tab.evaluate(enabled => {
     if (enabled) window.DarkReader.enable({ brightness: 100, contrast: 100 });
     else window.DarkReader.disable();
@@ -43,6 +44,10 @@ export async function checkDarkReader(settings, tab, popup) {
   try {
     await writeOptions({ hoverEnabled: true, lookupMode: "hover", customPopupJavascript: "", definitionBlurCountEnabled: false,
       definitionBlurAnkiMature: false, definitionBlurFrequencyEnabled: false });
+    await tab.setViewport({ width: 1280, height: 900 });
+    await tab.goto(pageUrl, { waitUntil: "load" });
+    const popup = await popupReader(tab);
+    await tab.addScriptTag({ path: require.resolve("darkreader") });
     await tab.$eval("body", body => { body.style.backgroundColor = "#fff"; body.style.color = "#111"; });
     for (const [name, patch] of [
       ["default", { popupTheme: "default", customPopupCss: "" }],
@@ -68,30 +73,21 @@ export async function checkDarkReader(settings, tab, popup) {
       await tab.screenshot({ path: resolve(output, `dark-reader-${name}-after.png`) });
       console.log(`PASS Dark Reader: ${name}, page darkened, popup colours unchanged`);
     }
-    await darkReader(false);
-    // Open DOM remains an explicit compatibility path for saved Custom JavaScript.
+    // Open DOM remains an explicit compatibility path for saved Custom
+    // JavaScript, from the next page load.
     await writeOptions({ customPopupJavascript: "/* popup customisation */" });
-    const customTab = await tab.browser().newPage();
-    try {
-      await customTab.goto(tab.url());
-      const customPopup = await popupReader(customTab);
-      assert.ok(await hoverForPopup(customTab, customPopup, "#verb"));
-      assert.equal(await customTab.evaluate(() => {
-        const root = document.querySelector("hachidori-host")?.shadowRoot;
-        const popup = root?.querySelector(".gsm-hoshidicts-popup");
-        if (!popup) return false;
-        popup.dataset.customScript = "works";
-        return root.mode === "open" && popup.dataset.customScript === "works";
-      }), true);
-    } finally { await customTab.close(); }
+    await tab.reload({ waitUntil: "load" });
+    assert.ok(await hoverForPopup(tab, popup, "#verb"));
+    assert.equal(await tab.evaluate(() => {
+      const root = document.querySelector("hachidori-host")?.shadowRoot;
+      const panel = root?.querySelector(".gsm-hoshidicts-popup");
+      if (!panel) return false;
+      panel.dataset.customScript = "works";
+      return root.mode === "open" && panel.dataset.customScript === "works";
+    }), true);
   } finally {
-    await darkReader(false);
-    await tab.$eval("body", (body, style) => {
-      if (style === null) body.removeAttribute("style");
-      else body.setAttribute("style", style);
-    }, originalStyle);
+    await tab.close();
     await writeOptions(Object.fromEntries(["hoverEnabled", "lookupMode", "popupTheme", "customPopupCss", "customPopupJavascript",
       "definitionBlurCountEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled"].map(key => [key, saved[key]])));
-    await tab.keyboard.press("Escape");
   }
 }

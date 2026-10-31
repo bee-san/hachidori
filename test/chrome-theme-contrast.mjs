@@ -1,4 +1,3 @@
-import { popupRoot } from "./chrome-popup-root.mjs";
 // Pixel-check monochrome dictionary images and word highlights (#520) in every
 // popup palette and both emulated Windows contrast palettes through the real
 // extension and importer.
@@ -9,6 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { popupRoot } from "./chrome-popup-root.mjs";
 import { buildTitledZip, monochromeImageFixture } from "./make-fixture.mjs";
 import "../extension/reader-options.js";
 
@@ -310,10 +310,9 @@ try {
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       });
       await tab.mouse.move(point.x, point.y);
-      await popupRoot(tab).waitFor((popupShadow, theme) => {
-        const root = popupShadow;
-        const images = root?.querySelectorAll(".gloss-image-link img");
-        return root?.host.dataset.hoshidictsTheme === theme && images?.length === 2
+      await popupRoot(tab).waitFor((root, theme) => {
+        const images = root.querySelectorAll(".gloss-image-link img");
+        return root.host.dataset.hoshidictsTheme === theme && images.length === 2
           && [...images].every(image => image.naturalWidth === 100);
       }, {}, expectedTheme);
       // Natural dimensions can be available before the CSS mask is painted.
@@ -322,8 +321,7 @@ try {
           .map(image => image.decode()));
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       });
-      const state = await popupRoot(tab).evaluate(popupShadow => {
-        const root = popupShadow;
+      const state = await popupRoot(tab).evaluate(root => {
         const popup = root.querySelector(".gsm-hoshidicts-popup");
         const images = [...root.querySelectorAll(".gloss-image-link img")];
         const colour = new OffscreenCanvas(1, 1).getContext("2d");
@@ -344,8 +342,7 @@ try {
         else await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".gloss-image-link").focus());
         try {
           await popupRoot(tab).waitFor(popupShadow => {
-            const preview = popupShadow
-              ?.querySelector(".gsm-hoshidicts-image-hover-preview");
+            const preview = popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview");
             return preview?.querySelector("img")?.naturalWidth === 100;
           }, { timeout: 7500 });
           break;
@@ -353,13 +350,11 @@ try {
           if (attempt === 1) throw new Error(`${scenario.name}: preview did not open`, { cause: error });
           await tab.mouse.move(2, 2);
           await tab.mouse.move(point.x, point.y);
-          await popupRoot(tab).waitFor(popupShadow => popupShadow
-            ?.querySelectorAll(".gloss-image-link img")?.length === 2);
+          await popupRoot(tab).waitFor(popupShadow => popupShadow.querySelectorAll(".gloss-image-link img").length === 2);
         }
       }
       const preview = await popupRoot(tab).evaluate(popupShadow => {
-        const node = popupShadow
-          .querySelector(".gsm-hoshidicts-image-hover-preview");
+        const node = popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview");
         return { rect: node.getBoundingClientRect().toJSON(), appearance: node.dataset.appearance };
       });
       const { png: previewPng, pixels: [previewInk] } = await sample(tab, [centre(preview.rect)]);

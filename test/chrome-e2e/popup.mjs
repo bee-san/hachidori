@@ -1,4 +1,3 @@
-import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * The popup in frames, fullscreen and other tabs, and its links.
  *
@@ -10,6 +9,7 @@ import { popupRoot } from "../chrome-popup-root.mjs";
 // The scenario's previous file: its steps run before the ones here.
 import "./counts.mjs";
 import { describe } from "node:test";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { externalLinksFixture, kanjiReadingFuriganaFixture } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
 import { hoverForPopup } from "./popup-reader.mjs";
@@ -47,11 +47,11 @@ async function checkFrameAndFullscreenPopups(tab, popup, pageUrl) {
         return panel && !panel.hidden && panel.textContent.includes("食べる");
       }, { timeout: 1500 }).then(() => { frameResult = true; }).catch(() => {});
     }
-    frameResult = frameResult && await popupRoot(tab).evaluate(popupShadow => {
-      const topPopup = popupShadow
-        ?.querySelector(".gsm-hoshidicts-popup");
+    // No host in the top document means no top-level popup either.
+    frameResult = frameResult && (await popupRoot(tab).evaluate(popupShadow => {
+      const topPopup = popupShadow.querySelector(".gsm-hoshidicts-popup");
       return !topPopup || topPopup.hidden;
-    });
+    }) ?? true);
   } finally {
     await tab.$eval("#lookup-frame", element => element.remove());
   }

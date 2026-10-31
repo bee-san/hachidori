@@ -1,4 +1,3 @@
-import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * The reader on a web page: hovering, placement, zoom, glyph boxes and wheels.
  *
@@ -14,6 +13,7 @@ import { resolve } from "node:path";
 import { describe } from "node:test";
 import { checkDarkReader, DARK_READER_CHECK } from "../chrome-dark-reader.mjs";
 import { checkPopupResize } from "../chrome-popup-resize.mjs";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { check, diagnostics, HIGHLIGHT_NAME, step } from "./harness.mjs";
 import { replacedPackage } from "./import.mjs";
 import { hoverForPopup, popupReader } from "./popup-reader.mjs";
@@ -336,8 +336,7 @@ describe("reader", () => {
       }, true);
     });
     const readAltWheelPane = () => popupRoot(tab).evaluate(popupShadow => {
-      const scroll = popupShadow
-        ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+      const scroll = popupShadow.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
       if (!scroll) return null;
       const origin = scroll.getBoundingClientRect().top - scroll.scrollTop;
       // Where entry navigation lands: a later entry's own header slides under
@@ -350,8 +349,7 @@ describe("reader", () => {
         cancelled: [...window.__altWheelsCancelled] };
     });
     const altWheelScrolledTo = top => popupRoot(tab).waitFor((popupShadow, value) => {
-      const scroll = popupShadow
-        ?.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
+      const scroll = popupShadow.querySelector(".gsm-hoshidicts-popup:not([hidden]) .gsm-hoshidicts-content-scroll");
       return scroll && Math.abs(scroll.scrollTop - value) <= 1;
     }, { timeout: 2000 }, top).catch(() => null);
     const altWheelPopup = await hover("#verb", { accept: state => state.text.includes("unrelated term-dictionary definition") });
@@ -420,10 +418,9 @@ describe("reader", () => {
     );
   });
   step("Dark Reader popup isolation", async () => {
-    await checkDarkReader(page, tab, popup);
+    await checkDarkReader(page, pageUrl);
     check(DARK_READER_CHECK, true);
   });
-
 });
 
 export { highlightSize, hover, popup, tab, verb };

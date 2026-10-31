@@ -1,4 +1,3 @@
-import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * Nested lookups from definitions and internal links.
  *
@@ -10,6 +9,7 @@ import { popupRoot } from "../chrome-popup-root.mjs";
 // The scenario's previous file: its steps run before the ones here.
 import "./popup.mjs";
 import { describe } from "node:test";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { nestedLinksFixture } from "../make-fixture.mjs";
 import { check, HIGHLIGHT_NAME, step } from "./harness.mjs";
 import { forceSourceFallback, hoverForPopup, popupReader } from "./popup-reader.mjs";

@@ -1,8 +1,8 @@
-import { popupRoot } from "./chrome-popup-root.mjs";
 // Focused check: Store availability, real hover, kanji/Back, and Default restore.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { popupRoot } from "./chrome-popup-root.mjs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -233,8 +233,7 @@ try {
     "Plain uses only the settings shown here. Your other Design settings are kept for Default.");
   await hover();
   await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".plain-scroll"));
-  const plain = await popupRoot(tab).evaluate(popupShadow => {
-    const shadow = popupShadow;
+  const plain = await popupRoot(tab).evaluate(shadow => {
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     return { text: popup.textContent, controls: popup.querySelectorAll("button,img,a,.gsm-hoshidicts-expression,.nazeka-count").length,
       children: popup.querySelectorAll("*").length, entries: popup.querySelectorAll(".gsm-hoshidicts-entry").length,
@@ -253,11 +252,10 @@ try {
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "jl");
   await hover();
   await popupRoot(tab).waitFor(popupShadow => {
-    const buttons = [...popupShadow.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button") ?? []];
+    const buttons = [...popupShadow.querySelectorAll(".jl-entry .gsm-hoshidicts-mine-button")];
     return buttons.length > 0 && buttons.every(button => !button.hidden && !button.disabled && button.dataset.state === "ready");
   });
-  const jl = await popupRoot(tab).evaluate(popupShadow => {
-    const shadow = popupShadow;
+  const jl = await popupRoot(tab).evaluate(shadow => {
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     const blocks = [...popup.querySelectorAll(".jl-entry")];
     return { blocks: blocks.length, tabs: [...popup.querySelectorAll(".jl-tab")].map(tab => tab.textContent),
@@ -311,8 +309,7 @@ try {
   await hover();
   await tab.waitForFunction(() => document.querySelector("hachidori-host")?.dataset.hoshidictsRenderer === "bee");
   await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".bee-more-actions"));
-  const bee = await popupRoot(tab).evaluate(popupShadow => {
-    const shadow = popupShadow;
+  const bee = await popupRoot(tab).evaluate(shadow => {
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     return { tabs: [...popup.querySelectorAll(".jl-tab")].map(node => node.textContent),
       rich: popup.querySelectorAll(".bee-rich-content > *").length,
@@ -552,8 +549,7 @@ try {
     more.querySelector("summary").focus();
   });
   await tab.keyboard.press("Escape");
-  assert.deepEqual(await popupRoot(tab).evaluate(popupShadow => {
-    const shadow = popupShadow;
+  assert.deepEqual(await popupRoot(tab).evaluate(shadow => {
     const popup = shadow.querySelector(".gsm-hoshidicts-popup");
     const more = popup.querySelector(".bee-more-actions");
     return { menu: more.open, popup: popup.hidden, note: popup.querySelector("form").hidden,
@@ -587,7 +583,7 @@ try {
   await tab.keyboard.press("Escape");
   await hover();
   await popupRoot(tab).waitFor(popupShadow => popupShadow.querySelector(".jl-spelling")?.textContent === "漢字");
-  await popupRoot(tab).waitFor(popupShadow => [...popupShadow.querySelectorAll(".bee-rich-content img") ?? []]
+  await popupRoot(tab).waitFor(popupShadow => [...popupShadow.querySelectorAll(".bee-rich-content img")]
     .some(image => image.complete && image.naturalWidth > 0));
   assert.ok(await popupRoot(tab).evaluate(popupShadow => !!popupShadow.querySelector(".bee-rich-content table")));
   const imageBox = await popupRoot(tab).evaluate(popupShadow => {
@@ -596,8 +592,7 @@ try {
   });
   await tab.mouse.move(imageBox.x, imageBox.y);
   await popupRoot(tab).waitFor(popupShadow => !!popupShadow.querySelector(".gsm-hoshidicts-image-hover-preview img"));
-  const enlarged = await popupRoot(tab).evaluate(popupShadow => {
-    const shadow = popupShadow;
+  const enlarged = await popupRoot(tab).evaluate(shadow => {
     const preview = shadow.querySelector(".gsm-hoshidicts-image-hover-preview");
     const source = shadow.querySelector(".bee-rich-content img");
     return { sibling: preview.parentNode === shadow.querySelector(".gsm-hoshidicts-popup").parentNode,

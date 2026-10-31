@@ -365,7 +365,7 @@ Its steps run in this order, in one profile:
 | `import.mjs` | The `.zip` input, import into OPFS and storage, batch import and re-import, the dictionary row. |
 | `library.mjs` | Settings navigation and keyboard access, the Google Docs flag, popup themes and the first frame, positions, bulk updates, reordering, aliases, groups, kanji choices. |
 | `custom-dictionary.mjs` | Settings saves a personal source through the real importer. |
-| `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup. |
+| `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup, and Dark Reader isolation in a tab of its own. |
 | `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
 | `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, popup audio; mining to a fake AnkiConnect. |
@@ -494,13 +494,15 @@ These run separately:
   `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a local
   archive instead.
 - **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
-  Dark Reader API build against the production popup. It checks Default, Light,
-  Dark, High contrast and Custom CSS while the page actually darkens, plus the
-  saved Custom JavaScript DOM-access opt-in. Before/after PNGs go to
-  `test/tmp/ci/dark-reader-*.png`. `chrome-popup-root.mjs` reads closed roots
-  through CDP without exposing them to page scripts. The API build exercises
-  Dynamic mode; Filter modes and the installed Dark Reader extension UI are
-  outside this check.
+  Dark Reader API build against the production popup in a tab of its own. It
+  checks Default, Light, Dark, High contrast and Custom CSS while the page
+  actually darkens, plus the saved Custom JavaScript DOM-access opt-in after a
+  reload. Before/after PNGs go to `test/tmp/ci/dark-reader-*.png`.
+  `chrome-popup-root.mjs` reads closed roots through CDP without exposing them
+  to page scripts; its `exposePopupRoot` hands the root to the page's own code
+  for the benchmarks and the promo capture, then detaches. The API build
+  exercises Dynamic mode; Filter modes and the installed Dark Reader extension
+  UI are outside this check.
 - **`chrome-theme-contrast.mjs`** samples a monochrome and an untagged SVG in
   every palette plus emulated forced colors (3:1 normally, 20:1 forced) and the
   word-highlight lines on light and dark pages; `test/tmp/ci/theme-contrast.png`

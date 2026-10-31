@@ -1,4 +1,3 @@
-import { popupRoot } from "../chrome-popup-root.mjs";
 /*
  * Clicked-kanji navigation and kanji dictionary choices.
  *
@@ -10,6 +9,7 @@ import { popupRoot } from "../chrome-popup-root.mjs";
 // The scenario's previous file: its steps run before the ones here.
 import "./anki.mjs";
 import { describe } from "node:test";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { GENERIC_KANJI_GLOSSARY, GENERIC_KANJI_TITLE } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
 import { hover, popup, tab } from "./reader.mjs";
