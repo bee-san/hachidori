@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hachidori Search</title>
+    <script src="reader-options.js"></script>
+    <script src="settings-theme.js"></script>
+    <link rel="stylesheet" href="icons.css" />
+    <link rel="stylesheet" href="render/reader.css" />
+    <link rel="stylesheet" href="settings.css" />
+    <link rel="stylesheet" href="search.css" />
+    <!-- The page loads the reader itself; its page styles come with the page. -->
+    <link rel="stylesheet" href="content.css" />
+  </head>
+  <body class="search-page">
+    <header class="search-header">
+      <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
+      <h1>Hachidori Search</h1>
+    </header>
+    <form class="search-form" id="search-form" role="search">
+      <textarea id="search-input" lang="ja" rows="1" autocomplete="off" autocapitalize="off" spellcheck="false"
+        autofocus aria-label="Word or text to look up" placeholder="Type or paste Japanese, then press Enter"></textarea>
+      <button type="button" class="ghost search-button" id="search-clear" aria-label="Clear the search box" title="Clear">
+        <span class="hd-icon" data-icon="dismiss" aria-hidden="true"></span>
+      </button>
+      <button type="submit" class="primary-button search-button" id="search-submit" aria-label="Search" title="Search" disabled>
+        <span class="hd-icon" data-icon="search" aria-hidden="true"></span>
+      </button>
+    </form>
+    <p class="search-query" id="search-query" lang="ja" hidden></p>
+    <main class="search-results" id="search-results" aria-label="Results">
+      <p class="hint" id="search-status" role="status">Loading…</p>
+    </main>
+    <script type="module" src="search.js"></script>
+  </body>
+</html>
