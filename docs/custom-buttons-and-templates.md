@@ -65,12 +65,14 @@ then map an Anki field such as `Graph` to `{pitch-accent-graphs}`. For a graph
 with kana under each mora, use `{pitch-accent-graphs-jj}` (Jidoujisho style).
 Both export inline SVG that follows the card's text color and font size.
 
-Each dictionary's variants are kept in source order. The final hollow symbol
-shows the pitch of a following particle, distinguishing a flat accent from a
-drop after the last mora. Numeric downstep positions and explicit `H`/`L`
-patterns are supported. A pattern may include one extra level for the particle;
-otherwise its final level continues. Missing, transcription-only or invalid
-pitch data leaves the graph field empty.
+Graph fields contain no dictionary names, as in Yomitan. Each dictionary's
+variants are kept in source order, one line per dictionary. The final hollow
+symbol shows the pitch of a following particle, distinguishing a flat accent
+from a drop after the last mora. Numeric downstep positions and explicit `H`/`L`
+patterns are supported. A pattern may include one extra level for the particle.
+Without one, the standard graph leaves the particle low, as Yomitan's graph
+does, and the kana graph continues the final level. Missing, transcription-only
+or invalid pitch data leaves the graph field empty.
 
 Existing graph mappings produce SVG on the next mining operation; stored notes
 are not migrated. Text and position markers keep their existing output. Use
