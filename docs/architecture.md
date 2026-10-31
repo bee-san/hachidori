@@ -1251,6 +1251,53 @@ before the change event completes.
 
 ![Frequency direction controls in Settings](assets/frequency-direction-settings.png)
 
+## Words that only frequency or pitch dictionaries have
+
+Settings → Reading → Results → **Show words that only frequency or pitch
+dictionaries have** (`showMetadataOnlyResults`, off by default, #620) adds
+`metadataOnlyTerms: true` to every hover, selection and dictionary-link lookup.
+hoshidicts' `LookupOptions::metadata_only_terms` then turns the frequency and
+pitch rows keyed by the scanned text into a result without glossaries, one per
+reading the rows name. Yomitan has no such option: its results come from term
+banks alone, and it attaches frequencies and pitches to them afterwards
+(`_getDeinflections` and `_addTermMeta` in `ext/js/language/translator.js` at
+yomidevs/yomitan@d3c54c1).
+
+- A row has no part of speech, so, like a term-bank entry without one, it
+  answers only deinflections that need none. Those are the text as written,
+  after preprocessing, and the few dialect rules that carry no part of speech,
+  such as kansai-ben -うたら for -ったら. A row for ググる is not found for
+  ググった.
+- Such a result counts only where it matches more of the text than every result
+  with definitions, and then it comes first. The results with definitions keep
+  their order, so `maxResults` can only cut the last of them.
+- `hd_lookup_dictionary` (clicked-kanji term routes) never returns these
+  results. Word highlighting's `hd_segment`, the Anki sentence-furigana split,
+  the relay API and the startup practice probe do not ask for them, because a
+  frequency list's kana fragments would otherwise win splits (はまだ over は
+  and まだ).
+- The popup shows the headword, reading, frequency tags and pitch accents with no
+  definition card. A dictionary tab shows only results with that dictionary's
+  cards, so these results appear under All. Nazeka draws them too.
+- JL and Bee's Theme lay results out dictionary by dictionary, Plain shows only
+  definitions, and Crystal hides a result that has no dictionary section, so
+  these words would leave them an empty popup. With them a lookup does not send
+  `metadataOnlyTerms` (`DEFINITION_ONLY_RENDERERS` in `content.js`'s
+  `termPayload`) and behaves as with the option off, notice and pencil
+  included. A popup, or the search page, that shows results when the theme
+  changes keeps them until the next lookup.
+- Definition blur decides on the first result. A request whose first result has
+  no definitions is never blurred, so its autoplay is not held.
+- Lookup statistics and the Anki maturity check also take the first result, so
+  with the option on a word without definitions is counted when it comes
+  first, fragments such as はまだ included.
+
+The option stays off by default. In the five recommended dictionaries as of
+2026-10-31, 18,235 of Jiten's 454,276 expressions are in no term dictionary.
+Hovering each of the first 40,000 characters of 吾輩は猫である gives a
+frequency-only first result 1,387 times (3.47%), and most of those are kana
+fragments such as はまだ and こで. #626 tracks the default.
+
 ## Popup metadata controls
 
 Design has independent controls for frequency source names, number

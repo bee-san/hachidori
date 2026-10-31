@@ -244,8 +244,9 @@ pinned/latest package commands and the schema-only boundary.
   (`HACHIDORI_WASM_VARIANT=fallback`) on plain MEMFS: import counts, the mmap
   regression, all four kinds, lookups by structure and value, kanji, styles,
   tags, media, error paths, reset, import staging, every on-disk layout,
-  interrupted-install recovery, dictionary-scoped lookups, response and media
-  bounds, MDX import, definition order, `hdw_segment` against
+  interrupted-install recovery, dictionary-scoped lookups, words that only
+  frequency and pitch dictionaries have (`metadataOnlyTerms`, #620), response
+  and media bounds, MDX import, definition order, `hdw_segment` against
   `segmentation-reference.mjs`, and the Yomitan conjugation rules through the
   importer: historical kana, emphatic negatives, one-character stems,
   whole-word honorifics, kanji variants and excluded spellings (the engine's
@@ -296,7 +297,7 @@ wasm module or the fixtures are missing.
 | `recommended.mjs` | The five trusted recommendations, the shared dictionary-group module, and the Settings installer. |
 | `settings.mjs`, `library.mjs` | Settings navigation, reader controls and autosave; library management, groups, removal, batch imports that wait for a busy engine, retry and cancel, and MDX imports. |
 | `startup.mjs`, `design.mjs`, `source-highlight.mjs` | The startup page (welcome, installer runs, recovery, practice, visual novel scenes), the Design preview, source highlighting. |
-| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts and blur; scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes; the search page's docked results (`content-search.mjs`). |
+| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts; blur, which a first result without definitions never takes (#620); scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes; the search page's docked results, looked up again when a lookup option such as #620's changes (`content-search.mjs`). |
 | `engine.mjs` → `engine-replacement.mjs` → `engine-updates.mjs` → `engine-library.mjs` → `engine-lookup.mjs` → `renderer.mjs` → `engine-restart.mjs` → `engine-storage.mjs` | One scenario on one engine: boot and relay, storage ownership and `hd_import`, atomic replacement, trusted recommended imports and managed updates, library state (migration, CAS ownership, titles, reloads), every read path and error path, the renderer against the engine's replies, `hd_remove`, the trained layout, a restart, then isolated imports, paged dictionaries and blob-backed IDBFS. |
 
 The fakes cover only the Chrome surface the extension actually touches:
@@ -369,7 +370,7 @@ Its steps run in this order, in one profile:
 | `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup, and Dark Reader isolation in a tab of its own. |
 | `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
-| `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, popup audio; mining to a fake AnkiConnect. |
+| `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, a word that only frequency and pitch dictionaries have shown first without definitions only while Reading → Results asks for it (#620), popup audio; mining to a fake AnkiConnect. |
 | `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation, Back and Forward on Alt+B and Alt+F; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
 | `search.mjs` | The search page (#610): its shortcuts, the toolbar's Search and Reading's switch for it, the popup window, real results docked under the box through clicks and Escape, typing and pasting, a miss, and live theme changes. |
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
