@@ -98,13 +98,14 @@
     return;
   }
   // The reader belongs to ordinary pages. First-run setup loads these same
-  // scripts into its own startup page for the practice step. Its native skip
-  // link may leave the known heading fragment before the module loads or on
-  // reload; query variants and every other internal page stay excluded.
+  // scripts into its own startup page for the practice step, and the search
+  // page (#610) into itself. The startup page's native skip link may leave the
+  // known heading fragment before the module loads or on reload; query
+  // variants and every other internal page stay excluded.
   if (
     location.protocol === EXTENSION_PROTOCOL &&
-    location.href !== chrome.runtime.getURL("startup.html") &&
-    location.href !== chrome.runtime.getURL("startup.html#setup-heading")
+    !["startup.html", "startup.html#setup-heading", "search.html"]
+      .some((page) => location.href === chrome.runtime.getURL(page))
   ) {
     return;
   }
@@ -157,6 +158,10 @@
   let pageZoomRequest = 0;
   let sessionPopupSize = null;
   let popupResize = null;
+  // The search page's results area (#610). Docked, the root popup fills it
+  // and stays until a lookup replaces it; see dismissPopups().
+  let dock = null;
+  let dockObserver = null;
 
   let styleGeneration = -1;
   let styleRequest = null;
@@ -760,7 +765,7 @@
     return glyphContainsPoint(node, offset, clientX, clientY) ? resolveCandidateAt(node, offset) : null;
   }
 
-  function resolveCandidateAt(startNode, startOffset) {
+  function resolveCandidateAt(startNode, startOffset, japaneseOnly = options.onlyScanJapaneseText) {
     const styleCache = new Map();
     if (!isScannableTextNode(startNode, styleCache)) {
       return null;
@@ -776,7 +781,7 @@
       return null;
     }
     const query = entries.map((entry) => entry.text).join("");
-    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) {
+    if (japaneseOnly && !isJapaneseToken(query)) {
       return null;
     }
 
@@ -996,6 +1001,7 @@
     window.removeEventListener("pagehide", onPageHide);
     window.removeEventListener("pageshow", onPageShow);
     window.removeEventListener("resize", refreshPageZoom);
+    dockObserver?.disconnect();
     try {
       chrome.storage.onChanged.removeListener(onStorageChanged);
       chrome.runtime.onMessage?.removeListener(onReaderCommand);
@@ -1391,7 +1397,8 @@
     if (retireDetachedAncestor(level)) return false;
     // Initial selections still own the live page selection; Note/Back replays
     // intentionally use their stored descriptor even after focus collapses it.
-    if (!sourceRetained(candidate, level) || (level === rootLevel && pendingCandidateLookup?.token === token
+    // A docked selection lookup finishes like the search page's other lookups.
+    if (!sourceRetained(candidate, level) || (level === rootLevel && !dock && pendingCandidateLookup?.token === token
         && candidate.exactSelection === true && !selectionIsUnchanged(candidate))) {
       hide(level);
       return false;
@@ -1540,6 +1547,14 @@
     audio?.positionMenu(level);
   }
 
+  // The search page's root fills its results area, header on top like a
+  // popup below its word. Elsewhere a root opens beside its word.
+  function rootPosition(anchorRect, viewport) {
+    if (dock) return { ...popupRect(dock.getBoundingClientRect()), placement: "below" };
+    if (popupResize?.level === rootLevel) return popupResizePosition();
+    return calculatePopupPosition(popupRect(anchorRect), viewport, rootLevel.activeCandidate.vertical);
+  }
+
   function positionPopup(fromLevel = rootLevel, resetToolbar = false) {
     if (fromLevel.retired || fromLevel.popup?.inert || !rootLevel.popup || rootLevel.popup.hidden || !rootLevel.activeCandidate) {
       return;
@@ -1557,13 +1572,7 @@
     }
     highlighter?.refresh();
     const viewport = popupViewport();
-    if (fromLevel === rootLevel) {
-      placePopup(rootLevel, popupResize?.level === rootLevel ? popupResizePosition() : calculatePopupPosition(
-        popupRect(anchorRect),
-        viewport,
-        rootLevel.activeCandidate.vertical
-      ), resetToolbar);
-    }
+    if (fromLevel === rootLevel) placePopup(rootLevel, rootPosition(anchorRect, viewport), resetToolbar);
     if (levels.length === 1) return;
     if (viewport.width <= POPUP_PADDING_PX * 2 || viewport.height <= POPUP_PADDING_PX * 2) {
       pruneLevels(1);
@@ -1877,7 +1886,8 @@
       getPopupScalePercent: () => options.popupScalePercent,
       getPopupColumns: () => options.popupColumns,
       getImageHoverPreview: () => options.imageHoverPreview,
-      onResizeStart: event => startPopupResize(event, level),
+      // The docked root's size is the search page's results area.
+      onResizeStart: level === rootLevel && dock ? null : event => startPopupResize(event, level),
       onResizeMove: movePopupResize,
       onResizeEnd: stopPopupResize,
       customButtons: options.customButtons,
@@ -2348,6 +2358,37 @@
     syncHostAttention();
   }
 
+  // An outside click, a pointer that wanders off, a lost selection or Escape
+  // dismisses the popups. The search page's docked result is the page's
+  // content rather than a popup over a word, so there only the popups opened
+  // from it close, and whatever pointer or selection work led here ends.
+  function dismissPopups() {
+    if (!dock) {
+      hide();
+      return;
+    }
+    clearScanTimer();
+    cancelScanDwell();
+    clearHideTimer();
+    clearCursorExitTimer();
+    selectionDragActive = false;
+    dragSelection = null;
+    activeSelectionCandidate = null;
+    dismissLevels(1);
+    syncHostAttention();
+  }
+
+  // What would retire a stale view looks the docked result up again instead,
+  // as Yomitan's search page searches again when its options change.
+  function refreshDockedView(level) {
+    if (level !== rootLevel || !dock || !level.currentViewRequest) return false;
+    level.deferredDictionaryInvalidationRevision = -1;
+    void executeViewRequest(level.currentViewRequest, level).catch((error) => {
+      console.debug("hachidori: the search result could not refresh", error);
+    });
+    return true;
+  }
+
   function clearHideTimer() {
     if (hideTimer !== null) {
       window.clearTimeout(hideTimer);
@@ -2414,10 +2455,11 @@
 
   // Like Yomitan, a running timer is not restarted, and even 0 ms waits for
   // the mousemove that follows the boundary events. Exact-selection lookups
-  // stay, as retainSelectedLookup() keeps them on every pointer path.
+  // stay, as retainSelectedLookup() keeps them on every pointer path, and so
+  // does a docked result with nothing open from it.
   function scheduleCursorExitHide() {
     if (!options.hidePopupOnCursorExit || cursorExitTimer !== null || activeSelectionCandidate
-        || !rootLevel.popup || rootLevel.popup.hidden) return;
+        || !rootLevel.popup || rootLevel.popup.hidden || (dock && levels.length === 1)) return;
     cursorExitTimer = window.setTimeout(() => {
       cursorExitTimer = null;
       // A page move may have stopped in a corridor between panes; leaving it
@@ -2430,7 +2472,7 @@
       }
       pointerInPopup = false;
       pointerLevel = null;
-      if (!hasProtectedNote() && !audio?.hasMenu() && !popupFocusHoldsView()) hide();
+      if (!hasProtectedNote() && !audio?.hasMenu() && !popupFocusHoldsView()) dismissPopups();
     }, options.hidePopupOnCursorExitDelayMs);
   }
 
@@ -2548,7 +2590,7 @@
 
   function scheduleHide() {
     if (disposed || hasProtectedNote() || audio?.hasMenu() || !rootLevel.popup || rootLevel.popup.hidden
-        || popupFocusHoldsView() || hideTimer !== null || transferTimer !== null) {
+        || popupFocusHoldsView() || hideTimer !== null || transferTimer !== null || (dock && levels.length === 1)) {
       return;
     }
     // The gap between the word and the popup is dead space; give the pointer
@@ -2556,7 +2598,7 @@
     const dismiss = () => {
       hideTimer = null;
       if (!hasProtectedNote() && !audio?.hasMenu() && !pointerInPopup && !popupFocusHoldsView()) {
-        hide();
+        dismissPopups();
       }
     };
     if (options.popupHideDelayMs === 0) dismiss();
@@ -2763,7 +2805,9 @@
   function handleTermMiss(request, dictionaryCount, token, level, replayOptions) {
     if (retainProtectedReplay(request, token, level, replayOptions)) return false;
     const pencil = options.personalDictionaryEnabled;
-    if (dictionaryCount === 0 || (request.exactSelection && pencil && options.showNoResultNotice)) {
+    // The search page always answers in its results area, as Yomitan's does.
+    const docked = level === rootLevel && dock !== null;
+    if (dictionaryCount === 0 || docked || (request.exactSelection && pencil && options.showNoResultNotice)) {
       show(request.candidate, level);
       level.activeHighlightText = "";
       level.activeTermRender = null;
@@ -2771,14 +2815,13 @@
       // Keep the exact request so saving a new word can refresh this notice
       // into its personal definition, even after the form collapses selection.
       level.currentViewRequest = request;
-      level.view.renderNotice(
-        dictionaryCount === 0
-          ? `No dictionaries loaded. Import a Yomitan .zip in Settings${pencil
-            ? ", or add your own definition with the pencil" : ""}.`
-          : "No definition found. Add your own with the pencil.",
-        request.candidate,
-        { isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken },
-      );
+      let notice = "No definition found.";
+      if (dictionaryCount === 0) {
+        notice = `No dictionaries loaded. Import a Yomitan .zip in Settings${pencil
+          ? ", or add your own definition with the pencil" : ""}.`;
+      } else if (pencil) notice = "No definition found. Add your own with the pencil.";
+      level.view.renderNotice(notice, request.candidate,
+        { isCurrentRequest: () => !disposed && !level.retired && token === level.lookupToken });
       positionPopup(level);
       return false;
     }
@@ -3161,7 +3204,7 @@
         return;
       }
       if (!level.noteEditing && level.deferredDictionaryInvalidationRevision >= 0) {
-        hide(level);
+        if (!refreshDockedView(level)) hide(level);
         return;
       }
     }
@@ -3189,14 +3232,18 @@
   function cancelCandidateScan(insidePopup = false) {
     clearScanTimer();
     if (!insidePopup || scanDwell?.level === null) cancelScanDwell();
-    if (rootLevel.popup?.inert) {
-      hide();
-      return;
+    // A lookup sent for the search page's docked result finishes, as a click's
+    // does: the inert result it replaces has nothing to return to.
+    if (!dock) {
+      if (rootLevel.popup?.inert) {
+        hide();
+        return;
+      }
+      // Retaining a rendered popup during transfer must not invalidate its media
+      // or deferred glossary. Only an unfinished candidate loses ownership.
+      if (pendingCandidateLookup?.token === rootLevel.lookupToken) rootLevel.lookupToken += 1;
+      discardPendingCandidate();
     }
-    // Retaining a rendered popup during transfer must not invalidate its media
-    // or deferred glossary. Only an unfinished candidate loses ownership.
-    if (pendingCandidateLookup?.token === rootLevel.lookupToken) rootLevel.lookupToken += 1;
-    discardPendingCandidate();
     retireFieldImposter();
   }
 
@@ -3643,7 +3690,7 @@
       if (overlayMode) dragSelection = startGlyphDrag(event);
       return;
     }
-    hide();
+    dismissPopups();
   }
 
   // The scan button works like the activation key: pressing it looks up the
@@ -3697,7 +3744,7 @@
       setSelectionDrag(false);
       const token = rootLevel.lookupToken;
       onSelectionChange();
-      if (dismissClick && rootLevel.lookupToken === token) hide();
+      if (dismissClick && rootLevel.lookupToken === token) dismissPopups();
     } finally {
       hostAttentionHold -= 1;
       syncHostAttention();
@@ -3718,7 +3765,7 @@
   function startSelectionLookup(candidate) {
     hostAttentionHold += 1;
     try {
-      hide();
+      dismissPopups();
       activeSelectionCandidate = candidate;
       lookupCandidate(candidate);
     } finally {
@@ -3748,14 +3795,13 @@
     // Automatic selection lookups are the personal dictionary's entry point.
     // Off, as in Yomitan, a changed selection only releases one a keybind scanned.
     if (!options.personalDictionaryEnabled) {
-      if (activeSelectionCandidate) hide();
+      if (activeSelectionCandidate) dismissPopups();
       return;
     }
     const candidate = resolveSelectedLookupCandidate(selection);
     if (!candidate && !activeSelectionCandidate) return;
-    if (candidate && !activationAllowed()) hide();
-    else if (candidate) startSelectionLookup(candidate);
-    else hide();
+    if (candidate && activationAllowed()) startSelectionLookup(candidate);
+    else dismissPopups();
   }
 
   function onMouseUp(event) {
@@ -3812,9 +3858,15 @@
         event.stopPropagation();
         return true;
       }
+      const target = focused || levels.at(-1);
+      // The search page's docked result stays: Escape closes the popups opened
+      // from it, then goes on to the page, which focuses its search box as
+      // Yomitan's focusSearchBox does.
+      if (dock && target === rootLevel && levels.length === 1) return false;
       event.stopPropagation();
       cancelScanDwell();
-      hide(focused || levels.at(-1));
+      if (target === rootLevel) dismissPopups();
+      else hide(target);
       return true;
     }
     const dismissedCandidate = pendingCandidateLookup !== null || activeSelectionCandidate !== null || scanDwell !== null;
@@ -3844,6 +3896,25 @@
     if (!candidate) return false;
     startSelectionLookup(candidate);
     return true;
+  }
+
+  // The search page (#610) docks the root popup in its results area before
+  // its first lookup. The popup follows the area's size, which the page's
+  // layout sets.
+  function dockResults(element) {
+    dock = element;
+    dockObserver = typeof window.ResizeObserver === "function" ? new window.ResizeObserver(() => positionPopup()) : null;
+    dockObserver?.observe(element);
+  }
+
+  // Yomitan's search looks its query up from the first character, as a hover
+  // there would, and shows the results in the page. The reader typed the
+  // query, so Japanese text only does not apply, nor does the lookup switch.
+  function search(node) {
+    const candidate = disposed || !dock ? null : resolveCandidateAt(node, 0, false);
+    if (!candidate) return Promise.resolve(false);
+    dismissPopups();
+    return runLookup(candidate);
   }
 
   function runKeybindAction({ action, argument }, event,
@@ -4016,7 +4087,7 @@
       // popup. Leaving the tab, the window or the browser is not: Yomitan has
       // no blur listener, so the popup, its children and a Note draft wait for
       // the reader's return (#432). Only unfinished pointer work is cancelled.
-      if (document.hasFocus()) hide();
+      if (document.hasFocus()) dismissPopups();
       else cancelCandidateScan();
     }
   }
@@ -4057,11 +4128,13 @@
     for (const level of levels) {
       level.view?.hideImagePreview();
       if (level.popup?.inert) {
-        hide(level);
+        // A docked lookup in flight carries on: its reply is the search's result.
+        if (level !== rootLevel || !dock) hide(level);
         return;
       }
       level.lookupToken += 1;
       level.retainedView = Boolean(level.currentViewRequest && !level.popup.hidden);
+      if (level.retainedView && !hasProtectedNote() && refreshDockedView(level)) continue;
       if (dictionaryChanged && level.popup && !level.popup.hidden) {
         if (!hasProtectedNote(level.depth)) {
           hide(level);
@@ -4279,7 +4352,8 @@
       lastPointer = null;
       activationPressed = false;
       activationCode = null;
-      hide();
+      // The search page searches when asked even while lookups are off.
+      dismissPopups();
     }
     else if (interactionChanged) {
       if (selectionIsUnchanged()) {
@@ -4306,9 +4380,10 @@
 
   function start() {
     void loadOverlayMode();
-    // Startup awaits this snapshot before demonstrating its first selection.
+    // Startup awaits this snapshot before demonstrating its first selection,
+    // and the search page before it docks the results and takes searches.
     let storageReady;
-    const reader = Object.freeze({ scanSelectedText });
+    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search });
     globalThis.HDReaderReady = new Promise(resolve => {
       storageReady = () => { resolve(reader); };
     });
