@@ -184,7 +184,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `autumn-theme` | Autumn stays one light theme and keeps text, badges and statuses readable. |
 | `backup-archive`, `backup-automatic`, `backup-downloads`, `backup-settings`, `backup-state` | Backup export and restore without stream-to-blob consumption, automatic cadence and schema, download URL lifetime, Settings ages and confirmation, restore revisions. |
 | `base64`, `browser-api` | Base64 helpers against `btoa`/`atob`; the extension API module and exact sender URLs. |
-| `browser-commands` | The worker's command listener against the manifest: the toggle's revisioned write, Settings, and argument-free keybind actions forwarded to the active tab. |
+| `browser-commands` | The worker's command listener against the manifest: the toggle's revisioned write, Settings, the three search page shortcuts, and argument-free keybind actions forwarded to the active tab. |
 | `chrome-web-store` | The service-account assertion and its token endpoint. |
 | `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
 | `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
@@ -218,10 +218,11 @@ see [benchmark/README.md](../benchmark/README.md).
 | `recommended-dictionaries`, `recommended-install-client`, `setup-installer`, `setup-state` | The catalogue as the single description of the recommended set, the installer's runs, the revisioned setup record and mining capabilities. |
 | `release-compatibility` | The manifest, minimum Chrome, current Chrome and release tag share one contract. |
 | `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
+| `search-window` | Opening the search page (#610) as Yomitan does: a new tab, the current tab or a popup window, bringing an open search page forward and reusing only a popup window for the popup window shortcut. |
 | `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
 | `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
 | `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee, Crystal): their DOM, actions, tabs, Notes and the Design settings each theme declares. |
-| `toolbar` | The toolbar toggle and its revision conflicts. |
+| `toolbar` | The toolbar toggle and its revision conflicts; Search beside Settings and Reading's switch for it. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d (each card's dictionary tag at d3c54c1), written inline. |
 
@@ -295,7 +296,7 @@ wasm module or the fixtures are missing.
 | `recommended.mjs` | The five trusted recommendations, the shared dictionary-group module, and the Settings installer. |
 | `settings.mjs`, `library.mjs` | Settings navigation, reader controls and autosave; library management, groups, removal, batch imports that wait for a busy engine, retry and cancel, and MDX imports. |
 | `startup.mjs`, `design.mjs`, `source-highlight.mjs` | The startup page (welcome, installer runs, recovery, practice, visual novel scenes), the Design preview, source highlighting. |
-| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts and blur; scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes. |
+| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts and blur; scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes; the search page's docked results (`content-search.mjs`). |
 | `engine.mjs` → `engine-replacement.mjs` → `engine-updates.mjs` → `engine-library.mjs` → `engine-lookup.mjs` → `renderer.mjs` → `engine-restart.mjs` → `engine-storage.mjs` | One scenario on one engine: boot and relay, storage ownership and `hd_import`, atomic replacement, trusted recommended imports and managed updates, library state (migration, CAS ownership, titles, reloads), every read path and error path, the renderer against the engine's replies, `hd_remove`, the trained layout, a restart, then isolated imports, paged dictionaries and blob-backed IDBFS. |
 
 The fakes cover only the Chrome surface the extension actually touches:
@@ -370,6 +371,7 @@ Its steps run in this order, in one profile:
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
 | `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, popup audio; mining to a fake AnkiConnect. |
 | `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation, Back and Forward on Alt+B and Alt+F; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
+| `search.mjs` | The search page (#610): its shortcuts, the toolbar's Search and Reading's switch for it, the popup window, real results docked under the box through clicks and Escape, typing and pasting, a miss, and live theme changes. |
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
 | `restart.mjs` | Backups and atomic replacement in Chrome, then `SIGKILL` and a relaunch on the same profile: settings, counts, setup, the library, OPFS and lookups survive; removal. |
 | `memory.mjs`, `media.mjs`, `file-access.mjs` | Low memory mode, the RAM default, entry and hash storage; lookup bounds, deep structured content and dictionary media; saved-page setup with Chrome's file access. |
