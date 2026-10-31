@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe } from "node:test";
 import { check, diagnostics, EXTENSION, step } from "./harness.mjs";
+import { popupRoot } from "../chrome-popup-root.mjs";
 import { popupReader } from "./popup-reader.mjs";
 import { browser, editSettingsControls, extensionId, page } from "./session.mjs";
 
@@ -233,6 +234,33 @@ describe("search page", () => {
     check("the search page and its results follow a popup theme change at once",
       followed && themed.theme === changed && themed.hostTheme === changed && popup.visible(kept) && kept.plain.includes("食べる"),
       JSON.stringify({ changed, followed, themed, kept: kept?.plain.slice(0, 60) }));
+
+    // The page sees only the reader's host of the closed popup root, so keys
+    // and pastes inside the docked result stay there: here, its Note form.
+    const noteOpened = await popup.click(".gsm-hoshidicts-note-button");
+    const root = popupRoot(searchTab);
+    const noteFocused = await root.waitFor(shadow => {
+      const field = shadow.querySelector('.gsm-hoshidicts-note-form:not([hidden]) [name="definition"]');
+      field?.focus();
+      return Boolean(field) && shadow.activeElement === field;
+    }, { timeout: 10_000 }).catch(() => false);
+    await searchTab.keyboard.type("ab");
+    await root.evaluate(shadow => {
+      const data = new DataTransfer();
+      data.setData("text/plain", "漢字");
+      shadow.activeElement.dispatchEvent(new ClipboardEvent("paste",
+        { clipboardData: data, bubbles: true, cancelable: true, composed: true }));
+    });
+    const drafted = await popup.state();
+    const beside = await pageState(searchTab);
+    await searchTab.keyboard.press("Escape");
+    const noteClosed = await popup.state();
+    check("keys typed and text pasted into the docked result's Note form stay in the form",
+      noteOpened && noteFocused && drafted?.noteOpen === true && drafted.noteDefinition === "ab"
+        && beside.value === "食べる" && beside.query === "食べる" && !beside.focused
+        && popup.visible(noteClosed) && noteClosed.noteOpen === false,
+      JSON.stringify({ noteOpened, noteFocused, drafted: drafted && { noteOpen: drafted.noteOpen,
+        noteDefinition: drafted.noteDefinition }, beside, noteClosed: noteClosed?.noteOpen }));
 
     if (SCREENSHOTS) {
       await searchPopup.setViewport({ width: 600, height: 640 });

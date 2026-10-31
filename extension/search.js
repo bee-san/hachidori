@@ -38,16 +38,19 @@ function search() {
   void reader.search(query.firstChild);
 }
 
+// The reader's popup keeps its own keys and pastes, its Note form's among
+// them. Its shadow root is closed, so the page sees only the reader's host.
+const inReader = node => node?.localName === "hachidori-host";
+
 // Yomitan's _isElementInput: a key typed there stays there.
 function typingTarget(element) {
-  return ["input", "textarea", "button", "select"].includes(element?.localName) || element?.isContentEditable === true;
+  return ["input", "textarea", "button", "select"].includes(element?.localName) || element?.isContentEditable === true
+    || inReader(element);
 }
 
-// The element with focus, inside the reader's popup too.
-function focusedElement() {
-  let focused = document.activeElement;
-  while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
-  return focused;
+// Where a paste goes in as text.
+function pasteTarget(node) {
+  return ["input", "textarea"].includes(node?.localName) || node?.isContentEditable === true || inReader(node);
 }
 
 function clear() {
@@ -84,13 +87,13 @@ document.addEventListener("keydown", (event) => {
   }
   const typed = (event.key.length === 1 && event.key !== " ") || event.key === "Backspace";
   const modified = event.ctrlKey || event.metaKey || event.altKey;
-  if (typed && (!modified || (event.ctrlKey && event.key === "Backspace")) && !typingTarget(focusedElement())) {
+  if (typed && (!modified || (event.ctrlKey && event.key === "Backspace")) && !typingTarget(document.activeElement)) {
     input.focus({ preventScroll: true });
   }
 });
-// Text pasted anywhere but a text field is searched at once.
+// Text pasted anywhere but a text field or the popup is searched at once.
 window.addEventListener("paste", (event) => {
-  if (typingTarget(event.composedPath()[0])) return;
+  if (event.composedPath().some(pasteTarget)) return;
   const text = event.clipboardData?.getData("text") ?? "";
   if (!text) return;
   event.preventDefault();

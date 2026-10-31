@@ -992,7 +992,9 @@ popup, as everywhere, and then goes on to the page, which focuses and selects
 the box, as Yomitan's search-scope Focus search box hotkey does on Escape. As
 on Yomitan's search page, a character typed while focus is outside a text field
 or control goes into the box, Ctrl+U clears the box, and text pasted outside a
-text field is searched.
+text field is searched. The popup's own controls and Note form keep their keys
+and pastes: its shadow root is closed, so the page treats focus anywhere in the
+reader's host as the popup's.
 
 **Staying current.** A lookup sent for the docked result finishes even when
 the pointer moves on. A dictionary change or a lookup option change looks the
