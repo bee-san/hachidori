@@ -101,6 +101,8 @@ window.addEventListener("paste", (event) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
 });
+// The page opens ready to type into, as Yomitan's focuses its box.
+input.focus();
 try {
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
   reader = await loadReaderScripts(document, chrome, "searchReader");

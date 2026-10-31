@@ -161,6 +161,7 @@ describe("search page", () => {
     await searchTab.bringToFront();
     await searchTab.waitForFunction(() => !document.getElementById("search-submit").disabled,
       { polling: 100, timeout: 15_000 });
+    const opened = await pageState(searchTab);
     const popup = await popupReader(searchTab);
     const theme = originalOptions.popupTheme === "auto"
       ? await searchTab.evaluate(() => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"))
@@ -177,13 +178,13 @@ describe("search page", () => {
     await new Promise(resolveWait => setTimeout(resolveWait, 300));
     const afterEscape = await popup.state();
     const escaped = await pageState(searchTab);
-    check("the search page shows a typed word's real results under its box in the popup theme, kept through an outside click and Escape, which selects the box",
-      result !== null && result.text.includes("to eat") && docked.ready && docked.theme === theme
+    check("the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
+      opened.focused && result !== null && result.text.includes("to eat") && docked.ready && docked.theme === theme
         && JSON.stringify(docked.readerScripts) === JSON.stringify(READER_SCRIPTS)
         && docked.query === "食べたかった" && !docked.focused && fills(rect, docked.area)
         && popup.visible(afterClick) && afterClick.plain.includes("食べる")
         && popup.visible(afterEscape) && escaped.focused && escaped.selected,
-      JSON.stringify({ result: result?.plain.slice(0, 120), docked, rect, afterClick: afterClick?.plain.slice(0, 60),
+      JSON.stringify({ opened, result: result?.plain.slice(0, 120), docked, rect, afterClick: afterClick?.plain.slice(0, 60),
         afterEscape: afterEscape?.plain.slice(0, 60), escaped }));
 
     await searchTab.$eval("#search-input", box => box.setSelectionRange(box.value.length, box.value.length));

@@ -396,7 +396,7 @@ const PLANNED = [
   "Chrome registers Yomitan's three search page shortcuts, Alt+Insert opening it in a new tab",
   "the toolbar menu's Search beside Settings opens one search page, then brings it forward, and Reading's switch hides it",
   "the popup window shortcut opens one search page in a popup window, then brings it forward",
-  "the search page shows a typed word's real results under its box in the popup theme, kept through an outside click and Escape, which selects the box",
+  "the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
   "a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
   "the search page and its results follow a popup theme change at once",
   "the settings page lists the dictionary again after a restart",
