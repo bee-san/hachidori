@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
-import { LANGUAGES, extension, openSettings, plain, settle } from "./language-settings-harness.mjs";
+import { LANGUAGES, PACKAGE, extension, openSettings, plain, settle } from "./language-settings-harness.mjs";
 
 const context = {};
 vm.runInNewContext(extension("reader-options.js"), { globalThis: context, URL });
@@ -77,7 +77,9 @@ test("a Japanese profile hides nothing and keeps today's labels, with or without
 
 test("an Arabic profile hides pitch accent, the clicked-kanji dictionary and Anki's note-type setup, and keeps their values", async t => {
   const settings = openSettings(t, { hash: "#design", stored: { options: { revision: 1, showPitchAccentGraph: true,
-    kanjiClickDictionary: { title: "KANJIDIC", kind: "kanji" } } } });
+    kanjiClickDictionary: { title: "KANJIDIC", kind: "kanji" } },
+  dictionaryState: { schemaVersion: 1, revision: 1, groups: [],
+    dictionaries: [PACKAGE("a".repeat(32), "KANJIDIC", { termCount: 0, kanjiCount: 1 })] } } });
   await settings.page.start();
   await settle();
   const { document, el, page } = settings;

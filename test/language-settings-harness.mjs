@@ -36,7 +36,8 @@ export function registryOf(languages) {
  * the page finds (null: none, as in a page without registry.js). `onMessage`
  * may answer a runtime message before the fake worker does.
  */
-export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null } = {}) {
+export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null,
+  catalogue: themes = value => value } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -63,8 +64,54 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
     emit(structuredClone(changes));
   }
   const reader = () => window.HDReaderOptions;
+  const revisionOf = record => (Number.isInteger(record?.revision) ? record.revision : 0);
+  const emptyState = () => ({ schemaVersion: 1, revision: 0, dictionaries: [], groups: [] });
+  // A profile's view merged into the state, as the worker's hd_state_cas does.
+  function commitView(message) {
+    const current = records.dictionaryState ?? emptyState();
+    if (message.baseRevision !== revisionOf(current)) return { ok: false, conflict: true, error: "conflict", state: current };
+    const next = reader().hasDictionaryProfiles(current)
+      ? window.mergeDictionaryView(current, message.profileId ?? "ja", { dictionaries: message.dictionaries,
+        groups: message.groups ?? reader().projectDictionaryState(current, message.profileId ?? "ja").groups })
+      : { ...current, dictionaries: message.dictionaries, groups: message.groups ?? current.groups };
+    const state = { ...next, revision: revisionOf(current) + 1 };
+    write({ dictionaryState: state });
+    return { ok: true, state };
+  }
   function worker(message) {
     switch (message.type) {
+      case "hd_language_selection_write": {
+        const current = reader().normaliseLanguageSelection(records.languageSelection);
+        if (message.baseRevision !== current.revision) return { ok: false, conflict: true, error: "conflict", selection: current };
+        const selection = { revision: current.revision + 1, activeProfileId: message.activeProfileId ?? current.activeProfileId,
+          autoSwitch: message.autoSwitch ?? current.autoSwitch };
+        write({ languageSelection: selection });
+        return { ok: true, selection };
+      }
+      case "hd_profile_add": {
+        const options = window.optionsWithProfiles(records.options ?? { revision: 0 });
+        const source = options.profiles.find(profile => profile.id === (message.copyFrom ?? "ja"));
+        const descriptor = languages?.[message.language] ?? null;
+        options.profiles = [...options.profiles, { id: message.language, language: message.language,
+          settings: window.newProfileSettings(source.settings, descriptor), packSettings: window.packSettingDefaults(descriptor) }];
+        const state = window.dictionaryStateWithProfiles(records.dictionaryState ?? emptyState());
+        state.profiles = { ...state.profiles, [message.language]: { dictionaries: [], groups: [] } };
+        state.revision += 1;
+        write({ options: { ...options, revision: revisionOf(records.options) + 1 }, dictionaryState: state });
+        return { ok: true, state, languages: options.profiles.map(profile => profile.language) };
+      }
+      case "hd_profile_remove": {
+        const options = structuredClone(records.options);
+        if (message.profileId !== undefined) options.profiles = options.profiles.filter(profile => profile.id !== message.profileId);
+        const state = structuredClone(records.dictionaryState);
+        if (message.profileId !== undefined) delete state.profiles[message.profileId];
+        state.revision += 1;
+        write({ options: { ...options, revision: revisionOf(records.options) + 1 }, dictionaryState: state });
+        return { ok: true, state };
+      }
+      case "hd_state_cas":
+      case "hd_apply_state":
+        return commitView(message);
       case "hd_options_write": {
         const current = records.options;
         const revision = Number.isInteger(current?.revision) ? current.revision : 0;
@@ -82,9 +129,11 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
         return { ok: true, state: records.dictionaryState ?? { schemaVersion: 1, revision: 0, dictionaries: [], groups: [] } };
       case "hd_status":
         return { ok: true, ready: true, loading: false, failedDictionaries: [] };
-      case "hd_custom_read":
-        return { ok: true, document: { schemaVersion: 1, revision: 0, semanticRevision: "", text: "" },
+      case "hd_custom_read": {
+        const language = reader().profiles(records.options).find(profile => profile.id === (message.profileId ?? "ja"))?.language;
+        return { ok: true, document: window.customDictionaryDocumentFor(records.customDictionarySource, language ?? "ja"),
           state: records.dictionaryState };
+      }
       default:
         return { ok: true };
     }
@@ -126,11 +175,14 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
     ["activation-settings.js", ["createActivationSettings"]],
     ["dictionary-progress.js", ["formatBytes"]],
     ["memory-settings.js", ["createMemorySettings"]],
-    ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
-    ["dictionary-groups.js", ["createDictionaryGroupController"]],
+    ["dictionary-name-drafts.js", ["createDictionaryNameDrafts", "renameWithBaseline"]],
+    ["dictionary-groups.js", ["createDictionaryGroupController", "normaliseDictionaryGroups"]],
     ["error-text.js", ["describeErrorOrJson"]],
     ["custom-dictionary.js", ["CUSTOM_DICTIONARY_ID", "CUSTOM_DICTIONARY_TITLE", "CUSTOM_DICTIONARY_SOURCE_KEY",
-      "normaliseCustomDictionaryDocument", "parseCustomDictionary"]],
+      "normaliseCustomDictionaryDocument", "parseCustomDictionary", "customDictionaryDocumentFor",
+      "personalDictionaryIdentity", "personalDictionaryLanguage"]],
+    ["profile-state.js", ["heldLanguages", "isPersonalPackage", "profileLanguages", "optionsWithProfiles",
+      "dictionaryStateWithProfiles", "mergeDictionaryView", "newProfileSettings", "packSettingDefaults"]],
     ["recommended-dictionaries.js", ["RECOMMENDED_DICTIONARIES"]],
     ["managed-dictionary-source.js", ["effectiveDictionarySchedule", "managedDictionarySource",
       "nextDictionaryUpdateCheck", "normaliseUpdateSettings", "recommendedDictionaryInstalled"]],
@@ -146,8 +198,20 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
   }
   // The theme catalogue the Theme Store and Design's filter read.
   const catalogue = JSON.parse(extension("vendor/themes/index.json"));
+  catalogue.themes = themes(catalogue.themes);
   window.fetch = async () => ({ ok: true, json: async () => catalogue });
-  const source = withoutModules(SETTINGS_PAGE_MODULES.map(extension).join("\n"));
+  // The modules Settings imports on demand (docs/languages.md 5, 7.5), which a
+  // script evaluated in jsdom cannot import itself.
+  for (const [file, exports] of [["profile-settings.js", ["createProfileSettings"]],
+    ["language-settings.js", ["renderLanguageSettings"]]]) {
+    window.eval(`globalThis[${JSON.stringify(file)}] = (() => { ${withoutModules(extension(file))}\nreturn { ${exports.join(",")} }; })();`);
+  }
+  let source = withoutModules(SETTINGS_PAGE_MODULES.map(extension).join("\n"));
+  for (const file of ["profile-settings.js", "language-settings.js"]) {
+    const specifier = `import("./${file}")`;
+    assert.ok(source.includes(specifier), specifier);
+    source = source.replaceAll(specifier, `Promise.resolve(globalThis[${JSON.stringify(file)}])`);
+  }
   assert.ok(source.endsWith("await start();\n"));
   window.eval(source.replace(/await start\(\);\s*$/u, `
     globalThis.__settings = {
@@ -159,6 +223,9 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
       // Edits a profile as the Language menu does, for the capability tests.
       edit(profile) { editedProfile = profile; renderOptions(); },
       dictionaries: () => dictionaries,
+      dictionaryState: () => dictionaryState,
+      storedDictionaryState: () => storedDictionaryState,
+      reloadDictionaries: () => reloadDictionaries(),
       render: () => renderOptions(),
     };
   `));
