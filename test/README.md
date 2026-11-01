@@ -477,7 +477,11 @@ These run separately:
   a promoted switch becomes its setting, a newer setting keeps its default), and
   work in real popups, mining through a fake AnkiConnect. It then saves the
   newest blur Reveal choice its Settings offer, exports, and restores that
-  backup in another fresh profile, checking the same items. It downloads a
+  backup in another fresh profile, checking the same items. Last, a fresh
+  Firefox profile with the Firefox build (see [Firefox suites](#firefox-suites))
+  restores the released backup through Settings with the same record and
+  Settings checks, and its engine answers lookups from the restored
+  dictionaries; the Firefox popup itself is `firefox-e2e.mjs`'s. It downloads a
   GitHub release, so it is not in the pull-request CI matrix: run it before a
   release PR, and move its pinned release to each new one.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
