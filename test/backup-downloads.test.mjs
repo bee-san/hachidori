@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createBackupDownloads } from "../extension/backup-downloads.js";
 
-function fixture(state = "in_progress", scheme = "chrome-extension:") {
+function fixture(state = "in_progress") {
   let saved = {}, downloadState = state;
   const calls = [];
   const chrome = {
-    runtime: { getURL: path => `${scheme}//hachidori/${path}` },
     storage: { session: {
       async get() { return structuredClone(saved); },
       async set(value) { saved = structuredClone(value); },
@@ -55,11 +54,4 @@ test("a tracking failure does not falsely report an already-started download as 
   assert.equal(reply.downloadId, 7);
   assert.match(reply.warning, /Download started/u);
   assert.equal(f.calls.includes("hd_backup_release"), false, "do not revoke a download still in progress");
-});
-
-test("Firefox saves a backup the way its own downloads setting says", async () => {
-  const f = fixture("in_progress", "moz-extension:");
-  assert.equal((await f.service.download()).downloadId, 7);
-  assert.equal(Object.hasOwn(f.calls[1], "saveAs"), false);
-  assert.match(f.calls[1].filename, /^hachidori-backup-\d{4}-\d{2}-\d{2}\.zip$/u);
 });

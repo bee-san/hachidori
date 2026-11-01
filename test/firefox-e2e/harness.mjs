@@ -131,7 +131,7 @@ const E2E_PLANNED = [
   "Check now records an available update from the dictionary's update index",
   "Update installs the newer revision",
   // backups
-  "Export backup downloads a backup ZIP through Firefox's downloads",
+  "Export backup asks where to save the backup and Firefox saves the ZIP there",
   "a backup exported by Hachidori 0.1.1 for Chrome restores in Firefox",
   "a backup exported by Hachidori 0.3.0 for Chrome restores in Firefox",
   "the restored library answers lookups and shows the personal entry",

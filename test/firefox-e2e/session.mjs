@@ -148,6 +148,54 @@ function interceptedUrls() {
   return RECOMMENDED.flatMap(entry => [entry.downloadUrl, entry.indexUrl]);
 }
 
+// Headless Firefox cannot show a Save dialog. A stand-in file picker in the
+// parent process answers each one as a user pressing Save would, with the
+// suggested name in the downloads directory, and records what was asked.
+const SAVE_DIALOG = `(directory => {
+  if (globalThis.hachidoriSaveDialogs) return;
+  const dialogs = globalThis.hachidoriSaveDialogs = [];
+  const { classes: Cc, interfaces: Ci } = Components;
+  const factory = {
+    createInstance(iid) {
+      const picker = {
+        mode: null, defaultString: "", defaultExtension: "", displayDirectory: null, filterIndex: 0, file: null,
+        init(parent, title, mode) { this.mode = mode; },
+        appendFilters() {},
+        appendFilter() {},
+        open(callback) {
+          this.file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+          this.file.initWithPath(PathUtils.join(directory, this.defaultString));
+          dialogs.push({ save: this.mode === Ci.nsIFilePicker.modeSave, name: this.defaultString });
+          (typeof callback === "function" ? callback : callback.done.bind(callback))(Ci.nsIFilePicker.returnOK);
+        },
+        QueryInterface: ChromeUtils.generateQI(["nsIFilePicker"]),
+      };
+      return picker.QueryInterface(iid);
+    },
+    QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
+  };
+  Components.manager.QueryInterface(Ci.nsIComponentRegistrar).registerFactory(Services.uuid.generateUUID(),
+    "Hachidori test Save dialog", "@mozilla.org/filepicker;1", factory);
+})`;
+
+// Firefox's own window, where the stand-in Save dialog lives.
+async function chromeContext(session) {
+  const { result } = await session.send("browsingContext.getTree", { "moz:scope": "chrome" });
+  return result.contexts[0].context;
+}
+
+async function evaluateInChrome(session, expression) {
+  const { result } = await session.send("script.evaluate", { expression, target: { context: await chromeContext(session) },
+    awaitPromise: false });
+  if (result.type !== "success") throw new Error(`Firefox's window refused the script: ${JSON.stringify(result)}`);
+  return result.result.value;
+}
+
+// The Save dialogs the browser of `target`, a page, has been asked for, oldest first.
+async function saveDialogs(target = page) {
+  return JSON.parse(await evaluateInChrome(bidiSession(target), "JSON.stringify(globalThis.hachidoriSaveDialogs ?? [])"));
+}
+
 async function launchFirefox(profile) {
   mkdirSync(profile, { recursive: true });
   const downloadDir = `${profile}-downloads`;
@@ -186,6 +234,7 @@ async function launchFirefox(profile) {
   await session.send("session.subscribe", { events: ["network.beforeRequestSent", "log.entryAdded"] });
   await session.send("network.addIntercept", { phases: ["beforeRequestSent"],
     urlPatterns: interceptedUrls().map(pattern => ({ type: "string", pattern })) });
+  await evaluateInChrome(session, `${SAVE_DIALOG}(${JSON.stringify(downloadDir)})`);
   return { browser: next, session, downloads: downloadDir, first };
 }
 
@@ -633,7 +682,7 @@ export {
   dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateJson, EXTENSION,
   extensionUrl, findPage, FIXTURE, FIXTURE_ID, GECKO_ID, HERE, highlightSize, hoverForPopup, importArchives, inPopup,
   installHachidori, launchFirefox, listIdbfsPaths, makeAudioWav, navigate, openExtensionPage, openPage, ORIGIN, page,
-  PROFILE, readPopup, readStorage, RECOMMENDED, reloadPage, routes, sendRuntime, servedAudio, servedFiles, serverUrl,
+  PROFILE, readPopup, readStorage, RECOMMENDED, reloadPage, routes, saveDialogs, sendRuntime, servedAudio, servedFiles, serverUrl,
   setBidi, setBrowser, setDownloads, setInputFiles, setPage, showSettingsSection, sleep, startSession, tabUrls,
   updateOrigin, updateRoutes, UUID, waitFor, writeOptions
 };

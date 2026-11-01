@@ -17,8 +17,8 @@ import { buildTitledZip } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
 import {
   activate, dictionaryState, downloadedFiles, downloadsDirectory, HERE, importArchives, installHachidori, launchFirefox,
-  openExtensionPage, page, readStorage, reloadPage, sendRuntime, setInputFiles, showSettingsSection, sleep, updateOrigin, updateRoutes,
-  waitFor,
+  openExtensionPage, page, readStorage, reloadPage, saveDialogs, sendRuntime, setInputFiles, showSettingsSection, sleep, updateOrigin,
+  updateRoutes, waitFor,
 } from "./session.mjs";
 
 const MANAGED_TITLE = "hachidori-firefox-managed";
@@ -109,9 +109,11 @@ describe("backups", () => {
     const status = await page.evaluate(() => document.getElementById("backup-status")?.textContent ?? "");
     exported = file ? { name: file, path: resolve(downloadsDirectory(), file) } : null;
     const header = exported ? readFileSync(exported.path).subarray(0, 4).toString("latin1") : "";
-    check("Export backup downloads a backup ZIP through Firefox's downloads",
-      exported !== null && header === "PK\u0003\u0004" && status.startsWith("Download started"),
-      JSON.stringify({ file, status, header }));
+    const dialogs = await saveDialogs();
+    check("Export backup asks where to save the backup and Firefox saves the ZIP there",
+      exported !== null && header === "PK\u0003\u0004" && status.startsWith("Download started")
+        && JSON.stringify(dialogs) === JSON.stringify([{ save: true, name: file }]),
+      JSON.stringify({ file, status, header, dialogs }));
   });
 
   step("restore backups the Chrome releases exported", async () => {
