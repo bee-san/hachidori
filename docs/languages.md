@@ -448,9 +448,12 @@ are empty).
 The messages are `hd_profile_add { language, copyFrom, firstRun? }`, where
 `copyFrom` is the profile whose settings the new one copies (section 6.3:
 Settings sends the edited profile, the startup page the active one), and
-`hd_profile_remove { profileId, erase? }`, or
-`hd_profile_remove { language, erase: true }` to erase a held language that
-has no profile (section 16.3).
+`hd_profile_remove { profileId, erase?, baseDocumentRevision? }`, or
+`hd_profile_remove { language, erase: true, baseDocumentRevision }` to erase
+a held language that has no profile (section 16.3). An erase carries the
+document revision the confirmation read, and the engine refuses it with
+today's "The personal dictionary changed after you confirmed" when the
+document is newer, as today's erase does.
 `hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch? }`
 writes the installation-local `languageSelection` and is never forwarded to a
 sharing host.
@@ -806,8 +809,10 @@ writes two classic scripts that set `globalThis.HDLanguages` (section 5):
   `host.anki.noteTypeFamilies`) and each pack's personal-dictionary id
   (section 15);
 - `registry-reader.js`, for content scripts: identity, `text`,
-  `capabilities`, `presentation`, `host.sample.warmup` and the pack settings'
-  display effects. It sets `HDLanguages` only when it is not already set.
+  `capabilities`, `presentation`, `host.sample.warmup` and the pack settings
+  with a `display` or `capability` effect (`id`, `type`, `default`,
+  `effect`), because an optional capability such as Korean's hanja character
+  view decides what the popup links. It sets `HDLanguages` only when it is not already set.
 
 Both hold every pattern and display-transform step with its class references
 expanded, by the expansion that hoshidicts' `tools/check-classes.mjs` uses
@@ -1666,7 +1671,11 @@ pages adopt only newer revisions:
    frames that arrive between its request and the reply, none of which is
    newer than the reply. A new link's probe connection opts in too, and the
    link stores the opt-in reply's snapshot, or the refusal's, never the
-   probe's `hello` snapshot from a host with the capability. Every other
+   probe's `hello` snapshot from a host with the capability. The client
+   reports the outcome to its own pages in `hd_sharing_status` as
+   `languageProfiles: { capability, optIn, missingLanguages, hostLanguages }`
+   (`optIn` is `accepted`, `refused` or null), which Settings and the
+   startup page use to choose the messages of section 16.1. Every other
    client, older ones included, gets the Japanese view.
 3. **Changes.** With profiles, the host sends each client its own storage
    change frame, projected to the Japanese view unless that client opted in;
