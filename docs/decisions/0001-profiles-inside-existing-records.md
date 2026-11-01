@@ -1,6 +1,6 @@
 # 0001: Profiles live inside the existing records, read through flat projections; the active profile is local
 
-Status: proposed (multi-language design, Phase 1, revision 7)
+Status: proposed (multi-language design, Phase 1, revision 8)
 
 ## Context
 

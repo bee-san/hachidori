@@ -1,6 +1,6 @@
 # 0011: Settings edits one profile, chosen in the page, independently of the active profile
 
-Status: proposed (multi-language design, Phase 1, revision 7)
+Status: proposed (multi-language design, Phase 1, revision 8)
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0009: Older linked browsers see the host's Japanese profile as their only one
 
-Status: proposed (multi-language design, Phase 1, revision 7)
+Status: proposed (multi-language design, Phase 1, revision 8)
 
 ## Context
 
@@ -22,8 +22,11 @@ reads in, and applies that client's writes (which carry no profile) to the
 Japanese profile. When the host has no Japanese profile, that client's reads
 and lookups are answered from the Japanese view (which finds nothing) and its
 writes are refused with a message that names the cause, so they never land in
-another language. When a host first gains profiles it closes its connections
-once, after the converting request's reply, so clients say hello again.
+another language. Whenever a commit changes which projection a connection
+should receive (the records leave the single-profile shape, or a client would
+receive a language it lacks, or a refused client would now be accepted), the
+host forces that connection to reconnect after its own requests in flight
+finish, so the client says hello again.
 
 ## Options rejected
 
@@ -50,5 +53,6 @@ once, after the converting request's reply, so clients say hello again.
   shows those packages as disabled Japanese dictionaries.
 - The sharing host changes in several places: per-client change frames
   instead of one broadcast, projected replies by request type, allowlists that
-  keep a validated `profileId`, and one reconnect when profiles first appear.
+  keep a validated `profileId`, and forced reconnections when a connection's
+  projection changes.
   The projection functions the rest of the design needs build the view.

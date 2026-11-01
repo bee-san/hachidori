@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Languages and profiles
 
-Status: design for review (Phase 1, revision 7). Nothing described here is
+Status: design for review (Phase 1, revision 8). Nothing described here is
 implemented yet.
 
 Hachidori is a Japanese dictionary today. This document describes how it
@@ -91,9 +91,12 @@ The user interface stays in English.
 - **Language-scoped data**: user data that belongs to a language rather than
   to a profile: the personal dictionary, lookup counts, known and ignored
   words.
+- **Held language**: a language for which the records have a profile, a
+  personal package, a personal document with text, a lookup-count entry, or a
+  marks entry with a word (section 4.3).
 - **Single-profile shape**: the stored records of an installation whose only
-  profile is Japanese and which holds no other language's personal source,
-  counts or marks: exactly today's records (section 4.5).
+  profile is Japanese and which holds no other language: exactly today's
+  records (section 4.5).
 
 ## 3. What belongs to a profile
 
@@ -197,6 +200,16 @@ is added.
   reply needs projecting.
 - `wordStatusOverrides` keeps `known` and `ignored` for Japanese and gains
   `languages: {"<code>": {"known": [], "ignored": []}}`.
+- **Writers.** Every write of these three records changes only the addressed
+  language's part and keeps the rest of the record, `languages` included,
+  through one helper in the module that owns the record
+  (`custom-dictionary.js`, `lookup-stats.js`, `word-status-overrides.js`), as
+  `applyOptionsPatch` is for `options`. The writers are `hd_custom_cas` (and
+  through it the engine's `hd_custom_save` and `hd_custom_append`),
+  `hd_lookup_stats_record`, `hd_word_status_override`, the erase in
+  `hd_profile_cas` and the restore in `hd_backup_cas`. Older linked clients'
+  writes reach the same handlers on the host, so they keep other languages'
+  data too.
 - `ankiDuplicateIndex` keeps today's single-snapshot record while one source
   exists, and holds one snapshot per source key once two profiles' first
   Templates have usable sources (section 12).
@@ -213,13 +226,17 @@ A new key, written only once the records have profiles, by
 GameSentenceMiner's overlay choose their own language. When it is absent or
 names a profile that does not exist, the active profile is the Japanese
 profile, or the first profile when there is none. Converting back to the
-single-profile shape, or a restore that yields it, removes the key.
+single-profile shape, a restore that yields it, or an unlink whose restored
+records are in it removes the key. Linking captures the browser's own
+selection with its other local records only when the key exists, so a
+single-profile link stores the same bytes as today, and unlinking puts it
+back.
 
 ### 4.5 The single-profile shape
 
 While an installation has exactly one profile, it is Japanese, and no other
-language's personal source, counts or marks remain, every record keeps
-exactly today's shape: no `profiles`, `dictionaryState`
+language is held (section 2), every record keeps exactly today's shape: no
+`profiles`, `dictionaryState`
 `schemaVersion` 1, no `languages` maps, no `languageSelection`. The profile
 layer reads such records as one Japanese profile (section 5.1).
 
@@ -240,10 +257,8 @@ plus `profiles.ja` (same order, same `enabled` flags, same groups), keeping
 every value. Choosing another language at first run, before anything is
 installed (section 16.1), moves the stored profile keys, edits made before
 setup included, into that language's profile instead and applies the pack's
-replacements of section 6.3. The records convert back when profiles are
-removed until one Japanese
-profile remains and no other language's personal source, counts or marks
-remain (section 16.5).
+replacements of section 6.3. The records convert back when one Japanese
+profile remains and no other language is held (section 16.5).
 
 ## 5. The profile layer
 
@@ -398,21 +413,27 @@ every record it wrote. On failure the committed state and loaded set are
 restored. Neither request compiles
 anything. **Also erase…** (section 16.5) is the flag `erase` of
 `hd_profile_remove`: the same compare-and-set also writes the language's
-emptied personal document, `dictionaryState` without its personal package,
-its marks removed and a new lookup-count generation for the language
-(section 4.3); the replaced generation's rows are then deleted as
-`hd_lookup_stats_cleanup` deletes unreachable rows. `hd_profile_cas` derives
+emptied personal document (which keeps its monotonic revision),
+`dictionaryState` without its personal package, and the records without the
+language's `wordStatusOverrides.languages` and `lookupStats.languages`
+entries, so the language is no longer held (section 2); for Japanese it
+empties the top-level marks and replaces the top-level generation. The rows
+of the dropped generation are then deleted as `hd_lookup_stats_cleanup`
+deletes unreachable rows. `hd_profile_cas` derives
 the new count entry and the marks inside the worker's storage queue, as
 `hd_lookup_stats_reset` does, and compares only `options`, `dictionaryState`
 and the personal document, so ordinary browsing in other tabs does not make
 it conflict; after a lost reply it checks those three exactly and the other
-two by effect (the language's entry differs from the replaced one, and the
-language has no marks).
+two by effect (the language has no count or marks entry; for Japanese, the
+top-level generation differs from the replaced one and the top-level marks
+are empty).
 
 The messages are `hd_profile_add { language, copyFrom, firstRun? }`, where
 `copyFrom` is the profile whose settings the new one copies (section 6.3:
 Settings sends the edited profile, the startup page the active one), and
-`hd_profile_remove { profileId, erase? }`.
+`hd_profile_remove { profileId, erase? }`, or
+`hd_profile_remove { language, erase: true }` to erase a held language that
+has no profile (section 16.3).
 `hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch? }`
 writes the installation-local `languageSelection` and is never forwarded to a
 sharing host.
@@ -646,12 +667,14 @@ language-specific code:
   renders flags, before Settings search builds its index and again when the
   edited profile changes. The fieldsets do not exist for a pack without
   settings, so a Japanese-only Settings page is unchanged.
-- **Storage.** `profiles[].packSettings`, written as a complete record through
+- **Storage.** `profiles[].packSettings`, written as a patch by id through
   the `packSettings` field of `hd_options_write`, which the worker validates
   against the target profile's pack schema (`validateOptionsPatch` would drop
-  it as an unknown option key). Values whose id the pack no longer declares
-  are kept and ignored; invalid values read as the default. Backups carry
-  them.
+  it as an unknown option key): ids the host's pack declares are validated,
+  ids the patch omits keep their values, and ids the pack does not declare
+  are kept and ignored, so linked browsers with older or newer versions of a
+  pack do not reset each other's values. Invalid values read as the default.
+  Backups carry them.
 - **Effects.**
   - Engine effects (`preprocessor`, `transforms`, `variantPass`), allowed only
     on boolean settings, travel with each lookup as `languageOptions`
@@ -791,9 +814,9 @@ file or either script differs from what the submodule gives.
   full reload keeps the packs.
 - A pack that fails to load is reported by `hd_status` in `failedLanguages`,
   as dictionaries are in `failedDictionaries`; the field appears only once the
-  records have profiles, and `offscreen.js` copies it into the `hd_status`
-  cache it serves during a mutation only when the reply has it, so the
-  single-profile reply is unchanged. That profile's lookups fail
+  records have profiles; `offscreen.js` sets it in the `hd_status` cache it
+  serves during a mutation when the reply has it and deletes it otherwise,
+  so the single-profile reply is unchanged. That profile's lookups fail
   with "{Language} could not be loaded." and other languages keep working.
 - The loaded dictionary set is every package enabled in any profile, plus the
   load verification of disabled packages that exists today. Loading one
@@ -1442,11 +1465,15 @@ add whose language is already the only profile succeeds, so a retry after a
 lost reply does no harm. On a linked browser the choice selects that language locally
 when the host has a profile for it, or sends an ordinary `hd_profile_add` to
 the host and then selects it; **Use the Hachidori in {name}** links first and
-then follows the same rule. A link that does not carry profiles leaves the
-browser on Japanese, and the welcome card says why: a host whose `hello`
-lacks the capability (an older build, or one without a second language) gets
-"Add {Language} on {host} first; if its Settings have no Language section,
-update it.", and a host that lacks the language gets section 17.6's message.
+then follows the same rule, selecting the language once the mirror holds
+the new profile (it arrives in a change frame, not in the reply). A link
+that does not carry profiles leaves the browser on Japanese, the card sends
+no `hd_profile_add`, and it says why: a host whose `hello` lacks the
+capability (an older build, or one without a second language) gets "Add
+{Language} on {host} first; if its Settings have no Language section, update
+it."; a client refused at opt-in gets "Update Hachidori in this browser to
+use {Language} from {host}."; and a host that lacks the language gets "The
+linked Hachidori does not have {Language}. Update it and try again."
 The request is sent before the stage advances,
 and a failure keeps the welcome card with the error. The
 dictionary stage then shows the pack's recommended links and an import area
@@ -1482,7 +1509,10 @@ Anki can be set up in Settings; the practice stage uses the pack's
   lookups** beside it activates the edited profile.
 - **Add or remove languages** opens a dialog: the profiles with their
   dictionary counts, **Remove**, and **Add a language** with every pack not in
-  use.
+  use. Each held language without a profile is listed too ("Vietnamese:
+  personal dictionary, lookup counts and marks are kept") with **Erase**. On a
+  linked client whose host's `hello` lacks the capability, **Add a language**
+  shows the welcome card's message for that case (section 16.1).
 - **Reading → Scanning** gains **Switch language automatically from the page's
   language** (`languageSelection.autoSwitch`, per installation, off, written
   by `hd_language_selection_write`), rendered with two or more profiles.
@@ -1522,9 +1552,9 @@ source highlighting and Custom CSS and JavaScript for every language. The
   active profile becomes the Japanese profile, or the first profile when there
   is none, the same rule every installation applies when its
   `languageSelection` names a profile that no longer exists (section 4.4).
-- When the only remaining profile is Japanese and no other language's data
-  remains, which needs an explicit erase, the removal converts the records
-  back to the single-profile shape (section 4.5).
+- When the only remaining profile is Japanese and no other language is held
+  (section 2), which needs an explicit erase, the removal or erase converts
+  the records back to the single-profile shape (section 4.5).
 
 ## 17. Backup, restore and sharing
 
@@ -1568,7 +1598,11 @@ personal dictionary holds in it.
   - **Restore** (`hd_backup_cas`) validates the view as today, validates
     `profiles` when present and restores from it, pruning selections per
     profile through `applyOptionsPatch`, and leaving out every language this
-    build has no pack for (section 17.6). The engine loads the
+    build has no pack for (section 17.6). It writes every language's personal
+    document at its current revision plus one, as it does the top-level
+    records (a language that keeps a profile but whose document the restore
+    removes gets an emptied document), and `hd_backup_cas` checks those
+    revisions as it checks the top-level ones. The engine loads the
     packs of the restored profiles before the restore publishes (section
     9.2).
 - Versions 1-3 restore as one Japanese profile through the same projection.
@@ -1620,14 +1654,24 @@ pages adopt only newer revisions:
    `hd_profile_remove` under `hoshidicts-offscreen`, which are also in that
    target's `MUTATING_FORWARDED_REQUESTS`; pack setting writes travel inside
    `hd_options_write`. `hd_language_selection_write` is never forwarded.
-6. **Gaining profiles.** When a host's records first gain profiles, it closes
-   every sharing connection once, so clients say hello again and see the
-   capability. It does so after the reply to the request that converted the
-   records has been sent and after the other requests in flight have
-   finished, so no client is told that a change may have completed. From the
-   converting write until the close it sends no change frames, so every
-   client receives the new revisions in one projection, from its next
-   `hello` or opt-in reply.
+6. **Forced reconnections.** A connection must reconnect when a commit
+   changes which projection it should receive: whenever the records leave the
+   single-profile shape (a second language, a version 4 restore on a
+   single-profile host), so clients say hello again and see the capability;
+   when an opted-in client would receive a language it lacks; and when a
+   refused client would now be accepted (the host keeps each refused
+   connection's pack codes). From that commit the host sends the connection
+   no change frames. Requests that connection sends after the commit are
+   dispatched when they are lookups or count requests, and refused with "The
+   linked Hachidori is changing its languages. Try again." when their
+   replies carry records (item 4's list). Requests already running finish
+   with their usual replies (section 21), and the host closes the connection
+   once they have finished, so no client is told that a change may have
+   completed. Every client then receives the new revisions in one
+   projection from its next `hello` or opt-in reply; lookup-count rows
+   written meanwhile reach its mirror only through later change frames, as
+   after any reconnection today, while its forwarded count reads answer from
+   the host.
 
 ### 17.4 Linked browsers running an older Hachidori
 
@@ -1653,9 +1697,9 @@ projection of whichever profile a lookup uses.
 
 ### 17.6 Builds with different packs
 
-A build holds only languages it has a pack for. A language is held by an
-installation when it has a profile or any language-scoped data (a personal
-source or package, counts, marks). Builds differ in packs: a language arrives
+A build holds only languages it has a pack for, in the sense of section 2: a
+profile, a personal package, a personal document with text, a lookup-count
+entry or a marks entry with a word. Builds differ in packs: a language arrives
 with a submodule bump, the Chrome Web Store build lags the repository, and
 GameSentenceMiner ships its own copy. So:
 
@@ -1665,7 +1709,13 @@ GameSentenceMiner ships its own copy. So:
   no profile. The preview names each such language ("Vietnamese needs a
   newer Hachidori and is not restored"), with the name from
   `Intl.DisplayNames(["en"], { type: "language" })`. The result is the
-  single-profile shape exactly when section 4.5's rule says so.
+  single-profile shape exactly when section 4.5's rule says so. When no
+  profile of the backup remains (an installation set up in Vietnamese,
+  restored on a build without Vietnamese), the restore builds the Japanese
+  profile from the backup's Japanese view (section 17.1), as an older build
+  does, keeps the other held languages it has packs for, and its preview says
+  that the Japanese settings and dictionaries are restored in place of the
+  left-out language.
 - **Opt-in.** The host answers an opt-in in one turn of its storage queue: it
   reads the snapshot, checks the client's pack codes against every language
   that snapshot holds, and records the opt-in only when it accepts, so no add
@@ -1677,10 +1727,10 @@ GameSentenceMiner ships its own copy. So:
   Sharing says "Update Hachidori in this browser to use {Language} from
   {host}."
 - **Later changes.** The host never sends an opted-in client records that hold
-  a language the client lacks. When a commit would (an add, a restore), that
-  client's change frame is the Japanese view at the commit's newer revisions,
-  the host treats the connection as not opted in, and it closes the
-  connection after the reply, so the client says hello again and is refused.
+  a language the client lacks. When a commit would (an add, a restore), the
+  connection is forced to reconnect (section 17.3, item 6), says hello again
+  and is refused. A refused connection that a later commit makes acceptable
+  (an erase, a restore without that language) reconnects the same way.
 - **Adding a language through a link.** The opt-in reply lists the host's
   pack codes, and **Add a language** on a client offers the packs both
   installations have. The host refuses an `hd_profile_add` for a language it
@@ -1705,7 +1755,11 @@ GameSentenceMiner ships its own copy. So:
   Vietnamese profile restored on a build without Vietnamese, a backup with
   one Japanese profile and English data keeping the English data on a build
   with English, a restore of the same installation's snapshot replacing its
-  English counts, the first-run `firstRun` rules);
+  English counts, the first-run `firstRun` rules, a Japanese personal save,
+  lookup and mark each keeping English's document, generation and marks and
+  the English writes keeping Japanese's, a restore that leaves no profile
+  building the Japanese profile, restored document revisions above the
+  current ones);
   `language-packs.test.mjs` (vendored copy and both registry scripts equal
   what the submodule gives, class references expanded by hoshidicts'
   `tools/lib/classes.mjs`; `registry-reader.js` within 64 KB; every
@@ -1749,8 +1803,10 @@ GameSentenceMiner ships its own copy. So:
   packages; a client whose registry lacks one of the host's languages refused
   at opt-in and working on the Japanese view, an opted-in client never
   storing a profile it lacks when the host adds one, and an `hd_profile_add`
-  for a language the host lacks refused with its message; unlinking a browser
-  with its own English counts keeps them; an open tab and Settings on a
+  for a language the host lacks refused with its message; an opt-in refused
+  for a language the host holds only through data, and accepted after that
+  language is erased; unlinking a browser with its own English counts keeps
+  them; an open tab and Settings on a
   profile-aware client show the host's profiles right after a new link and
   after the host gains profiles. It saves screenshots of
   the picker, the switcher and one lookup
@@ -1832,6 +1888,10 @@ in every theme.
   installations too is a separate change for the owner to decide.
 - The `-plain` Anki glossary markers join lines with `<br>` and have no
   element to carry a direction.
+- A linked client's request that is already running when the host forces a
+  reconnection (section 17.3, item 6) gets its reply in the old projection,
+  which can leave one page on the Japanese view until the host's next
+  write.
 - Detection by characters cannot tell two Latin-script languages apart: an
   English example in an English-French dictionary takes the dictionary's
   `fr` (section 10.3). Outside profiles written only in Latin, a Latin-script
