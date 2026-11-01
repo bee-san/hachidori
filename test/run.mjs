@@ -111,6 +111,10 @@ try {
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }
+  } else if (suite === "chrome-languages") {
+    // Languages in real Chrome (docs/languages.md 18); its screenshots go to test/tmp/languages/.
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await run(suite, [`test/${suite}.mjs`]);
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
     // The released backup is also restored in the Firefox build.
@@ -119,7 +123,8 @@ try {
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-backup-release, install-chrome,"
+        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-languages, chrome-backup-release,"
+        + " install-chrome,"
         + " firefox-lint, firefox-e2e, firefox-large or install-firefox.",
     );
   }
