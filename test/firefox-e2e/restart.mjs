@@ -9,7 +9,7 @@
  */
 
 import "./sharing.mjs";
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -202,6 +202,7 @@ describe("local files", () => {
       switched?.label === "Access local files on your computer" && allowed === true && shown?.plain.includes("personal note") === true,
       JSON.stringify({ switched, allowed, shown: shown?.plain?.slice(0, 120) }));
     await local.close();
+    rmSync(file, { force: true });
     await addons.close().catch(() => {});
   });
 });
