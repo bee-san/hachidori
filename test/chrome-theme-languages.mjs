@@ -463,6 +463,6 @@ try {
   server.close();
 }
 const failed = results.filter(item => !item.ok);
-console.log(`${results.length - failed.length} passed, ${failed.length} failed (Chrome ${chromeName}); screenshots in ${output}`);
+console.log(`${results.length - failed.length} passed, ${failed.length} failed (Chrome ${chromeName})${current ? `; screenshots in ${output}` : ""}`);
 assert.equal(failed.length, 0, `${failed.length} language checks failed`);
 assert.ok(results.length > 500, `only ${results.length} checks ran`);
