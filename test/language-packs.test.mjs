@@ -75,7 +75,9 @@ test("class fields and display transforms are expanded by hoshidicts' classes.mj
     "xx/language.json", "xx/transforms.json"], "packs are directories without a leading _");
   const arabic = loadRegistry(files.get("registry-reader.js")).get("ar");
   assert.deepEqual(arabic.settings, [{ id: "vowelMarks", type: "enum", default: "show",
-    effect: { display: { fields: ["expression", "reading"], when: "hide", transform: "stripVowelMarks" } } }]);
+    effect: { display: { fields: ["expression", "reading"], when: "hide", transform: "stripVowelMarks" } } },
+  { id: "tatweel", type: "boolean", default: false,
+    effect: { display: { fields: ["expression"], when: true, transform: "joinTatweel" } } }]);
   assert.deepEqual(arabic.presentation.displayTransforms.stripVowelMarks,
     [{ strip: new ClassSet(JSON.parse(files.get("ar/language.json")).classes).source("{harakat}") }]);
   const pack = JSON.parse(files.get("xx/language.json"));
@@ -129,4 +131,29 @@ test("a pack's personal dictionary id is the first 32 hexadecimal digits of SHA-
   const english = personalDictionary({ code: "en", name: "English" });
   assert.equal(english.id, createHash("sha256").update("hachidori-custom-dictionary:en").digest("hex").slice(0, 32));
   assert.equal(english.title, "Hachidori Custom Dictionary (English)");
+});
+
+// The display transforms the reader applies (language-text.js, docs/languages.md
+// 10.4) give, for each `pattern` and `case` step, what the engine's expectation
+// table records for it (engine contract 12.1 step 2).
+test("display steps in JavaScript agree with each pack's expectation table", async () => {
+  await import("../extension/language-text.js");
+  const { applySteps } = globalThis.HDLanguageText;
+  const checked = [];
+  for (const [directory, registry] of [[join(HOSHIDICTS, "languages"), readFileSync(join(ROOT, "extension/vendor/languages/registry.js"), "utf8")],
+    [join(fixtureRoot, "languages"), (await languageFiles({ hoshidicts: fixtureRoot, commit: "fixture" })).get("registry.js")]]) {
+    const languages = loadRegistry(registry);
+    for (const code of languages.codes) {
+      const table = join(directory, code, "tests/classes.json");
+      if (!existsSync(table)) continue;
+      for (const { processor, step, cases } of JSON.parse(readFileSync(table, "utf8")).steps) {
+        const name = /^presentation\.displayTransforms\.(.+)$/u.exec(processor)?.[1];
+        if (name === undefined) continue;
+        const steps = languages.get(code).presentation.displayTransforms[name];
+        for (const [input, output] of cases) assert.equal(applySteps([steps[step]], input), output, `${code} ${name}[${step}] ${input}`);
+        checked.push(`${code}.${name}`);
+      }
+    }
+  }
+  assert.ok(checked.includes("ar.joinTatweel"), "the Arabic fixture's pattern step is checked");
 });

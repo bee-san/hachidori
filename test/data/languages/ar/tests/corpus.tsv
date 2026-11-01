@@ -1,3 +1,4 @@
 # Fixture corpus for Hachidori tests (CC0).
 # category	valid	source	term	rule	reasons
 nouns	1	الكتاب	كتاب	n	definite
+nouns	1	كتــاب	كتاب	n	

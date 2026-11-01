@@ -93,6 +93,13 @@
         {
           "strip": "{harakat}"
         }
+      ],
+      "joinTatweel": [
+        {
+          "pattern": "ـ+",
+          "replace": "",
+          "global": true
+        }
       ]
     }
   },
@@ -122,6 +129,23 @@
           ],
           "when": "hide",
           "transform": "stripVowelMarks"
+        }
+      }
+    },
+    {
+      "id": "tatweel",
+      "type": "boolean",
+      "default": false,
+      "label": "Hide tatweel in headwords",
+      "description": "Remove the stretching character dictionaries sometimes write.",
+      "group": "display",
+      "effect": {
+        "display": {
+          "fields": [
+            "expression"
+          ],
+          "when": true,
+          "transform": "joinTatweel"
         }
       }
     }
