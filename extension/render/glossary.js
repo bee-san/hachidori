@@ -1087,8 +1087,10 @@
     "Khar", "Lydi", "Mand", "Mani", "Mend", "Merc", "Mero", "Narb", "Nbat", "Nkoo", "Orkh", "Ougr", "Palm",
     "Phli", "Phlp", "Phnx", "Prti", "Rohg", "Samr", "Sarb", "Sogd", "Sogo", "Syrc", "Thaa", "Yezi"]);
   const RTL_SCRIPT_CLASS = [...RTL_SCRIPTS].map((code) => `\\p{Script=${code}}`).join("");
-  const RTL_LETTERS = new RegExp(`(?=\\p{L})[${RTL_SCRIPT_CLASS}]`, "gu");
-  const RTL_LETTER = new RegExp(`(?=\\p{L})[${RTL_SCRIPT_CLASS}]`, "u");
+  // One class, letters in those scripts: a lookahead per character scans
+  // a long glossary several times slower.
+  const RTL_LETTERS = new RegExp(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "gv");
+  const RTL_LETTER = new RegExp(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "v");
   const LETTERS = /\p{L}/gu;
   const LETTER = /\p{L}/u;
   const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
@@ -1110,8 +1112,8 @@
   // letters are right-to-left letters; text without letters has no direction.
   function textDirection(text) {
     const value = String(text ?? "");
+    if (!RTL_LETTER.test(value)) return LETTER.test(value) ? "ltr" : null;
     const letters = value.match(LETTERS)?.length ?? 0;
-    if (letters === 0) return null;
     return (value.match(RTL_LETTERS)?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
   }
 
