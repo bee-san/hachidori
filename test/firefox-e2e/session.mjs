@@ -17,7 +17,7 @@ import { dirname, resolve } from "node:path";
 import { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { RECOMMENDED_DICTIONARIES as CATALOGUE } from "../../extension/recommended-dictionaries.js";
-import { RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
+import { makeAudioWav, RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
 import { diagnostics, fatal, keepProfiles, report } from "./harness.mjs";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -472,18 +472,6 @@ async function importArchives(target, files) {
 
 async function dictionaryState(target = page) {
   return (await readStorage(target, ["dictionaryState"])).dictionaryState;
-}
-
-// A one-second PCM clip that Firefox decodes and plays to the end.
-function makeAudioWav() {
-  const samples = 8000;
-  const wav = Buffer.alloc(44 + samples * 2);
-  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
-  for (let index = 0; index < samples; index += 1) wav.writeInt16LE(index % 2 ? 100 : -100, 44 + index * 2);
-  return wav;
 }
 
 async function readBody(request) {

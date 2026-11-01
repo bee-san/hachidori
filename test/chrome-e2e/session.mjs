@@ -22,7 +22,7 @@ import {
   RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE,
 } from "../../extension/recommended-dictionaries.js";
 import { answerAnkiConnect } from "../anki-connect-fake.mjs";
-import { buildRecommendedZip, GENERIC_KANJI_TITLE, RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
+import { buildRecommendedZip, GENERIC_KANJI_TITLE, makeAudioWav, RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
 import {
   check,
   diagnostics,
@@ -528,18 +528,6 @@ async function setDictionaryAliasInSettings(page, title, alias) {
     nextAlias: alias,
   }).then((handle) => handle.jsonValue()).catch(() => null);
   return { ...started, settled };
-}
-
-function makeAudioWav() {
-  // A genuine one-second PCM clip, decoded and completed by native Chrome.
-  const samples = 8000;
-  const wav = Buffer.alloc(44 + samples * 2);
-  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
-  for (let i = 0; i < samples; i++) wav.writeInt16LE(i % 2 ? 100 : -100, 44 + i * 2);
-  return wav;
 }
 
 async function readSettingsControls(settings, ids) {
