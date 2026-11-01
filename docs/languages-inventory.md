@@ -2,7 +2,7 @@
 # Appendix: language inventory
 
 Phase 0 of the multi-language design ([languages.md](languages.md)), updated
-for revision 5 of the design. Seven
+for revision 6 of the design. Seven
 readers went through the code at `main` b1964358 (hoshidicts 35e2dab) and
 recorded every setting, popup feature and theme hook with the language
 assumption it makes, citing file and line. This appendix condenses those
@@ -119,7 +119,7 @@ top level of a single-profile record.
 | Package `kanjiCount`, library badge "Kanji" | engine-service.js:981, library-settings.js:562-566 | Character bank named kanji | Badge label from pack `characterView.name` |
 | `id = stableDictionaryId(title)`, unique titles | engine-service.js:967; backup-state.js:42-49 | One title namespace | Kept global (decision 0001) |
 | `customDictionarySource`, fixed id/title, `language === "ja"` check | custom-dictionary.js:10-21, 308-317 | Personal dictionary is Japanese | L; one per language (15) |
-| `lookupStats` rows `[term, reading]`, NFC | lookup-stats.js:5-33; lookup-stats-identity.js | No language key | L; non-Japanese rows add the code (4.3) |
+| `lookupStats` rows `[term, reading]`, NFC | lookup-stats.js:5-33; lookup-stats-identity.js | No language key | L; one generation per language (`languages` entries), rows keep `[term, reading]` (4.3) |
 | `wordStatusOverrides` known/ignored headwords | word-status-overrides.js:17 | No language key | L (4.3) |
 | `ankiDuplicateIndex`: one `snapshot` and one `attempt`, for the first Template's source | anki-index-cache.js:28-57, 180, 226, 366-390 | One Template list | Today's record with one source; one snapshot per source key with several (4.3, 12) |
 | new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |
@@ -132,6 +132,7 @@ top level of a single-profile record.
 | Every `hd_anki_*` request (status, view, preflight, batch preflight, submit, browse, fields, maturity, word status); Relay API card formats | anki-worker.js:79-92, 177-191, 442-461; background-anki.js:193-201; api-host.js:334-339 | First Template of the one list | `profileId`; Relay `profileIndex` 0 = Japanese (5.4, 12) |
 | `hd_lookup_stats_record`, `hd_lookup_stats_read`, `hd_word_status_override`, `hd_custom_read/cas/save/append`, `hd_import` | background-requests.js:92-167, 344-437; engine-service.js | No profile or language | `profileId` (5.4) |
 | new `hd_profile_add`, `hd_profile_remove` (engine mutations under `hoshidicts-offscreen`, forwarded to a sharing host), `hd_profile_cas` (worker, from the engine service), `hd_language_selection_write` (worker, never forwarded), `hd_language_profiles_opt_in` (`hoshidicts-worker`, answered by the sharing host) | — | — | Sections 5.2 and 17.3 |
+| new `languages` in the `hd_state_read` reply and `failedLanguages` in `hd_status`, both only once the records have profiles | — | — | Section 9.2 |
 | Sharing host frames and replies: one `broadcast` for storage changes, replies carrying stored records, linked allowlists | sharing-host.js:94-99, 240-247; sharing-client.js:87-93; sharing-protocol.js:50-76, 165-272 | One record shape for every client | Per-client frames and projected replies for clients that have not opted in; allowlists keep `profileId` (17.3) |
 | Writers that rebuild `options` through `projectStoredOptions` | background-core.js:267, 321; background-requests.js:597-642; background-sharing.js:177-193, 354-364; background-backup.js:65; backup-state.js:26-36, 123-136 | Flat record | `applyOptionsPatch` on the unmasked record (5.2) |
 | Backup archive version 3, six snapshot keys | backup-archive.js:7; docs/backup-format.md | No profiles | Version 3 unchanged for single-profile installs; version 4 with profiles (17.1) |

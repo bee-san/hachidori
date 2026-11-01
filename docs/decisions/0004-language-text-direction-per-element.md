@@ -1,6 +1,6 @@
 # 0004: Language text is marked per element and per dictionary; the popup itself stays left to right
 
-Status: proposed (multi-language design, Phase 1, revision 5)
+Status: proposed (multi-language design, Phase 1, revision 6)
 
 ## Context
 
@@ -18,15 +18,14 @@ language through. For a right-to-left pack, headword, matched text,
 deinflection endpoints, sentence and character get `lang` and `dir="rtl"`;
 readings and inputs get `dir="auto"`. Direction of definitions belongs to the
 dictionary: core decides one direction per dictionary for each result from
-its `targetLanguage`, or else from the first strong character of its own gloss
-data, and a right-to-left dictionary's block is marked in any profile. Inside
-a block, a paragraph whose letters are mostly of the other direction than the
-one it inherits gets its own `dir` (a majority rule computed while rendering,
-shared with Anki and text mode); a dictionary whose index declares no
-`targetLanguage` takes its direction from the same rule over its glosses.
-After every render the theme host labels text whose nearest `lang` is the
-popup's `en` or a dictionary block's default when its characters belong to
-another language. Names containing
+its `targetLanguage`, and a right-to-left dictionary's block is marked in any
+profile. Inside a block, a paragraph whose letters are mostly of the other
+direction than the one it inherits gets its own `dir` (a majority rule
+computed while rendering, shared with Anki and text mode); a dictionary whose
+index declares no `targetLanguage` takes its direction from the same rule over
+its glosses. After every render the theme host labels text whose nearest
+`lang` is the popup's `en` or a dictionary block's default when its characters
+belong to another language, line by line in text-mode definitions. Names containing
 right-to-left text are isolated in inline elements. Left-to-right packs get
 only `lang`, and in the single-profile shape nothing is added, so a
 Japanese-only popup's markup does not change.

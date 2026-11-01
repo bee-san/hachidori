@@ -1,6 +1,6 @@
 # 0012: Version 4 backups carry a version 3 snapshot of the Japanese view
 
-Status: proposed (multi-language design, Phase 1, revision 5)
+Status: proposed (multi-language design, Phase 1, revision 6)
 
 ## Context
 
@@ -35,4 +35,7 @@ the same payload.
 
 - An older build restores the dictionaries and the Japanese setup of a newer
   backup.
+- A profile-aware build restores the profiles it has packs for, names the
+  ones it leaves out, and uses the Japanese view when none remains
+  (languages.md, section 17.6).
 - Single-profile installations keep writing today's version 3 backups.

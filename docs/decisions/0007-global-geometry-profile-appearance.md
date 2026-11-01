@@ -1,6 +1,6 @@
 # 0007: Popup size and input are global; popup appearance and content are per profile
 
-Status: proposed (multi-language design, Phase 1, revision 5)
+Status: proposed (multi-language design, Phase 1, revision 6)
 
 ## Context
 
