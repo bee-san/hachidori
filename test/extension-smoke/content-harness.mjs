@@ -22,7 +22,7 @@ let JSDOM;
 
 const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false, url = "https://example.test/" } = {}) {
+async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false, url = "https://example.test/", dock = null } = {}) {
   const dom = new JSDOM(
     "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
     {
@@ -243,6 +243,8 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     setOverlayMode(value) { overlayMode = value === true; },
     selectionDragging() { return selectionDragActive; },
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
+    dock: dockResults,
+    search,
     resolveCandidate,
     resolveSelectedLookupCandidate,
     resolveSelectionScanCandidate,
@@ -302,6 +304,14 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
   window.eval(readFileSync(resolve(EXTENSION, "content-scan.js"), "utf8"));
   window.eval(instrumented);
   const driver = window.__hachidoriContentNoteSmoke;
+  // The search page's results area (#610), docked before the reader builds its popup.
+  const dockElement = dock === null ? null : window.document.createElement("main");
+  if (dockElement) {
+    dockElement.getBoundingClientRect = () => ({ ...dock, right: dock.left + dock.width, bottom: dock.top + dock.height,
+      x: dock.left, y: dock.top });
+    window.document.body.append(dockElement);
+    driver.dock(dockElement);
+  }
   const popup = await driver.install();
   const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
   const anchor = window.document.getElementById("anchor");
@@ -405,6 +415,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     anchor,
     appliedStyles,
     candidate,
+    dockElement,
     createLayoutView(callbacks) {
       const view = createLayoutView(callbacks);
       popupRecords.get(callbacks.popup).layoutView = view;

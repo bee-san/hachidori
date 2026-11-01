@@ -101,13 +101,20 @@ async function audioRelayStage() {
   await notify("other-internal", "other-internal");
   plays.get("other-internal")({ ok: true, status: "success" });
   await otherInternal;
+  // The search page's reader (#610) is in an extension page too.
+  const searchPage = play("search-play", { id: chrome.runtime.id, documentId: "search-a", url: chrome.runtime.getURL("search.html") });
+  await new Promise(resolve => setImmediate(resolve));
+  await notify("search-play", "search-a");
+  plays.get("search-play")({ ok: true, status: "success" });
+  await searchPage;
   const startupProgress = sent.filter(message => message.target === "hachidori-audio-content");
   check("popup audio uses authoritative enabled sources and routes progress only to its newest owning document",
     authoritative.length === 1 && authoritative[0].id === source.id && progress.length === 2
       && progress.every(value => value.tabId === 42 && value.options.documentId === "reader-document")
       && progress[0].message.requestId === "owned-play" && progress[1].message.requestId === "newer-play"
-      && startupProgress.length === 2 && startupProgress[0].requestId === "startup-play" && startupProgress[0].owner === "startup-a"
-      && startupProgress[1].requestId === "newer-startup-play" && startupProgress[1].owner === "startup-b",
+      && startupProgress.length === 3 && startupProgress[0].requestId === "startup-play" && startupProgress[0].owner === "startup-a"
+      && startupProgress[1].requestId === "newer-startup-play" && startupProgress[1].owner === "startup-b"
+      && startupProgress[2].requestId === "search-play" && startupProgress[2].owner === "search-a",
     JSON.stringify({ authoritative, progress, startupProgress }));
 
   const read = chrome.storage.local.get;

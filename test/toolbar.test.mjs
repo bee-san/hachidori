@@ -27,7 +27,9 @@ async function toolbar(stored = {}) {
   let nextWriteReply;
   let openedSettings = 0;
   let closed = 0;
+  const searches = [];
   const context = vm.createContext({
+    openSearchPage: async (api, mode) => { searches.push(mode); },
     document: { querySelectorAll: () => [...nodes.values()] },
     window: { close: () => { closed++; }, addEventListener() {} },
     setInterval() { return 1; }, clearInterval() {},
@@ -61,7 +63,8 @@ async function toolbar(stored = {}) {
   const script = source
     .replace(/import \{ extensionApi as chrome \} from "\.\/browser-api\.js";\s*/u, "")
     .replace('import "./reader-options.js";', "")
-    .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "");
+    .replace(/import \{[^}]*\} from "\.\/debug-log\.js";\s*/u, "")
+    .replace(/import \{ openSearchPage \} from "\.\/search-window\.js";\s*/u, "");
   await vm.runInContext(`(async () => { ${script} })()`, context);
   return {
     nodes, requests,
@@ -71,6 +74,7 @@ async function toolbar(stored = {}) {
       error: "Settings changed. Try again.", options: value }; },
     get openedSettings() { return openedSettings; },
     get closed() { return closed; },
+    searches,
   };
 }
 
@@ -108,4 +112,18 @@ test("settings shortcut opens Chrome options and closes the toolbar", async () =
   await ui.click("open-settings");
   assert.equal(ui.openedSettings, 1);
   assert.equal(ui.closed, 1);
+});
+
+test("Search beside Settings opens the search page and follows Reading's switch (#610)", async () => {
+  assert.match(html, /id="open-settings"[\s\S]*id="open-search"/u, "Search follows Settings");
+  const ui = await toolbar({ revision: 3 });
+  assert.equal(ui.nodes.get("open-search").hidden, false, "on by default");
+  await ui.click("open-search");
+  assert.deepEqual(ui.searches, ["existingOrNewTab"]);
+  assert.equal(ui.closed, 1);
+  await ui.changed({ revision: 4, showToolbarSearchButton: false });
+  assert.equal(ui.nodes.get("open-search").hidden, true);
+  await ui.changed({ revision: 5, showToolbarSearchButton: true });
+  assert.equal(ui.nodes.get("open-search").hidden, false);
+  assert.deepEqual(ui.requests, [], "showing and opening Search write nothing");
 });

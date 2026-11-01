@@ -383,6 +383,17 @@ async function ankiScreenshotStage() {
   const capturesBeforeStartupReload = captures.length;
   const startupGone = await ask(startupWithTab);
   const capturesAfterStartupReload = captures.length;
+  // The search page (#610) loads the reader into itself as startup does, so
+  // its screenshots resolve their own live document, with or without
+  // sender.tab. Another extension page is no reading page.
+  const startupDocument = documentId;
+  documentId = "search-document";
+  tab = { ...tab, url: chrome.runtime.getURL("search.html") };
+  const searchPage = { id: chrome.runtime.id, url: tab.url, documentId };
+  const searchTaken = await ask(searchPage);
+  const searchTabTaken = await ask({ ...searchPage, frameId: 0, tab: { id: tab.id } });
+  const toolbarRefused = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("toolbar.html"), documentId });
+  documentId = startupDocument;
   await storage.api().local.set({ options: { revision: 2,
     anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
   tab = { ...tab, url: "https://reader.test/page" };
@@ -411,9 +422,13 @@ async function ankiScreenshotStage() {
       && startupReloaded?.ok === false && startupReloaded.error.includes("document")
       && startupGone?.ok === false && startupGone.error.includes("document")
       && capturesBeforeStartupReload === capturesAfterStartupReload
+      && searchTaken?.ok === true && searchTabTaken?.ok === true
+      && contextChecks.some(filter => filter.documentIds.includes("search-document"))
+      && toolbarRefused?.ok === false && toolbarRefused.error.includes("reading tab")
       && switchedOff?.ok === false && switchedOff.error.includes("turned off in Settings"),
     JSON.stringify({ taken, retried, switchedAway, givenUp, movedWindow, reloadedDuring, alreadyReloaded,
-      background, navigated, fromExtensionPage, startupTaken, startupTabTaken, startupReloaded, startupGone, switchedOff, uploads, captures, documentChecks, contextChecks }));
+      background, navigated, fromExtensionPage, startupTaken, startupTabTaken, startupReloaded, startupGone, searchTaken,
+      searchTabTaken, toolbarRefused, switchedOff, uploads, captures, documentChecks, contextChecks }));
 
   const injections = [];
   const previewData = "data:image/jpeg;base64,/9j/4AAQ/9k=";

@@ -204,12 +204,16 @@
     lowMemoryMode: false,
     dictionaryEntryStorage: "auto",
     dictionaryIndexStorage: "auto",
+    // Reading → Search page (#610): the toolbar menu's Search button, beside
+    // Settings, which opens the search page. On, as its owner asked.
+    showToolbarSearchButton: true,
     keybinds: DEFAULT_KEYBINDS,
   };
   // Word highlighting's switches stay with its Reading Settings section;
-  // a page shows or hides its marks with Toggle word highlights instead.
+  // a page shows or hides its marks with Toggle word highlights instead. The
+  // toolbar's Search button is not a reader behaviour.
   const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "useLessRamByDefault", "smallerAnkiCards", "wordHighlightEnabled", "wordHighlightUnknown",
-    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored"]);
+    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored", "showToolbarSearchButton"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {

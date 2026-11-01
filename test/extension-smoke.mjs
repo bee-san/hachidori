@@ -49,5 +49,6 @@ import "./extension-smoke/content-scanning.mjs";
 import "./extension-smoke/content-activation.mjs";
 import "./extension-smoke/content-nested.mjs";
 import "./extension-smoke/content-notes.mjs";
+import "./extension-smoke/content-search.mjs";
 import "./extension-smoke/engine-restart.mjs";
 import "./extension-smoke/engine-storage.mjs";

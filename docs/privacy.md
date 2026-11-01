@@ -212,7 +212,7 @@ separately; uninstalling Hachidori does not remove them.
 To help with bug reports, Hachidori keeps a debug log in this browser profile:
 warnings and errors from its own pages and background contexts, requests that
 failed, network requests that failed without a response, the error messages
-Settings, the startup page and the toolbar showed you, and the actions you took
+Settings, the startup page, the search page and the toolbar showed you, and the actions you took
 on those pages, recorded by name only (for example "click #backup-export",
 "change #import-file (1 files)" or "navigate #backup"; never what you typed or
 chose). Each entry has its time, the extension version and a random session

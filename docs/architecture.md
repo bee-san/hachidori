@@ -560,7 +560,8 @@ unchanged. Its sources and copyright declaration are recorded in
 dialogue surface that grows with its text at narrow widths.
 
 The practice view loads the reader once after proving the exercise can be
-answered. `startup.js` takes the complete dependency order from the manifest's
+answered. `reader-page.js`, which the search page shares, takes the complete
+dependency order from the manifest's
 `content_scripts` entry through `chrome.runtime.getManifest()`, skipping only
 `reader-options.js`, which the startup module already loaded. This includes
 new reader dependencies without maintaining
@@ -579,7 +580,8 @@ exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
-link's `#setup-heading`. Query variants, unknown fragments, Settings and the
+link's `#setup-heading`, and its `search.html` ([Search page](#search-page)).
+Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
 
@@ -839,7 +841,8 @@ hotkeys, so here that gesture is an ordinary binding.
 Several Yomitan actions are omitted because Hachidori has no matching feature:
 
 - profiles
-- the search page and its box
+- the search scope and its Focus search box, which the [search page](#search-page)
+  does itself on Escape
 - card-format arguments
 - copying the host selection, which the in-page popup never needs
 - caret scanning inside editors
@@ -913,6 +916,9 @@ Hachidori has:
 - Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
   Toggle text scanning.
 - Open Hachidori settings, unassigned.
+- Yomitan's three ways to open the [search page](#search-page): in a new tab,
+  suggested as Alt+Insert like Yomitan's, in the current tab and in a popup
+  window, both unassigned.
 - One unassigned command for each popup keybind action that needs no chosen
   argument: Close, Add to Anki, View in Anki, Play audio, the entry and
   dictionary moves, Back, Forward, the two selection scans, Toggle word
@@ -937,6 +943,86 @@ and opens `chrome://extensions/shortcuts`.
 ![Browser shortcuts listed in Keybinds](assets/settings-browser-shortcuts.png)
 
 ![Keybinds in Settings with Yomitan's default bindings](assets/settings-keybinds.png)
+
+## Search page
+
+`search.html` is Yomitan's search page and popup window (#610): somewhere to
+look up a word met outside a web page, such as on an Anki card. Type or paste it
+into the box and press Enter or the Search button; Shift+Enter starts a new
+line. It follows yomidevs/yomitan@d3c54c1 `ext/search.html` and
+`ext/js/display/search-display-controller.js`.
+
+**Opening it.** Yomitan's three browser shortcuts open it in a new tab
+(suggested as Alt+Insert, as in Yomitan), in the current tab or in a popup
+window. **Search**, beside **Settings** in the toolbar button's menu, opens it as
+the first does. **Settings → Reading → Search page → Show Search in the toolbar
+menu** (`showToolbarSearchButton`) hides that button; it is on by default
+because the issue's owner asked for it there. As Yomitan's backend does
+(`_onCommandOpenSearchPage`, `_onCommandOpenSearchPageCurrentTab` and
+`_getOrCreateSearchPopup`), a search page that is already open comes to the
+front instead of a second one opening: the new-tab and current-tab ways take
+any open search page, the popup window only one in a popup window.
+`search-window.js` holds this for the worker's shortcuts and the menu, and
+finds the open pages with `runtime.getContexts` because tabs hide extension
+URLs. The popup window is 600 × 640, larger than Yomitan's 400 × 250 default,
+so that Design's default popup fits in it.
+
+**Appearance.** The page follows the popup theme as Settings does:
+`settings-theme.js` applies the saved theme before the first paint and
+`applyPageTheme` follows later changes. Under a bundled renderer (Nazeka,
+Plain, JL, Bee or Crystal) the page keeps Default's palette, as Settings does.
+
+**Results.** The page loads the reader into itself with `reader-page.js`, as
+the startup page does, and the reader docks its root popup over the page's
+results area before its first lookup, with its host inside that area (the
+page's Results landmark). A search shows the box's text above the results, as
+Yomitan shows its query, and looks it up from its first character, as a hover
+there would, after any brackets, punctuation, spaces or wave dash (〜 or ～) it
+opens with: a pasted line such as 「食べたかった」 looks up 食べたかった, and
+～ている looks up ている rather than the grammar dictionary's ～ている
+pointer. Its other words can then be looked up like any page text. Mining
+takes the sentence around the word from that text, cut at its terminators as
+on a page, where Yomitan's search page takes the whole query. The docked popup is the reader's own, with its renderer,
+tabs, Anki and pronunciation controls, Notes and child popups. It fills the
+results area, follows its size and has no resize grip. A search ignores
+**Japanese text only** and the lookup switch, since the reader asked for it;
+looking up the page's text by hover still follows both. A search that finds
+nothing says **No definition found.** in the results area, with the pencil
+while the personal dictionary is on, and one that fails says **The lookup
+failed.** with **Try again**.
+
+**Dismissal.** The docked result is the page's content rather than a popup over
+a word, so what would close a popup closes only the child popups opened from
+it: a click outside, the pointer leaving, the hide delays, a changed selection
+or a click into a frame. Escape first closes a Note form, a menu or a child
+popup, as everywhere, and then goes on to the page, which focuses and selects
+the box, as Yomitan's search-scope Focus search box hotkey does on Escape. As
+on Yomitan's search page, a character typed while focus is outside a text field
+or control goes into the box, Ctrl+U clears the box, and text pasted outside a
+text field is searched. The popup's own controls and Note form keep their keys,
+Ctrl+U included, and pastes: its shadow root is closed, so the page treats
+focus anywhere in the reader's host as the popup's.
+
+**Staying current.** A lookup sent for the docked result finishes even when
+the pointer moves on. A dictionary change or a lookup option change looks the
+docked result up again with the current options, as Yomitan's search page
+searches again when its options change (`Display.searchLast`). It stays the
+same request, so its lookup count does not go up; a Note being written, or
+being saved, holds the refresh until it is done. The worker sends the search page's pronunciation
+progress and takes its mining screenshots as it does the startup page's
+(`readerPageSender`): an extension page's messages may come without its tab,
+and tabs hide its URL.
+
+Not ported: Yomitan's clipboard monitor, which needs the `clipboardRead`
+permission; profiles; automatic kana conversion; the query parser's word
+segmentation and readings; going back and forward between searches in the
+browser's history; the popup window's size, position and state settings;
+Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
+after a search, which lets PageDown scroll them. Here focus stays on the page,
+so a typed character still goes into the box; Alt+ArrowUp and Alt+ArrowDown
+move between the result's entries and Tab reaches its controls.
+
+![The search page with a real result, the toolbar menu and the popup window](assets/search-page.png)
 
 ## Page scanning and exact selections
 

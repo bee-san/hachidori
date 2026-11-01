@@ -26,6 +26,7 @@ import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { findLocalAudioSource } from "./local-audio-source.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
 import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
+import { loadReaderScripts } from "./reader-page.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
 import { createPracticeView, practiceReadiness } from "./startup-practice.js";
 
@@ -675,31 +676,11 @@ function ankiView() {
   };
 }
 
-// The reader itself, in the one authoritative order: the manifest's own
-// content-script list, minus `reader-options.js`, which this module already
-// loaded. It arrives only when the practice step does, so nothing scans the
-// installation or Anki screens.
-function readerScripts() {
-  const [injected] = chrome.runtime.getManifest().content_scripts ?? [];
-  return (injected?.js ?? []).filter((src) => src !== "reader-options.js");
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.dataset.setupReader = "true";
-    script.addEventListener("load", () => { resolve(); });
-    script.addEventListener("error", () => { reject(new Error(`${src} could not be loaded`)); });
-    document.head.appendChild(script);
-  });
-}
-
 // One load per page: the reader initialises itself when its last script runs.
+// It arrives only when the practice step does, so nothing scans the
+// installation or Anki screens.
 function loadReader() {
-  readerLoading ??= readerScripts().reduce(
-    (chain, src) => chain.then(() => loadScript(src)), Promise.resolve(),
-  ).then(() => globalThis.HDReaderReady).catch((error) => {
+  readerLoading ??= loadReaderScripts(document, chrome, "setupReader").catch((error) => {
     // The persistent practice controller also exposes its recovery link.
     setStatus(`The lookup exercise could not start: ${describeErrorMessage(error)}`, "error", error);
     throw error;

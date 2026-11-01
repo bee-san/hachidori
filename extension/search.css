@@ -1,0 +1,70 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Layout for the search page (#610). Colours, typography, controls and focus
+   rings come from settings.css, in the palette of the popup theme. The reader
+   docks its popup over the results area, so the page itself never scrolls. */
+
+html,
+body.search-page {
+  height: 100%;
+}
+html {
+  scrollbar-gutter: auto;
+}
+body.search-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 12px;
+  overflow: hidden;
+}
+.search-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-header h1 {
+  margin: 0;
+  font-size: var(--font-large);
+  letter-spacing: -0.025em;
+}
+.search-form {
+  --search-control-height: 42px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.search-form textarea {
+  flex: 1;
+  /* One line that grows with its text, up to about five lines. */
+  field-sizing: content;
+  min-height: var(--search-control-height);
+  max-height: 9.5em;
+  padding: 8px 10px;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.search-button {
+  flex: 0 0 auto;
+  width: var(--search-control-height);
+  min-height: var(--search-control-height);
+  padding: 0;
+}
+.search-query {
+  margin: 0;
+  max-height: 25vh;
+  overflow-y: auto;
+  font-size: 20px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.search-results {
+  flex: 1;
+  min-height: 0;
+}
+.search-results .hint {
+  display: block;
+  padding: 12px 2px;
+}

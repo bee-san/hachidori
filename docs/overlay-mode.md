@@ -79,7 +79,7 @@ turn an Electron-only control back on remotely.
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
 | Design | Appearance, layout, custom CSS and Custom buttons work. Link buttons ask the embedding host to open the URL in the system browser; Anki buttons use their selected Template. The Settings live preview cannot launch links. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
-| Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission. |
+| Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission, and so is the Search page group: the search page opens from Chrome's shortcuts and toolbar menu, which an overlay does not have. |
 
 `overlay-mode.js` is the single capability source used by Settings, the toolbar,
 the content script and the service worker. Unsupported runtime requests fail

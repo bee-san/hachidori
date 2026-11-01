@@ -74,6 +74,10 @@ It can even use anki.
   <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
 </p>
 
+# Search page
+
+Found a word on an Anki card or outside the browser? Press Alt+Insert, or click **Search** beside Settings in Hachidori's toolbar menu, then type or paste the word and press Enter. The results are the popup you know, in your theme, with Anki and pronunciation. Other shortcuts open the search page in the current tab or in its own popup window.
+
 # Sharing
 
 Set up Hachidori once and use that setup from every other Hachidori, in GameSentenceMiner, another browser or another computer. Same dictionaries and settings used across multiple Hachidoris.
