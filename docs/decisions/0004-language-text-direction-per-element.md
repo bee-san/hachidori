@@ -1,6 +1,6 @@
 # 0004: Language text is marked per element and per dictionary; the popup itself stays left to right
 
-Status: proposed (multi-language design, Phase 1, revision 2)
+Status: proposed (multi-language design, Phase 1, revision 4)
 
 ## Context
 
@@ -20,8 +20,10 @@ readings and inputs get `dir="auto"`. Direction of definitions belongs to the
 dictionary: core decides one direction per dictionary for each result from
 its `targetLanguage`, or else from the first strong character of its own gloss
 data, and a right-to-left dictionary's block is marked in any profile. Inside
-a block, structured-content paragraphs keep their own direction
-(`unicode-bidi: plaintext` at zero specificity). Names containing
+a block, a paragraph whose letters are mostly of the other direction gets its
+own `dir` (a majority rule computed while rendering, shared with Anki and text
+mode). After each render core labels text nodes in the profile's non-Latin
+scripts that inherit the popup's `lang="en"`. Names containing
 right-to-left text are isolated in inline elements. Left-to-right packs get
 only `lang`, and in the single-profile shape nothing is added, so a
 Japanese-only popup's markup does not change.
@@ -35,6 +37,11 @@ Japanese-only popup's markup does not change.
   often the theme's own Latin tag or number, so Arabic glosses resolve left to
   right (measured in JL and Nazeka), and one container holding several
   dictionaries takes one direction for all.
+- **`unicode-bidi: plaintext` on structured-content blocks.** Takes each
+  paragraph's direction from its first strong character, so an English
+  paragraph that begins with an Arabic headword turns right to left, and its
+  `text-align: start` overrides centring that dictionaries set on a parent
+  (Jitendex's forms table in Default).
 - **No markup, trusting the Unicode bidirectional algorithm.** Wrong as soon as
   punctuation, numbers or brackets sit at a word's ends, as they do in
   readings, tags, frequency labels and deinflection trails.

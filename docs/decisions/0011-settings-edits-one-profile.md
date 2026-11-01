@@ -1,6 +1,6 @@
 # 0011: Settings edits one profile, chosen in the page, independently of the active profile
 
-Status: proposed (multi-language design, Phase 1, revision 2)
+Status: proposed (multi-language design, Phase 1, revision 4)
 
 ## Context
 
@@ -13,7 +13,8 @@ values.
 ## Decision
 
 A Settings page has its own edited-profile id, chosen in its Language menu and
-initialised from the active profile. Storage events never change it. Its
+initialised from the active profile. Storage events change it only when the
+edited profile is removed elsewhere, and the page says so. Its
 drafts, pending saves and conflicts are keyed by it, and every write names it.
 **Use for lookups** activates the edited profile; choosing a profile in the
 menu does not.

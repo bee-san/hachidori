@@ -1,6 +1,6 @@
 # 0012: Version 4 backups carry a version 3 snapshot of the Japanese view
 
-Status: proposed (multi-language design, Phase 1, revision 2)
+Status: proposed (multi-language design, Phase 1, revision 4)
 
 ## Context
 
@@ -13,11 +13,16 @@ and drops unknown option keys.
 ## Decision
 
 A backup with profiles is version 4. Its `snapshot` is a valid version 3
-snapshot of the Japanese view (every package, the Japanese order and enabled
-flags first; Japanese options flattened; the Japanese personal document,
-marks and lookup rows). A new manifest field `profiles` carries the complete
-records and the other languages' data. A version 4 reader restores from
-`profiles`.
+snapshot of the Japanese view, built from the Japanese data whether or not a
+Japanese profile exists: the Japanese personal package first and enabled when
+it exists, the Japanese profile's packages in order, then every other package
+disabled except other languages' personal packages, which are left out;
+Japanese options flattened (or the global keys over Japanese defaults); the
+Japanese personal document, marks and lookup rows. A new manifest field
+`profiles` carries the complete records and the other languages' data; a
+version 4 restore rebuilds other languages' personal packages from their
+documents. Automatic snapshots, the Relay dictionary download and restore use
+the same payload.
 
 ## Options rejected
 

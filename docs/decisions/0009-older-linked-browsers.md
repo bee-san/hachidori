@@ -1,6 +1,6 @@
 # 0009: Older linked browsers see the host's Japanese profile as their only one
 
-Status: proposed (multi-language design, Phase 1, revision 2)
+Status: proposed (multi-language design, Phase 1, revision 4)
 
 ## Context
 
@@ -19,8 +19,11 @@ opted in, the host sends the Japanese view (the Japanese data in today's
 shapes) in its own change frames and in every reply that carries options,
 dictionary state or a personal document, whatever language the host itself
 reads in, and applies that client's writes (which carry no profile) to the
-Japanese profile. When a host first gains profiles it closes its connections
-once, so clients say hello again.
+Japanese profile. When the host has no Japanese profile, that client's reads
+and lookups are answered from the Japanese view (which finds nothing) and its
+writes are refused with a message that names the cause, so they never land in
+another language. When a host first gains profiles it closes its connections
+once, after the converting request's reply, so clients say hello again.
 
 ## Options rejected
 

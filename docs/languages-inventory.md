@@ -2,7 +2,7 @@
 # Appendix: language inventory
 
 Phase 0 of the multi-language design ([languages.md](languages.md)), updated
-for revision 2 of the design. Seven
+for revision 4 of the design. Seven
 readers went through the code at `main` b1964358 (hoshidicts 35e2dab) and
 recorded every setting, popup feature and theme hook with the language
 assumption it makes, citing file and line. This appendix condenses those

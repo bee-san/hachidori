@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Languages and profiles
 
-Status: design for review (Phase 1, revision 2). Nothing described here is
+Status: design for review (Phase 1, revision 4). Nothing described here is
 implemented yet.
 
 Hachidori is a Japanese dictionary today. This document describes how it
@@ -211,11 +211,14 @@ what lets every existing test suite pass unchanged (section 6.2) and keeps
 Japanese-only users exactly where they are.
 
 The new shapes are written by the first write that needs them: adding a
-second profile, or choosing another language at first run. That conversion
-moves the record's profile keys into a profile with id `ja`, splits `anki`,
-and turns the dictionary array into the package list (same order) plus
-`profiles.ja` (same order, same `enabled` flags, same groups), keeping every
-value. The records convert back when profiles are removed until one Japanese
+second profile, or choosing another language at first run. Adding a second
+profile moves the record's profile keys into a profile with id `ja`, splits
+`anki`, and turns the dictionary array into the package list (same order)
+plus `profiles.ja` (same order, same `enabled` flags, same groups), keeping
+every value. Choosing another language at first run, before anything is
+installed, moves the profile keys the worker seeded at install into that
+language's profile instead and applies the pack's replacements of section
+6.3. The records convert back when profiles are removed until one Japanese
 profile remains and no other language's personal source, counts or marks
 remain (section 16.5).
 
@@ -230,10 +233,19 @@ a classic script that sets `globalThis.HDLanguages`:
   document) load it with a `<script>` tag beside `reader-options.js`, as
   `settings.html` already loads `reader-options.js`; the jsdom harnesses run
   pages with `runScripts: "outside-only"`, so the tag is inert there;
-- the manifest's content scripts list it before `reader-options.js`;
-- the service worker and the engine workers import it statically; the worker
-  harness strips every import, which is harmless because the worker reads it
-  only once the records have profiles;
+- the manifest's content scripts list it before `reader-options.js`; that copy
+  holds only the fields the reader uses (identity, `text`, `capabilities`,
+  `presentation` and the pack settings' display effects), within a budget of
+  64 KB for every pack together, because every frame of every page parses it;
+- the service worker and the engine workers import it statically, and
+  `engine-service.js` also imports `reader-options.js` statically for the
+  profile projections; the worker harness strips every import, which is
+  harmless because the worker reads the registry only when records have
+  profiles or a profile is being added;
+- the Design preview (`design-preview.html`) loads it with a `<script>` tag;
+- `reader-page.js` injects the manifest's content scripts into the startup and
+  search pages, which also have their own tag, so `registry.js` runs twice
+  there and is written to be safe to run twice;
 - `language-settings.js` (section 7.5) is loaded with a dynamic `import()`
   only when the edited profile's pack declares settings; the Japanese pack
   declares none.
@@ -256,7 +268,8 @@ masked.
   `normaliseOptions(record)` is unchanged and returns exactly what it returns
   today. For a record with profiles, `normaliseOptions(record)` returns the
   projection of the Japanese profile (the profile older code knows), or the
-  Japanese defaults when there is no Japanese profile, and new code calls
+  global keys over Japanese defaults when there is no Japanese profile, and
+  new code calls
   `projectOptions` with the profile it needs. Settings renders controls from
   the unmasked projection.
 - `HDReaderOptions.profileDescriptor(storedOptions, profileId)` returns
@@ -294,7 +307,14 @@ No writer rebuilds a record with profiles through `projectStoredOptions`.
 **Requests without a profile.** Once the records have profiles, every caller
 in this version names the profile it means. A request that names none comes
 from code that predates profiles (an older linked browser, section 17.4) and
-means the Japanese profile, or the first profile when there is none.
+always means the Japanese data. When there is no Japanese profile, reads and
+lookups are answered from the Japanese view (section 17.1), which enables no
+dictionaries and so finds nothing, and writes to options, dictionary state and
+the personal document are refused with "This Hachidori has no Japanese
+profile. Add Japanese in its Settings, or update the linked browser." The
+Relay API's profile index 0 is answered the same way. A request naming a
+profile that does not exist is refused; Settings then switches to the active
+profile and says why (section 5.3).
 
 **Dictionary state.**
 
@@ -303,8 +323,12 @@ means the Japanese profile, or the first profile when there is none.
   state, writing that profile's list and groups and the packages'
   package-wide fields, and leaves other profiles alone. `hd_apply_state`
   merges before the engine loads anything, so the loaded set stays the union.
+  A view from a linked client that has not opted in (section 17.3) lists every
+  package; merging it keeps the Japanese profile's own packages in the view's
+  order with the view's flags and adds another package only if the view
+  enables it.
 - The engine service's own commits (import, reimport, managed update,
-  removal, personal-dictionary compilation, profile removal) read the whole
+  removal, personal-dictionary compilation, profile addition and removal) read the whole
   record through `hd_state_read` and write it whole: in the schema-2 shape
   `hd_state_cas` carries `{ baseRevision, state: { dictionaries, profiles } }`
   and a lost reply is checked by reading back that whole record (and the
@@ -319,10 +343,17 @@ means the Japanese profile, or the first profile when there is none.
 - Selection pruning and title migration run per profile, against that
   profile's packages and groups.
 
-**Profile requests.** `hd_profile_add` and `hd_profile_remove` are worker
-requests, each one storage write over `options` and `dictionaryState`;
-**Also erase…** on removal is a personal-dictionary save of an empty source,
-which goes through the engine's mutation queue as today (section 16.5).
+**Profile requests.** `hd_profile_add` and `hd_profile_remove` are engine
+mutations, routed like `hd_apply_state`, because they change what the engine
+loads: under the mutation lock the engine loads the pack
+(`hdw_language_load`) and strict-loads every package that enters the loaded
+set (a re-added language's personal package among them), the worker commits
+`options` and `dictionaryState` in one compare-and-set, the engine publishes,
+and only then unloads the packages that left the set (after a language is
+removed; after the last other language, the set is the Japanese packages
+again). On failure the committed state and loaded set are restored. Neither
+compiles anything. **Also erase…** on removal is a personal-dictionary save
+of an empty source, as today (section 16.5).
 `hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch? }`
 writes the installation-local `languageSelection` and is never forwarded to a
 sharing host.
@@ -330,12 +361,15 @@ sharing host.
 ### 5.3 Settings edits one profile
 
 A Settings page has its own edited-profile id, chosen in its Language menu
-and initialised from the active profile. It never changes because of a storage
-event. Its saved, saving, pending and conflict states are keyed by that id,
+and initialised from the active profile. It changes because of a storage event
+only when the edited profile is removed elsewhere: the page then switches to
+the active profile and says so. Its saved, saving, pending and conflict states are keyed by that id,
 and every write it sends names it, so a profile switch from the toolbar or the
 shortcut cannot move an edit to another profile. Choosing another profile in
 the menu first saves the page's pending edits, so no draft of a global key is
-left behind under the previous profile. **Use for lookups** beside the menu
+left behind under the previous profile; if that save meets a conflict, the
+menu stays on the current profile until the user settles it (**Save my
+changes** or **Use saved settings**). **Use for lookups** beside the menu
 activates the edited profile; choosing a profile in the menu does not.
 
 ### 5.4 Requests made for a profile
@@ -459,9 +493,10 @@ language and a personal dictionary; those are data, not capabilities.
 
 `reader-options.js` gains one table, `OPTION_REQUIREMENTS`, mapping each option
 key that needs something of the language to the requirement and to its
-**neutral value**. A requirement is a capability name or `{ "scripts": [...] }`
+**neutral value**. A requirement is a capability name, `{ "scripts": [...] }`
 (the pack's `scripts` include one of them, where `Hani` matches every code that
-includes Han: `Hani`, `Hans`, `Hant`, `Hanb`, `Jpan`, `Kore`):
+includes Han: `Hani`, `Hans`, `Hant`, `Hanb`, `Jpan`, `Kore`), or
+`"ankiNoteTypeFamilies"` (the pack lists note-type families, section 12):
 
 ```js
 const OPTION_REQUIREMENTS = {
@@ -491,8 +526,9 @@ For a profile without the requirement:
    Toggle option argument; the Design preview does not show it. Word
    highlighting hides as a whole: its Reading tab, its section picker option,
    and a `#word-highlighting` link resolves to `#lookup`, as gated
-   experimental sections do. Hidden controls carry `data-requires`, which
-   Settings search skips like `[data-design-setting][hidden]`.
+   experimental sections do. Requirement-bound controls carry `data-requires`,
+   and Settings search skips `[data-requires][hidden]`, as it skips
+   `[data-design-setting][hidden]`; a shown control stays searchable.
    Keybinds are global and their Toggle option targets are profile keys: the
    reader writes the toggle to the profile in effect of the popup it acts on,
    or to the active profile in the page scope, and sends nothing when that
@@ -663,11 +699,13 @@ submodule bump, as the WebAssembly bundles are;
 ### 9.2 Loading
 
 - The Japanese pack is built into the engine (engine contract, section 10.1),
-  so Japanese lookups need no loading. The engine service loads every other
-  profile's pack as the engine starts, before it reports ready
-  (`hdw_language_load`, with the two JSON files fetched from the extension),
-  and loads a pack when a profile for it is added. The registry lives outside
-  the object `hdw_reset` rebuilds, so a full reload keeps the packs.
+  so Japanese lookups need no loading. Once the records have profiles, the
+  worker's `hd_engine_config` push gains `languages`, the profiles' language
+  codes, and the engine service loads those packs as the engine starts,
+  before it reports ready (`hdw_language_load`, with the two JSON files
+  fetched from the extension). `hd_profile_add` loads a new pack (section
+  5.2). The registry lives outside the object `hdw_reset` rebuilds, so a full
+  reload keeps the packs.
 - The loaded dictionary set is every package enabled in any profile, plus the
   load verification of disabled packages that exists today. Loading one
   package for two profiles costs it once.
@@ -677,12 +715,16 @@ submodule bump, as the WebAssembly bundles are;
 
 ### 9.3 Requests
 
-The engine service maps a request's `profileId` (section 5.4) to the profile's
-language, its ordered list of enabled package paths and its pack setting
-engine effects, and passes them to the engine as `language`, `dictionaries`
-and `languageOptions` (engine contract, section 9.7). In the single-profile
-shape none of these keys is sent, so the request reaching the engine is
-today's.
+The engine cannot read storage, so the profile is resolved where storage is
+visible. The worker, which already relays every reader and Settings engine
+request, keeps a map from profile id to the profile's language, its ordered
+list of enabled package paths and its pack setting engine effects, updated by
+its own `storage.onChanged` listeners. Relaying a request that names a
+profile (section 5.4), it adds `language`, `dictionaries` and
+`languageOptions`, which the engine service passes to the engine (engine
+contract, section 9.7). A profile without dictionaries sends an empty list,
+which selects nothing. In the single-profile shape none of these keys is
+sent, so the request reaching the engine is today's.
 
 ### 9.4 Japanese-only work in the engine service
 
@@ -722,6 +764,21 @@ leaves unfixed). Once the records have profiles:
   dictionary, not to the profile (sections 10.2 and 10.3), so a right-to-left
   dictionary is marked in any profile: an English-to-Arabic dictionary in an
   English profile as much as an Arabic one in an Arabic profile.
+  `glossaryAttributes` returns the dictionary's `targetLanguage` as `lang` in
+  every profile, as it returns `dir`.
+- **Labelling pass.** Themes write text into their own elements (text-mode
+  definitions, definition tags, the character view's readings and meanings)
+  that no rule above labels, and under the popup's `lang="en"` it would read
+  as English. After each render, as it already marks the definitions for the
+  click-only reveal, core walks the popup's text nodes that inherit the
+  popup's own `lang`. A node with characters of the profile's non-Latin
+  scripts gives its parent the profile's tag; for Japanese the test is
+  today's `JAPANESE_TEXT_PATTERN`, so this is today's per-string rule applied
+  to the text a theme composes. Other such nodes get the script-specific
+  detection of section 10.3 (kana, Hangul, bopomofo). The pass needs nothing
+  from themes, covers undeclared ones, and leaves the English interface alone
+  in Latin-script profiles. It touches 1-26 text nodes per render and is
+  timed in the hover benchmark (section 19).
 - **Names.** Dictionary titles, display names, group names and frequency
   labels whose text contains a right-to-left character are isolated: themes
   put the name alone in an inline element with `dir="auto"` (as `<bdi>`
@@ -761,24 +818,30 @@ stay unmarked, so Japanese and other left-to-right markup does not change:
 
 Inside a dictionary's block, paragraphs of the other direction keep their own:
 an Arabic example sentence in an Arabic-English dictionary, an English
-etymology in a monolingual Arabic one. In popups with `data-hd-language`,
-structured-content block elements (`.gloss-sc-div`, `.gloss-sc-li`,
-`.gloss-sc-td`, `.gloss-sc-th`, `.gloss-sc-summary`) get `unicode-bidi:
-plaintext; text-align: start` at zero specificity (`:where()`), so a
-dictionary's own styles still win; the rule never touches a theme's or core's
-own containers, whose first text is a tag or a number. It lives in
-`reader.css` and in Bee's and Crystal's rich-content rules. Text-mode themes
-get the same effect from `glossaryToPlainText(glossary, language)`, which
-wraps each paragraph in U+2068 … U+2069 when its dictionary or its profile is
-right to left (section 11.2).
+etymology in a monolingual Arabic one. Core decides a paragraph's direction
+while it renders structured content, by one rule shared with Anki (section
+12) and text mode (section 11.2): a block that holds text is right to left
+when more than half of its letters are right-to-left letters. Core marks only
+blocks whose direction differs from their dictionary's, with `dir`, and adds
+`text-align: start` only when no dictionary style on the block or on an
+ancestor inside the glossary sets `text-align`. A paragraph that merely
+begins with a word in the other script (`كِتَاب kitāb pl. كُتُب kutub
+writing; letter…`, `n. صحائف مجموعة مكتوبة.`) keeps its dictionary's
+direction, and left-to-right dictionaries get no marks, so Japanese layouts
+do not change. Every theme that uses core's structured-content renderer gets
+the rule.
 
-Spacing inside glossary content becomes logical: list, details and example
-padding (`padding-inline-start` for `padding-left` in `reader.css` and the
-themes' glossary rules), the negative margin that lets tables inside
-disclosures reach into the indent (`.gloss-sc-details >
-.gloss-sc-table-container`, `margin-inline-start`), and Crystal's example rule
-(`padding-inline-start` and `border-inline-start`). The logical forms compute
-to today's values left to right.
+In the Japanese profile of an installation with profiles, the visible
+differences from today are the popup's own `lang="en"` and what follows from
+it: English glosses on Japanese pages are no longer labelled `ja`, so Crystal
+draws them in its serif face rather than Mincho.
+
+Every physical margin, padding and border inside glossary content becomes
+logical (`padding-left` → `padding-inline-start` and so on, in `reader.css`
+and the themes' glossary rules), including the negative margin that lets
+tables inside disclosures reach into the indent, the external-link icon's
+margin and Crystal's example rule. The logical forms compute to today's values
+left to right.
 
 ### 10.3 Language of glossary text
 
@@ -787,12 +850,14 @@ today's detection, which labels Japanese text `ja` (`yomitan-parity.test.mjs`
 pins it). In other profiles each glossary string takes, in order:
 
 1. the dictionary's own structured-content `lang`;
-2. the pack's `bcp47` when the string contains characters of one of the pack's
+2. a language detected from characters specific to one script: kana → `ja`,
+   Hangul → `ko`, bopomofo → `zh`;
+3. the pack's `bcp47` when the string contains characters of one of the pack's
    scripts other than Latin (taken from the pack's `text.pattern`), as today's
    detection labels Japanese strings: an Arabic example in an Arabic-English
-   dictionary is `ar`;
-3. a language detected from characters specific to one script: kana → `ja`,
-   Hangul → `ko`, bopomofo → `zh`;
+   dictionary is `ar`. Han characters count here only for a pack whose only
+   non-Latin script includes Han (Chinese), so a Korean pack that lists hanja
+   leaves a Han-only gloss to step 4;
 4. the dictionary's `targetLanguage`;
 5. for Han characters or CJK punctuation alone, the profile's `bcp47` when the
    pack's `scripts` include Han, where `Hani` matches every code that includes
@@ -800,7 +865,8 @@ pins it). In other profiles each glossary string takes, in order:
 6. otherwise no `lang`.
 
 Korean definitions with hanja and Chinese definitions with `，` are therefore
-never labelled Japanese.
+never labelled Japanese, and in a Chinese profile a Japanese example
+(`学校へ行きます。`) stays `ja` and a Korean gloss stays `ko`.
 
 ### 10.4 Display transforms
 
@@ -853,7 +919,7 @@ adds to it.
   readingAttributes() {},          // the same for a reading
   glossaryAttributes(title, result) {}, // dir (right-to-left dictionaries, any profile) and lang for one dictionary's block (10.2, 10.3)
   nameAttributes(name) {},         // attributes for the inline element holding a name alone (section 10.1)
-  isolate(text) {},                // text wrapped in U+2068 … U+2069 when it contains a right-to-left character
+  isolate(text) {},                // a name wrapped in U+2068 … U+2069 when it contains a right-to-left character
   isCharacterLink(character) {},   // section 11.6
   display(result, field) {},       // result.presentation[field] ?? result.term[field]; field is "expression" or "reading"
   readingFor(result) {},           // the displayed reading, or "" when it equals the displayed expression
@@ -884,11 +950,14 @@ that runs outside a render, plus:
 - `characterEntryResult(character, entry, language)`: today's
   `kanjiEntryResult` with the pack's labels and separator (`kanjiEntryResult`
   stays, for Japanese);
-- `glossaryToPlainText(glossary, language)`: in the single-profile shape and
-  the Japanese profile, today's flattener exactly; in others, tag pills are
-  always followed by a space, bracketed readings use `labels.readingBrackets`,
-  and each paragraph is wrapped in U+2068 … U+2069 when its dictionary or the
-  profile is right to left.
+- `glossaryToPlainText(glossary, language, { direction })`: `direction` is the
+  dictionary's, which `glossaryAttributes(title)` gives. In the single-profile
+  shape, today's flattener exactly. With profiles, paragraphs whose direction
+  by the rule of section 10.2 differs from `direction` are wrapped in
+  U+2066 … U+2069 (left to right) or U+2067 … U+2069 (right to left), never in
+  U+2068, which takes the first strong character; in profiles other than
+  Japanese, tag pills are also always followed by a space and bracketed
+  readings use `labels.readingBrackets`.
 
 ### 11.3 What a theme declares
 
@@ -996,8 +1065,12 @@ separate change for the owner to decide.
   it, is hidden for the others, and survives a pitch repaint.
 - **More fixtures** for the same suite: an Arabic-English entry with an Arabic
   example sentence and its translation, a monolingual Arabic entry with a
-  Latin etymology, and an English profile with an English-to-Arabic
-  dictionary.
+  Latin etymology, an English paragraph that begins with an Arabic word, an
+  Arabic paragraph that begins with a Latin label, an English profile with an
+  English-to-Arabic dictionary, and in a Chinese profile a Japanese example and
+  a Korean gloss. The suite also asserts that no text in the profile's
+  non-Latin scripts matches `:lang(en)`, in the term view and the character
+  view.
 - **Real Chrome, theme matrix** (`test/chrome-theme-languages.mjs`), on the
   current and the minimum Chrome, every theme and variant with those fixtures,
   declared and with the declaration removed (the fallback), on a
@@ -1010,7 +1083,8 @@ separate change for the owner to decide.
   row's order (matched form before the lemma); each frequency value sits next
   to its own name; joined-script text has computed `letter-spacing: normal`;
   Close, Back and tab geometry are the same on both pages and match the
-  Japanese run; the interface does not match the page's `:lang()`. It saves
+  Japanese run; the interface does not match the page's `:lang()`, and on a
+  Japanese page no Japanese text matches `:lang(en)`. It saves
   one screenshot per theme and language (Japanese, English, Arabic, Korean)
   under `test/tmp/languages/`.
 - **Fonts.** The language suites install `fonts-noto-core` (Arabic, Hebrew,
@@ -1044,24 +1118,36 @@ separate change for the owner to decide.
 - **`{part-of-speech}`** reads the pack's `anki.partOfSpeechLabels`; the
   Japanese pack carries today's table.
 - **Note types.** Automatic detection and presets (Kiku, Lapis, Senren) run
-  only for packs listing those families in `anki.noteTypeFamilies`. For other
-  packs Settings hides the **Automatic setup detection** row, the Preset select
-  and the hint "Kiku, Lapis and Senren fill their matching fields
-  automatically". Field-name suggestions add the pack's `anki.fieldAliases`.
-- **Right-to-left definitions.** Once the records have profiles, and only for
-  fields that hold a right-to-left dictionary (section 10.2), so every other
-  note stays byte-identical:
-  - when every dictionary in the field has one direction, the glossary root
-    gets that `dir`; when directions differ, the `ol` gets
-    `padding-inline: 40px`, so the numbers of items in either direction stay
-    inside the field, and each `li[data-dictionary]` gets its dictionary's
-    `dir`;
+  only for packs listing those families in `anki.noteTypeFamilies`. The
+  **Automatic setup detection** row (with **Find existing setup**), the Preset
+  select and the hint "Kiku, Lapis and Senren fill their matching fields
+  automatically" carry `data-requires="ankiNoteTypeFamilies"`, so they are
+  hidden, and skipped by search, for other packs. Field-name suggestions add
+  the pack's `anki.fieldAliases`.
+- **Right-to-left text in notes.** Once the records have profiles, notes mined
+  in a profile whose pack is right to left, and in other profiles the fields
+  that hold a right-to-left dictionary, follow these rules; every other note
+  stays byte-identical:
+  - every glossary root gets the direction of its dictionaries, `ltr`
+    included, so a right-to-left card template cannot turn English glosses
+    around; when the field's dictionaries differ in direction, the `ol` gets
+    `padding-inline: 40px` and each `li[data-dictionary]` its dictionary's
+    `dir`, so every number stays inside the field;
+  - structured blocks whose direction by the rule of section 10.2 differs from
+    their dictionary's get `dir` and `text-align: start` as attributes, because
+    a note has no stylesheet;
   - the glossary root, the compact root and the `{frequencies}` list use
-    `text-align: start` instead of `left`;
-  - meta labels and dictionary names sit in their own `dir="auto"` elements;
+    `text-align: start` instead of `left`; names that contain a right-to-left
+    character, in `{frequencies}` too, sit in their own `dir="auto"` element;
     the details footer (`Rules: …`, `Deinflection: …`) gets `dir="ltr"`,
     because it is English;
-  - `{sentence}` is wrapped in `<span dir="auto">`.
+  - `{sentence}` is wrapped in `<span dir="auto">`; the cloze parts are not
+    wrapped, because isolating each part would break the sentence's order.
+  The mining request carries each dictionary's direction and target language
+  beside the display names it already carries, and the note builder passes
+  the profile's language to `appendTextOnlyGlossary`, so glossary `lang`
+  follows section 10.3 (in the single-profile shape and the Japanese profile,
+  today's detection).
 - **Relay API (GameSentenceMiner).** `profileIndex` 0 is the Japanese profile
   (every older GameSentenceMiner uses it); later indexes list the other
   profiles in order. The API host reads dictionaries through
@@ -1098,7 +1184,8 @@ separate change for the owner to decide.
   selected packages from Hachidori, naming the other profiles that use them.
   **Remove all imported dictionaries** removes every package from every
   profile; with **Also erase the personal dictionary source** it erases every
-  language's personal source.
+  language's personal source, and with two or more languages the label and the
+  confirmation say *every language* and give each language's entry count.
 - **Import.** An import adds the package to the edited profile, enabled and
   last (section 5.2). When the archive's `sourceLanguage` names another
   profile's language, the success line says so and offers **Move to
@@ -1191,8 +1278,9 @@ Anki can be set up in Settings; the practice stage uses the pack's
 With two or more profiles, Settings marks shared settings *All languages*:
 
 - under the legend of fieldsets whose settings are all shared: Reading →
-  Activation, Popup closing and Search page; Dictionaries → Updates; Anki →
-  Connection; Keybinds; Backup; Sharing; Advanced;
+  Activation, Popup closing and Search page; Dictionaries → Updates; Keybinds;
+  Backup; Sharing; Advanced; and under the first heading of Anki's connection
+  card, which has no legend;
 - beside single shared controls in fieldsets that mix scopes: Design →
   Appearance's Width, Height, Scale, Headword and toolbar position and
   Highlight the word on the page; Design's Custom CSS and Custom JavaScript;
@@ -1207,16 +1295,18 @@ source highlighting and Custom CSS and JavaScript for every language. The
 
 - **Remove** deletes the profile's settings and dictionary list and keeps its
   dictionaries in the library, including the language's personal package
-  with its source, lookup counts and marked words, all in one worker write. The
-  personal package then belongs to no profile and is not loaded. Adding the
-  language again puts that package back first and enabled, in one worker
-  write, without compiling anything.
+  with its source, lookup counts and marked words. The personal package then
+  belongs to no profile and is unloaded. Adding the language again puts that
+  package back first and enabled and loads it before publishing, without
+  compiling anything. Both run as engine mutations (section 5.2).
 - **Also erase my {Language} personal dictionary, lookup counts and marked
   words** additionally saves an empty personal source, which removes the
   package in the same commit (today's zero-row rule, through the engine's
   mutation queue), and deletes the language's counts and marks.
 - The last profile cannot be removed. When the active profile is removed, the
-  next profile in the list becomes active.
+  active profile becomes the Japanese profile, or the first profile when there
+  is none, the same rule every installation applies when its
+  `languageSelection` names a profile that no longer exists (section 4.4).
 - When the only remaining profile is Japanese and no other language's data
   remains, which needs an explicit erase, the removal converts the records
   back to the single-profile shape (section 4.5).
@@ -1266,7 +1356,9 @@ personal dictionary holds in it.
 - Versions 1-3 restore as one Japanese profile through the same projection.
   Restoring replaces every profile at once, as it replaces every setting
   today, and keeps this installation's `languageSelection` unless the result
-  is the single-profile shape.
+  is the single-profile shape. Because a restore also replaces other
+  languages' personal sources, counts and marks, its preview names every
+  language whose data it removes.
 
 ### 17.3 Sharing
 
@@ -1280,8 +1372,11 @@ client:
    `hd_language_profiles_opt_in` before it applies the hello's snapshot, and
    applies the opt-in reply's snapshot (the real records) instead, so its
    pages never adopt the Japanese view first. The host records the opt-in per
-   connection. Every other client, older ones included, gets the Japanese
-   view.
+   connection, reads the reply's snapshot after recording it, and queues that
+   client's change frames until the reply is sent; the client discards change
+   frames that arrive between its request and the reply, none of which is
+   newer than the reply. Every other client, older ones included, gets the
+   Japanese view.
 3. **Changes.** With profiles, the host sends each client its own storage
    change frame, projected to the Japanese view unless that client opted in;
    a single-profile host keeps its one broadcast.
@@ -1290,7 +1385,8 @@ client:
    with its Japanese view: `hd_options_write` (`options`, also in a conflict),
    `hd_state_read`, `hd_state_cas` (`state`, also in a conflict),
    `hd_custom_read` and `hd_custom_cas` (`state`, `document`), and the engine's
-   `hd_custom_save`, `hd_custom_append` and `hd_apply_state` (`state`).
+   `hd_custom_save`, `hd_custom_append`, `hd_apply_state` and `hd_remove`
+   (`state`, also in a conflict).
 5. **Requests.** The linked Anki, Anki setup and linked import allowlists keep
    a validated `profileId`, and the upload host passes it to
    `hd_upload_import`. A forwarded request without one means the Japanese
@@ -1301,7 +1397,9 @@ client:
    forwarded.
 6. **Gaining profiles.** When a host's records first gain profiles, it closes
    every sharing connection once, so clients say hello again and see the
-   capability.
+   capability. It does so after the reply to the request that converted the
+   records has been sent and after the other requests in flight have
+   finished, so no client is told that a change may have completed.
 
 ### 17.4 Linked browsers running an older Hachidori
 
@@ -1342,21 +1440,28 @@ projection of whichever profile a lookup uses.
 - **New, engine smoke:** `node-smoke-languages.mjs` with English and Arabic
   fixture dictionaries built by `make-language-fixtures.mjs` (with
   `sourceLanguage` and `targetLanguage`), checking `hdw_lookup` with
-  `language` and `dictionaries`, the Japanese reply bytes without them, and
-  per-language segmentation.
+  `language` and `dictionaries` (including an empty list, which finds
+  nothing), the Japanese reply bytes without them, and per-language
+  segmentation.
 - **New, real Chrome:** `chrome-theme-languages.mjs` (section 11.7) and
   `chrome-languages.mjs`, each with its own fixed plan. The second covers the
   user flows: first-run language choice; create Japanese, English and Arabic
   profiles; import one dictionary per language; hover inflected words on sample
   pages (spaces, CJK, right to left); add an Anki note through the fake
   AnkiConnect, with an Arabic note's fields checked in a left-to-right and a
-  right-to-left card template, every list number drawn inside the field; switch profiles from the toolbar, by the
+  right-to-left card template for a monolingual Arabic entry and an
+  Arabic-English entry with an Arabic example: every list number drawn inside
+  the field and every paragraph in its own order; switch profiles from the toolbar, by the
   shortcut and automatically by `lang`; edit one profile in Settings while
   another is active; hidden settings per profile; backup and restore with
   profiles, an automatic snapshot with profiles, and a version 4 backup
   restored by the current release; a linked older client and an opted-in
-  client, including a host that gains profiles while both are connected; the
-  Relay API's dictionaries for profile index 0. It saves screenshots of the picker, the switcher and one
+  client, including a host that gains profiles while both are connected, and
+  an older client linked to an English-only host (lookups find nothing, writes
+  are refused with the message of section 5.2); the Relay API's dictionaries
+  for profile index 0; adding English and looking up at once, removing and
+  re-adding a language that has personal entries, and removing the last other
+  language and looking up Japanese (only Japanese packages answer). It saves screenshots of the picker, the switcher and one
   lookup per script.
 - **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: one profile
   switch and one English and one Arabic lookup.
@@ -1370,7 +1475,11 @@ projection of whichever profile a lookup uses.
   measured with `benchmark/run.mjs` (Jitendex and Pixiv Light) and the Node
   `hdw_lookup` timings before and after, same machine, repeated runs.
 - **Hover**: `benchmark/hover-popup.mjs` input-to-first-frame and complete,
-  before and after, with the Japanese fixture: within noise.
+  before and after, with the Japanese fixture, in the single-profile shape and
+  with a second profile (which adds the worker's profile resolution and the
+  labelling pass of section 10.1): within noise.
+- **Frame start-up**: content-script start in a page with many frames, before
+  and after, with every pack in `registry.js`.
 - **Profile switch**: no reload; the first lookup after switching is as fast
   as any other. Measured from the toolbar click to the first popup.
 - **Engine start**: restart-to-first-lookup with the Japanese, English and
