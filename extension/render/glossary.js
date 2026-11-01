@@ -990,6 +990,76 @@
     return category;
   }
 
+  function setAttributes(element, attributes) {
+    for (const [name, value] of Object.entries(attributes ?? {})) element.setAttribute(name, value);
+    return element;
+  }
+
+  // docs/languages.md 10.5 and 11.2: the headword as the language's ruby mode
+  // draws it, with its displayed forms. Kana ruby (Japanese) is
+  // appendExpressionRuby exactly. `syllable` puts one reading syllable over
+  // each character when the counts agree, `word` one ruby over the word;
+  // without ruby a reading that differs from the headword is a reading line
+  // beside it. Characters the language links call onCharacterClick.
+  function appendHeadword(documentRef, parent, result, language, onCharacterClick, pitchOptions = {}) {
+    const expression = String(language.display(result, "expression") || "").trim();
+    const reading = String(language.display(result, "reading") || "").trim();
+    const alignment = language.capabilities?.ruby?.alignment ?? null;
+    if (alignment === "kana") {
+      return appendExpressionRuby(documentRef, parent, expression, reading, onCharacterClick, pitchOptions,
+        result.term?.furigana ?? null);
+    }
+    const name = String(language.labels?.character || "").toLowerCase();
+    const appendText = (target, text) => {
+      for (const character of Array.from(text)) {
+        if (typeof onCharacterClick !== "function" || !language.isCharacterLink(character)) {
+          target.appendChild(documentRef.createTextNode(character));
+          continue;
+        }
+        const button = documentRef.createElement("button");
+        button.type = "button";
+        button.className = "gsm-hoshidicts-kanji-link";
+        button.textContent = character;
+        button.setAttribute("aria-label", `Look up ${name} ${character}`);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onCharacterClick(character, button);
+        });
+        target.appendChild(button);
+      }
+    };
+    const ruby = (text, value) => {
+      const element = documentRef.createElement("ruby");
+      appendText(element, text);
+      const rt = setAttributes(documentRef.createElement("rt"), language.readingAttributes());
+      rt.textContent = value;
+      element.appendChild(rt);
+      parent.appendChild(element);
+    };
+    const shown = reading !== expression ? reading : "";
+    if (shown && alignment === "syllable") {
+      const characters = Array.from(expression);
+      const syllables = shown.split(/\s+/u).filter(Boolean);
+      if (syllables.length === characters.length) {
+        characters.forEach((character, index) => ruby(character, syllables[index]));
+        return null;
+      }
+    }
+    if (shown && (alignment === "syllable" || alignment === "word")) {
+      ruby(expression, shown);
+      return null;
+    }
+    appendText(parent, expression);
+    if (shown) {
+      const line = setAttributes(documentRef.createElement("span"), language.readingAttributes());
+      line.className = "gsm-hoshidicts-reading";
+      line.textContent = shown;
+      parent.appendChild(line);
+    }
+    return null;
+  }
+
   // Yomitan's DictionaryDatabase._splitField: tag, rule and reading lists are
   // split on U+0020 only. Jitendex writes the spaces inside a tag name as
   // U+00A0 ("special reading"), so each name stays one tag.
@@ -1008,15 +1078,227 @@
     return JAPANESE_TEXT_PATTERN.test(text) ? "ja" : CHINESE_TEXT_PATTERN.test(text) ? "zh" : null;
   }
 
+  // Text in a profile's language (docs/languages.md 10.2, 10.3 and 11.2). It
+  // applies only once the records have profiles: callers pass a marked
+  // language object, and without one every function below keeps today's
+  // markup and text.
+  // Unicode's right-to-left scripts (ISO 15924), as far as Chrome 128 knows them.
+  const RTL_SCRIPTS = new Set(["Adlm", "Arab", "Armi", "Avst", "Chrs", "Cprt", "Elym", "Hatr", "Hebr", "Hung",
+    "Khar", "Lydi", "Mand", "Mani", "Mend", "Merc", "Mero", "Narb", "Nbat", "Nkoo", "Orkh", "Ougr", "Palm",
+    "Phli", "Phlp", "Phnx", "Prti", "Rohg", "Samr", "Sarb", "Sogd", "Sogo", "Syrc", "Thaa", "Yezi"]);
+  const RTL_SCRIPT_CLASS = [...RTL_SCRIPTS].map((code) => `\\p{Script=${code}}`).join("");
+  const RTL_LETTERS = new RegExp(`(?=\\p{L})[${RTL_SCRIPT_CLASS}]`, "gu");
+  const RTL_LETTER = new RegExp(`(?=\\p{L})[${RTL_SCRIPT_CLASS}]`, "u");
+  const LETTERS = /\p{L}/gu;
+  const LETTER = /\p{L}/u;
+  const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
+  const NON_HAN_LETTER = /(?!\p{Script=Han})\p{L}/u;
+  const HAN_OR_CJK_PUNCTUATION = /[\p{Script=Han}\u3000-\u303f\ufe30-\ufe4f\uff01-\uff65]/u;
+  const KANA_LETTER = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+  const HANGUL_LETTER = /\p{Script=Hangul}/u;
+  const BOPOMOFO_LETTER = /\p{Script=Bopomofo}/u;
+  // Codes that are Han alone, and every code that includes Han (7.3, 10.3).
+  const HAN_ONLY_SCRIPTS = new Set(["Hani", "Hans", "Hant", "Hanb"]);
+  const HAN_SCRIPTS = new Set([...HAN_ONLY_SCRIPTS, "Jpan", "Kore"]);
+  const HAN_LANGUAGES = new Set(["ja", "ko", "zh"]);
+  const ISOLATES = { ltr: "\u2066", rtl: "\u2067" };
+  const POP_ISOLATE = "\u2069";
+
+  const hasRtlText = (text) => RTL_LETTER.test(String(text ?? ""));
+
+  // The majority rule (10.2): right to left when more than half of the
+  // letters are right-to-left letters; text without letters has no direction.
+  function textDirection(text) {
+    const value = String(text ?? "");
+    const letters = value.match(LETTERS)?.length ?? 0;
+    if (letters === 0) return null;
+    return (value.match(RTL_LETTERS)?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
+  }
+
+  function scriptDirection(script) {
+    return RTL_SCRIPTS.has(script) ? "rtl" : "ltr";
+  }
+
+  // A target language without a pack in this build (10.2): the platform's
+  // likely script for the tag, or null when it knows none.
+  function localeScript(tag) {
+    try {
+      return new Intl.Locale(tag).maximize().script ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  const primarySubtag = (tag) => String(tag || "").split(/[-_]/u)[0].toLowerCase();
+  const LANGUAGE_INFO = new WeakMap();
+
+  // A pack as detection reads it: its tag, scripts and the characters of its
+  // text pattern that are not Latin (10.3 step 3; Han counts only for a pack
+  // whose every non-Latin script is a Han script).
+  function textLanguage(pack) {
+    let info = LANGUAGE_INFO.get(pack);
+    if (info) return info;
+    const scripts = Array.isArray(pack?.scripts) ? pack.scripts : [];
+    const nonLatin = scripts.filter((code) => code !== "Latn");
+    let native = null;
+    if (nonLatin.length > 0 && typeof pack?.text?.pattern === "string") {
+      const excluded = nonLatin.every((code) => HAN_ONLY_SCRIPTS.has(code)) ? "" : "\\p{Script=Han}";
+      try {
+        native = new RegExp(`(?![\\p{Script=Latin}${excluded}])${pack.text.pattern}`, "u");
+      } catch {
+        native = null;
+      }
+    }
+    info = { code: pack?.code ?? "", bcp47: pack?.bcp47 || pack?.code || "", scripts, native,
+      latinOnly: scripts.length > 0 && nonLatin.length === 0,
+      han: scripts.some((code) => HAN_SCRIPTS.has(code)) };
+    if (pack && typeof pack === "object") LANGUAGE_INFO.set(pack, info);
+    return info;
+  }
+
+  // A dictionary's target language (10.2, 10.3 steps 4 and 5): the pack's
+  // scripts and direction when this build has one, else the platform's
+  // script. `direction` is null when neither knows the language.
+  function targetLanguage(tag, packFor = () => null) {
+    if (typeof tag !== "string" || !tag) return null;
+    const primary = primarySubtag(tag);
+    const pack = packFor(primary);
+    const script = pack ? null : localeScript(tag);
+    const scripts = pack?.scripts ?? (script ? [script] : null);
+    const direction = pack?.direction === "rtl" || pack?.direction === "ltr" ? pack.direction
+      : script ? scriptDirection(script) : null;
+    return { tag, direction,
+      latin: scripts ? scripts.includes("Latn") : null,
+      han: HAN_LANGUAGES.has(primary) || Boolean(scripts?.some((code) => HAN_SCRIPTS.has(code))) };
+  }
+
+  const hanAlone = (text) => HAN_OR_CJK_PUNCTUATION.test(text) && !NON_HAN_LETTER.test(text);
+
+  // Steps 2 to 4 of 10.3, which read only the text and the profile.
+  function scriptLanguage(text, profile, target) {
+    if (KANA_LETTER.test(text)) return "ja";
+    if (HANGUL_LETTER.test(text)) return "ko";
+    if (BOPOMOFO_LETTER.test(text)) return "zh";
+    if (profile.native?.test(text)) return profile.bcp47;
+    if (profile.latinOnly && target?.latin === false && LETTER.test(text) && !NON_LATIN_LETTER.test(text)) {
+      return profile.bcp47;
+    }
+    return null;
+  }
+
+  // 10.3 for one glossary string outside the Japanese profile: steps 2 to 7,
+  // where step 5 is the dictionary's target language.
+  function glossaryTextLanguage(text, profile, target) {
+    const value = String(text ?? "");
+    const detected = scriptLanguage(value, profile, target);
+    if (detected) return detected;
+    const alone = hanAlone(value);
+    if (target && !(alone && !target.han)) return target.tag;
+    return alone && profile.han ? profile.bcp47 : null;
+  }
+
+  // The labelling pass (10.1) outside the Japanese profile: 10.3's steps 2 to
+  // 6, where step 5 is the language the text inherits, so it adds no label.
+  function inheritedTextLanguage(text, profile, inherited, isDefault) {
+    const value = String(text ?? "");
+    const detected = scriptLanguage(value, profile, isDefault ? inherited : null);
+    if (detected) return detected;
+    const alone = hanAlone(value);
+    return alone && !inherited?.han && profile.han ? profile.bcp47 : null;
+  }
+
+  // Text mode (11.2): the text of a paragraph whose direction differs from
+  // its dictionary's keeps its own order inside a directional isolate.
+  function isolateParagraph(text, direction = "ltr") {
+    const own = textDirection(text);
+    return own && own !== direction ? `${ISOLATES[own]}${text}${POP_ISOLATE}` : text;
+  }
+
+  // Structured blocks for the paragraph rule (10.2).
+  const DIRECTION_BLOCK_TAGS = new Set(["div", "p", "li", "ol", "ul", "table", "td", "th", "details", "summary"]);
+  const LIST_TAGS = new Set(["ol", "ul"]);
+  const isDirectionBlock = (node) => node.nodeType === 1 && DIRECTION_BLOCK_TAGS.has(node.localName);
+
+  // 10.2's paragraph rule over rendered glossary content: a block takes the
+  // direction of its own letters, or of all its letters when it has none of
+  // its own, and is marked with `dir` where that differs from the direction
+  // it inherits (its nearest marked ancestor's, else the dictionary's). It
+  // gets `text-align: start` unless a dictionary style on it or an ancestor
+  // inside the glossary aligns it. A list that holds an item of the other
+  // direction gets `listPadding` as its inline padding (Anki), or is marked
+  // for the theme host's labelling pass, which pads it from its computed
+  // start padding. Nothing is marked under a dictionary without
+  // right-to-left text, so left-to-right markup stays today's.
+  function markBlockDirections(root, direction, { listPadding = null } = {}) {
+    const counts = new Map();
+    const count = (block, field) => counts.get(block)?.[field] ?? 0;
+    // Every element in document order, without recursion: dictionaries nest deeply.
+    const order = [];
+    const stack = [root];
+    while (stack.length > 0) {
+      const element = stack.pop();
+      order.push(element);
+      for (let child = element.lastElementChild; child; child = child.previousElementSibling) stack.push(child);
+    }
+    // `own` counts a block's text outside its nested blocks; inline elements
+    // pass theirs up to the block that holds them.
+    for (let index = order.length - 1; index >= 0; index -= 1) {
+      const element = order[index];
+      let own = 0, ownRtl = 0, all = 0, allRtl = 0;
+      for (let child = element.firstChild; child; child = child.nextSibling) {
+        if (child.nodeType === 3) {
+          const letters = child.data.match(LETTERS)?.length ?? 0;
+          if (letters > 0) {
+            const rtl = child.data.match(RTL_LETTERS)?.length ?? 0;
+            own += letters; ownRtl += rtl; all += letters; allRtl += rtl;
+          }
+        } else if (child.nodeType === 1) {
+          all += count(child, "all"); allRtl += count(child, "allRtl");
+          if (!isDirectionBlock(child)) { own += count(child, "own"); ownRtl += count(child, "ownRtl"); }
+        }
+      }
+      if (all > 0) counts.set(element, { own, ownRtl, all, allRtl });
+    }
+    const blockDirection = (block) => {
+      const own = count(block, "own");
+      const [letters, rtl] = own > 0 ? [own, count(block, "ownRtl")] : [count(block, "all"), count(block, "allRtl")];
+      return letters > 0 ? (rtl * 2 > letters ? "rtl" : "ltr") : null;
+    };
+    // Only dictionary styles count: the walk reads each block before marking it.
+    const aligned = (element) => Boolean(element.style?.textAlign);
+    const walk = [[root, direction, false]];
+    while (walk.length > 0) {
+      const [element, inherited, alignedAbove] = walk.pop();
+      let current = inherited;
+      const styled = alignedAbove || aligned(element);
+      if (element !== root && isDirectionBlock(element)) {
+        const own = blockDirection(element);
+        if (own && own !== inherited) {
+          element.setAttribute("dir", own);
+          if (!styled) element.style.textAlign = "start";
+          current = own;
+          const list = element.parentElement;
+          if (element.localName === "li" && list && LIST_TAGS.has(list.localName)) {
+            if (listPadding) list.style.paddingInline = listPadding;
+            else list.dataset.hdMixedList = "";
+          }
+        }
+      }
+      for (let child = element.lastElementChild; child; child = child.previousElementSibling) {
+        if (counts.has(child)) walk.push([child, current, styled]);
+      }
+    }
+  }
+
   // Yomitan's _setMultilineTextContent: each "\n" becomes a <br>, so the text
   // copies with its line breaks. A glossary's text gets the same language
   // detection as a string in structured content.
-  function appendMultilineText(documentRef, parent, text) {
+  function appendMultilineText(documentRef, parent, text, state = null) {
     text.split("\n").forEach((line, index) => {
       if (index > 0) parent.appendChild(documentRef.createElement("br"));
       if (line) parent.appendChild(documentRef.createTextNode(line));
     });
-    const language = languageFromText(text);
+    const language = state?.detectLanguage ? state.detectLanguage(text, parent) : languageFromText(text);
     if (language) parent.lang = language;
   }
 
@@ -1522,7 +1804,8 @@
       parent = frame.parent;
       if (typeof value === "string") {
         parent.appendChild(documentRef.createTextNode(value));
-        const language = frame.language === null ? languageFromText(value) : null;
+        let language = null;
+        if (frame.language === null) language = state.detectLanguage ? state.detectLanguage(value, parent) : languageFromText(value);
         if (language) parent.lang = language;
         continue;
       }
@@ -1681,14 +1964,14 @@
     content.className = "gloss-content";
     if (typeof item === "string" || (isRecord(item) && item.type === "text" && typeof item.text === "string")) {
       countStructuredNode(state, path);
-      appendMultilineText(documentRef, content, typeof item === "string" ? item : item.text);
+      appendMultilineText(documentRef, content, typeof item === "string" ? item : item.text, state);
     } else if (isRecord(item) && item.type === "image") {
       countStructuredNode(state, path);
       appendStructuredImage(documentRef, content, item, state);
       if (typeof item.description === "string") {
         const description = documentRef.createElement("span");
         description.className = "gloss-image-description";
-        appendMultilineText(documentRef, description, item.description);
+        appendMultilineText(documentRef, description, item.description, state);
         content.append(" ", description);
       }
     } else if (isRecord(item) && item.type === "structured-content") {
@@ -1753,6 +2036,27 @@
           })
         : null,
     };
+    // Once the records have profiles (a marked language), strings take 10.3's
+    // language, labelled only where it differs from the block's default, and
+    // blocks of the other direction keep their own (10.2). The dictionary's
+    // direction comes from `options.direction`, else from the language.
+    const language = options.language?.marked === true ? options.language : null;
+    let direction = null;
+    if (language) {
+      const blockLanguage = language.dictionaryLanguage?.(options.dictionary) ?? null;
+      // A label only where the language differs from the one the text
+      // inherits: from a block above it inside the glossary, else the
+      // dictionary's default.
+      state.detectLanguage = (text, parent) => {
+        const detected = language.detectGlossary(text, options.dictionary);
+        const inherited = parent?.closest?.("[lang]")?.getAttribute("lang") ?? blockLanguage;
+        return detected && detected !== inherited ? detected : null;
+      };
+      direction = options.direction ?? language.dictionaryDirection?.(options.dictionary) ?? "ltr";
+    }
+    const markDirections = (root, listPadding = null) => {
+      if (direction && (direction === "rtl" || hasRtlText(value))) markBlockDirections(root, direction, { listPadding });
+    };
     if (options.layout !== "anki") {
       // The popup's glossary markup is Yomitan's: ul.gloss-list, even for one
       // element, with data-count counting the items it shows.
@@ -1761,6 +2065,7 @@
       items.forEach((item, index) => appendGlossItem(documentRef, list, item, state, index));
       list.dataset.count = String(list.children.length);
       parent.appendChild(list);
+      markDirections(list);
       return;
     }
     // Yomitan's Anki glossary-single template emits one element bare and
@@ -1768,11 +2073,15 @@
     if (items.length === 0) {
       return;
     }
+    // A note has no stylesheet: lists of mixed direction get inline padding
+    // (section 12), and only a caller that names the direction is marked.
+    if (options.direction === undefined) direction = null;
     if (items.some((item) => isRecord(item) && item.type === "structured-content")) {
       parent.classList.add("structured-content");
     }
     if (items.length === 1) {
       appendStructuredValue(documentRef, parent, items[0], state, 0, ["glossary", 0]);
+      markDirections(parent, "40px");
       return;
     }
     const list = documentRef.createElement("ul");
@@ -1784,6 +2093,7 @@
       list.appendChild(listItem);
     }
     parent.appendChild(list);
+    markDirections(list, "40px");
   }
 
   function utf8Length(value) {
@@ -1970,22 +2280,50 @@
   // Layout follows JL's text flattening: tag spans are spaced, furigana reads
   // 昨日[きのう], list items get markers, table rows read "| a | b |", and block
   // boundaries add one line break instead of stacking blank lines.
+  // With a marked language (the records have profiles; 11.2), each line whose
+  // direction by 10.2's rule differs from `direction`, the dictionary's, is
+  // wrapped after its list marker in a left-to-right or right-to-left isolate.
+  // Outside the Japanese profile tag pills are always spaced and readings use
+  // the language's `readingBrackets`. Without one it is today's flattener.
   const TEXT_BLOCK_TAGS = new Set(["div", "p", "li", "table", "thead", "tbody", "tfoot", "details", "summary"]);
-  function glossaryToPlainText(glossary) {
+  function glossaryToPlainText(glossary, language = null, { direction = "ltr" } = {}) {
+    const marked = language?.marked === true;
+    const otherLanguage = marked && language.code !== "ja";
+    const base = direction === "rtl" ? "rtl" : "ltr";
     let value = glossary;
     if (typeof value === "string") {
-      try { value = JSON.parse(value); } catch { return value; }
+      try { value = JSON.parse(value); } catch {
+        return marked ? value.split("\n").map(line => isolateParagraph(line, base)).join("\n") : value;
+      }
     }
+    const [open, close] = otherLanguage && Array.isArray(language.labels?.readingBrackets)
+      ? language.labels.readingBrackets : ["[", "]"];
     const LINE = {}, parts = [], lists = [], rows = [];
     let lineBreak = false;
+    // The first part of the current line after its list marker.
+    let lineStart = 0;
+    const finishLine = () => {
+      if (!marked || parts.length <= lineStart) return;
+      const own = textDirection(parts.slice(lineStart).join(""));
+      if (own && own !== base) {
+        parts.splice(lineStart, 0, ISOLATES[own]);
+        parts.push(POP_ISOLATE);
+      }
+    };
     const write = text => {
       if (lineBreak) {
         // A run of block boundaries becomes one break, without the whitespace before it.
         lineBreak = false;
         while (parts.length) {
           const last = parts.pop().trimEnd();
-          if (last) { parts.push(last, "\n"); break; }
+          if (last) {
+            parts.push(last);
+            finishLine();
+            parts.push("\n");
+            break;
+          }
         }
+        lineStart = parts.length;
       }
       if (text) parts.push(text);
     };
@@ -2000,8 +2338,15 @@
       } else if (typeof item !== "object") write(String(item));
       else if (item.tag === "img" || item.type === "image") {
         if (item.title) stack.push(LINE, String(item.title));
-      } else if (item.tag === "br") write("\n");
-      else if (item.tag === "rt") stack.push("]", item.content, "[");
+      } else if (item.tag === "br") {
+        if (marked) {
+          // An isolate cannot cross a line break.
+          write("");
+          finishLine();
+          parts.push("\n");
+          lineStart = parts.length;
+        } else write("\n");
+      } else if (item.tag === "rt") stack.push(close, item.content, open);
       else if (item.tag === "ul" || item.tag === "ol") {
         lists.push({ tag: item.tag, type: item.style?.listStyleType, number: 0 });
         stack.push(LINE, () => lists.pop(), item.content, LINE);
@@ -2015,7 +2360,7 @@
         // margin; an unstyled classed span does when its text starts with ASCII.
         if (item.tag === "span" && (item.style ? item.style.marginRight != null : item.data?.class != null)) {
           write(""); // settle a pending break so parts[start] is the pill's own text
-          const start = parts.length, always = item.style != null;
+          const start = parts.length, always = item.style != null || otherLanguage;
           stack.push(() => { if (parts.length > start && (always || parts[start].charCodeAt(0) < 128)) parts.push(" "); });
         }
         // Icon-only cells such as Jitendex's form markers carry their meaning in the title.
@@ -2026,6 +2371,8 @@
           // A quoted type is a literal CSS marker, such as Jitendex's "①".
           let marker = /^(["'])(.*)\1$/u.exec(type ?? "")?.[2] ?? (list.tag === "ol" ? `${list.number}.` : "•");
           if (type === "none") marker = "";
+          // The line's own text starts after its marker.
+          if (marker && marked) stack.push(() => { lineStart = parts.length; });
           if (marker) stack.push(`${marker} `);
         } else if ((item.tag === "th" || item.tag === "td") && rows.length) {
           if (rows[rows.length - 1]++) stack.push(" | "); // every cell after the row's first
@@ -2033,12 +2380,20 @@
         if (block) stack.push(LINE);
       }
     }
+    if (marked) {
+      while (parts.length) {
+        const last = parts.pop().trimEnd();
+        if (last) { parts.push(last); break; }
+      }
+      finishLine();
+    }
     return parts.join("").trim();
   }
 
   return {
     glossaryToPlainText,
     appendExpressionRuby,
+    appendHeadword,
     appendStructuredImage,
     appendStructuredValue,
     appendTextOnlyGlossary,
@@ -2060,9 +2415,16 @@
     frequencyNumber,
     getDownstepPositions,
     getFuriganaKanaSegments,
+    glossaryTextLanguage,
+    hasRtlText,
+    inheritedTextLanguage,
     isMoraPitchHigh,
     isRecord,
+    isolateParagraph,
     kanjiFurigana,
+    languageFromText,
+    localeScript,
+    markBlockDirections,
     matchedFurigana,
     normalizeMediaPath,
     parseStructuredLink,
@@ -2070,12 +2432,17 @@
     pitchAccentCategory,
     pitchAccentDownstep,
     pitchAccentPositions,
+    scriptDirection,
     segmentFurigana,
     segmentizeFurigana,
     selectPitchAccent,
+    setAttributes,
     splitPitchAccentMorae,
     structuredDataAttributeName,
+    targetLanguage,
     termFurigana,
+    textDirection,
+    textLanguage,
     toHiragana,
   };
 }));
