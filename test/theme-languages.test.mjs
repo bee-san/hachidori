@@ -374,6 +374,26 @@ test("the labelling pass labels text-mode definitions line by line and pads list
   } finally { arabic.dom.window.close(); }
 });
 
+test("the right-to-left test finds every letter of the right-to-left scripts (10.2)", () => {
+  const source = readFileSync(new URL("../extension/render/glossary.js", import.meta.url), "utf8");
+  const scripts = JSON.parse(`[${source.match(/const RTL_SCRIPTS = new Set\(\[([^\]]+)\]\)/u)[1]}]`);
+  const exact = new RegExp(`[\\p{L}&&[${scripts.map(code => `\\p{Script=${code}}`).join("")}]]`, "v");
+  const { window } = languageDom();
+  try {
+    const { hasRtlText, textDirection } = window.HDGlossary;
+    const missed = [];
+    for (let point = 0; point <= 0x10ffff; point += 1) {
+      if (point >= 0xd800 && point <= 0xdfff) continue;
+      const character = String.fromCodePoint(point);
+      if (hasRtlText(character) !== exact.test(character)) missed.push(point.toString(16));
+    }
+    assert.deepEqual(missed, []);
+    assert.equal(textDirection("كتاب ok"), "rtl");
+    assert.equal(textDirection("a كتاب book"), "ltr");
+    assert.equal(textDirection("123 ..."), null);
+  } finally { window.close(); }
+});
+
 test("text mode isolates paragraphs of the other direction after their marker (11.2)", async () => {
   const { window } = languageDom();
   try {

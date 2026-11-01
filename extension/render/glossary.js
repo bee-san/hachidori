@@ -1106,13 +1106,20 @@
   const ISOLATES = { ltr: "\u2066", rtl: "\u2067" };
   const POP_ISOLATE = "\u2069";
 
-  const hasRtlText = (text) => RTL_LETTER.test(String(text ?? ""));
+  // Each of those scripts is encoded where Unicode reserves code points for
+  // right-to-left text (its default R and AL ranges), so a test of code
+  // units rules out most text before the exact test.
+  const RTL_RANGES = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\ud802\ud803\ud83a\ud83b]/;
+  const hasRtlText = (text) => {
+    const value = String(text ?? "");
+    return RTL_RANGES.test(value) && RTL_LETTER.test(value);
+  };
 
   // The majority rule (10.2): right to left when more than half of the
   // letters are right-to-left letters; text without letters has no direction.
   function textDirection(text) {
     const value = String(text ?? "");
-    if (!RTL_LETTER.test(value)) return LETTER.test(value) ? "ltr" : null;
+    if (!hasRtlText(value)) return LETTER.test(value) ? "ltr" : null;
     const letters = value.match(LETTERS)?.length ?? 0;
     return (value.match(RTL_LETTERS)?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
   }
