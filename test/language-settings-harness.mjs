@@ -36,8 +36,7 @@ export function registryOf(languages) {
  * the page finds (null: none, as in a page without registry.js). `onMessage`
  * may answer a runtime message before the fake worker does.
  */
-export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null,
-  catalogue: themes = value => value } = {}) {
+export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -198,7 +197,6 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
   }
   // The theme catalogue the Theme Store and Design's filter read.
   const catalogue = JSON.parse(extension("vendor/themes/index.json"));
-  catalogue.themes = themes(catalogue.themes);
   window.fetch = async () => ({ ok: true, json: async () => catalogue });
   // The modules Settings imports on demand (docs/languages.md 5, 7.5), which a
   // script evaluated in jsdom cannot import itself.

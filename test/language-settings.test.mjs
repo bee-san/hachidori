@@ -285,9 +285,8 @@ test("languages held without a profile are listed with Erase", async t => {
 });
 
 test("a pack's display setting shows for a theme that renders presentation and is saved by id", async t => {
-  const settings = await open(t, { hash: "#design", stored: withProfiles(), catalogue(themes) {
-    return themes.map(theme => (theme.slug === "default" ? { ...theme, language: { directions: ["ltr", "rtl"], presentation: true } } : theme));
-  } });
+  // Default renders presentation (vendor/themes/index.json).
+  const settings = await open(t, { hash: "#design", stored: withProfiles() });
   const { el, records, window } = settings;
   await settle();
   const fieldset = el("language-display-settings");
@@ -311,7 +310,9 @@ test("a pack's display setting shows for a theme that renders presentation and i
 });
 
 test("a theme without presentation hides the pack's display settings", async t => {
-  const settings = await open(t, { hash: "#design", stored: withProfiles() });
+  const stored = withProfiles();
+  stored.options.profiles[1].settings.popupTheme = "plain";
+  const settings = await open(t, { hash: "#design", stored });
   await settle();
   assert.equal(settings.el("language-display-settings").hidden, true);
   assert.deepEqual(settings.search("vowel marks"), []);
