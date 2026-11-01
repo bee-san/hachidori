@@ -918,7 +918,8 @@ leaves unfixed). Once the records have profiles:
 | --- | --- | --- |
 | Headword, matched text, deinflection endpoints, the character in the character view, the sentence excerpt | `lang` = pack `bcp47` | `lang` and `dir="rtl"` |
 | Reading | `lang` | `lang` and `dir="auto"` (a transliteration may be in another script) |
-| Note form inputs, search box | `lang` | `lang` and `dir="auto"` |
+| Note form Term and Reading, search box | `lang` | `lang` and `dir="auto"` |
+| Note form Definition (often written in another language) | none | `dir="auto"` |
 
 - **Dictionary text.** Direction and language of definitions belong to the
   dictionary, not to the profile (sections 10.2 and 10.3), so a right-to-left
@@ -936,7 +937,9 @@ leaves unfixed). Once the records have profiles:
   default from `glossaryAttributes`. It gives such a node a language from its
   characters and, when that differs from the language the node inherits, puts
   it on the node's parent. In the Japanese profile the test is today's
-  `JAPANESE_TEXT_PATTERN`; in other profiles it is section 10.3's steps 2 to
+  per-string detection (`languageFromText`, built on
+  `JAPANESE_TEXT_PATTERN`: `ja`, else `zh` for bopomofo and Chinese-only
+  forms); in other profiles it is section 10.3's steps 2 to
   6 in order, where step 5 is the language the node inherits, so it adds no
   label. Labels from a dictionary's own structured content or from section
   10.3 stay as they are. A node that holds several lines (a text-mode
@@ -972,7 +975,8 @@ leaves unfixed). Once the records have profiles:
   labels whose text contains a right-to-left character are isolated: themes
   put the name alone in an inline element with `dir="auto"` (as `<bdi>`
   does), never on a box that layout can widen, and text-mode themes wrap it in
-  U+2068 … U+2069. A name in one of the pack's scripts also gets the pack's
+  U+2068 … U+2069. A name for which section 10.3's script steps (2, 3 and 6)
+  give the pack's tag also gets the pack's
   `lang`.
 
 Each `.gsm-hoshidicts-popup` element (not the shadow host, which several open
@@ -1258,7 +1262,7 @@ the Japanese profile:
 | --- | --- |
 | Default | Section 10.5. Declares `{"directions": ["ltr", "rtl"], "presentation": true}`. |
 | Plain | One element per dictionary with `glossaryAttributes`; `text-align: start`. Declares `{"directions": ["ltr", "rtl"], "presentation": false}`: it shows no headword. |
-| Nazeka | Character links from `isCharacterLink`; headword and reading through `display`, `sourceAttributes` and `readingAttributes`; the reading's `《》` from `labels.readingBrackets`; the `～` before rule names from `labels.traceMarker`; the headword's `aria-label` from `readingFor`; each sense in `.nazeka-sense` with `glossaryAttributes`; dictionary labels and frequency entries through `nameAttributes`; the sentence excerpt in its own element with Close and Back outside it, cut with `sliceText`; `text-align: left` becomes `start`; font and line breaking from the custom properties. Declares both directions and `presentation`. |
+| Nazeka | Character links from `isCharacterLink`; headword and reading through `display`, `sourceAttributes` and `readingAttributes`; the reading's `《》` from `labels.readingBrackets`; the `～` before rule names from `labels.traceMarker`; the headword's `aria-label` from `readingFor` outside Japanese (Japanese keeps today's label); each sense in `.nazeka-sense` with `glossaryAttributes`; dictionary labels and frequency entries through `nameAttributes`; the sentence excerpt in its own element with Close and Back outside it, cut with `sliceText`; `text-align: left` becomes `start`; font and line breaking from the custom properties. Declares both directions and `presentation`. |
 | JL, Bee | Character links from `isCharacterLink`; headword, reading and deconjugation endpoints through `display` and the attribute helpers; the `～` before rule names from `labels.traceMarker`; the matched form compared with the displayed forms; the pitch marker on the spelling only when the language has `pitchAccent`, and drawn on `display()` text; kanji view `On:`/`Kun:` and `、` from the character-view labels; mined character results from `characterEntryResult`; sense separators from `labels.senseSeparator`; each frequency entry and dictionary name through `nameAttributes`; `text-align: left` becomes `start`; fonts and line breaking from the custom properties, with Meiryo and today's stacks as fallbacks. Declare both directions and `presentation`. |
 | Crystal (Grey, Beige, Retro blue) | As JL. Letter-spacing on the headword, plaques, tabs, frequency names and character-view labels is dropped when the language's `typography.joinedScript` is true, because spacing opens gaps inside joined letters in Chrome 128. The font warm-up string stays `食べる たべる Aa` at module load; `createView` warms `options.language.sampleText` for other languages. The gold frame and plaque artwork stay as they are, because the interface they frame stays left to right. Declares both directions and `presentation`. |
 
