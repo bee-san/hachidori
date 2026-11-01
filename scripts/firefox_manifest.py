@@ -35,9 +35,13 @@ def firefox_manifest(chrome):
         "gecko": {
             "id": GECKO_ID,
             "strict_min_version": MINIMUM_FIREFOX,
-            # Hachidori sends nothing to its publisher; it contacts dictionary
-            # publishers and the services the user configures (docs/privacy.md).
-            "data_collection_permissions": {"required": ["none"]},
+            # Firefox shows these at install. Mozilla counts data that leaves the
+            # browser for another program, such as Anki, as transmitted (Add-on
+            # Policies, section 6). Anki notes carry the page's sentence,
+            # screenshot and title, word highlighting asks Anki about page words,
+            # pronunciation sources get the looked-up word and a linked browser
+            # sends its lookups to the sharing host (docs/privacy.md).
+            "data_collection_permissions": {"required": ["websiteContent", "browsingActivity"]},
         },
     }
     return manifest

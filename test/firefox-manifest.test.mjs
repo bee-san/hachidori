@@ -39,7 +39,8 @@ test("Firefox runs background.js in an event page and leaves out what Firefox do
     assert.equal(Object.hasOwn(firefox, key), false, key);
   }
   assert.deepEqual(firefox.browser_specific_settings, {
-    gecko: { id: "hachidori@bee-san", strict_min_version: "153.0", data_collection_permissions: { required: ["none"] } },
+    gecko: { id: "hachidori@bee-san", strict_min_version: "153.0",
+      data_collection_permissions: { required: ["websiteContent", "browsingActivity"] } },
   });
   // Everything else is the Chrome manifest's, so commands, content scripts,
   // pages and resources cannot drift between the builds.
