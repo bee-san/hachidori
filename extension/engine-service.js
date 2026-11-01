@@ -3678,6 +3678,41 @@ async function stageBackupFiles(prepared, roots) {
   return dictionaries;
 }
 
+// The packages a version 4 restore loads (docs/languages.md 17.2): the
+// archived ones staged above, and every other language's personal package
+// rebuilt from its document; one entry per package, enabled when a restored
+// profile enables it.
+async function stageBackupLanguages(backupState, plan, staged, roots) {
+  const fresh = new Map(staged.map(row => [row.id, row]));
+  for (const entry of plan.personal) {
+    fresh.set(entry.identity.id, await rebuildBackupPersonalPackage(entry, roots)); // NOSONAR: one engine import at a time
+  }
+  if (plan.personal.length > 0) await persistFilesystem();
+  return backupState.backupEngineDictionaries(plan, fresh);
+}
+
+// What the restore preview shows: the packages, every restored language's
+// personal entries and, where languages are involved, their lines (17.2, 17.6).
+function backupPreview(backupState, current, plan, dictionaries, snapshot) {
+  const notes = backupState.restorePreviewNotes(current, plan);
+  return {
+    dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
+    customEntryCount: plan === null ? parseCustomDictionary(snapshot.document.text).entries.length
+      : backupState.personalEntryCount(snapshot, plan),
+    ...(notes.length === 0 ? {} : { languageNotes: notes }),
+  };
+}
+
+// The packs of the restored profiles load before the restore publishes
+// (docs/languages.md 9.2); a pack that fails is reported as at a start.
+async function adoptRestoredLanguages(options) {
+  const { hasProfiles, profiles } = globalThis.HDReaderOptions;
+  profileRecords = hasProfiles(options);
+  recordLanguages = profileRecords ? [...new Set(profiles(options).map(profile => profile.language))] : [];
+  if (profileRecords) await loadLanguagePacks(recordLanguages, { all: true });
+  else languageFailures = [];
+}
+
 function assertBackupDictionaryPath(dictionary, message = "The backup contains an invalid dictionary path.") {
   if (dictionaryRoot(dictionary) === null) {
     throw new Error(message);
@@ -3701,15 +3736,42 @@ async function validateBackupDictionaryFiles(dictionary) {
   }
   const recommended = recommendedDictionarySource(dictionary.sourceId);
   if (recommended) assertRecommendedDictionary(recommended, generated);
-  if (dictionary.id === CUSTOM_DICTIONARY_ID
-      && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount)) {
+  // Every language's personal package keeps the managed-package invariants.
+  const personal = personalDictionaryLanguage(dictionary);
+  if (personal !== null && !customDictionaryMetadataMatches(generated, dictionary.revision, dictionary.termCount,
+    personalDictionaryIdentity(personal))) {
     throw new Error("The backup custom dictionary files do not satisfy the managed package invariants.");
   }
 }
 
-async function commitBackupSnapshot(current, snapshot, lookupStatsRows) {
+// A version 4 archive does not carry other languages' personal packages; the
+// restore compiles each from its document into a fresh generation, as a save
+// in Settings would (docs/languages.md 17.2), keeping the package's name and
+// favourite from the backup.
+async function rebuildBackupPersonalPackage({ identity, row, document }, roots) {
+  const parsed = parseCustomDictionary(document.text, identity);
+  const semanticRevision = await customDictionarySemanticRevision(parsed.entries, identity);
+  const root = createGenerationRoot();
+  roots.push(root);
+  resetEngine();
+  const report = await importDictionaryArchive(engine, new Response(buildCustomDictionaryZip(parsed.entries, semanticRevision, identity)),
+    root, lowRam, "the custom dictionary archive", null, { backend: storageBackend });
+  if (!report.success) throw new Error(report.error || `${identity.title} could not be rebuilt from its document.`);
+  const generated = await packageFromIndex(`${root}/${dictionaryFolderName(report.title)}`);
+  if (!customDictionaryMetadataMatches(generated, semanticRevision, parsed.entries.length, identity)) {
+    throw new Error("The rebuilt custom dictionary does not satisfy the managed package invariants.");
+  }
+  return {
+    ...generated, id: identity.id, title: identity.title,
+    displayName: typeof row.displayName === "string" ? row.displayName : null,
+    favorite: row.favorite === true, isUpdatable: false, indexUrl: null, downloadUrl: null, lastUpdateCheck: null,
+  };
+}
+
+async function commitBackupSnapshot(current, snapshot, lookupStatsRows, languageLookupStatsRows) {
   try {
-    return await ask("hd_backup_cas", { base: current, snapshot, lookupStatsRows });
+    return await ask("hd_backup_cas", { base: current, snapshot, lookupStatsRows,
+      ...(languageLookupStatsRows === undefined ? {} : { languageLookupStatsRows }) });
   } catch (commitError) {
     let readback;
     try { readback = (await readBackupStorage(true)).snapshot; }
@@ -3731,15 +3793,19 @@ async function restoreBackup(message) {
   const prepared = preparedBackup;
   preparedBackup = null;
   try {
-    const { restoredBackupSnapshot } = await import("./backup-state.js");
+    const { restoredBackupSnapshot, restoredLanguageRows } = await import("./backup-state.js");
     const current = (await readBackupStorage(true)).snapshot;
     if (!sameJsonValue(current, prepared.current)) {
       throw new Error("Hachidori changed since this backup was prepared. Prepare it again before restoring.");
     }
-    const loadedCount = loadDictionaries(prepared.dictionaries);
-    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries, { overlay: OVERLAY_MODE });
-    const reply = await commitBackupSnapshot(current, snapshot, prepared.lookupStatsRows);
+    const plan = prepared.plan ?? null;
+    const snapshot = restoredBackupSnapshot(current, prepared.snapshot, prepared.dictionaries, { overlay: OVERLAY_MODE, plan });
+    // Records with profiles load every package once, as the engine reads them.
+    const loadedCount = loadDictionaries(plan === null ? prepared.dictionaries : engineState(snapshot.state).dictionaries);
+    const reply = await commitBackupSnapshot(current, snapshot, prepared.lookupStatsRows,
+      plan === null ? undefined : restoredLanguageRows(plan, snapshot));
     if (!reply.ok) throw new Error(reply.error || "Could not commit the backup restore.");
+    if (plan !== null || profileRecords) await adoptRestoredLanguages(snapshot.options);
     publishLoadedDictionaries(loadedCount);
     reloadError = null;
     await cleanupCommittedDictionaries();
@@ -3788,19 +3854,21 @@ function assertLegacyRemoval(state, message, target) {
 const HANDLERS = {
   async hd_backup_export() {
     await ensureLoaded();
-    const [{ createBackupArchive, assertBackupPath }, { assertBackupSnapshot }] = await Promise.all([
+    const [{ createBackupArchive, assertBackupPath }, { assertBackupProfiles, assertBackupSnapshot }] = await Promise.all([
       import("./backup-archive.js"), import("./backup-state.js"),
     ]);
-    const { snapshot, lookupStatsRows } = await readBackupStorage();
+    const { snapshot, lookupStatsRows, profiles } = await readBackupStorage();
     await assertBackupSnapshot(snapshot);
+    // Records with profiles make a version 4 archive (docs/languages.md 17.2).
+    if (profiles !== undefined) await assertBackupProfiles(snapshot, profiles);
     const files = [];
     for (const [index, dictionary] of snapshot.state.dictionaries.entries()) {
       if (dictionaryRoot(dictionary) === null) throw new Error("Cannot back up an invalid dictionary path.");
       collectBackupFiles(dictionary.path, `dictionaries/${index}`, assertBackupPath, files);
     }
     const exported = storageBackend === "opfs"
-      ? await writeBackupFile(output => createBackupArchive(snapshot, files, lookupStatsRows, undefined, output))
-      : { name: null, file: await createBackupArchive(snapshot, files, lookupStatsRows) };
+      ? await writeBackupFile(output => createBackupArchive(snapshot, files, lookupStatsRows, undefined, output, profiles))
+      : { name: null, file: await createBackupArchive(snapshot, files, lookupStatsRows, undefined, undefined, profiles) };
     const blobUrl = URL.createObjectURL(exported.file);
     backupUrls.set(blobUrl, exported.name);
     return { blobUrl, size: exported.file.size };
@@ -3874,9 +3942,10 @@ const HANDLERS = {
     }
     await discardPreparedBackup();
     const current = (await readBackupStorage(true)).snapshot;
-    const [{ openBackupArchive }, { prepareBackupSnapshot }] = await Promise.all([
+    const [{ openBackupArchive }, backupState] = await Promise.all([
       import("./backup-archive.js"), import("./backup-state.js"),
     ]);
+    const { prepareBackupSnapshot } = backupState;
     if (typeof message.blobUrl !== "string" || !message.blobUrl.startsWith("blob:")) {
       throw new Error("Choose a local Hachidori backup archive.");
     }
@@ -3886,11 +3955,14 @@ const HANDLERS = {
     const copy = storageBackend === "opfs" ? await writeBackupFile(output => response.body.pipeTo(output)) : null;
     try {
       const prepared = await openBackupArchive(copy?.file ?? await response.blob());
-      const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(prepared.snapshot);
+      const { snapshot, warning: viewWarning } = await prepareBackupSnapshot(prepared.snapshot);
       prepared.snapshot = snapshot;
+      const plan = prepared.profiles === undefined ? null : await backupState.prepareBackupProfiles(snapshot, prepared.profiles);
+      const settingsWarning = plan === null ? viewWarning : plan.warning;
       const roots = [];
       try {
-        const dictionaries = await stageBackupFiles(prepared, roots);
+        let dictionaries = await stageBackupFiles(prepared, roots);
+        if (plan !== null) dictionaries = await stageBackupLanguages(backupState, plan, dictionaries, roots);
         loadDictionaries(dictionaries);
         let warning = null;
         try {
@@ -3903,10 +3975,9 @@ const HANDLERS = {
           warning = "The current dictionaries cannot be loaded. This validated backup can replace them.";
         }
         const token = message.token;
-        preparedBackup = { token, current, roots, dictionaries, snapshot, settingsWarning, lookupStatsRows: prepared.lookupStatsRows };
+        preparedBackup = { token, current, roots, dictionaries, snapshot, plan, settingsWarning, lookupStatsRows: prepared.lookupStatsRows };
         return { token, warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
-          createdAt: prepared.createdAt, dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
-          customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length };
+          createdAt: prepared.createdAt, ...backupPreview(backupState, current, plan, dictionaries, prepared.snapshot) };
       } catch (error) {
         try { await restoreCommittedDictionaries(null, { publish: false }); }
         catch (restoreError) { reloadError = asError(restoreError); }
@@ -3929,13 +4000,17 @@ const HANDLERS = {
     }
     await discardPreparedBackup();
     const current = (await readBackupStorage(true)).snapshot;
-    const [{ backup: prepared }, { prepareBackupSnapshot }] = await Promise.all([
+    const [{ backup: prepared }, backupState] = await Promise.all([
       ask("hd_backup_auto_get", { id: message.id }),
       import("./backup-state.js"),
     ]);
     if (!prepared) throw new Error("This automatic backup is corrupt or no longer retained.");
-    const { snapshot, warning: settingsWarning } = await prepareBackupSnapshot(prepared.snapshot);
-    const dictionaries = prepared.snapshot.state.dictionaries;
+    const { snapshot, warning: viewWarning } = await backupState.prepareBackupSnapshot(prepared.snapshot);
+    // A snapshot with profiles names its packages in place, other languages'
+    // personal packages included, whose roots it kept (docs/languages.md 17.2).
+    const plan = prepared.profiles === undefined ? null : await backupState.prepareBackupProfiles(snapshot, prepared.profiles);
+    const settingsWarning = plan === null ? viewWarning : plan.warning;
+    const dictionaries = plan === null ? prepared.snapshot.state.dictionaries : backupState.backupEngineDictionaries(plan);
     assertBackupDictionaryPaths(dictionaries);
     try {
       for (const dictionary of dictionaries) await validateBackupDictionaryFiles(dictionary);
@@ -3958,6 +4033,7 @@ const HANDLERS = {
         roots: [],
         dictionaries,
         snapshot,
+        plan,
         settingsWarning,
         lookupStatsRows: prepared.lookupStatsRows,
       };
@@ -3965,8 +4041,7 @@ const HANDLERS = {
         token,
         warning: [settingsWarning, warning].filter(Boolean).join(" ") || null,
         createdAt: prepared.createdAt,
-        dictionaries: dictionaries.map(({ title, enabled }) => ({ title, enabled })),
-        customEntryCount: parseCustomDictionary(prepared.snapshot.document.text).entries.length,
+        ...backupPreview(backupState, current, plan, dictionaries, prepared.snapshot),
       };
     } catch (error) {
       try { await restoreCommittedDictionaries(null, { publish: false }); }

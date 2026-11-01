@@ -11,7 +11,7 @@ import { detectLocalAudioSource } from "./local-audio-setup.js";
 import { createLocalAudioSource, findLocalAudioSource } from "./local-audio-source.js";
 import { lookupAnkiIndex, lookupAnkiIndexMany } from "./anki-index.js";
 import { ANKI_INDEX_KEY, createAnkiDuplicateIndex } from "./anki-index-cache.js";
-import { assertBackupSnapshot, backupRevisions } from "./backup-state.js";
+import { assertBackupSnapshot, assertRestoredProfileRecords, backupRevisions } from "./backup-state.js";
 import { AUTOMATIC_BACKUPS_KEY, automaticBackupStore, validAutomaticBackups } from "./backup-automatic.js";
 import { API_REQUESTS } from "./api-host.js";
 import { SHARING_LOCAL_STATE_KEY } from "./sharing-client.js";
@@ -421,6 +421,31 @@ async function languageCustomCas(message, store, read) {
   return { document: nextDocument, state };
 }
 
+// hd_backup_cas for records with profiles (docs/languages.md 17.2): the
+// restored records of every language, checked as a backup is, written with
+// their rows under each language's fresh generation in one write. This
+// installation's own language choice stays (section 4.4).
+async function restoreProfileRecords(current, message) {
+  const { snapshot } = message;
+  const languageRows = message.languageLookupStatsRows ?? {};
+  await assertRestoredProfileRecords(current, snapshot, message.lookupStatsRows, languageRows);
+  const rows = [
+    ...message.lookupStatsRows.map(row => [lookupStatsKey(snapshot.lookupStats, row), row]),
+    ...Object.entries(languageRows).flatMap(([code, list]) =>
+      list.map(row => [lookupStatsKey(lookupStatsLanguageView(snapshot.lookupStats, code), row), row])),
+  ];
+  await writeLocalState({
+    [DICTIONARY_STATE_KEY]: snapshot.state,
+    [OPTIONS_KEY]: snapshot.options,
+    [CUSTOM_DICTIONARY_SOURCE_KEY]: snapshot.document,
+    [UPDATE_SETTINGS_KEY]: snapshot.updates,
+    [LOOKUP_STATS_KEY]: snapshot.lookupStats,
+    [WORD_STATUS_OVERRIDES_KEY]: snapshot.wordStatusOverrides,
+    ...Object.fromEntries(rows),
+  });
+  return { snapshot };
+}
+
 const WORKER_HANDLERS = {
   hd_lookup_stats_record(message) { return lookupStatistics(message, true); },
   hd_lookup_stats_read(message) { return lookupStatistics(message, false); },
@@ -521,7 +546,10 @@ const WORKER_HANDLERS = {
     }
     return {
       complete: true,
-      dictionaries: backups.flatMap(record => record.snapshot.state.dictionaries),
+      // A snapshot with profiles protects every package either part names
+      // (docs/languages.md 17.2), other languages' personal packages too.
+      dictionaries: backups.flatMap(record => [...record.snapshot.state.dictionaries,
+        ...(record.profiles?.dictionaryState.dictionaries ?? [])]),
     };
   },
 
@@ -532,6 +560,8 @@ const WORKER_HANDLERS = {
       return { ok: false, conflict: true, error: "Hachidori changed since this backup was prepared. Prepare it again before restoring." };
     }
     const snapshot = message.snapshot;
+    // Records with profiles: every language's records (docs/languages.md 17.2).
+    if (hasProfiles(snapshot?.options)) return restoreProfileRecords(current, message);
     await assertBackupSnapshot(snapshot);
     assertLookupStatsRows(snapshot.lookupStats, message.lookupStatsRows);
     if (snapshot.lookupStats.generation === null || snapshot.lookupStats.generation === current.lookupStats?.generation) {

@@ -5,7 +5,9 @@ import { extensionApi as chrome } from "./browser-api.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { ANKI_INDEX_ALARM } from "./anki-index-cache.js";
 import { createBackupDownloads } from "./backup-downloads.js";
-import { assertBackupSnapshot } from "./backup-state.js";
+import {
+  assertBackupProfiles, assertBackupSnapshot, personalEntryCount, profileBackupPayload,
+} from "./backup-state.js";
 import {
   AUTOMATIC_BACKUP_ALARM, AUTOMATIC_BACKUPS_KEY, automaticBackupDue, automaticBackupStore, nextAutomaticBackupTime,
   replaceAutomaticBackup,
@@ -50,25 +52,29 @@ function assertBackupEngineSender(sender) {
 
 class AutomaticBackupNotReadyError extends Error {}
 
-// A backup of records with profiles holds their Japanese view
-// (docs/languages.md 17.1), a valid version 3 snapshot: the Japanese profile
-// flattened with the global keys, the Japanese dictionary view, and the
-// Japanese personal document, marks and lookup rows. Version 4 archives add
-// the other languages beside it.
-async function readBackupPayload() {
-  const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
-  const stored = await chrome.storage.local.get(null);
-  let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
-  assertLookupStatsDescriptor(descriptor);
-  if (hasProfiles(snapshot.options) || descriptor.languages !== undefined) {
-    descriptor = { generation: descriptor.generation, revision: descriptor.revision };
-  }
+// The stored rows of one count generation, each checked against its key.
+function storedLookupRows(stored, descriptor) {
   const prefix = lookupStatsPrefix(descriptor);
-  const lookupStatsRows = Object.entries(stored).filter(([key]) => key.startsWith(prefix)).map(([key, row]) => {
+  const rows = Object.entries(stored).filter(([key]) => key.startsWith(prefix)).map(([key, row]) => {
     if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
     return row;
   });
-  assertLookupStatsRows(descriptor, lookupStatsRows);
+  assertLookupStatsRows(descriptor, rows);
+  return rows;
+}
+
+// A backup of records with profiles holds their Japanese view (docs/languages.md
+// 17.1) as its version 3 snapshot and the complete records beside it in
+// `profiles` (17.2); archives, automatic snapshots and the Relay dictionary
+// download all start here.
+async function readBackupPayload() {
+  const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
+  const stored = await chrome.storage.local.get(null);
+  if (hasProfiles(snapshot.options)) return profileBackupPayload(snapshot, view => storedLookupRows(stored, view));
+  let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+  assertLookupStatsDescriptor(descriptor);
+  if (descriptor.languages !== undefined) descriptor = { generation: descriptor.generation, revision: descriptor.revision };
+  const lookupStatsRows = storedLookupRows(stored, descriptor);
   return { snapshot: {
     state: hasDictionaryProfiles(snapshot.state) ? japaneseDictionaryView(snapshot.state) : snapshot.state,
     options: { ...projectStoredOptions(snapshot.options), revision: optionsRevision(snapshot.options) },
@@ -102,7 +108,17 @@ async function commitAutomaticBackupStore(current, next) {
   }
 }
 
+// A snapshot with profiles lists every package of its records and counts the
+// personal entries of every language.
 function automaticBackupSummary(record) {
+  if (record.profiles !== undefined) {
+    return {
+      id: record.id,
+      createdAt: record.createdAt,
+      dictionaries: globalThis.HDReaderOptions.allPackages(record.profiles.dictionaryState).map(({ title, enabled }) => ({ title, enabled })),
+      customEntryCount: personalEntryCount(record.snapshot, record.profiles),
+    };
+  }
   return {
     id: record.id,
     createdAt: record.createdAt,
@@ -140,6 +156,7 @@ async function reconcileAutomaticBackups() {
     const payload = await readBackupPayload();
     try {
       await assertBackupSnapshot(payload.snapshot);
+      if (payload.profiles !== undefined) await assertBackupProfiles(payload.snapshot, payload.profiles);
     } catch (error) {
       throw new AutomaticBackupNotReadyError(describeErrorOrJson(error), { cause: error });
     }
@@ -152,6 +169,7 @@ async function reconcileAutomaticBackups() {
       createdAt: new Date(createdAt).toISOString(),
       snapshot: payload.snapshot,
       lookupStatsRows: payload.lookupStatsRows,
+      ...(payload.profiles === undefined ? {} : { profiles: payload.profiles }),
     };
     const next = await replaceAutomaticBackup(store, record, normaliseOptions(payload.snapshot.options).automaticBackupDays);
     await commitAutomaticBackupStore(current, next);
