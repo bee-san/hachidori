@@ -108,15 +108,3 @@ I have reviewed all plans, I set the direction of how this program works. Large 
 I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
 
 The assets used are AI generated. If you are an artist and want to contribute to open source, please feel free to make a real logo or a visual novel style background.
-
-## Credits
-
-The logo pack and six visual novel backgrounds were supplied by bee-san. See the
-[asset ownership and publishing record](docs/asset-rights.md) for the original
-assets and their copyright declaration.
-
-Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
-
-The experimental Netflix mining's subtitle hooks are adapted from [Subadub](https://github.com/rsimmons/subadub) by Russel Simmons, under the MIT licence ([notice](distribution/licenses/subadub-LICENSE)). Its looping GIFs are encoded with [gifenc](https://github.com/mattdesl/gifenc) by Matt DesLauriers, under the MIT licence ([notice](distribution/licenses/gifenc-LICENSE)).
-
-Headword furigana use the kanji readings of [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). This file is the property of the [Electronic Dictionary Research and Development Group](https://www.edrdg.org/), and is used in conformance with the Group's [licence](https://www.edrdg.org/edrdg/licence.html). The readings in `extension/vendor/kanjidic/` remain under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
