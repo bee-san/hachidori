@@ -160,7 +160,7 @@ and actual page closure during staged preparation, dictionary restore with
 unreadable settings and a 16 MiB binary restore/re-export in both OPFS
 and IDBFS suites, followed by browser restart.
 `test/backup-profiles.test.mjs` covers version 4 against the worker and the
-real WebAssembly engine, and `test/chrome-languages-backup.mjs` in real
+real WebAssembly engine, and `test/chrome-languages/backup.mjs` in real
 Chrome, including a restore in the released build that
 `test/chrome-backup-release.mjs` pins.
 

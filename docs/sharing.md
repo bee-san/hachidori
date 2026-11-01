@@ -436,6 +436,6 @@ downloads the live release. See the [test harness guide](../test/README.md).
 
 Languages: `node --test test/sharing-profiles.test.mjs` runs the host, older
 and profile-aware linked browsers and an in-memory relay through the
-service worker's own sharing code, and `test/chrome-languages-sharing.mjs`
+service worker's own sharing code, and `test/chrome-languages/sharing.mjs`
 (run by `node test/run.mjs chrome-languages`) does the same with real Chromes,
 the released Hachidori as the older browser and the pinned relay.
