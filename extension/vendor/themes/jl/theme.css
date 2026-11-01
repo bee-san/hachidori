@@ -7,8 +7,11 @@
   position: fixed; z-index: 2147483647; pointer-events: auto;
   box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;
   color: #fff; background: color-mix(in srgb, #000 var(--gsm-hoshidicts-popup-opacity, 80%), transparent);
-  /* Meiryo's Latin letters are Verdana's, so Verdana keeps JL's look without Meiryo. */
-  font: 17px/1.5 Meiryo, Verdana, "Noto Sans CJK JP", "Noto Sans JP", sans-serif; text-align: left; white-space: normal;
+  /* Meiryo's Latin letters are Verdana's, so Verdana keeps JL's look without Meiryo.
+   * A language pack may name its own font and line breaking (docs/languages.md 10.1). */
+  font: 17px/1.5 var(--hd-language-font-family, Meiryo, Verdana, "Noto Sans CJK JP", "Noto Sans JP", sans-serif);
+  text-align: start; white-space: normal;
+  word-break: var(--hd-language-word-break, normal); line-break: var(--hd-language-line-break, auto);
   /* WPF keeps adjacent full-width punctuation full width; Chrome's default halves it. */
   text-spacing-trim: space-all;
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));

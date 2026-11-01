@@ -4,7 +4,9 @@
   position: fixed; z-index: 2147483647; pointer-events: auto;
   box-sizing: border-box; overflow: auto; overscroll-behavior: contain; padding: 8px;
   background: #fff; color: #111; border: 1px solid #888;
-  font: 14px/1.45 sans-serif; text-align: left;
+  /* A language pack may name its own font and line breaking (docs/languages.md 10.1). */
+  font: 14px/1.45 var(--hd-language-font-family, sans-serif); text-align: start;
+  word-break: var(--hd-language-word-break, normal); line-break: var(--hd-language-line-break, auto);
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
 }
 .gsm-hoshidicts-popup[hidden] { display: none !important; }

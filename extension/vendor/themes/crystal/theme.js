@@ -57,6 +57,47 @@ export function createView(options) {
     element.setAttribute("aria-hidden", "true");
     return element;
   };
+  // The render's language (docs/themes/README.md, "Languages"). A caller
+  // that passes none gets today's Japanese text, which the Japanese
+  // language reproduces.
+  let language = options.language ?? null;
+  // Another language warms its own sample in the serif stack (11.6).
+  if (language && language.code !== "ja" && language.sampleText && globalThis.top === globalThis
+      && typeof OffscreenCanvas === "function") {
+    const context = new OffscreenCanvas(1, 1).getContext("2d");
+    for (const weight of [400, 600]) {
+      context.font = `${weight} 16px ${SERIF}`;
+      context.measureText(language.sampleText);
+    }
+  }
+  const setAttributes = (element, attributes) => {
+    for (const [name, value] of Object.entries(attributes ?? {})) element.setAttribute(name, value);
+    return element;
+  };
+  const marked = () => language?.marked === true;
+  const displayed = (result, field) => language ? language.display(result, field) : result.term[field];
+  const label = (name, fallback) => language?.labels?.[name] ?? fallback;
+  // A name alone in an inline element when the language isolates it (10.1).
+  function setName(element, name) {
+    const attributes = marked() ? language.nameAttributes(name) : {};
+    if (Object.keys(attributes).length === 0) element.textContent = name;
+    else {
+      const inner = setAttributes(document.createElement("span"), attributes);
+      inner.textContent = name;
+      element.replaceChildren(inner);
+    }
+  }
+  const directionOf = (dictionary, result) => marked() ? language.dictionaryDirection(dictionary, result) : "ltr";
+  // Spacing opens gaps in joined letters, so such a language gets none, and
+  // plain glosses are joined with the language's sense separator (11.6).
+  const setJoinedScript = () => {
+    const joined = language?.typography?.joinedScript === true;
+    header.classList.toggle("crystal-joined", joined);
+    scroll.classList.toggle("crystal-joined", joined);
+    const separator = language?.labels?.senseSeparator?.trim();
+    if (separator && separator !== ";") scroll.style.setProperty("--crystal-sense-separator", JSON.stringify(separator));
+    else scroll.style.removeProperty("--crystal-sense-separator");
+  };
   const header = node("div", "crystal-header");
   const nav = node("div", "crystal-nav");
   const tabs = node("div", "crystal-tabs");
@@ -137,7 +178,8 @@ export function createView(options) {
   }
   function setDefinitionBlurState(state) { scroll.dataset.definitionBlur = state; }
   function dictionaryLabel(dictionary) {
-    const label = node("span", "crystal-dictionary", dictionary);
+    const label = node("span", "crystal-dictionary");
+    setName(label, dictionary);
     label.dataset.dictionary = dictionary;
     labels.push(label);
     return label;
@@ -155,7 +197,7 @@ export function createView(options) {
       else {
         tags = components.createFrequencyTags(document, head.result, presentation, Infinity,
           context.averageFrequency === true, context.showFrequencyDictionaryNames === true,
-          context.compactFrequencyNumbers === true, context.showFrequencyTagsWithAverage === true);
+          context.compactFrequencyNumbers === true, context.showFrequencyTagsWithAverage === true, language);
         for (const tag of tags) {
           const mode = tag.dataset.frequencyAverage ?? modes.get(tag.dataset.dictionary);
           tag.dataset.crystalIcon = mode === "occurrence-based" ? "book" : "star";
@@ -169,7 +211,7 @@ export function createView(options) {
     const names = new Map((context.dictionaryPresentation ?? []).map(item => [item.title, item.displayName || item.title]));
     for (const label of labels) {
       const displayName = names.get(label.dataset.dictionary) || label.dataset.dictionary;
-      if (label.textContent !== displayName) label.textContent = displayName;
+      if (label.textContent !== displayName) setName(label, displayName);
       if (label.title !== displayName) label.title = displayName;
     }
     // Lookup data stays fixed for this view; only these inputs change its badges.
@@ -288,7 +330,7 @@ export function createView(options) {
         ? node("span", "crystal-circled", part) : document.createTextNode(part)));
     }
   }
-  function formattedGlossary(parent, glossary, dictionary, context, owner) {
+  function formattedGlossary(parent, glossary, dictionary, context, owner, direction = undefined) {
     const content = node("div", "gsm-hoshidicts-glossary-content crystal-gloss");
     content.dataset.hoshidictsDictionary = dictionary;
     parent.append(content);
@@ -304,6 +346,7 @@ export function createView(options) {
         onImageCreated: image => images.add(image), onLayoutChange: options.positionPopup,
         requestImagePreview: preview.requestImagePreview, refreshImagePreview: preview.refreshImagePreview,
         hideImagePreview: preview.hideImagePreview,
+        ...(marked() ? { language, direction: direction ?? directionOf(dictionary) } : {}),
       });
       markCircledNumbers(content);
     } catch (error) {
@@ -311,9 +354,12 @@ export function createView(options) {
     }
   }
   // Numbered senses: gold diamonds, the sense's tags, then its formatted glossary.
-  function appendSenses(definitions, rows, dictionary, context, owner) {
+  function appendSenses(definitions, rows, dictionary, context, owner, result = null) {
     const list = node("ol", "crystal-senses");
     list.dataset.count = String(rows.length);
+    // The dictionary's direction and default language hold its block (10.2).
+    if (marked()) setAttributes(list, language.glossaryAttributes(dictionary, result));
+    const direction = directionOf(dictionary, result);
     definitions.append(list);
     for (const row of rows) {
       const sense = node("li", "crystal-sense");
@@ -328,7 +374,7 @@ export function createView(options) {
         }
         sense.append(chips);
       }
-      formattedGlossary(sense, row.glossary, dictionary, context, owner);
+      formattedGlossary(sense, row.glossary, dictionary, context, owner, direction);
     }
   }
 
@@ -370,8 +416,10 @@ export function createView(options) {
   }
   function spelling(result, candidate) {
     const element = node("span", "gsm-hoshidicts-expression crystal-spelling");
-    for (const character of result.term.expression) {
-      element.append(HAN.test(character)
+    if (marked()) setAttributes(element, language.sourceAttributes());
+    const isLink = language ? character => language.isCharacterLink(character) : character => HAN.test(character);
+    for (const character of displayed(result, "expression")) {
+      element.append(isLink(character)
         ? button("gsm-hoshidicts-kanji-link", character, event => options.onKanjiClick?.(character, result, candidate, event.currentTarget))
         : document.createTextNode(character));
     }
@@ -401,16 +449,32 @@ export function createView(options) {
     const term = result.term;
     const expression = spelling(result, candidate);
     const record = appendHead(result, expression);
-    const reading = term.reading && term.reading !== term.expression ? term.reading : "";
-    if (reading) record.line.append(pitchMarker(node("span", "crystal-reading"), reading, term, context));
-    // Without a reading the spelling itself is marked, which only works for kana.
-    else if (!HAN.test(term.expression)) pitchMarker(expression, term.expression, term, context);
+    // The displayed forms (10.4); the stored ones stay what is mined.
+    const expressionText = displayed(result, "expression"), readingText = displayed(result, "reading");
+    const reading = readingText && readingText !== expressionText ? readingText : "";
+    if (reading) {
+      const readingElement = node("span", "crystal-reading");
+      if (marked()) setAttributes(readingElement, language.readingAttributes());
+      record.line.append(pitchMarker(readingElement, reading, term, context));
+    }
+    // Without a reading the spelling itself is marked, which only works for
+    // kana and only a language with pitch accent has.
+    else if ((language?.capabilities.pitchAccent ?? true) && !HAN.test(expressionText)) {
+      pitchMarker(expression, expressionText, term, context);
+    }
     const steps = components.deinflectionSteps(result);
     const matched = result.matched || "";
     // The mock-up's trail, 食べたかった ～た→たい: the rules' names without their hyphen.
-    const process = steps.length ? `～${steps.map(step => step.name.replace(/^-/u, "")).join("→")}` : "";
-    if (process || (matched && matched !== term.expression && matched !== term.reading)) {
-      record.line.append(node("span", "crystal-deconj", [matched, process].filter(Boolean).join(" ")));
+    const process = steps.length ? `${label("traceMarker", "～")}${steps.map(step => step.name.replace(/^-/u, "")).join("→")}` : "";
+    if (process || (matched && matched !== expressionText && matched !== readingText)) {
+      if (marked() && matched) {
+        // The matched form keeps its own direction inside the English trail.
+        const trail = node("span", "crystal-deconj");
+        const form = setAttributes(document.createElement("span"), language.sourceAttributes());
+        form.textContent = matched;
+        trail.append(form, ...(process ? [` ${process}`] : []));
+        record.line.append(trail);
+      } else record.line.append(node("span", "crystal-deconj", [matched, process].filter(Boolean).join(" ")));
     }
     const groups = (term.frequencies ?? []).filter(group => group.frequencies.length);
     for (const group of groups) frequencyDictionaries.add(group.dictionary);
@@ -460,7 +524,7 @@ export function createView(options) {
     addTools(actions, block, termPrefill(result, candidate), context);
     const definitions = node("div", "gsm-hoshidicts-definitions");
     block.append(definitions);
-    appendSenses(definitions, rows, dictionary, context, block);
+    appendSenses(definitions, rows, dictionary, context, block, projected);
   }
   // Like Default's tabs, core binds only the sections the selected tab shows, so
   // keybinds and autoplay follow the tab.
@@ -503,6 +567,7 @@ export function createView(options) {
       tabs.replaceChildren();
       for (const descriptor of descriptors) {
         const element = button("crystal-tab", descriptor.label, () => selectGroup(descriptor, true));
+        if (marked()) setName(element, descriptor.label);
         if (descriptor.groupId) element.dataset.groupId = descriptor.groupId;
         element.title = descriptor.title;
         tabs.append(element);
@@ -532,6 +597,8 @@ export function createView(options) {
 
   function renderResults(results, candidate, context = {}) {
     clear();
+    language = context.language ?? options.language ?? null;
+    setJoinedScript();
     paintedPitch = pitchOptions(context);
     onTabSelected = context.onDictionaryTabSelected;
     const found = [];
@@ -551,21 +618,28 @@ export function createView(options) {
   // The character once, then each kanji dictionary's meanings and readings.
   function renderKanji(kanji, candidate, context = {}) {
     clear();
+    language = context.language ?? options.language ?? null;
+    setJoinedScript();
     navigation(context);
-    const head = appendHead(null, node("span", "crystal-spelling crystal-kanji-character", kanji.character));
+    const character = node("span", "crystal-spelling crystal-kanji-character", kanji.character);
+    if (marked()) setAttributes(character, language.sourceAttributes());
+    const head = appendHead(null, character);
     for (const entry of kanji.entries) {
       const { block, actions, feedback } = appendBlock(head, entry.dictionary, "crystal-kanji");
-      const result = { ...components.kanjiEntryResult(kanji.character, entry), generation: context.generation };
+      const result = { ...(language && components.language
+        ? components.language.characterEntryResult(kanji.character, entry, language)
+        : components.kanjiEntryResult(kanji.character, entry)), generation: context.generation };
       result.term.frequencies = kanji.frequencies ?? [];
       bindings.push({ mining: { actions, feedback, result } });
       addTools(actions, block, { term: kanji.character, reading: "", definition: "", sentence: candidate?.sentence || "" }, context);
       formattedGlossary(block, JSON.stringify(entry.definitions), entry.dictionary, context, block);
       const details = node("div", "crystal-kanji-details");
-      for (const [label, value] of [["On", entry.onyomi], ["Kun", entry.kunyomi]]) {
+      for (const [name, value] of [[label("onyomi", "On"), entry.onyomi], [label("kunyomi", "Kun"), entry.kunyomi]]) {
         const readings = kanjiTokens(value);
         if (!readings.length) continue;
         const row = node("div", "crystal-kanji-row");
-        row.append(node("span", "crystal-kanji-label", label), node("span", "crystal-kanji-readings", readings.join("、")));
+        row.append(node("span", "crystal-kanji-label", name),
+          node("span", "crystal-kanji-readings", readings.join(label("readingSeparator", "、"))));
         details.append(row);
       }
       if (entry.stats?.length) {
@@ -584,6 +658,8 @@ export function createView(options) {
   }
   function renderNotice(message, candidate, context = {}) {
     clear(); navigation(context);
+    language = context.language ?? options.language ?? null;
+    setJoinedScript();
     const notice = node("div", "gsm-hoshidicts-lookup-notice", message);
     notice.setAttribute("role", "status"); scroll.append(notice);
     addTools(nav, scroll, { term: candidate?.query || "", reading: "", definition: "", sentence: candidate?.sentence || "" }, context);

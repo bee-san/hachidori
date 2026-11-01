@@ -9,7 +9,10 @@
   color: #4a2442; background: color-mix(in srgb, #fff7fc var(--gsm-hoshidicts-popup-opacity, 80%), transparent);
   border: 1px solid #95618c; border-radius: 8px;
   /* Meiryo's Latin letters are Verdana's, so Verdana keeps JL's look without Meiryo. */
-  font: 17px/1.5 Meiryo, Verdana, "Noto Sans CJK JP", "Noto Sans JP", sans-serif; text-align: left; white-space: normal;
+  /* A language pack may name its own font and line breaking (docs/languages.md 10.1). */
+  font: 17px/1.5 var(--hd-language-font-family, Meiryo, Verdana, "Noto Sans CJK JP", "Noto Sans JP", sans-serif);
+  text-align: start; white-space: normal;
+  word-break: var(--hd-language-word-break, normal); line-break: var(--hd-language-line-break, auto);
   /* WPF keeps adjacent full-width punctuation full width; Chrome's default halves it. */
   text-spacing-trim: space-all;
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
@@ -154,19 +157,19 @@
 .gsm-hoshidicts-note-error { color: #9f2850; font-size: 12px; }
 .bee-rich-content { white-space: normal; }
 .bee-rich-row + .bee-rich-row { margin-top: 4px; }
-.bee-rich-content .gloss-list { margin: 0; padding-left: 1.2em; }
-.bee-rich-content .gloss-list[data-count="1"] { padding-left: 0; list-style: none; }
+.bee-rich-content .gloss-list { margin: 0; padding: 0; padding-inline-start: 1.2em; }
+.bee-rich-content .gloss-list[data-count="1"] { padding-inline-start: 0; list-style: none; }
 .bee-rich-content :is(ul, ol) { margin-block: 0; }
 :host([data-hoshidicts-glossary-layout="compact"]) :is(.bee-rich-content, .gloss-item, .gloss-content,
   .gloss-sc-ul[data-sc-content="glossary"] .gloss-sc-li) { display: inline; }
 :host([data-hoshidicts-glossary-layout="compact"]) .gloss-separator { display: inline; font-size: 0; opacity: 0; }
-:host([data-hoshidicts-glossary-layout="compact"]) :is(.gloss-list, .gloss-sc-ul[data-sc-content="glossary"]) { display: inline; list-style: none; padding-left: 0; }
+:host([data-hoshidicts-glossary-layout="compact"]) :is(.gloss-list, .gloss-sc-ul[data-sc-content="glossary"]) { display: inline; list-style: none; padding-inline-start: 0; }
 :host([data-hoshidicts-glossary-layout="compact"]) :is(.gloss-item, .gloss-sc-ul[data-sc-content="glossary"] .gloss-sc-li):not(:first-child)::before {
   content: " | " / ""; white-space: pre-wrap; color: #665064;
 }
 .bee-rich-content a { color: #6442aa; cursor: pointer; text-decoration: underline; }
 .bee-rich-content .gloss-sc-table-container { max-width: 100%; overflow-x: auto; }
-.bee-rich-content .gloss-link-external-icon { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: middle; }
+.bee-rich-content .gloss-link-external-icon { display: inline-block; width: 14px; height: 14px; margin-inline-start: 4px; vertical-align: middle; }
 
 /* Enlarged copy of a hovered or focused glossary image, as in Default. It is a
  * sibling of the popup in the shadow root, so it escapes the scroll clipping. */
