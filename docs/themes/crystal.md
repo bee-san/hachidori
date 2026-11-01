@@ -5,29 +5,43 @@ Open **Design → Theme Store** and select **Crystal**.
 
 Crystal is theme idea 5 in
 [hachidori-themes#24](https://github.com/bee-san/hachidori-themes/issues/24): a
-navy panel in a fine gold frame with corner scrolls and a blue crystal crest.
+fine gold frame with corner scrolls and a blue crystal crest.
 It has its own renderer. The word appears once, with a framed section under it
 for each dictionary, where JL and Bee's Theme repeat the header per dictionary.
 
+- **Colours:** **Design → Appearance → Colours** chooses one of three, as the
+  owner asked in #24. **Grey** is a warm charcoal after FINAL FANTASY XIV's Dark
+  window theme and **Beige** a parchment after its Light theme; both keep the
+  gold frame and have red and gold buttons. **Retro blue** is the classic Final
+  Fantasy menu window: a blue panel that deepens towards the bottom, a thin
+  white border without scrolls, white text, silver ornaments and blue buttons.
+  **Automatic**, the default, is Beige in the system's light mode and Grey in
+  its dark mode, and follows a change at once. A choice recolours open popups
+  and the preview without a new lookup; see
+  [colour variants](README.md#colour-variants).
+
 - **Header:** one per result. The headword is a large serif, the reading is
-  gold with Design's pitch marking (contour or overline), then the deinflection
+  gold (crimson on Beige) with Design's pitch marking (contour or overline), then the deinflection
   trail (`食べたかった ～た→たい`) and the frequency badges. A book marks a
   corpus count (a dictionary with `frequencyMode: occurrence-based`) and a star
   a rank. The first section's audio, Anki and pencil end the header.
 - **Sections:** each dictionary is a framed section with a crystal plaque
   holding its name in small caps; a long name ends in an ellipsis and hovering
   shows it in full. A later section's controls sit on its banner. Two or more
-  rows are numbered in gold diamonds, each with its tags as chips (hovering a
+  rows are numbered in diamonds, each with its tags as chips (hovering a
   chip shows the tag's notes), then the dictionary's formatted definition:
   structured content, furigana, links, tables and images, with the
   dictionary's scoped CSS. Example sentences sit behind a rule and circled
-  numbers in monolingual text (①②) are gold.
-- **Group tabs:** gold-outlined small caps, the selected one gold with an
-  underline. All shows every section, followed by configured groups with
+  numbers in monolingual text (①②) take the reading's colour.
+- **Group tabs:** outlined small caps, the selected one a red plate with gold
+  letters (silver in Retro blue) and an underline. All shows every section, followed by configured groups with
   results, as in Bee's Theme. A group hides the other sections in place, and a
   result's header hides with its last section. Audio, mining and keyboard
   actions follow the shown sections; Back restores an explicitly selected group.
-- **Controls:** each section's audio and Anki buttons play and mine only its own
+- **Controls:** audio, Anki, the pencil, custom buttons and More are crimson
+  plates with a gold rim and a gold icon (blue plates with a silver rim in Retro
+  blue); a duplicate warning turns the Anki plate gold. Each section's audio and
+  Anki buttons play and mine only its own
   dictionary. Custom buttons appear beside them; the first two as icons, the
   rest under More actions. Keyboard entry navigation moves between sections.
   Kanji view puts Back at the upper left; nested popups have Close at the right.
@@ -43,28 +57,32 @@ for each dictionary, where JL and Bee's Theme repeat the header per dictionary.
   Source Serif 4 or the system serif (Georgia, Cambria, Times New Roman) and
   Japanese uses Noto Serif CJK JP, Source Han Serif JP, Yu Mincho, Hiragino
   Mincho, BIZ UDPMincho or MS PMincho, then `serif`.
-- **Forced colours:** Windows contrast themes get system colours. The crest,
-  corner scrolls, plaques and gems are removed and the frame, sections and
-  sense numbers become plain outlines.
+- **Forced colours:** Windows contrast themes get system colours, the same for
+  all three colour choices. The crest, corner scrolls, plaques and gems are
+  removed and the frame, sections and sense numbers become plain outlines.
 
-The ornaments are inline SVG and CSS drawn for the theme. Sources and
-attribution are in `extension/vendor/themes/crystal/`; `source.json` records the
-hachidori-themes revision. The readable SVG sources and the render harness are
-on that repository's
-[`previews/crystal`](https://github.com/bee-san/hachidori-themes/tree/previews/crystal) branch.
+The ornaments are inline SVG and CSS drawn for the theme, and the colours are
+values chosen for it; no game art, interface textures, icons or fonts are used.
+Sources and attribution are in `extension/vendor/themes/crystal/`; `source.json`
+records the hachidori-themes revision. The readable SVG sources and the render
+harness are on that repository's
+[`previews/crystal-colours`](https://github.com/bee-san/hachidori-themes/tree/previews/crystal-colours) branch.
 
 Most screenshots use small synthetic dictionaries with the mock-up's content;
 the 300-pixel, Note and forced-colour ones come from the Store test's fixture
-dictionary. The 300-pixel screenshot configures three optional actions to show
-More actions; a new installation has no custom buttons.
+dictionary, with Colours on Automatic in a light system mode (Beige). The
+300-pixel screenshot configures three optional actions to show More actions; a
+new installation has no custom buttons.
 
-![The mock-up's content on a dark page](../assets/crystal/crystal.png)
-![On a white page at the default 85% opacity](../assets/crystal/crystal-light-page.png)
+![The Store card: Grey, with Beige and Retro blue](../assets/crystal/crystal.png)
+![Grey, Beige and Retro blue on the mock-up's content](../assets/crystal/crystal-colours.png)
+![Automatic: Beige on a white page in light mode, Grey on a dark page in dark mode](../assets/crystal/crystal-light-page.png)
+![Design → Appearance → Colours](../assets/crystal/crystal-settings-colours.png)
 ![300 pixels with More actions](../assets/crystal/crystal-300-more.png)
 ![Personal dictionary editor](../assets/crystal/crystal-note.png)
-![Kanji view with Back focused](../assets/crystal/crystal-kanji.png)
-![Contour and overline pitch on heiban, atamadaka, nakadaka and odaka words](../assets/crystal/crystal-pitch.png)
-![Design preview](../assets/crystal/crystal-preview.png)
+![Kanji view with Back focused, Retro blue](../assets/crystal/crystal-kanji.png)
+![Contour and overline pitch on heiban, atamadaka, nakadaka and odaka words, Beige](../assets/crystal/crystal-pitch.png)
+![Design preview, Grey](../assets/crystal/crystal-preview.png)
 
 ## Validation
 
@@ -72,9 +90,12 @@ More actions; a new installation has no custom buttons.
 fake AnkiConnect. For Crystal it checks one header per result and one section
 per dictionary, each with its own audio and a ready Anki button; that the
 header, banners and More actions stay inside a 300-pixel popup; that Escape
-closes the Note form before the popup; and WCAG AA text contrast (4.5:1) and
-border, icon and focus contrast (3:1) with the default opacity composited over
-white and black pages, including both forced-colour palettes.
+closes the Note form before the popup; that Colours lists Grey, Beige and Retro
+blue, that each choice reaches the open popup and the Design preview with its
+own panel colour, and that Automatic matches Beige in light mode and Grey in
+dark mode; and WCAG AA text contrast (4.5:1) and border, icon and focus
+contrast (3:1) with the default opacity composited over white and black pages,
+in each colour choice and both forced-colour palettes.
 `test/theme-renderer.test.mjs` covers the sections and their bindings, pitch,
 frequency badges, circled numbers, group tabs and Back, Note placement and
 drafts, More actions, native kanji mining and the Design settings Crystal
@@ -84,6 +105,22 @@ declares.
 ![Forced-colour dark](../assets/crystal/crystal-forced-dark.png)
 
 ## Performance
+
+The colour choices change the stylesheet, not the renderer; the module now
+decodes 22 ornaments at load, four of them Retro blue's silver ones. The hover
+benchmark below, run before (`b6e2328f`, navy) and after (Automatic, which
+headless Chrome shows as Beige) in four alternating batches of six fresh
+profiles each, found warm lookups unchanged: first correct frame
+17.00 / 17.40 ms (median / p95) both times, complete stable result
+33.30 / 33.50 ms, synchronous renderer 1.80 / 4.00 ms before and
+1.70 / 4.10 ms after (576 hovers each). Cold first frames were 18.45 / 21.90 ms
+before and 19.10 / 21.00 ms after (24 each); the batches' cold medians ranged
+from 18.20 to 19.15 ms before and 18.55 to 20.30 ms after. A traced page load
+with no lookup spent 49.55 ms on the page's main thread before and 50.40 ms
+after (median of 32 loads in four alternating rounds, whose medians ranged from
+48.3 to 50.1 ms before and 49.9 to 52.9 ms after). The machine was the shared
+AMD EPYC 9R14 below, at a 1-minute load average of 13 to 24. The other
+measurements below are from the first version.
 
 In the first version, the first popup on a page waited for the serif faces and
 its 18 SVG ornaments: a cold hover took 68 ms, against Bee's 17 ms. Now, when

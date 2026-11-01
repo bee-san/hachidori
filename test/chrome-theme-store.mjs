@@ -625,7 +625,9 @@ try {
   const CRYSTAL_CONTRAST = { text: [".crystal-spelling", ".crystal-reading", ".crystal-deconj", ".gsm-hoshidicts-tag-frequency",
     ".crystal-dictionary", ".crystal-tab", ".crystal-tag", ".gsm-hoshidicts-glossary-content", ".gsm-hoshidicts-kanji-back",
     ".gsm-hoshidicts-text-action-button", ".gsm-hoshidicts-note-field", "input", "textarea", ".gsm-hoshidicts-note-actions button"],
-  borders: ".crystal-tab, .gsm-hoshidicts-tag-frequency, .gsm-hoshidicts-kanji-back, input, textarea", icons: ".crystal-custom-action-icon",
+  borders: ".crystal-tab, .gsm-hoshidicts-tag-frequency, .gsm-hoshidicts-kanji-back, input, textarea, .gsm-hoshidicts-audio-button, "
+    + ".gsm-hoshidicts-mine-button, .gsm-hoshidicts-note-button",
+  icons: ".crystal-custom-action-icon, .gsm-hoshidicts-mine-icon, .gsm-hoshidicts-note-icon",
   selected: '.crystal-tab[aria-pressed="true"]' };
   await settings.click(".theme-store-card:nth-child(6) button");
   await settings.waitForFunction(async () => (await chrome.storage.local.get("options")).options.popupTheme === "crystal");
@@ -660,11 +662,48 @@ try {
     && result.controls.every(([audio, mining]) => audio === 1 && mining === "ready")), `every section has its own audio and Anki button: ${JSON.stringify(crystal)}`);
   assert.equal(crystal.headControls, true, "the first section's controls end the header");
   assert.equal(crystal.defaultStyles, false);
+  assert.deepEqual(await settings.$$eval("#opt-popup-theme-variant option", nodes => nodes.map(node => node.textContent)),
+    ["Automatic", "Grey", "Beige", "Retro blue"], "Design → Colours lists Crystal's variants after Automatic");
+  assert.equal(await settings.$eval("#opt-popup-theme-variant", node => node.checkVisibility()), true);
   await tab.keyboard.press("Tab");
   await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".crystal-tab").focus());
   await checkContrast(CRYSTAL_CONTRAST);
   await popupRoot(tab).evaluate(popupShadow => popupShadow.activeElement?.blur());
   await screenshot("crystal");
+  // Each colour variant chosen in Design → Colours recolours the open popup
+  // and the preview through the host attribute, without a new lookup.
+  const panels = {};
+  const crystalPanel = () => popupRoot(tab).evaluate(popupShadow =>
+    getComputedStyle(popupShadow.querySelector(".gsm-hoshidicts-popup")).backgroundColor);
+  for (const variant of ["grey", "beige", "blue"]) {
+    await settings.bringToFront();
+    await settings.select("#opt-popup-theme-variant", variant);
+    await settings.waitForFunction(async variant => (await chrome.storage.local.get("options")).options.popupThemeVariant === variant,
+      {}, variant);
+    await popupRoot(tab).waitFor((popupShadow, variant) => popupShadow.host.dataset.hoshidictsThemeVariant === variant, {}, variant);
+    assert.equal(await preview.evaluate(() => document.getElementById("preview-host").dataset.hoshidictsThemeVariant), variant,
+      `the Design preview shows ${variant}`);
+    await hover();
+    await crystalReady();
+    await popupRoot(tab).evaluate(popupShadow => popupShadow.querySelector(".crystal-tab").focus());
+    await checkContrast(CRYSTAL_CONTRAST);
+    await popupRoot(tab).evaluate(popupShadow => popupShadow.activeElement?.blur());
+    panels[variant] = await crystalPanel();
+    await screenshot(`crystal-${variant}`);
+  }
+  assert.equal(new Set(Object.values(panels)).size, 3, `three panel colours: ${JSON.stringify(panels)}`);
+  // Automatic is Beige in the system's light mode and Grey in its dark mode.
+  await settings.bringToFront();
+  await settings.select("#opt-popup-theme-variant", "auto");
+  await popupRoot(tab).waitFor(popupShadow => !popupShadow.host.hasAttribute("data-hoshidicts-theme-variant"));
+  for (const [scheme, variant] of [["light", "beige"], ["dark", "grey"]]) {
+    await media.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+    await hover();
+    await crystalReady();
+    assert.equal(await crystalPanel(), panels[variant], `Automatic is ${variant} in ${scheme} mode`);
+    await checkContrast(CRYSTAL_CONTRAST);
+  }
+  await media.send("Emulation.setEmulatedMedia", { features: [] });
   await updateDesign({ popupWidthPx: 300 });
   await hover();
   await crystalReady();
@@ -695,13 +734,19 @@ try {
     const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     return { popup: popup.hidden, note: popup.querySelector("form").hidden };
   }), { popup: false, note: true }, "Escape closes Crystal's Note editor before its popup");
-  for (const scheme of ["dark", "light"]) {
-    await media.send("Emulation.setEmulatedMedia", { features: [
-      { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
-    await checkContrast(CRYSTAL_CONTRAST);
-    await screenshot(`crystal-forced-${scheme}`);
+  for (const variant of ["auto", "blue"]) {
+    await updateDesign({ popupThemeVariant: variant });
+    await popupRoot(tab).waitFor((popupShadow, variant) => (popupShadow.host.dataset.hoshidictsThemeVariant ?? "auto") === variant,
+      {}, variant);
+    for (const scheme of ["dark", "light"]) {
+      await media.send("Emulation.setEmulatedMedia", { features: [
+        { name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: scheme }] });
+      await checkContrast(CRYSTAL_CONTRAST);
+      await screenshot(`crystal-forced-${variant === "auto" ? "" : `${variant}-`}${scheme}`);
+    }
   }
   await media.send("Emulation.setEmulatedMedia", { features: [] });
+  await updateDesign({ popupThemeVariant: "auto" });
   await settings.bringToFront();
   await settings.screenshot({ path: resolve(output, "store-crystal.png") });
   await settings.click(".theme-store-card:first-child button");
@@ -717,8 +762,8 @@ try {
   });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, "evidence.json"), JSON.stringify({ chrome: await browser.version(), ...evidence, contrast,
-    checks: ["Store available without experimental opt-in", "Smaller Anki cards and Word highlighting start off in normal Settings", "Smaller Anki cards saves and reloads through its Anki control", "six bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Crystal header, framed sections and per-section actions", "Crystal stays inside 300px with More actions", "Crystal Escape closes Note before the popup", "Crystal WCAG AA text and control/focus contrast over white and black pages, including forced colours", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
-  console.log(`PASS: normal Settings, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content, Crystal sections and contrast and Default restore. Evidence: ${output}`);
+    checks: ["Store available without experimental opt-in", "Smaller Anki cards and Word highlighting start off in normal Settings", "Smaller Anki cards saves and reloads through its Anki control", "six bundled themes", "Next and Previous themes buttons", "Plain definitions only", "Design shows each theme's declared settings and choosing a theme writes only popupTheme", "JL blocks and actions", "JL pitch switch repaints the open popup and the preview", "Bee All and group tabs, formatted-only definitions, uniform action icons, Note, custom actions and kanji images", "Bee custom actions use matching inline icons with accessible names and readable More labels", "Bee source/actions and three frequencies stay readable at 560 and 300px", "Bee preview sample labels and inset keyboard tab focus", "Bee More Escape restores focus and preserves Note before popup dismissal", "Bee WCAG AA text and control/focus contrast over white and black pages", "Crystal header, framed sections and per-section actions", "Crystal stays inside 300px with More actions", "Crystal Escape closes Note before the popup", "Crystal WCAG AA text and control/focus contrast over white and black pages, including forced colours", "Crystal Grey, Beige and Retro blue from Design → Colours, and Automatic following light and dark mode", "Nazeka hover", "kanji and Back", "Default restore"], errors }, null, 2));
+  console.log(`PASS: normal Settings, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content, Crystal sections, colours and contrast and Default restore. Evidence: ${output}`);
 } catch (error) { console.error(error); throw error; } finally {
   await browser?.close();
   server.close();

@@ -127,6 +127,10 @@
     showMetadataOnlyResults: false,
     popupNestingMaxDepth: 10,
     popupTheme: "default",
+    // Design → Colours for a theme whose catalogue entry lists colour variants
+    // (Crystal's Grey, Beige and Retro blue). "auto" leaves the choice to the
+    // theme, which follows the system's light or dark mode.
+    popupThemeVariant: "auto",
     popupToolbarPosition: "auto",
     customPopupCss: "",
     customPopupJavascript: "",
@@ -266,10 +270,12 @@
   })) }));
   const POPUP_THEME_IDS = new Set(POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id)));
   const POPUP_RENDERER_IDS = ["nazeka", "plain", "jl", "bee", "crystal"];
+  // Every colour variant a bundled theme's catalogue entry may list, after "auto".
+  const POPUP_THEME_VARIANTS = ["auto", "grey", "beige", "blue"];
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
+    "popupTheme", "popupThemeVariant", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyTagsWithAverage",
     "showFrequencyDictionaryNames",
@@ -666,6 +672,7 @@
     lookupMode: new Set(LOOKUP_MODES),
     definitionLookupMode: new Set(DEFINITION_LOOKUP_MODES),
     popupTheme: POPUP_THEME_IDS,
+    popupThemeVariant: new Set(POPUP_THEME_VARIANTS),
     popupToolbarPosition: POPUP_TOOLBAR_POSITIONS,
     frequencyOrder: new Set(FREQUENCY_ORDERS),
     definitionBlurFrequencyOrder: new Set(DEFINITION_BLUR_FREQUENCY_ORDERS),
@@ -906,7 +913,7 @@
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
     DEFAULT_OPTIONS, RETIRED_OPTION_KEYS, NUMBER_RANGES, LOOKUP_MODES, DEFINITION_LOOKUP_MODES, ACTIVATION_BUTTONS, ACTIVATION_KEYS, FREQUENCY_ORDERS,
-    POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS,
+    POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, POPUP_THEME_VARIANTS, popupRenderer, DESIGN_OPTION_KEYS,
     KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_SCOPES, KEYBIND_MODIFIERS, KEYBIND_MODIFIER_CODES, KEYBIND_TOGGLE_OPTIONS,
     keybindModifiers, keybindWheelKey,
     AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABELS,

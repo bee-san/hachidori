@@ -79,13 +79,16 @@ available in Design. See [details and measurements](bee.md).
 ## Crystal
 
 Crystal is theme idea 5 in [hachidori-themes#24](https://github.com/bee-san/hachidori-themes/issues/24):
-a navy panel in a fine gold frame with a blue crystal crest. Each result has
-one header (serif headword, gold reading with its pitch, the deinflection trail
-and book/star frequency badges), then a framed section per dictionary with a
-crystal plaque, numbered senses in gold diamonds, tag chips and its own audio,
-Anki and pencil buttons. Group tabs, formatted definitions, custom actions,
-the Note editor and the image preview behave as in Bee's Theme. See
-[details and measurements](crystal.md).
+a fine gold frame with a blue crystal crest. Design → Colours chooses Grey or
+Beige, after FFXIV's Dark and Light windows with red and gold buttons, or Retro
+blue, the classic Final Fantasy menu window; Automatic is Beige in the system's
+light mode and Grey in its dark mode (see [colour variants](#colour-variants)).
+Each result has one header (serif headword, the reading with its pitch, the
+deinflection trail and book/star frequency badges), then a framed section per
+dictionary with a crystal plaque, numbered senses in diamonds, tag chips and
+its own audio, Anki and pencil buttons. Group tabs, formatted definitions,
+custom actions, the Note editor and the image preview behave as in Bee's Theme.
+See [details and measurements](crystal.md).
 
 ## Version 2 view contract
 
@@ -164,7 +167,8 @@ The keys are the renderer-owned controls, tagged `data-design-setting` in
 `compactDefinitionSummaryCount`, `compactDefinitionSummaryDictionary` and
 `customButtons`. Core applies Theme, Width, Height, Scale, Highlight the word on
 the page and Custom CSS/JavaScript to every renderer, so those always show and
-are never declared.
+are never declared. Colours is core too, and shows for a theme whose entry
+lists [colour variants](#colour-variants).
 
 | Theme | Design settings besides the core ones |
 | --- | --- |
@@ -192,6 +196,29 @@ new lookup. Core delivers changes through `updateDictionaryPresentation`
 custom property and the `data-hoshidicts-glossary-layout` host attribute.
 `test/theme-renderer.test.mjs` checks every declaration
 against its renderer, in both directions.
+
+### Colour variants
+
+A catalogue entry may list colour variants, each an `id` and a `name`:
+Crystal lists `grey` (Grey), `beige` (Beige) and `blue` (Retro blue). For a
+theme with variants, Design → Appearance shows **Colours** below Theme, with
+Automatic first and then the variants in catalogue order; other themes hide it.
+The choice is the core option `popupThemeVariant`: `"auto"` by default, or one
+of the ids in `POPUP_THEME_VARIANTS` in `reader-options.js`, which a new
+variant id must join. Reset Design restores Automatic, and choosing a theme
+leaves the stored choice alone, so it applies again when the theme returns;
+Colours shows Automatic for a theme without that variant.
+
+`createPopupAppearance` sets `data-hoshidicts-theme-variant` to the chosen id on
+the popup host and removes it for Automatic, so a change recolours open popups,
+child popups and the Design preview without rendering again or touching a Note
+draft. A theme's stylesheet selects on the attribute and decides what
+Automatic means: Crystal's Grey and Beige colours are `light-dark()` pairs on a
+popup whose `color-scheme` is `light dark`, so Automatic follows the system's
+mode. (The host's inline `all: initial` resets `color-scheme` there, so the
+popup element declares it.) Hachidori's own palettes are unaffected.
+`test/theme-renderer.test.mjs` checks that every listed id is a stored value and
+that the theme's stylesheet styles it.
 
 ## Content and stylesheet ownership
 

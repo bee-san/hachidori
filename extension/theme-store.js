@@ -2,6 +2,8 @@
 
 // Shows the Design controls a theme declares. Untagged controls are core and
 // always show; "all", a missing entry or a missing declaration shows them all.
+// Colours lists a theme's colour variants after Automatic and shows only for a
+// theme whose entry has some.
 export function applyDesignSettings(section, theme) {
   const declared = Array.isArray(theme?.designSettings) ? theme.designSettings : null;
   for (const control of section.querySelectorAll("[data-design-setting]")) {
@@ -14,6 +16,16 @@ export function applyDesignSettings(section, theme) {
   hint.hidden = declared === null;
   hint.textContent = declared === null ? ""
     : `${theme.name} uses only the settings shown here. Your other Design settings are kept for Default.`;
+  const variants = Array.isArray(theme?.variants) ? theme.variants : [];
+  const colours = section.querySelector("[data-theme-variants]");
+  const select = colours.querySelector("select");
+  select.replaceChildren(select.querySelector('option[value="auto"]'), ...variants.map(variant => {
+    const option = section.ownerDocument.createElement("option");
+    option.value = variant.id;
+    option.textContent = variant.name;
+    return option;
+  }));
+  colours.hidden = variants.length === 0;
 }
 
 export function createThemeStore({ root, design, onSelect }) {
@@ -39,6 +51,14 @@ export function createThemeStore({ root, design, onSelect }) {
     if (className) node.className = className;
     if (text) node.textContent = text;
     return node;
+  }
+
+  // Colours shows the saved variant, or Automatic when this theme has no such variant.
+  function renderVariant() {
+    const select = design.querySelector("#opt-popup-theme-variant");
+    if (select === document.activeElement) return;
+    select.value = options.popupThemeVariant;
+    if (select.selectedIndex < 0) select.value = "auto";
   }
 
   function updateSelection() {
@@ -103,7 +123,7 @@ export function createThemeStore({ root, design, onSelect }) {
     if (slug === designTheme) return;
     designTheme = slug;
     void loadCatalogue().then(themes => themes.find(theme => theme.slug === slug)).catch(() => undefined)
-      .then(theme => applyDesignSettings(design, theme));
+      .then(theme => { applyDesignSettings(design, theme); renderVariant(); });
   }
 
   return { render(next) {
@@ -112,5 +132,6 @@ export function createThemeStore({ root, design, onSelect }) {
     loading ??= load();
     updateSelection();
     updateDesign();
+    renderVariant();
   } };
 }

@@ -504,7 +504,9 @@ test("switching after a retired lookup applies saved actions to the next rendere
 
 // Settings → Design shows a theme only the settings its catalogue entry
 // declares, so each declaration must match its renderer in both directions.
-const CORE_DESIGN_SETTINGS = ["popupTheme", "popupWidthPx", "popupHeightPx", "popupScalePercent",
+// Colours (popupThemeVariant) is core too: a host attribute for every renderer,
+// shown for a theme whose catalogue entry lists colour variants.
+const CORE_DESIGN_SETTINGS = ["popupTheme", "popupThemeVariant", "popupWidthPx", "popupHeightPx", "popupScalePercent",
   "sourceHighlightEnabled", "customPopupCss", "customPopupJavascript", "customLinks"];
 const designResult = { matched: "食べた", deinflected: "食べる", preprocessorSteps: 0,
   trace: [{ name: "-た", description: "past" }],
@@ -644,6 +646,24 @@ test("each theme implements exactly the Design settings its catalogue entry decl
     assert.deepEqual((await designSettingsUsed(entry.slug)).sort(), [...declared].sort(),
       `${entry.slug} uses exactly the Design settings it declares`);
   }
+});
+
+test("each theme's colour variants are stored option values that its stylesheet styles", () => {
+  const dom = environment();
+  try {
+    const { POPUP_THEME_VARIANTS } = dom.window.HDReaderOptions;
+    const { themes } = JSON.parse(readFileSync(resolve(extension, "vendor/themes/index.json"), "utf8"));
+    const varied = themes.filter(entry => Object.hasOwn(entry, "variants"));
+    assert.ok(varied.length > 0, "a bundled theme lists colour variants");
+    for (const entry of varied) {
+      const ids = entry.variants.map(variant => variant.id);
+      assert.ok(entry.variants.every(variant => typeof variant.name === "string" && variant.name !== ""), `${entry.slug} names its variants`);
+      assert.equal(new Set(ids).size, ids.length, `${entry.slug} lists each variant once`);
+      assert.ok(ids.every(id => id !== "auto" && POPUP_THEME_VARIANTS.includes(id)), `${entry.slug} lists stored variant ids after Automatic`);
+      const css = readFileSync(resolve(extension, `vendor/themes/${entry.slug}/theme.css`), "utf8");
+      for (const id of ids) assert.ok(css.includes(`[data-hoshidicts-theme-variant="${id}"]`), `${entry.slug} styles ${id}`);
+    }
+  } finally { dom.window.close(); }
 });
 
 test("Bee reuses per-result metadata and repaints only changed frequency inputs", t => {

@@ -262,6 +262,11 @@ test("Design shows the core controls and only the settings the selected theme de
       "# Definitions", "Compact glossaries", "Image source", "Image hover preview", "Clicked-kanji dictionary",
       "# Frequency labels", "Show frequency dictionary names", "Abbreviate large numbers (51.5k)", "Show frequency averages",
       "# Pitch accent", "Show pitch on the reading", "Pitch accent dictionary", "Reading pitch style", "# Custom buttons"],
+    crystal: ["# Appearance", "Theme", "Colours", "Background opacity", "Width", "Height", "Scale", "Highlight the word on the page",
+      "# Definitions", "Compact glossaries", "Image source", "Image hover preview", "Clicked-kanji dictionary",
+      "# Frequency labels", "Show frequency dictionary names", "Abbreviate large numbers (51.5k)", "Show frequency averages",
+      "Show each dictionary's frequencies with the averages",
+      "# Pitch accent", "Show pitch on the reading", "Pitch accent dictionary", "Reading pitch style", "# Custom buttons"],
     default: everything,
   };
   for (const [slug, controls] of Object.entries(expected)) {
@@ -273,6 +278,12 @@ test("Design shows the core controls and only the settings the selected theme de
   }
   assert.equal(design.querySelectorAll("[data-design-setting][hidden], [data-design-group][hidden]").length, 0,
     "Default leaves Design unchanged");
+  applyDesignSettings(design, catalogueTheme("crystal"));
+  assert.deepEqual([...f.el("opt-popup-theme-variant").options].map(option => [option.value, option.textContent]),
+    [["auto", "Automatic"], ["grey", "Grey"], ["beige", "Beige"], ["blue", "Retro blue"]], "Colours lists Crystal's variants after Automatic");
+  applyDesignSettings(design, catalogueTheme("bee"));
+  assert.deepEqual([...f.el("opt-popup-theme-variant").options].map(option => option.value), ["auto"],
+    "another theme's Colours keeps only Automatic, hidden");
   applyDesignSettings(design, catalogueTheme("plain"));
   assert.equal(f.el("popup-theme-hint").textContent,
     "Plain uses only the settings shown here. Your other Design settings are kept for Default.");
@@ -293,6 +304,11 @@ test("search offers no Design control the selected theme hides", t => {
     f.query(words);
     assert.equal(f.match(label), undefined, `Plain hides ${label}`);
   }
+  f.query("colours");
+  assert.equal(f.match("Colours"), undefined, "Plain has no colour variants");
+  applyDesignSettings(design, catalogueTheme("crystal"));
+  f.query("colours");
+  assert.ok(f.match("Colours"), "Crystal's Colours is searchable");
   applyDesignSettings(design, catalogueTheme("default"));
   f.query("pitch badges");
   f.match("Show pitch badges").click();
@@ -318,6 +334,13 @@ test("Design follows the latest theme in use and shows everything without a cata
   respond({ ok: true, json: async () => ({ themes: catalogue }) });
   await settle();
   assert.deepEqual(designControls(f.document), ["# Theme Store", ...JL_DESIGN], "the earlier Plain selection does not apply");
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ themes: catalogue }) });
+  const crystal = store();
+  crystal.render({ popupTheme: "crystal", popupThemeVariant: "blue" });
+  await settle();
+  assert.equal(f.el("opt-popup-theme-variant").value, "blue", "Colours shows the saved variant once Crystal's are listed");
+  crystal.render({ popupTheme: "crystal", popupThemeVariant: "auto" });
+  assert.equal(f.el("opt-popup-theme-variant").value, "auto");
   globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
   store().render(options("plain"));
   await settle();

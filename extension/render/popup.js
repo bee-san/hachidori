@@ -132,6 +132,11 @@
         // switch keeps open views, Note drafts and focus.
         if (options.showPitchAccentColors === true) host.dataset.hoshidictsPitchColors = "on";
         else delete host.dataset.hoshidictsPitchColors;
+        // A theme's colour variant (Design → Colours) is CSS over unchanged
+        // markup too; Automatic leaves the attribute off.
+        if (options.popupThemeVariant && options.popupThemeVariant !== "auto") {
+          host.dataset.hoshidictsThemeVariant = options.popupThemeVariant;
+        } else delete host.dataset.hoshidictsThemeVariant;
         for (const [key, variable, unit] of [
           ["popupOpacityPercent", "opacity", "%"], ["popupWidthPx", "width", "px"], ["popupHeightPx", "height", "px"],
           ["popupScalePercent", "scale", "%"],
