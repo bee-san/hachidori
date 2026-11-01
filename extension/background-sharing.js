@@ -26,7 +26,7 @@ import {
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background-requests.js";
 import {
-  waitForAnkiIdle, readAnkiOptions, broadcastWordStatus, applyAnkiIndexRole, sendAnkiRequest,
+  waitForAnkiIdle, readAnkiOptions, readAnkiProfile, broadcastWordStatus, applyAnkiIndexRole, sendAnkiRequest,
 } from "./background-anki.js";
 import { reconcileAutomaticBackupsAfterSharingTransition } from "./background-backup.js";
 import { reconcileUpdateAlarm } from "./background-updates.js";
@@ -151,6 +151,7 @@ function getApiHost() {
     readAudioSources: async profileId => (await readAnkiOptions(profileId)).audioSources.filter(source => source.enabled),
     readAnkiTemplates: async profileId => (await readAnkiOptions(profileId)).anki.templates,
     resolveProfile: apiProfile,
+    readProfile: readAnkiProfile,
   });
   return apiHost;
 }

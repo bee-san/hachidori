@@ -165,6 +165,8 @@ export function assertLinkedAnkiFrame(text) {
 const MINING_REQUEST_FIELDS = [
   "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
   "searchQuery", "documentTitle", "pageUrl", "audioSelection", "dictionaryAliases", "dictionaryIds",
+  // A profile's notes follow each dictionary's direction and target language (docs/languages.md 12).
+  "dictionaryDirections", "dictionaryTargetLanguages",
   "frequencyDictionaries", "configKey", "screenshot", "captureUnavailable",
   "clientSpeech", "templateId", "allowDuplicate",
 ];

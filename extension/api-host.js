@@ -190,10 +190,19 @@ function requireStrings(value, name) {
 // `resolveProfile(profileIndex)` names the profile a Yomitan profile index
 // selects, as { profileId } (undefined while the records have no profiles),
 // or null for an index that names none (docs/languages.md 12).
+// `readProfile(profileId)` is that profile's { language, packSettings }, null
+// while the records have no profiles.
 export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version,
-  resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null) }) {
+  resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null),
+  readProfile = async () => null }) {
   // Engine requests made for a profile name it (docs/languages.md 9.3).
   const named = (profileId, fields) => (profileId === undefined ? fields : { ...fields, profileId });
+
+  // The language a profile's notes and readings follow (docs/languages.md 12).
+  async function profileLanguage(profileId) {
+    const profile = await readProfile(profileId);
+    return profile ? { language: profile.language, packSettings: profile.packSettings ?? {} } : null;
+  }
 
   async function whereabouts(profileId) {
     const dictionaries = await readDictionaries(profileId);
@@ -213,6 +222,11 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
 
   async function ankiTermFields(profileId, text, markers, maxEntries, includeMedia) {
     const where = await whereabouts(profileId);
+    const profile = await profileLanguage(profileId);
+    // Each dictionary's target language, which a profile's notes follow; the
+    // note builder takes each direction from it or from the glosses.
+    const targets = profile === null ? {} : { dictionaryTargetLanguages: Object.fromEntries(where.dictionaries
+      .filter(item => typeof item.targetLanguage === "string" && item.targetLanguage).map(item => [item.title, item.targetLanguage])) };
     const { results, generation } = await lookup(profileId, text, maxEntries > 0 ? { maxResults: maxEntries } : {});
     const enabled = where.dictionaries.filter(item => item.enabled !== false);
     const dictionaryPaths = Object.fromEntries(enabled.map(item => [item.title, item.path]));
@@ -227,12 +241,14 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
         searchQuery: text, popupSelectionText: "", documentTitle: "",
         dictionaryAliases: Object.fromEntries(where.dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(where.dictionaries.map(item => [item.title, item.id])),
-        frequencyDictionaries: where.dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title) };
+        frequencyDictionaries: where.dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+        ...targets };
       let audio = "";
       if (markers.includes("audio") && includeMedia) {
         const sources = await readAudioSources(profileId);
         const prepared = sources.length
-          ? await render({ type: "hd_anki_audio", term: result.term, sources, recordSpeech: false }).catch(() => null)
+          ? await render({ type: "hd_anki_audio", term: result.term, sources, recordSpeech: false,
+            ...(profile === null ? {} : { language: profile.language }) }).catch(() => null)
           : null;
         if (typeof prepared?.filename === "string" && typeof prepared.data === "string") {
           audio = `[sound:${prepared.filename}]`;
@@ -241,7 +257,8 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
             mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename });
         }
       }
-      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths });
+      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths,
+        ...(profile === null ? {} : { profile }) });
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
       if (!includeMedia) continue;
       for (const item of built.media) {
@@ -266,6 +283,10 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
   }
 
   async function tokenize(profileId, text, index, scanLength) {
+    // A language without ruby gives its words no reading (docs/languages.md 12).
+    const profile = await profileLanguage(profileId);
+    const ruby = profile === null
+      || globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings);
     const lines = [];
     for (const line of text.split("\n")) {
       const segments = [];
@@ -286,7 +307,8 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
           position += step.length;
           continue;
         }
-        for (const segment of globalThis.HDGlossary.matchedFurigana(best.term, best.matched)) {
+        for (const segment of ruby ? globalThis.HDGlossary.matchedFurigana(best.term, best.matched)
+          : [{ text: best.matched, reading: "" }]) {
           if (segment.reading === "") plain(segment.text);
           else segments.push({ text: segment.text, reading: segment.reading });
         }

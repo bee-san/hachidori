@@ -26,6 +26,14 @@ const GLOSSARY_VARIANTS = [
 ];
 const PARTS_OF_SPEECH = { v1: "Ichidan verb", v5: "Godan verb", vk: "Kuru verb", vs: "Suru verb",
   vz: "Zuru verb", "adj-i": "I-adjective", n: "Noun" };
+// {part-of-speech} names a language's tags with its pack's labels
+// (docs/languages.md 12); the Japanese pack carries the table above.
+function partOfSpeechLabels(language) {
+  if (language === null) return PARTS_OF_SPEECH;
+  const labels = globalThis.HDLanguages?.get?.(language.code)?.host?.anki?.partOfSpeechLabels;
+  if (labels && typeof labels === "object" && !Array.isArray(labels)) return labels;
+  return language.code === "ja" ? PARTS_OF_SPEECH : {};
+}
 const VALUE_ALIASES = { definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
   frequency: "frequencies", "pitch-accent-positions": "pitch-position", "pitch-categories": "pitch-accent-categories" };
 const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, dictionary)
@@ -67,21 +75,24 @@ function frequencyAggregate(term, mode, harmonic) {
   return String(mean);
 }
 
-function frequencyHtml(request, groups = request.term.frequencies) {
+// Under the right-to-left rules of docs/languages.md 12 the list aligns to its
+// start and a name with a right-to-left character sits in its own element.
+function frequencyHtml(request, groups = request.term.frequencies, rtlRules = false) {
   const items = groups.flatMap(group => {
-    const dictionary = escape(alias(request, group.dictionary));
+    const name = alias(request, group.dictionary);
+    const dictionary = rtlRules && globalThis.HDGlossary.hasRtlText(name) ? `<span dir="auto">${escape(name)}</span>` : escape(name);
     return group.frequencies.map(value => `<li>${dictionary}: ${escape(value.displayValue ?? value.value)}</li>`);
   });
-  return items.length ? `<ul style="text-align: left;">${items.join("")}</ul>` : "";
+  return items.length ? `<ul style="text-align: ${rtlRules ? "start" : "left"};">${items.join("")}</ul>` : "";
 }
 
-function singleFrequency(request, dictionary, numeric) {
+function singleFrequency(request, dictionary, numeric, rtlRules) {
   const groups = request.term.frequencies.filter(group => group.dictionary === dictionary && group.frequencies.length);
   if (numeric) {
     const value = groups.length ? frequencyNumber(groups[0].frequencies[0]) : 0;
     return value > 0 ? String(value) : "";
   }
-  return frequencyHtml(request, groups);
+  return frequencyHtml(request, groups, rtlRules);
 }
 
 function pitchHtml(term) {
@@ -201,8 +212,16 @@ function dynamicFrequencies(request) {
   return variants;
 }
 
-export async function buildAnkiFields(request, templates, { definition, audio = "" }) {
+// `language` is the language object of the profile the note is mined in, once
+// the records have profiles (docs/languages.md 12); without one every value is
+// today's.
+export async function buildAnkiFields(request, templates, { definition, audio = "", language = null }) {
   const { term } = request;
+  // A note mined in a right-to-left profile follows the right-to-left rules.
+  const rtlRules = language?.direction === "rtl";
+  // Without ruby the furigana markers give the plain headword.
+  const ruby = language === null || Boolean(language.capabilities?.ruby);
+  let partsOfSpeech;
   const kanjiTokens = value => Array.isArray(value) ? value : globalThis.HDGlossary.parseTagList(value);
   let nativeKanjiEntries;
   const kanjiEntries = () => nativeKanjiEntries ??= term.glossaries.flatMap(glossary => glossary.kanji ? [glossary.kanji] : []);
@@ -212,6 +231,9 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     request.sentence.slice(request.matchOffset, request.matchOffset + request.matched.length),
     request.sentence.slice(request.matchOffset + request.matched.length)].map(escape);
   const sentence = () => { const [prefix, body, suffix] = parts(); return `${prefix}<b>${body}</b>${suffix}`; };
+  // The sentence keeps its own direction in any card; the cloze parts stay
+  // bare, because isolating each one would break the sentence's order.
+  const isolatedSentence = () => (rtlRules ? `<span dir="auto">${sentence()}</span>` : sentence());
   // The matched word takes the reading of the chosen result; the text around
   // it is read from the spans of the Anki worker's hd_segment request. Without
   // spans (the relay API) the sentence is left without furigana.
@@ -236,7 +258,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     onyomi: () => kanjiReadings("onyomi"), kunyomi: () => kanjiReadings("kunyomi"),
     "stroke-count": () => escape(kanjiEntries().flatMap(entry => entry.stats ?? [])
       .find(stat => stat.name === "strokes")?.value ?? ""),
-    furigana: () => expressionFurigana(term, false), "furigana-plain": () => expressionFurigana(term, true),
+    furigana: () => (ruby ? expressionFurigana(term, false) : escape(term.expression)),
+    "furigana-plain": () => (ruby ? expressionFurigana(term, true) : escape(term.expression)),
     dictionary: () => escape(firstDictionary()), "dictionary-alias": () => escape(alias(request, firstDictionary())),
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),
@@ -245,8 +268,11 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     "glossary-first-brief": () => definition({ firstOnly: true, brief: true }),
     "glossary-first-no-dictionary": () => definition({ firstOnly: true, noDictionary: true }),
     conjugation: () => request.trace.map(step => escape(step.name)).join(" « ") || escape(term.rules),
-    "part-of-speech": () => uniqueTokens([term.rules, ...term.glossaries.map(glossary => glossary.termTags)])
-      .map(tag => escape(Object.hasOwn(PARTS_OF_SPEECH, tag) ? PARTS_OF_SPEECH[tag] : tag)).join(", ") || "Unknown",
+    "part-of-speech": () => {
+      partsOfSpeech ??= partOfSpeechLabels(language);
+      return uniqueTokens([term.rules, ...term.glossaries.map(glossary => glossary.termTags)])
+        .map(tag => escape(Object.hasOwn(partsOfSpeech, tag) ? partsOfSpeech[tag] : tag)).join(", ") || "Unknown";
+    },
     tags: () => uniqueTokens(term.glossaries.flatMap(glossary =>
       [...globalThis.HDGlossary.definitionTagList(glossary).map(tag => tag.name), glossary.termTags,
         ...(glossary.kanji ? kanjiTokens(glossary.kanji.tags) : [])]))
@@ -258,10 +284,10 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     },
     // Yomitan's getMedia keeps a multi-line selection's breaks visible in the HTML field.
     "popup-selection-text": () => escape(request.popupSelectionText).replaceAll("\n", "<br>\n"), "search-query": () => escape(request.searchQuery),
-    "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence,
+    "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence: isolatedSentence,
     "sentence-furigana": () => sentenceFurigana(false), "sentence-furigana-plain": () => sentenceFurigana(true),
     "cloze-prefix": () => parts()[0], "cloze-body": () => parts()[1], "cloze-suffix": () => parts()[2],
-    frequencies: () => frequencyHtml(request),
+    frequencies: () => frequencyHtml(request, request.term.frequencies, rtlRules),
     "frequency-harmonic-rank": () => frequencyAggregate(term, "rank-based", true),
     "frequency-harmonic-occurrence": () => frequencyAggregate(term, "occurrence-based", true),
     "frequency-average-rank": () => frequencyAggregate(term, "rank-based", false),
@@ -312,7 +338,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     } else if (name.startsWith("single-frequency-")) {
       frequencies ??= dynamicFrequencies(request);
       const variant = frequencies.get(name);
-      if (variant) value = singleFrequency(request, variant.dictionary, variant.numeric);
+      if (variant) value = singleFrequency(request, variant.dictionary, variant.numeric, rtlRules);
     }
     values.set(name, value);
     return value;

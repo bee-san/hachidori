@@ -159,6 +159,21 @@
     return renderLanguageCache.language;
   }
 
+  // The direction and target language of each dictionary of a mined result,
+  // as its view's language gives them (docs/languages.md 10.2, 12), so the
+  // note builder writes what the popup shows.
+  function miningLanguageFields(result, request) {
+    const language = renderLanguage(request);
+    const titles = [...new Set(result.term.glossaries.map(glossary => glossary.dictionary))];
+    return {
+      dictionaryDirections: Object.fromEntries(titles.map(title => [title, language.dictionaryDirection(title, result)])),
+      dictionaryTargetLanguages: Object.fromEntries(titles.flatMap(title => {
+        const tag = language.dictionaryLanguage(title);
+        return tag ? [[title, tag]] : [];
+      })),
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Profiles (docs/languages.md 8). Once the records have profiles the reader
   // holds every profile's projection, and each lookup uses the profile in
@@ -2298,6 +2313,9 @@
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+        // Once the records have profiles, each dictionary's direction and
+        // target language travel beside its display name (docs/languages.md 12).
+        ...(readingProfiles === null ? {} : miningLanguageFields(result, request)),
         // Experimental Netflix mining: the root popup's pinned cue, and for the
         // root lookup the whole cue as its sentence.
         ...(netflixMiningEnabled() ? globalThis.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,

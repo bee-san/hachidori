@@ -8,8 +8,9 @@
 //   registry.js         for extension pages, the service worker and the engine
 //                       workers: identity, text, capabilities, presentation,
 //                       settings, the speech and audio languages, the Anki
-//                       note-type families, the warm-up sample and each
-//                       pack's personal dictionary;
+//                       note-type families, field aliases and part-of-speech
+//                       labels, the warm-up sample and each pack's personal
+//                       dictionary;
 //   registry-reader.js  for content scripts, within 64 KB for every pack
 //                       together: identity, text, capabilities, presentation,
 //                       the warm-up sample and the pack settings with a
@@ -101,7 +102,10 @@ export function registryEntries(pack, ClassSet) {
     host: {
       ttsLanguage: host.ttsLanguage,
       audioLanguage: host.audioLanguage,
-      anki: { noteTypeFamilies: host.anki?.noteTypeFamilies ?? [] },
+      // Settings' field-name suggestions and the {part-of-speech} marker read
+      // these (docs/languages.md 12).
+      anki: { noteTypeFamilies: host.anki?.noteTypeFamilies ?? [], fieldAliases: host.anki?.fieldAliases ?? {},
+        partOfSpeechLabels: host.anki?.partOfSpeechLabels ?? {} },
       sample: { warmup: host.sample?.warmup ?? null },
     },
     personalDictionary: personalDictionary(pack),
