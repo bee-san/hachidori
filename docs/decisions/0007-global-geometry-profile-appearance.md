@@ -26,7 +26,7 @@ opacity, columns and every Design content setting are per profile.
 
 ## Consequences
 
-- A new profile starts with the active profile's appearance, so adding a
+- A new profile starts with the edited profile's appearance, so adding a
   language does not change how the popup looks.
 - Custom CSS can target a language with `[data-hd-language="ar"]` or
   `:lang(ar)`.

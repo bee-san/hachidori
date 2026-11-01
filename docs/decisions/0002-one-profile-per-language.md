@@ -33,4 +33,8 @@ shares them.
 
 - AGENTS.md's managed custom dictionary rules apply once per language, with a
   fixed id derived from the language code.
+- Removing a language's profile keeps its personal package with its source,
+  outside every profile and unloaded, so the pair stays valid and adding the
+  language again needs no compile; erasing saves an empty source, which
+  removes the package in the same commit as today.
 - Japanese keeps today's personal package id, title and source document.

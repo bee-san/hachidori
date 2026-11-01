@@ -125,12 +125,14 @@ top level of a single-profile record.
 | new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |
 | `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; non-Japanese first run records no catalogue outcome (16) |
 | `automaticBackups`, `sharing`, `sharingLocalState`, `sharingOptionsVersion`, session `backupDownloads`, IndexedDB debug log | backup-automatic.js, background-sharing.js, debug-log.js | None except redaction | G |
-| `OVERLAY_LOCAL_OPTION_KEYS` (includes `onlyScanJapaneseText`) | setup-state.js:46-51 | Partition precedent | Applied over the active profile's projection (17.4) |
+| `OVERLAY_LOCAL_OPTION_KEYS` (includes the profile keys `onlyScanJapaneseText`, `personalDictionaryEnabled`, `showNoResultNotice`, `popupColumns`) | setup-state.js:46-51 | Partition precedent | Kept flat in the overlay's own record and laid over every profile's projection (17.5) |
 | `hd_options_write`, `hd_state_cas`, `hd_apply_state`, `hd_custom_*`, `hd_lookup_stats_*`, `hd_word_status_override` | background-requests.js | No profile dimension | Optional `profileId` (5.2) |
 | `hd_lookup`, `hd_lookup_dictionary`, `hd_segment`, `hd_kanji` | content.js termPayload; engine-service.js; option-settings.js:270-272 (direction probe); startup.js:710-714 (practice probe) | Japanese pipeline | `profileId` → language and dictionaries (5.4, 9.3) |
 | `hd_audio_play`, `hd_audio_candidates` | background.js:292-311 | Reads the one `audioSources` | `profileId` (5.4) |
 | Every `hd_anki_*` request (status, view, preflight, batch preflight, submit, browse, fields, maturity, word status); Relay API card formats | anki-worker.js:79-92, 177-191, 442-461; background-anki.js:193-201; api-host.js:334-339 | First Template of the one list | `profileId`; Relay `profileIndex` 0 = Japanese (5.4, 12) |
 | `hd_lookup_stats_record`, `hd_lookup_stats_read`, `hd_word_status_override`, `hd_custom_read/cas/save/append`, `hd_import` | background-requests.js:92-167, 344-437; engine-service.js | No profile or language | `profileId` (5.4) |
+| new `hd_profile_add`, `hd_profile_remove` (worker, forwarded to a sharing host), `hd_language_selection_write` (worker, never forwarded), `hd_language_profiles_opt_in` (sharing) | — | — | Sections 5.2 and 17.3 |
+| Sharing host frames and replies: one `broadcast` for storage changes, replies carrying stored records, linked allowlists | sharing-host.js:94-99, 240-247; sharing-client.js:87-93; sharing-protocol.js:50-76, 165-272 | One record shape for every client | Per-client frames and projected replies for clients that have not opted in; allowlists keep `profileId` (17.3) |
 | Writers that rebuild `options` through `projectStoredOptions` | background-core.js:267, 321; background-requests.js:597-642; background-sharing.js:177-193, 354-364; background-backup.js:65; backup-state.js:26-36, 123-136 | Flat record | `applyOptionsPatch` on the unmasked record (5.2) |
 | Backup archive version 3, six snapshot keys | backup-archive.js:7; docs/backup-format.md | No profiles | Version 3 unchanged for single-profile installs; version 4 with profiles (17.1) |
 | Sharing `SHARED_STATE_KEYS`, `hello` capabilities, protocol 1 | background-sharing.js:33-56; sharing-protocol.js | One profile | Capability `language-profiles-v1`; projection for older clients (17.3) |
@@ -199,7 +201,7 @@ top level of a single-profile record.
 | Audio URL `{language}` = `"ja"` | audio-sources.js:17-26 | Japanese | Pack `host.audioLanguage` |
 | Speech `utterance.lang = "ja-JP"`, ja voice filter, Google ja preference, "Automatic Japanese", "No Japanese speech voice" | speech.js:23-47; audio-repository.js:80-93 | Japanese voices | Pack `host.ttsLanguage`; Japanese unchanged |
 | Test term `聞く/きく`; local audio probe `猫/ねこ`; Local Audio Server `127.0.0.1:5050` | audio-offscreen.js:6-10; local-audio-setup.js:88; local-audio-source.js | Japanese provider | Pack sample; Local Audio Server for Japanese only |
-| Relay API `profileIndex === 0` | api-host.js:333-339 | One profile | Active profile (12) |
+| Relay API `profileIndex === 0`; `readDictionaries` reads the stored rows | api-host.js:210, 223, 333-339; background-sharing.js:128 | One profile | `profileIndex` 0 = the Japanese profile, read through `projectDictionaryState` (12) |
 | Custom link `%w %r %s` | external-links.js `expandCustomLinkUrl` | Reading | Unchanged; buttons per profile |
 
 ## F. Scanning, sentences, search, highlighting, personal dictionary, Netflix
@@ -207,7 +209,7 @@ top level of a single-profile record.
 | Item | Where | Language assumption | Outcome |
 | --- | --- | --- | --- |
 | `JAPANESE_CHARACTER_PATTERN`, `isJapaneseToken`, token boundary | content-scan.js:22-24 | Japanese gate | Pack `text.pattern` (8.2) |
-| `collectScanEntries` caret-forward walk, `scanWindow`, 256 cap, long-key slack | content-scan.js | No word starts | Word-start seek for `spaces` packs (8.3) |
+| `collectScanEntries` caret-forward walk, `scanWindow`, 256 cap, long-key slack | content-scan.js | No word starts | Word-start seek for packs with `scanStart: "word"` (8.3) |
 | `dropCjkSegmentBreaks`, `sentenceSource` segment breaks → spaces | content-scan.js | CJK line joining | Pack `lineJoiner` decides |
 | `rt`/`rp` opaque | content-scan.js `OPAQUE_TAGS` | Ruby | Unchanged |
 | Text-field and Google Docs imposters | content-scan.js; google-docs.js | Docs imposter has no direction | Docs gains direction; field clipping is a known limit |
@@ -230,7 +232,7 @@ top level of a single-profile record.
 | `Deinflector` with compiled rules, 18-flag `Conditions`, `pos_to_conditions`, whole-word honorifics, irregular tables | hoshidicts src/deinflector.cpp | Japanese only | Data-driven; Japanese pack (engine contract 7, 11) |
 | NekoPara cat speech (`deinflect_neko_speech`, `LookupOptions::neko_speech`) | deinflector.cpp; lookup.cpp | Japanese; not exposed by Hachidori | Japanese variant pass; still not exposed |
 | `text_processor::process` with eight Japanese processors and the kanji-variant table | text_processor.cpp:341-460 | Japanese | Pack processors; Japanese as builtins |
-| Prefix scan from `scan_length` down to 1 code point | lookup.cpp:231-236 | CJK | Word resolution for `spaces` packs |
+| Prefix scan from `scan_length` down to 1 code point | lookup.cpp:231-236 | CJK | The pack's `searchResolution` (engine contract 9.2) |
 | Long-key scan index | scan_index.hpp | None | Every language |
 | POS filter on the term's `rules` | lookup.cpp:486-499 | Japanese POS | Pack conditions |
 | Ranking: primary reading, matched length, steps, trace length, written form, frequency, dictionary rank, score, written = reading | lookup.cpp:378-438 | Reading and kana terms | Unchanged; rank from the request's dictionaries |
@@ -240,7 +242,7 @@ top level of a single-profile record.
 | `withFurigana`, `withoutPersonalDictionary`, tag expansion | engine-service.js:333-373 | Japanese furigana | Furigana only with kana ruby (9.4) |
 | Loaded set = enabled packages; incremental reorder/add/remove | engine-service.js:1388-1598 | One library | Union of profiles; per-request lists (9.2) |
 | `inferFrequencyDirection` returns null unless `language` is ja | frequency-direction.js:26 | Japanese samples | Pack `frequencySamples` |
-| API host `tokenize` (GameSentenceMiner) | api-host.js | Greedy CJK tokenisation | Active profile; word resolution for `spaces` packs |
+| API host `tokenize` (GameSentenceMiner) | api-host.js | Greedy CJK tokenisation | The profile its `profileIndex` names (0 = Japanese); the pack's `searchResolution` |
 | hoshidicts CI: one deinflector job on the Japanese TSV | .github/workflows/deinflector.yml | Japanese | Conformance test per pack (engine contract 12) |
 
 ## H. Onboarding and user-visible strings that name Japanese

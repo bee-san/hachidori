@@ -15,8 +15,10 @@ and every theme with a headword exposes `.gsm-hoshidicts-expression`.
 A theme declares `{directions, presentation}`. For a profile whose direction a
 theme does not declare, core marks the content hooks after each render: the
 headword gets the language's attributes, a definitions container holding one
-dictionary gets that dictionary's direction, one holding several gets
-`unicode-bidi: plaintext` on itself and its block descendants. Outside the
+dictionary (found through `data-dictionary` or `data-hoshidicts-dictionary`)
+gets that dictionary's direction and `text-align: start`, one holding several
+gets `unicode-bidi: plaintext` and `text-align: start` on itself and its block
+descendants. Outside the
 Japanese profile, core ignores character clicks from an undeclared theme and
 hides the clicked-character dictionary, because such a theme may test
 characters with Japanese rules. Display settings are hidden for a theme that

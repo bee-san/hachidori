@@ -12,15 +12,19 @@ gloss.
 
 ## Decision
 
-For a right-to-left pack, headword, matched text, deinflection endpoints,
-sentence and character get `lang` and `dir="rtl"`; readings, names and inputs
-get `dir="auto"`. Core decides one direction per dictionary for each result
-from the dictionary's `targetLanguage`, or else from the first strong
-character of that dictionary's own gloss data, and themes put it on the
-element holding that dictionary's block. The popup element keeps the
-interface's direction. Left-to-right packs get only `lang`, and in the
-single-profile shape nothing is added, so a Japanese-only popup's markup does
-not change.
+Once the records have profiles, the popup element gets `dir="ltr"` and
+`lang="en"`, because the reader's shadow host passes the page's direction and
+language through. For a right-to-left pack, headword, matched text,
+deinflection endpoints, sentence and character get `lang` and `dir="rtl"`;
+readings and inputs get `dir="auto"`. Direction of definitions belongs to the
+dictionary: core decides one direction per dictionary for each result from
+its `targetLanguage`, or else from the first strong character of its own gloss
+data, and a right-to-left dictionary's block is marked in any profile. Inside
+a block, structured-content paragraphs keep their own direction
+(`unicode-bidi: plaintext` at zero specificity). Names containing
+right-to-left text are isolated in inline elements. Left-to-right packs get
+only `lang`, and in the single-profile shape nothing is added, so a
+Japanese-only popup's markup does not change.
 
 ## Options rejected
 
@@ -39,3 +43,7 @@ not change.
 
 - Each vendored theme names the element that holds one dictionary's block.
 - Glossary list spacing becomes logical, which changes nothing left to right.
+- Japanese-only installations keep two faults they have today (a
+  right-to-left page mirrors the popup; right-to-left glosses get no
+  direction) until a second language is added or the owner decides to fix
+  them separately.

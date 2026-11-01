@@ -13,7 +13,7 @@ the themes, Anki, keybinds, the Design preview.
 
 `OPTION_REQUIREMENTS` maps each option that needs a capability to the
 capability and a neutral value. Settings hides the control; the projection
-(`HDProfiles.projectOptions`) replaces the value by its neutral value for a
+(`HDReaderOptions.projectOptions`) replaces the value by its neutral value for a
 profile without the capability; storage keeps the user's value.
 
 ## Options rejected

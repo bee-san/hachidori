@@ -14,10 +14,13 @@ Japanese-only.
 
 A host whose records have profiles advertises `language-profiles-v1`; the
 client's hello does not change, and a new client opts in with one forwarded
-request. To every client that has not opted in, the host sends the
-single-profile projection of its Japanese profile, whatever language the host
-itself reads in, and applies that client's writes (which carry no profile) to
-the Japanese profile.
+request before it applies the hello's snapshot. To every client that has not
+opted in, the host sends the Japanese view (the Japanese data in today's
+shapes) in its own change frames and in every reply that carries options,
+dictionary state or a personal document, whatever language the host itself
+reads in, and applies that client's writes (which carry no profile) to the
+Japanese profile. When a host first gains profiles it closes its connections
+once, so clients say hello again.
 
 ## Options rejected
 
@@ -36,5 +39,7 @@ the Japanese profile.
 
 - An older client keeps working on the Japanese profile; its target never
   changes, so a stale base revision is still refused as today.
-- The projection functions that the rest of the design needs do the work; the
-  sharing host gains one branch on the opt-in.
+- The sharing host changes in several places: per-client change frames
+  instead of one broadcast, projected replies by request type, allowlists that
+  keep a validated `profileId`, and one reconnect when profiles first appear.
+  The projection functions the rest of the design needs build the view.
