@@ -171,6 +171,9 @@ async function launchFirefox(profile) {
       "browser.download.useDownloadDir": true,
       "browser.download.start_downloads_in_tmp_dir": false,
       "media.autoplay.default": 0,
+      // Firefox's mock audio backend plays media on hosts with no audio device,
+      // as Chrome's --disable-audio-output does. Autoplay rules still apply.
+      "media.cubeb.force_mock_context": true,
       "network.dns.localDomains": UPDATE_HOST,
       // Settings asks before leaving unsaved work; the suite never has any.
       "dom.disable_beforeunload": true,
