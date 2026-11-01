@@ -22,6 +22,7 @@ import "./firefox-e2e/reader.mjs";
 import "./firefox-e2e/settings.mjs";
 import "./firefox-e2e/anki.mjs";
 import "./firefox-e2e/backup.mjs";
+import "./firefox-e2e/sharing.mjs";
 import "./firefox-e2e/restart.mjs";
 import { E2E_PLANNED, markCompleteSuite } from "./firefox-e2e/harness.mjs";
 

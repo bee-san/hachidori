@@ -3565,7 +3565,8 @@ network listener is on, the addresses found from the routes to Tailscale's
 resolver and the default route, or the bind error), `client-open` (with the
 peer address), `client-close` and `client-text`; from the host it takes
 `send`, `broadcast`, `close` and `network`. Its rules: a handshake's `Origin`
-must start with `chrome-extension://`, `/host` is accepted from loopback peers
+must start with `chrome-extension://` or, for Firefox, `moz-extension://` (relay 0.0.6
+and later), `/host` is accepted from loopback peers
 only, a client is refused (503) while no host is connected, and turning the
 network off closes the clients that came over it. There is no token. A linked
 browser speaks JSON text frames: `hello` (answered with the host's version,

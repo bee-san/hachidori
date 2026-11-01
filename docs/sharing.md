@@ -24,7 +24,7 @@ dictionaries. **Settings → Sharing** says *Waiting for Anki* and offers
 `hachidori-relay.ankiaddon` (or use **Tools → Add-ons → Install from file…**
 in Anki), restart Anki, and the line becomes *Sharing through Anki.* The
 button downloads the compatible
-[v0.0.5 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.5)
+[v0.0.6 release](https://github.com/bee-san/hachidori-anki/releases/tag/v0.0.6)
 from GitHub, so downloading needs an internet connection. It shows progress
 while fetching and an error with a retryable button if the download fails.
 The add-on has its own version; this extension pins the version it was tested
@@ -318,7 +318,8 @@ optional installed-Anki checks live in
 [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test);
 release v0.0.4 adds the Yomitan-compatible API and dictionary downloads on
 top of v0.0.3's ordered large-frame, shutdown and Python 3.9 idle-timeout
-regressions, and v0.0.5 adds `/ankiCardFormats`.
+regressions, v0.0.5 adds `/ankiCardFormats`, and v0.0.6 admits Hachidori for
+Firefox's `moz-extension://` origin.
 `node --test test/api-host.test.mjs` covers this extension's
 answers to the relay's `hd_api_*` requests against a fake engine.
 

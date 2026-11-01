@@ -136,6 +136,10 @@ const E2E_PLANNED = [
   "a backup exported by Hachidori 0.3.0 for Chrome restores in Firefox",
   "the restored library answers lookups and shows the personal entry",
   "the Firefox backup restores into a fresh Firefox profile",
+  // sharing
+  "Settings downloads the pinned Hachidori Relay add-on",
+  "the Firefox Hachidori shares through the relay",
+  "a second Firefox links to it and looks up words with its dictionaries",
   // idle and restart
   "the engine keeps its dictionaries through Firefox's 30-second idle limit",
   "dictionaries, settings and counts survive a Firefox restart",
