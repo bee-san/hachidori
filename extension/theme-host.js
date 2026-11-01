@@ -32,7 +32,7 @@
         ]);
         if (module && (module.default?.schema !== 2 || module.default.slug !== name
             || typeof module.default.createView !== "function")) throw new Error("Unsupported renderer contract");
-        return { name, css: `${css}\n${icons}`, dictionaryStyles: name === "default" || name === "bee",
+        return { name, css: `${css}\n${icons}`, dictionaryStyles: ["default", "bee", "crystal"].includes(name),
           createView: module?.default.createView ?? window.HDPopup.createPopupView };
       })());
       return cache.get(name);

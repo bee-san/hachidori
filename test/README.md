@@ -220,7 +220,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
 | `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
 | `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
-| `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee): their DOM, actions, tabs, Notes and the Design settings each theme declares. |
+| `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee, Crystal): their DOM, actions, tabs, Notes and the Design settings each theme declares. |
 | `toolbar` | The toolbar toggle and its revision conflicts. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d (each card's dictionary tag at d3c54c1), written inline. |

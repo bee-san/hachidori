@@ -183,7 +183,7 @@ async function settingsNavigationStage() {
     if (document.getElementById("design")) {
       await navigate("design");
       const preview = document.getElementById("design-preview");
-      design &&= document.getElementById("opt-popup-theme").options.length === 47;
+      design &&= document.getElementById("opt-popup-theme").options.length === 48;
       const updates = [];
       preview.contentWindow.HDDesignPreview = { update(value) { updates.push(structuredClone(value)); } };
       preview.dispatchEvent(new window.Event("load"));
@@ -757,7 +757,7 @@ async function settingsFrequencyStage() {
     }
     const theme = window.document.getElementById("opt-popup-theme");
     window.location.hash = "#design";
-    await until(() => theme.options.length === 47);
+    await until(() => theme.options.length === 48);
     let settingsTheme = window.document.documentElement.dataset.hoshidictsTheme === "default";
     const toolbarSelect = window.document.getElementById("opt-popup-toolbar");
     await editControl(toolbarSelect, "bottom");

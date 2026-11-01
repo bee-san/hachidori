@@ -196,7 +196,7 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
 - **Theme Store.** `theme-store.js` renders the Design carousel and
   shows only the Design settings the selected theme declares in
   `vendor/themes/index.json`.
-  `theme-host.js` selects Default or a bundled Nazeka, Plain or JL view before constructing
+  `theme-host.js` selects Default or a bundled Nazeka, Plain, JL, Bee or Crystal view before constructing
   content and applies only its CSS. See the [renderer contract](../docs/themes/README.md).
 - **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what

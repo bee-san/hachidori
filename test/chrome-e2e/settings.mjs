@@ -1435,8 +1435,8 @@ async function checkDesignAppearance(page, frame) {
         palettes.at(-1).fullStops = await stops(100);
       }
     }
-    check("Design exposes AUTO, 42 grouped palettes and four layouts and applies live browser preference changes",
-      catalogue.count === 47 && JSON.stringify(catalogue.groups) === "[1,18,23,1,4]"
+    check("Design exposes AUTO, 42 grouped palettes and five layouts and applies live browser preference changes",
+      catalogue.count === 48 && JSON.stringify(catalogue.groups) === "[1,18,23,1,5]"
         && JSON.stringify(automatic.map(value => value.theme)) === '["light","dark"]'
         && automatic.every(value => value.retained && value.pageUntouched)
         && palettes.every(value => value.retained && value.pageUntouched)

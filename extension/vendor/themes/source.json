@@ -1,11 +1,12 @@
 {
   "repository": "https://github.com/bee-san/hachidori-themes",
-  "revision": "f199fcf8c35b2c9178286bc0f9ed6035bae92177",
+  "revision": "3e6271abb43ec7119abc8f8fa8ae78347f8edd2c",
   "paths": {
     "default": "themes/default",
     "nazeka": "themes/nazeka",
     "plain": "themes/plain",
     "jl": "themes/jl",
-    "bee": "themes/bee"
+    "bee": "themes/bee",
+    "crystal": "themes/crystal"
   }
 }

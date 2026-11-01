@@ -76,10 +76,21 @@ explicitly labelled sample group tabs when no configured group matches. Compact 
 frequency names, compact numbers, averages and pitch notation style are
 available in Design. See [details and measurements](bee.md).
 
+## Crystal
+
+Crystal is theme idea 5 in [hachidori-themes#24](https://github.com/bee-san/hachidori-themes/issues/24):
+a navy panel in a fine gold frame with a blue crystal crest. Each result has
+one header (serif headword, gold reading with its pitch, the deinflection trail
+and book/star frequency badges), then a framed section per dictionary with a
+crystal plaque, numbered senses in gold diamonds, tag chips and its own audio,
+Anki and pencil buttons. Group tabs, formatted definitions, custom actions,
+the Note editor and the image preview behave as in Bee's Theme. See
+[details and measurements](crystal.md).
+
 ## Version 2 view contract
 
 `theme-host.js` chooses a bundled renderer before content construction. Default
-adapts `HDPopup.createPopupView`; Nazeka, Plain, JL and Bee export `{schema: 2, slug, contentMode,
+adapts `HDPopup.createPopupView`; Nazeka, Plain, JL, Bee and Crystal export `{schema: 2, slug, contentMode,
 createView(options)}`. Executable modules are maintainer-reviewed release assets;
 no remote theme code is fetched for execution. This is not a JavaScript sandbox.
 Sources and proposals live in [hachidori-themes](https://github.com/bee-san/hachidori-themes).
@@ -162,6 +173,7 @@ are never declared.
 | Plain | None |
 | JL | Background opacity, Clicked-kanji dictionary, Show pitch on the reading, Pitch accent dictionary |
 | Bee's Theme | JL's four, plus Image source, Image hover preview and Custom buttons |
+| Crystal | JL's four, plus Compact glossaries, Show frequency dictionary names, Abbreviate large numbers, Show frequency averages, Show each dictionary's frequencies with the averages, Reading pitch style, Image source, Image hover preview and Custom buttons |
 
 Settings shows the core controls and the selected theme's declared ones, and
 hides a group whose controls are all hidden. Search skips hidden controls.
@@ -183,7 +195,7 @@ against its renderer, in both directions.
 
 ## Content and stylesheet ownership
 
-Default loads `render/reader.css`; Default and Bee load scoped dictionary CSS. Bee
+Default loads `render/reader.css`; Default, Bee and Crystal load scoped dictionary CSS. Bee
 uses its own JL-based stylesheet and builds rich glossary DOM only on expansion.
 Nazeka loads
 its own CSS plus shared icon controls. Plain loads only its own CSS. Both still parse the shared `popup.js`
