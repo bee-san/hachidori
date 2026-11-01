@@ -32,11 +32,14 @@ function escape(window) {
   window.document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
 }
 
-async function answer(harness, results) {
+// The queued lookup, answered; null when none was sent, so a missing request
+// fails its own named check rather than the block.
+async function answer(harness, results, ok = true) {
   const request = harness.take("hd_lookup");
-  harness.reply(request, { dictionaryCount: 1, results });
+  if (request === null) return null;
+  harness.reply(request, ok ? { dictionaryCount: 1, results } : { error: "the engine went away" }, ok);
   await harness.settle();
-  return request?.request;
+  return request.request;
 }
 
 async function dockedCase() {
@@ -60,6 +63,31 @@ async function dockedCase() {
     outcomes["a search looks its text up from the first character and fills the results area, through Escape and a dictionary change while it is out"] =
       searched?.text === anchor.textContent && !popup.hidden && placed() && harness.render().kind === "terms"
         && harness.take("hd_lookup") === null;
+    outcomes["the docked popup's host sits in the results area"] =
+      harness.dockElement.contains(window.document.querySelector("hachidori-host"));
+
+    // A pasted line's opening bracket is no word; the lookup starts after it.
+    const line = window.document.createElement("p");
+    line.textContent = "「食べた」";
+    window.document.body.append(line);
+    const bracketed = driver.search(line.firstChild);
+    const bracketedSearch = await answer(harness, [harness.term("食べた")]);
+    await bracketed;
+    const ellipsis = window.document.createElement("p");
+    ellipsis.textContent = "…";
+    window.document.body.append(ellipsis);
+    const punctuationOnly = driver.search(ellipsis.firstChild);
+    const punctuationSearch = await answer(harness, []);
+    await punctuationOnly;
+    outcomes["a search skips a line's opening brackets and spaces, and looks up punctuation alone as it is"] =
+      bracketedSearch?.text.startsWith("食べた") === true && punctuationSearch?.text === "…";
+    // A scan runs on into following text, so the anchor's lookups below must not see these.
+    line.remove();
+    ellipsis.remove();
+
+    const anchorSearch = driver.search(anchor.firstChild);
+    await answer(harness, [harness.term(anchor.textContent)]);
+    await anchorSearch;
 
     press(window, harness.dockElement);
     escape(window);
@@ -90,6 +118,12 @@ async function dockedCase() {
     outcomes["a search that finds nothing says so in the results area"] = !popup.hidden && placed()
       && harness.render().kind === "notice" && harness.render().value === "No definition found. Add your own with the pencil.";
 
+    const failing = driver.search(anchor.firstChild);
+    await answer(harness, [], false);
+    await failing;
+    outcomes["a search that fails for an unclassified reason says so in the results area"] = !popup.hidden && placed()
+      && harness.render().kind === "failure" && harness.render().value.title === "The lookup failed.";
+
     harness.emitState(harness.state(3));
     const refreshed = await answer(harness, [harness.term(anchor.textContent)]);
     outcomes["a dictionary change looks the docked result up again instead of closing it"] =
@@ -110,6 +144,15 @@ async function dockedCase() {
     await typed;
     outcomes["a search works while lookups are off and looks up text that is not Japanese"] =
       englishSearch?.text === "eat" && !popup.hidden && harness.render().value === "No definition found. Add your own with the pencil.";
+
+    // A Note draft holds an option change's refresh until the form closes.
+    harness.edit(true);
+    harness.emitOptions({ maxResults: 11 });
+    const heldDuringDraft = harness.take("hd_lookup") === null;
+    harness.edit(false);
+    const afterDraft = await answer(harness, []);
+    outcomes["an option change during a Note draft looks the docked result up again once the draft closes"] =
+      heldDuringDraft && afterDraft?.maxResults === 11 && afterDraft.text === "eat" && !popup.hidden;
   } finally {
     harness.close();
   }

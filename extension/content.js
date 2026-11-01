@@ -1485,7 +1485,9 @@
     if (error?.code !== "dictionary-structured-content-limit") {
       console.debug("hachidori: lookup failed", error);
     }
-    const state = lookupFailureState(error, request);
+    // The search page always answers in its results area.
+    const state = lookupFailureState(error, request) ?? (level === rootLevel && dock
+      ? { kind: "lookup", title: "The lookup failed.", detail: "Try the search again." } : null);
     if (state === null) {
       if (!preserveView) hide(level);
       return false;
@@ -1721,6 +1723,8 @@
   }
 
   function hostParent() {
+    // The search page's results area holds its results.
+    if (dock) return dock;
     const fullscreen = document.fullscreenElement;
     if (!fullscreen || fullscreen === document.documentElement || fullscreen === document.body
         || fullscreen.shadowRoot
@@ -3208,9 +3212,12 @@
         level.deferredDictionaryInvalidationRevision = -1;
         // The append has committed. Replay failures must never invite a second
         // append, and a protected descendant must keep its source DOM alive.
-        void executeViewRequest(request, level).catch((error) => {
-          console.debug("hachidori: Note saved but the lookup could not refresh", error);
-        });
+        // A docked result also takes any option changed during the draft.
+        if (!refreshDockedView(level)) {
+          void executeViewRequest(request, level).catch((error) => {
+            console.debug("hachidori: Note saved but the lookup could not refresh", error);
+          });
+        }
         return;
       }
       if (!level.noteEditing && level.deferredDictionaryInvalidationRevision >= 0) {
@@ -3918,10 +3925,15 @@
   }
 
   // Yomitan's search looks its query up from the first character, as a hover
-  // there would, and shows the results in the page. The reader typed the
-  // query, so Japanese text only does not apply, nor does the lookup switch.
+  // there would, and shows the results in the page. A pasted line often opens
+  // with a bracket, an ellipsis or a space, which no word starts with, so the
+  // lookup starts after them. The reader typed the query, so Japanese text
+  // only does not apply, nor does the lookup switch.
+  const LEADING_PUNCTUATION_PATTERN = /^[\p{P}\p{Z}\s]+/u;
   function search(node) {
-    const candidate = disposed || !dock ? null : resolveCandidateAt(node, 0, false);
+    const text = node?.nodeValue ?? "";
+    const skipped = text.match(LEADING_PUNCTUATION_PATTERN)?.[0].length ?? 0;
+    const candidate = disposed || !dock ? null : resolveCandidateAt(node, skipped < text.length ? skipped : 0, false);
     if (!candidate) return Promise.resolve(false);
     dismissPopups();
     return runLookup(candidate);
@@ -4146,7 +4158,13 @@
       }
       level.lookupToken += 1;
       level.retainedView = Boolean(level.currentViewRequest && !level.popup.hidden);
-      if (level.retainedView && !hasProtectedNote() && refreshDockedView(level)) continue;
+      // The docked result looks itself up again now, or once no Note draft
+      // or append holds the popups, whatever changed.
+      if (level === rootLevel && dock && level.retainedView) {
+        if (!hasProtectedNote()) refreshDockedView(level);
+        else level.deferredDictionaryInvalidationRevision = Math.max(0, dictionaryStateRevision);
+        continue;
+      }
       if (dictionaryChanged && level.popup && !level.popup.hidden) {
         if (!hasProtectedNote(level.depth)) {
           hide(level);

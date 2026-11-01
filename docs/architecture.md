@@ -969,20 +969,26 @@ so that Design's default popup fits in it.
 
 **Appearance.** The page follows the popup theme as Settings does:
 `settings-theme.js` applies the saved theme before the first paint and
-`applyPageTheme` follows later changes.
+`applyPageTheme` follows later changes. Under a bundled renderer (Nazeka,
+Plain, JL or Bee) the page keeps Default's palette, as Settings does.
 
 **Results.** The page loads the reader into itself with `reader-page.js`, as
 the startup page does, and the reader docks its root popup over the page's
-results area before its first lookup. A search shows the box's text above the
-results, as Yomitan shows its query, and looks it up from its first character,
-as a hover there would; its other words can then be looked up like any page
-text. The docked popup is the reader's own, with its renderer, tabs, Anki and
-pronunciation controls, Notes and child popups. It fills the results area,
-follows its size and has no resize grip. A search ignores **Japanese text only**
-and the lookup switch, since the reader asked for it; looking up the page's
-text by hover still follows both. A search that finds nothing says **No
-definition found.** in the results area, with the pencil while the personal
-dictionary is on.
+results area before its first lookup, with its host inside that area (the
+page's Results landmark). A search shows the box's text above the results, as
+Yomitan shows its query, and looks it up from its first character, as a hover
+there would, after any brackets, punctuation or spaces it opens with: a pasted
+line such as 「食べたかった」 looks up 食べたかった. Its other words can then be
+looked up like any page text. Mining takes the sentence around the word from
+that text, cut at its terminators as on a page, where Yomitan's search page
+takes the whole query. The docked popup is the reader's own, with its renderer,
+tabs, Anki and pronunciation controls, Notes and child popups. It fills the
+results area, follows its size and has no resize grip. A search ignores
+**Japanese text only** and the lookup switch, since the reader asked for it;
+looking up the page's text by hover still follows both. A search that finds
+nothing says **No definition found.** in the results area, with the pencil
+while the personal dictionary is on, and one that fails says **The lookup
+failed.** with **Try again**.
 
 **Dismissal.** The docked result is the page's content rather than a popup over
 a word, so what would close a popup closes only the child popups opened from
@@ -992,16 +998,16 @@ popup, as everywhere, and then goes on to the page, which focuses and selects
 the box, as Yomitan's search-scope Focus search box hotkey does on Escape. As
 on Yomitan's search page, a character typed while focus is outside a text field
 or control goes into the box, Ctrl+U clears the box, and text pasted outside a
-text field is searched. The popup's own controls and Note form keep their keys
-and pastes: its shadow root is closed, so the page treats focus anywhere in the
-reader's host as the popup's.
+text field is searched. The popup's own controls and Note form keep their keys,
+Ctrl+U included, and pastes: its shadow root is closed, so the page treats
+focus anywhere in the reader's host as the popup's.
 
 **Staying current.** A lookup sent for the docked result finishes even when
 the pointer moves on. A dictionary change or a lookup option change looks the
 docked result up again with the current options, as Yomitan's search page
 searches again when its options change (`Display.searchLast`). It stays the
-same request, so its lookup count does not go up; a Note being written holds
-the refresh until it closes. The worker sends the search page's pronunciation
+same request, so its lookup count does not go up; a Note being written, or
+being saved, holds the refresh until it is done. The worker sends the search page's pronunciation
 progress and takes its mining screenshots as it does the startup page's
 (`readerPageSender`), because `tabs.sendMessage` does not reach extension pages.
 

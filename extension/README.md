@@ -163,8 +163,9 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   write the worker's `wordStatusOverrides` through `hd_word_status_override`;
   `word-status-overrides.js` is that record's shape for every context.
 - **Pages.** `settings-search.js` and `settings-dom.js` serve Settings;
-  `settings-theme.js` is the classic script in its `<head>` that applies the
-  saved theme before the first paint, ahead of the `settings.js` module;
+  `settings-theme.js` is the classic script in the `<head>` of Settings and
+  the search page that applies the saved theme before the first paint, ahead
+  of the page's module;
   `library-settings.js` (Dictionaries → Dictionaries: the rows, their order,
   selection and bulk actions, the revision-checked commit queue and removal),
   `import-settings.js` (Add dictionaries and the recommended installer, with

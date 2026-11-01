@@ -61,6 +61,7 @@ const pageState = target => target.evaluate(() => {
     selected: box.selectionStart === 0 && box.selectionEnd === box.value.length && box.value.length > 0,
     query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
     area: { x: area.x, y: area.y, width: area.width, height: area.height },
+    inResults: document.getElementById("search-results").contains(document.querySelector("hachidori-host")),
   };
 });
 
@@ -183,7 +184,7 @@ describe("search page", () => {
     check("the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
       opened.focused && result !== null && result.text.includes("to eat") && docked.ready && docked.theme === theme
         && JSON.stringify(docked.readerScripts) === JSON.stringify(READER_SCRIPTS)
-        && docked.query === "食べたかった" && !docked.focused && fills(rect, docked.area)
+        && docked.query === "食べたかった" && !docked.focused && fills(rect, docked.area) && docked.inResults
         && popup.visible(afterClick) && afterClick.plain.includes("食べる")
         && popup.visible(afterEscape) && escaped.focused && escaped.selected,
       JSON.stringify({ opened, result: result?.plain.slice(0, 120), docked, rect, afterClick: afterClick?.plain.slice(0, 60),
