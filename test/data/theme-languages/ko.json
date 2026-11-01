@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "code": "ko",
+  "iso639_3": "kor",
+  "name": "Korean",
+  "nativeName": "한국어",
+  "bcp47": "ko",
+  "scripts": [
+    "Kore"
+  ],
+  "direction": "ltr",
+  "classes": {
+    "hangul": "[\\uAC00-\\uD7A3\\u1100-\\u11FF\\u3130-\\u318F\\uA960-\\uA97F\\uD7B0-\\uD7FF]",
+    "hanja": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]"
+  },
+  "text": {
+    "pattern": "[\\uAC00-\\uD7A3\\u1100-\\u11FF\\u3130-\\u318F\\uA960-\\uA97F\\uD7B0-\\uD7FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+    "scanStart": "cursor",
+    "segmentation": "spaces",
+    "wordCharacters": "[\\uAC00-\\uD7A3\\u1100-\\u11FF\\u3130-\\u318F\\uA960-\\uA97F\\uD7B0-\\uD7FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        ".",
+        "!",
+        "?"
+      ],
+      "quotePairs": [
+        [
+          "「",
+          "」"
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "character",
+    "preprocessors": [],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "optional",
+    "ruby": {
+      "alignment": "syllable"
+    },
+    "pitchAccent": false,
+    "characterView": {
+      "name": "Hanja",
+      "pattern": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+      "readingLabels": {
+        "onyomi": "Eum",
+        "kunyomi": "Hun"
+      },
+      "readingSeparator": ", ",
+      "optional": true
+    },
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": "keep-all",
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {},
+    "displayTransforms": {}
+  },
+  "settings": [
+    {
+      "id": "hanjaView",
+      "type": "boolean",
+      "default": false,
+      "label": "Hanja character view",
+      "description": "Look up hanja in a character dictionary.",
+      "group": "display",
+      "effect": {
+        "capability": "characterView"
+      }
+    }
+  ],
+  "host": {
+    "ttsLanguage": "ko-KR",
+    "audioLanguage": "ko",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Kaikki Korean-English",
+        "url": "https://github.com/yomidevs/kaikki-to-yomitan",
+        "description": "Wiktionary.",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "학교",
+      "practice": {
+        "text": "학교에 가요.",
+        "lookup": "학교에"
+      },
+      "entry": {
+        "expression": "학교",
+        "reading": "학교",
+        "glossary": [
+          "school"
+        ],
+        "definitionTags": "noun",
+        "matched": "학교에",
+        "trace": [
+          "-에"
+        ]
+      },
+      "character": {
+        "character": "學",
+        "onyomi": "학",
+        "kunyomi": "배울",
+        "definitions": [
+          "learn"
+        ],
+        "stats": []
+      }
+    }
+  }
+}

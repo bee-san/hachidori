@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "code": "ar",
+  "iso639_3": "ara",
+  "name": "Arabic",
+  "nativeName": "العربية",
+  "bcp47": "ar",
+  "scripts": [
+    "Arab"
+  ],
+  "direction": "rtl",
+  "classes": {
+    "letter": "[\\u0620-\\u065F\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF]",
+    "harakat": "[\\u0618-\\u061A\\u064B-\\u0656\\u0670]"
+  },
+  "text": {
+    "pattern": "[\\u0620-\\u065F\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF\\u0618-\\u061A\\u064B-\\u0656\\u0670\\u0640]",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "[\\u0620-\\u065F\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF\\u0618-\\u061A\\u064B-\\u0656\\u0670\\u0640]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        ".",
+        "!",
+        "؟",
+        "…"
+      ],
+      "quotePairs": [
+        [
+          "«",
+          "»"
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {
+        "id": "removeArabicScriptDiacritics",
+        "name": "Remove diacritics",
+        "variants": [
+          [
+            {
+              "strip": "[\\u0618-\\u061A\\u064B-\\u0656\\u0670]"
+            }
+          ]
+        ]
+      }
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": true
+    },
+    "labels": {},
+    "displayTransforms": {
+      "stripVowelMarks": [
+        {
+          "strip": "[\\u0618-\\u061A\\u064B-\\u0656\\u0670]"
+        }
+      ]
+    }
+  },
+  "settings": [
+    {
+      "id": "vowelMarks",
+      "type": "enum",
+      "default": "show",
+      "values": [
+        {
+          "id": "show",
+          "label": "Show"
+        },
+        {
+          "id": "hide",
+          "label": "Hide"
+        }
+      ],
+      "label": "Vowel marks in headwords",
+      "description": "Arabic dictionaries often write short vowels. Hiding them shows words as they appear in most text.",
+      "group": "display",
+      "effect": {
+        "display": {
+          "fields": [
+            "expression",
+            "reading"
+          ],
+          "when": "hide",
+          "transform": "stripVowelMarks"
+        }
+      }
+    }
+  ],
+  "host": {
+    "ttsLanguage": "ar-SA",
+    "audioLanguage": "ar",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Kaikki Arabic-English",
+        "url": "https://github.com/yomidevs/kaikki-to-yomitan",
+        "description": "Wiktionary.",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "قرأ",
+      "practice": {
+        "text": "قرأتُ الكتابَ في المساء.",
+        "lookup": "الكتابَ"
+      },
+      "entry": {
+        "expression": "كِتَاب",
+        "reading": "كِتَاب",
+        "glossary": [
+          "book",
+          "letter, note"
+        ],
+        "definitionTags": "n",
+        "matched": "الكتابَ",
+        "trace": [
+          "al-"
+        ]
+      },
+      "character": null
+    }
+  }
+}
