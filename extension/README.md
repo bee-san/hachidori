@@ -72,7 +72,11 @@ that interprets a missing mode does. Sampling runs only for these Settings actio
 and a newer choice cancels its result. Explicit ascending/descending choices stay fixed.
 
 - **Dictionaries and stored state.** `reader-options.js` is the one stored
-  options view every context reads. `dictionary-group-state.js` and
+  options view every context reads, and the profile layer of
+  [Languages and profiles](../docs/languages.md) (projections, the one
+  options writer, capability masking); `profile-state.js` converts records
+  between the single-profile shape and records with profiles and builds the
+  Japanese view, for the service worker and the engine. `dictionary-group-state.js` and
   `dictionary-groups.js` hold the group rules and their Settings controls,
   `dictionary-name-drafts.js` the autosaved names, `dictionary-progress.js`
   the import progress. `managed-dictionary-source.js` and
@@ -215,6 +219,9 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
   `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
   from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime.
+  `vendor/languages/` is the language packs of `third_party/hoshidicts` with
+  `registry.js` and `registry-reader.js`, written by
+  `scripts/sync-languages.mjs` after each submodule bump.
   `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
   mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
