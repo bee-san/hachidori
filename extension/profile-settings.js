@@ -73,7 +73,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       <ul class="language-list" id="settings-language-profiles"></ul>
       <div class="language-remove" id="settings-language-remove" hidden>
         <p id="settings-language-remove-text"></p>
-        <label class="check-row"><input id="settings-language-erase" type="checkbox"><span id="settings-language-erase-label"></span></label>
+        <label class="check-row"><input id="settings-language-erase" type="checkbox" aria-describedby="settings-language-erase-help"><span id="settings-language-erase-label"></span></label>
+        <p class="field-hint" id="settings-language-erase-help"></p>
         <div class="language-dialog-buttons">
           <button type="button" class="ghost danger" id="settings-language-remove-confirm"></button>
           <button type="button" class="ghost" id="settings-language-remove-cancel">Cancel</button>
@@ -222,7 +223,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
   }
 
   function openRemoval(profile) {
-    removing = profile;
+    removing = { ...profile, document: null };
     const name = languageName(profile.language);
     dialog.querySelector("#settings-language-remove-text").textContent = `Remove ${name}? Its settings and its`
       + " list of dictionaries are deleted. Its dictionaries stay in your library, and its personal dictionary,"
@@ -232,8 +233,19 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       `Also erase my ${name} personal dictionary, lookup counts and marked words`;
     const confirm = dialog.querySelector("#settings-language-remove-confirm");
     confirm.textContent = `Remove ${name}`;
+    const help = dialog.querySelector("#settings-language-erase-help");
+    help.textContent = "";
     dialog.querySelector("#settings-language-remove").hidden = false;
     confirm.focus();
+    // An erase is refused when the personal dictionary changed after this
+    // read, so it never deletes entries the confirmation did not count
+    // (docs/languages.md 5.2).
+    const opened = removing;
+    void readRecords().then(records => {
+      if (removing !== opened) return;
+      opened.document = personalEntries(records, profile.language);
+      help.textContent = `Its personal dictionary has ${countLabel(opened.document.count, "entry", "entries")}.`;
+    }).catch(error => setStatus(dialogStatus, describeErrorOrJson(error), "error", error));
   }
 
   function closeRemoval() {
@@ -285,6 +297,10 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     const profile = removing;
     if (profile === null) return Promise.resolve();
     const erase = dialog.querySelector("#settings-language-erase").checked;
+    if (erase && profile.document === null) {
+      setStatus(dialogStatus, "Reading the personal dictionary… Try again in a moment.", "working");
+      return Promise.resolve();
+    }
     return run(async () => {
       const name = languageName(profile.language);
       // Settings leaves a language before it removes it, so its drafts are
@@ -299,7 +315,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
         if (refused !== null) throw new Error(refused);
       }
       setStatus(dialogStatus, `Removing ${name}…`, "working");
-      const reply = await send("hd_profile_remove", { profileId: profile.id, ...(erase ? { erase: true } : {}) });
+      const reply = await send("hd_profile_remove", { profileId: profile.id,
+        ...(erase ? { erase: true, baseDocumentRevision: profile.document.revision } : {}) });
       if (!reply.ok) throw replyError(reply, `${name} could not be removed`);
       closeRemoval();
       await afterProfileChange();
@@ -317,7 +334,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       + " words from this browser. Existing backups still hold them.")) return Promise.resolve();
     return run(async () => {
       setStatus(dialogStatus, `Erasing ${name}…`, "working");
-      const reply = await send("hd_profile_remove", { language, erase: true });
+      const reply = await send("hd_profile_remove", { language, erase: true, baseDocumentRevision: entries.revision });
       if (!reply.ok) throw replyError(reply, `${name} could not be erased`);
       await afterProfileChange();
       await refreshHeld();

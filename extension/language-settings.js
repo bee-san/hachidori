@@ -93,6 +93,9 @@ export function renderLanguageSettings({ document, descriptor, name, values, pre
       fieldset.className = "lookup-group";
       fieldset.id = id;
       fieldset.dataset.languageSettings = key;
+      // theme-store.js shows the display group only for themes that render
+      // presentation, as this module does below.
+      fieldset.dataset.packSettingsGroup = group;
       const caption = document.createElement("legend");
       fieldset.append(caption);
       for (const setting of own) {

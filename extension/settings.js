@@ -162,7 +162,7 @@ const themeStore = createThemeStore({ root: document.getElementById("theme-store
 }, onDesign: theme => {
   designTheme = theme;
   void renderPackSettings();
-} });
+}, getLanguage: () => (hasProfiles(storedOptionsRecord) ? editedProfile.language : null) });
 let savedOptions = normaliseOptions({}); // NOSONAR: shared with the other Settings modules
 let optionsRevision = -1; // NOSONAR: shared with the other Settings modules
 const OPTIONS_SAVE_DELAY_MS = 150;
@@ -521,6 +521,8 @@ function discardProfileDrafts() {
 // Shows the edited profile everywhere this page shows one.
 function renderEditedProfile() {
   savedOptions = projectEditedOptions(storedOptionsRecord);
+  // Design's theme filter reads the edited language (docs/languages.md 11.5).
+  themeStore.invalidateDesign();
   reprojectDictionaryState();
   switchCustomDictionaryLanguage();
   renderCurrentOptions();
@@ -531,6 +533,17 @@ function renderEditedProfile() {
 
 function listOf(items) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+// The language of one of the record's profiles, by name.
+function profileLanguageName(profileId) {
+  const language = hasProfiles(storedOptionsRecord) ? profileDescriptor(storedOptionsRecord, profileId)?.language : "ja";
+  return languageName(language ?? profileId);
+}
+
+// Stored records a Settings module reads whole (docs/languages.md 4.3).
+function readStoredRecords(keys) {
+  return chrome.storage.local.get(keys);
 }
 
 // The Language menu chooses the edited profile (section 5.3). Pending option
@@ -557,12 +570,6 @@ async function chooseEditedProfile(id) {
   editedProfile = next;
   renderEditedProfile();
   return null;
-}
-
-// A request refused because the profile it named was removed elsewhere:
-// the storage event that removed it moves the page (section 5.2).
-function profileRemovedReply(reply) {
-  return reply?.errorCode === "profile-missing";
 }
 
 function adoptLanguageSelection(value) {
@@ -1011,8 +1018,10 @@ function updateDesignPreview() {
   }
   if (frame.style.width !== `${options.popupWidthPx * options.popupScalePercent / 100 + 96}px`
       || frame.style.height !== `${options.popupHeightPx * options.popupScalePercent / 100 + 216}px`) resizeDesignPreview();
-  // The preview shows what the edited profile's popups show (docs/languages.md 7.3).
-  frame.contentWindow.HDDesignPreview?.update(maskedOptions(options), dictionaryState);
+  // The preview shows what the edited profile's popups show (docs/languages.md
+  // 7.3, 11.5); the single-profile shape names no profile.
+  frame.contentWindow.HDDesignPreview?.update(maskedOptions(options), dictionaryState,
+    ...(hasProfiles(storedOptionsRecord) ? [editedProfile] : []));
 }
 
 function resizeDesignPreview() {
@@ -1337,14 +1346,15 @@ export {
   activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, backingUp, characterViewName, clampOption,
   customButtonController, DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, definitionBlurFrequencyDictionary,
   DESIGN_OPTION_KEYS, dictionaryGroupController, editedProfile, element, FREQUENCY_ORDERS, frequencyModeOrder,
-  hasCapability, languageName, lastEngineStatus, maskedOptions,
+  hasCapability, languageName, lastEngineStatus, listOf, maskedOptions,
   memorySettings, METADATA_FIELDS, nameDrafts, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat,
   OPTION_SECTIONS, optionAvailable, options, OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS,
-  POPUP_THEME_GROUPS, popupRenderer, profileFields, profileRemovedReply, recommendedInstallation, refreshMemorySettings,
+  POPUP_THEME_GROUPS, popupRenderer, profileFields, profileLanguageName, readStoredRecords,
+  recommendedInstallation, refreshMemorySettings,
   refreshStatus, renderCurrentOptions,
   renderEngineStatus, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
   requirementMet,
-  savedOptions, scheduleStatusPoll, send,
+  savedOptions, scheduleStatusPoll, send, storedOptionsRecord,
   setSectionStatus, setStatus, sharingLinkedAddress, syncNavigationStatus, TARGET, themeStore, UPDATE_TARGET,
   updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings,
   WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET

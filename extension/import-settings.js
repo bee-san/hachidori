@@ -24,10 +24,12 @@ import {
   mdxImportNotes,
 } from "./dictionary-import.js";
 import {
-  element, numberFormat, profileFields, recommendedInstallation, refreshStatus, send, setSectionStatus,
-  sharingLinkedAddress, syncNavigationStatus, WORKER_TARGET,
+  editedProfile, element, languageName, numberFormat, profileFields, recommendedInstallation, refreshStatus, send,
+  setSectionStatus, sharingLinkedAddress, storedOptionsRecord, syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
-import { dictionaries, reloadDictionaries, setControlsDisabled } from "./library-settings.js";
+import {
+  dictionaries, libraryHasProfiles, moveToProfile, reloadDictionaries, setControlsDisabled, storedDictionaryState,
+} from "./library-settings.js";
 
 let importing = false; // NOSONAR: shared with the other Settings modules
 let installingRecommended = false; // NOSONAR: shared with the other Settings modules
@@ -36,6 +38,10 @@ let importAbort = null;
 let renderedInstallRun = null;
 let importProgress;
 let importDragDepth = 0;
+// Titles imported in this page's current batch, for the language hint below.
+let importedTitles = [];
+// Each pack's recommended dictionaries, from its vendored language.json.
+const recommendedLinks = new Map();
 
 function setImportState(message, tone, error = null) {
   setSectionStatus("import-state", message, tone, tone === "ready", error);
@@ -95,11 +101,121 @@ function missingRecommendedDictionaries() {
 }
 
 function renderRecommendedActions() {
-  const missing = missingRecommendedDictionaries();
+  // The catalogue is Japanese and installs into the Japanese profile; other
+  // languages link to their recommended dictionaries (docs/languages.md 14).
+  const japanese = editedProfile.language === "ja";
+  const missing = japanese ? missingRecommendedDictionaries() : [];
   element("recommended-starter").hidden = missing.length === 0;
   element("install-recommended").hidden = missing.length < RECOMMENDED_DICTIONARIES.length;
   element("recommended-retry").hidden =
     missing.length === 0 || missing.length === RECOMMENDED_DICTIONARIES.length;
+  void renderLanguageRecommendations();
+}
+
+async function packRecommendations(code) {
+  if (!recommendedLinks.has(code)) {
+    recommendedLinks.set(code, fetch(new URL(`vendor/languages/${code}/language.json`, document.baseURI))
+      .then(response => (response.ok ? response.json() : null))
+      .then(pack => (Array.isArray(pack?.host?.recommendedDictionaries) ? pack.host.recommendedDictionaries : []))
+      .catch(() => []));
+  }
+  return recommendedLinks.get(code);
+}
+
+// A pack's recommended dictionaries are links to their download pages; the
+// user imports the file (decision record 0006).
+async function renderLanguageRecommendations() {
+  const code = editedProfile.language;
+  const links = code === "ja" ? [] : (await packRecommendations(code))
+    .filter(entry => typeof entry?.name === "string" && /^https:\/\//u.test(entry?.url ?? ""));
+  if (editedProfile.language !== code) return;
+  let block = element("recommended-language");
+  if (links.length === 0) {
+    block?.remove();
+    return;
+  }
+  if (block === null) {
+    block = document.createElement("div");
+    block.className = "recommendations";
+    block.id = "recommended-language";
+    block.setAttribute("aria-labelledby", "recommended-language-heading");
+    const head = document.createElement("div");
+    head.className = "recommendations-head";
+    const heading = document.createElement("h2");
+    heading.id = "recommended-language-heading";
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = "Open a dictionary's page, download its Yomitan ZIP file and import it above.";
+    head.append(heading, hint);
+    const list = document.createElement("ul");
+    list.className = "recommended-dictionary-list";
+    list.id = "recommended-language-list";
+    block.append(head, list);
+    element("recommended-starter").after(block);
+  }
+  element("recommended-language-heading").textContent = `Recommended ${languageName(code)} dictionaries`;
+  element("recommended-language-list").replaceChildren(...links.map(entry => {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.className = "recommended-dictionary-link";
+    link.href = entry.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = entry.name;
+    const description = document.createElement("span");
+    description.textContent = [entry.description, entry.licence].filter(value => typeof value === "string" && value)
+      .join(" · ");
+    item.append(link, description);
+    return item;
+  }));
+}
+
+// An import whose archive names another profile's language says so and offers
+// Move to {Language} (docs/languages.md 14).
+function renderLanguageMoves() {
+  let block = element("import-language-moves");
+  const profiles = globalThis.HDReaderOptions.profiles(storedOptionsRecord);
+  const offers = libraryHasProfiles() ? importedTitles.flatMap(title => {
+    const row = storedDictionaryState.dictionaries.find(entry => entry.title === title);
+    const language = typeof row?.language === "string" ? row.language.toLowerCase().split("-")[0] : "";
+    const target = profiles.find(profile => profile.language === language && profile.id !== editedProfile.id);
+    const here = dictionaries.some(entry => entry.id === row?.id);
+    return target && here ? [{ row, target }] : [];
+  }) : [];
+  if (offers.length === 0) {
+    block?.remove();
+    return;
+  }
+  if (block === null) {
+    block = document.createElement("ul");
+    block.className = "import-language-moves";
+    block.id = "import-language-moves";
+    element("import-progress").after(block);
+  }
+  block.replaceChildren(...offers.map(({ row, target }) => {
+    const item = document.createElement("li");
+    const name = languageName(target.language);
+    const text = document.createElement("span");
+    text.textContent = `${row.displayName || row.title} is a ${name} dictionary. It was added to ${languageName()}.`;
+    const move = document.createElement("button");
+    move.type = "button";
+    move.className = "ghost";
+    move.textContent = `Move to ${name}`;
+    move.addEventListener("click", () => {
+      move.disabled = true;
+      void moveToProfile(row.id, target.id).then(error => {
+        if (error === null) {
+          text.textContent = `Moved ${row.displayName || row.title} to ${name}.`;
+          move.remove();
+        } else {
+          text.textContent = `Could not move ${row.displayName || row.title}: ${error}`;
+          move.disabled = false;
+        }
+      });
+    });
+    item.append(text, move);
+    return item;
+  }));
 }
 
 function elapsedSince(started) {
@@ -324,6 +440,7 @@ async function importArchive(runImport, index, total, label) {
 
   if (outcome.ok) {
     const { report } = outcome.reply;
+    importedTitles.push(report.title);
     // What an MDX import left out. Notes never turn a success into a
     // failure: the dictionary is installed and counts as imported.
     const notes = mdxImportNotes(report, numberFormat);
@@ -407,6 +524,8 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
   setControlsDisabled(true);
   element("import-cancel").hidden = false;
   clearImportResults();
+  importedTitles = [];
+  renderLanguageMoves();
   setImportEntries(items.map((item, index) => ({
     id: String(index),
     ...describeItem(item),
@@ -443,6 +562,7 @@ async function runImportBatch(items, importOne, singular, plural, describeItem) 
       aborted: signal.aborted, singular, plural });
     setImportState(text, tone);
     await reloadDictionaries();
+    renderLanguageMoves();
     await refreshStatus();
   } finally {
     importing = false;

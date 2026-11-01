@@ -8,14 +8,16 @@ import { describeErrorOrJson } from "./error-text.js";
 import { renameWithBaseline } from "./dictionary-name-drafts.js";
 import { normaliseDictionaryGroups } from "./dictionary-groups.js";
 import {
+  CUSTOM_DICTIONARY_SOURCE_KEY,
+  customDictionaryDocumentFor,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
   personalDictionaryIdentity,
   personalDictionaryLanguage,
 } from "./custom-dictionary.js";
 import {
-  backingUp, characterViewName, dictionaryGroupController, editedProfile, element, languageName, memorySettings,
-  nameDrafts, numberFormat, profileFields,
+  backingUp, characterViewName, dictionaryGroupController, editedProfile, element, languageName, listOf, memorySettings,
+  nameDrafts, numberFormat, profileFields, profileLanguageName, readStoredRecords, storedOptionsRecord,
   refreshMemorySettings, refreshStatus, renderEngineStatus, scheduleStatusPoll, send, setSectionStatus,
   setStatus, sharingLinkedAddress, TARGET, WORKER_TARGET,
 } from "./settings.js";
@@ -30,7 +32,8 @@ import {
 } from "./custom-dictionary-settings.js";
 import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
-const { hasDictionaryProfiles, projectDictionaryState } = globalThis.HDReaderOptions;
+const { allPackages, hasDictionaryProfiles, hasProfiles: optionsHaveProfiles, profiles: optionProfiles,
+  projectDictionaryState } = globalThis.HDReaderOptions;
 
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] }; // NOSONAR: shared with the other Settings modules
 // The state as stored: with profiles, the whole schema-2 record, of which
@@ -198,6 +201,22 @@ function isManagedCustomDictionary(dictionary) {
   return personalDictionaryLanguage(dictionary) !== null;
 }
 
+// With profiles, a package belongs to the profiles whose lists hold it
+// (docs/languages.md 4.2, 14).
+function libraryHasProfiles() {
+  return hasDictionaryProfiles(storedDictionaryState);
+}
+
+function profilesUsing(id) {
+  if (!libraryHasProfiles()) return [];
+  return Object.entries(storedDictionaryState.profiles)
+    .filter(([, profile]) => profile?.dictionaries?.some(entry => entry?.id === id)).map(([profileId]) => profileId);
+}
+
+function usedByText(ids) {
+  return ids.length === 0 ? "Not used by any language" : `Used by ${listOf(ids.map(profileLanguageName))}`;
+}
+
 function setControlsDisabled(disabled) {
   const blocked = disabled || installingRecommended || removing || updating || customSaving || backingUp;
   const importBlocked = blocked || committing;
@@ -228,6 +247,7 @@ function setControlsDisabled(disabled) {
     control.disabled = blocked || selectedDictionaryIds.size === 0;
   }
   element("dict-bulk-remove").disabled = blocked || !selectedRemovableDictionaries().length;
+  for (const control of document.querySelectorAll("#dict-other-language-list button")) control.disabled = blocked || committing;
   renderLibraryReset(blocked || committing);
   renderUpdateControls();
   renderCustomDictionaryControls();
@@ -239,8 +259,16 @@ function renderLibraryReset(blocked) {
   const resetBlocked = blocked || sharingLinkedAddress !== null;
   const erasePersonal = element("library-reset-personal");
   erasePersonal.disabled = resetBlocked;
+  const packages = libraryHasProfiles() ? allPackages(storedDictionaryState) : dictionaries;
   element("library-remove-all").disabled = resetBlocked
-    || (!erasePersonal.checked && !dictionaries.some(entry => !isManagedCustomDictionary(entry)));
+    || (!erasePersonal.checked && !packages.some(entry => !isManagedCustomDictionary(entry)));
+  // With two or more languages the choice says every language (docs/languages.md 14).
+  const label = erasePersonal.nextElementSibling;
+  const languages = new Set([...optionProfiles(storedOptionsRecord).map(profile => profile.language),
+    ...packages.map(personalDictionaryLanguage).filter(language => language !== null)]);
+  const text = optionsHaveProfiles(storedOptionsRecord) && languages.size > 1
+    ? "Also erase every language's personal dictionary source" : "Also erase the personal dictionary source";
+  if (label.textContent !== text) label.textContent = text;
 }
 
 function addCountBadge(container, label, count, capability = label.toLowerCase()) {
@@ -593,8 +621,12 @@ function renderDictionaryRow(template, entry, index) {
   bindDictionaryOrder(row, entry, index);
 
   const remove = row.querySelector(".dict-remove");
-  remove.setAttribute("aria-label", `Remove ${entry.title}`);
-  remove.title = `Remove ${entry.title}`;
+  // With profiles a package can leave this language or be deleted from
+  // Hachidori (docs/languages.md 14).
+  const verb = libraryHasProfiles() ? "Delete" : "Remove";
+  if (verb !== "Remove") remove.textContent = verb;
+  remove.setAttribute("aria-label", `${verb} ${entry.title}`);
+  remove.title = `${verb} ${entry.title}`;
   if (isManagedCustomDictionary(entry)) {
     remove.dataset.pinnedDisabled = "true";
     remove.disabled = true;
@@ -603,8 +635,107 @@ function renderDictionaryRow(template, entry, index) {
     remove.addEventListener("click", () => {
       void removeDictionary(entry.id, entry.title);
     });
+    if (libraryHasProfiles()) {
+      const leave = document.createElement("button");
+      leave.type = "button";
+      leave.className = "ghost dict-leave";
+      leave.textContent = `Remove from ${languageName()}`;
+      leave.setAttribute("aria-label", `Remove ${entry.title} from ${languageName()}`);
+      leave.addEventListener("click", () => removeFromEditedProfile(entry.id));
+      remove.before(leave);
+    }
   }
   return row;
+}
+
+// Remove from {Language}: the package leaves this profile and stays in the
+// library for the others.
+function removeFromEditedProfile(id) {
+  void commitDictionaries(current => (current.some(entry => entry.id === id)
+    ? current.filter(entry => entry.id !== id) : null), true);
+}
+
+// Use in {Language}: a package of another language joins this profile,
+// enabled and last.
+function useInEditedProfile(id) {
+  const row = storedDictionaryState?.dictionaries?.find(entry => entry.id === id);
+  if (!row) return;
+  void commitDictionaries(current => (current.some(entry => entry.id === id) ? null
+    : [...current, normaliseDictionary({ ...row, enabled: true })]), true);
+}
+
+// Move to {Language} after an import (docs/languages.md 14): the package joins
+// the other profile, enabled and last, then leaves this one, so it is never in
+// no profile. Resolves with an error message, or null.
+async function moveToProfile(id, profileId) {
+  await settleDictionaryCommits();
+  const row = storedDictionaryState?.dictionaries?.find(entry => entry.id === id);
+  const target = projectDictionaryState(storedDictionaryState, profileId);
+  if (!row || target === null) return "The dictionary or the language was removed.";
+  if (!target.dictionaries.some(entry => entry.id === id)) {
+    const reply = await send("hd_apply_state", { baseRevision: storedDictionaryState.revision,
+      dictionaries: [...target.dictionaries, { ...row, enabled: true }], profileId });
+    if (reply.state) adoptDictionaryState(reply.state);
+    if (!reply.ok) return reply.error || "the dictionary could not be moved";
+  }
+  await commitDictionaries(current => (current.some(entry => entry.id === id)
+    ? current.filter(entry => entry.id !== id) : null), true);
+  return null;
+}
+
+// Dictionaries in your other languages (docs/languages.md 14): installed
+// packages this profile does not use, never a personal package.
+function renderOtherLanguageDictionaries() {
+  let container = element("dict-other-languages");
+  const used = new Set(dictionaries.map(entry => entry.id));
+  const others = libraryHasProfiles()
+    ? storedDictionaryState.dictionaries.filter(row => !used.has(row.id) && !isManagedCustomDictionary(row)) : [];
+  if (others.length === 0) {
+    container?.remove();
+    return;
+  }
+  if (container === null) {
+    container = document.createElement("div");
+    container.className = "dict-other-languages";
+    container.id = "dict-other-languages";
+    container.setAttribute("role", "group");
+    container.setAttribute("aria-labelledby", "dict-other-languages-heading");
+    const heading = document.createElement("h2");
+    heading.id = "dict-other-languages-heading";
+    heading.textContent = "Dictionaries in your other languages";
+    const hint = document.createElement("p");
+    hint.className = "field-hint";
+    hint.id = "dict-other-languages-hint";
+    const list = document.createElement("ul");
+    list.className = "dict-other-language-list";
+    list.id = "dict-other-language-list";
+    container.append(heading, hint, list);
+    element("dict-reorder-help").after(container);
+  }
+  const name = languageName();
+  element("dict-other-languages-hint").textContent = `Installed dictionaries ${name} does not use. A dictionary used`
+    + ` here too stays one dictionary, with its own place and switch in each language.`;
+  element("dict-other-language-list").replaceChildren(...others.map(row => {
+    const entry = normaliseDictionary(row);
+    const item = document.createElement("li");
+    item.className = "dict-other-language";
+    item.dataset.dictionaryId = entry.id;
+    const label = document.createElement("span");
+    label.className = "dict-other-language-title";
+    label.textContent = dictionaryLabel(entry);
+    const usedBy = document.createElement("span");
+    usedBy.className = "field-hint";
+    usedBy.textContent = usedByText(profilesUsing(entry.id));
+    const use = document.createElement("button");
+    use.type = "button";
+    use.className = "ghost dict-use";
+    use.textContent = `Use in ${name}`;
+    use.setAttribute("aria-label", `Use ${entry.title} in ${name}`);
+    use.disabled = committing || removing || importing;
+    use.addEventListener("click", () => useInEditedProfile(entry.id));
+    item.append(label, usedBy, use);
+    return item;
+  }));
 }
 
 function dictionaryRowsMatch(list, visible) {
@@ -685,15 +816,23 @@ function renderDictionaries(reuseRows = false) {
   const empty = element("dict-empty");
   const isEmpty = dictionaries.length === 0;
   element("dict-empty-heading").textContent = isEmpty ? `Your ${languageName()} library starts here` : "No dictionaries found";
-  element("dict-empty-description").textContent = isEmpty
-    ? "Install the recommended set, or bring your own Yomitan ZIP files."
-    : "Try a different title or display name.";
+  // The recommended set is Japanese; other languages link to theirs in Add
+  // dictionaries (docs/languages.md 14).
+  const japanese = editedProfile.language === "ja";
+  let emptyDescription = "Try a different title or display name.";
+  if (isEmpty) {
+    emptyDescription = japanese ? "Install the recommended set, or bring your own Yomitan ZIP files."
+      : "Download a recommended dictionary from Add dictionaries, or bring your own Yomitan ZIP files.";
+  }
+  element("dict-empty-description").textContent = emptyDescription;
+  if (element("empty-install-recommended").hidden === japanese) element("empty-install-recommended").hidden = !japanese;
   element("dict-empty-actions").hidden = !isEmpty;
   element("empty-clear-search").hidden = isEmpty;
   element("dict-reorder-help").hidden = isEmpty;
   empty.hidden = visible.length > 0;
   if (!element("engine-status").classList.contains("is-error")) renderEngineStatus();
   renderDictionarySelection(visible);
+  renderOtherLanguageDictionaries();
   setControlsDisabled(importing);
   memorySettings().renderRows();
 }
@@ -963,7 +1102,13 @@ function bindNameDraft(input, collection, id, field, value, normalise, validate)
 }
 
 async function removeDictionary(id, title) {
-  if (!window.confirm(`Remove ${title}? Its imported data is deleted and has to be imported again.`)) {
+  // Delete names every language that uses the dictionary (docs/languages.md 14).
+  const users = profilesUsing(id);
+  const question = libraryHasProfiles()
+    ? `Delete ${title} from Hachidori? ${users.length > 0 ? `${usedByText(users)}. ` : ""}`
+      + "Its imported data is deleted and has to be imported again."
+    : `Remove ${title}? Its imported data is deleted and has to be imported again.`;
+  if (!window.confirm(question)) {
     return;
   }
   await removeDictionaries([{ id, title }]);
@@ -976,7 +1121,16 @@ function selectedRemovableDictionaries() {
 
 async function removeSelectedDictionaries() {
   const selected = selectedRemovableDictionaries();
-  if (!selected.length || !window.confirm(`Remove ${selected.length} selected dictionaries? Their imported data is deleted and has to be imported again. The personal dictionary is kept.`)) {
+  let question = `Remove ${selected.length} selected dictionaries? Their imported data is deleted and has to be imported again. The personal dictionary is kept.`;
+  if (libraryHasProfiles()) {
+    // Remove deletes them from Hachidori, naming the other languages that use them.
+    const others = [...new Set(selected.flatMap(entry => profilesUsing(entry.id)))]
+      .filter(id => id !== editedProfile.id);
+    question = `Delete ${selected.length} selected dictionaries from Hachidori?`
+      + (others.length > 0 ? ` ${listOf(others.map(profileLanguageName))} also use some of them.` : "")
+      + " Their imported data is deleted and has to be imported again. The personal dictionary is kept.";
+  }
+  if (!selected.length || !window.confirm(question)) {
     return;
   }
   await removeDictionaries(selected);
@@ -1077,11 +1231,104 @@ function removedSummary(entries, failures) {
   return `Removed ${removed} of ${total}. Could not remove ${failures.join("; ")}.`;
 }
 
+// The personal sources with entries, of every language the record holds
+// (docs/languages.md 14): each with the revision this read and its entry count.
+async function personalSources() {
+  const record = (await readStoredRecords([CUSTOM_DICTIONARY_SOURCE_KEY]))[CUSTOM_DICTIONARY_SOURCE_KEY];
+  const languages = ["ja", ...Object.keys(record?.languages ?? {}).filter(code => code !== "ja")];
+  const profiles = optionProfiles(storedOptionsRecord);
+  return languages.flatMap(language => {
+    const document_ = customDictionaryDocumentFor(record, language);
+    if (document_.text === "") return [];
+    const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
+    return [{ language, revision: document_.revision,
+      count: parseCustomDictionary(document_.text, { readingRequired }).entries.length,
+      profileId: profiles.find(profile => profile.language === language)?.id ?? null }];
+  });
+}
+
+function allLanguagesConfirmation(count, sources) {
+  const packages = countLabel(count, "imported dictionary", "imported dictionaries");
+  const entries = source => countLabel(source.count, "entry", "entries");
+  let erase = "";
+  if (sources.length === 1) {
+    erase = `the ${languageName(sources[0].language)} personal dictionary source and its ${entries(sources[0])}`;
+  } else if (sources.length > 1) {
+    erase = `every language's personal dictionary source: ${listOf(sources.map(source =>
+      `${languageName(source.language)} (${entries(source)})`))}`;
+  }
+  const parts = count === 0 ? [`Erase ${erase}?`] : [
+    erase === "" ? `Remove ${packages}?` : `Remove ${packages} and erase ${erase}?`,
+    "That is every imported dictionary of every language, including disabled ones and any the search hides.",
+  ];
+  if (sources.length === 0) parts.push("The personal dictionaries are kept.");
+  parts.push("This deletes them from this browser. Anki notes are not changed, and existing backups still hold them.");
+  return parts.join(" ");
+}
+
+// One language's source emptied by its own save, or, for a language held
+// without a profile, by erasing the language (docs/languages.md 14).
+async function eraseLanguageSource(source) {
+  const name = languageName(source.language);
+  try {
+    const reply = source.profileId === null
+      ? await send("hd_profile_remove", { language: source.language, erase: true, baseDocumentRevision: source.revision })
+      : await send("hd_custom_save", { baseDocumentRevision: source.revision, text: "", profileId: source.profileId });
+    if (source.language === editedProfile.language && reply.document !== undefined) adoptCustomDictionaryDocument(reply.document);
+    adoptCustomDictionaryState(reply.state);
+    if (reply.ok) return { erased: true, name };
+    if (reply.stale === true) return { erased: false, name, message: `The ${name} personal dictionary changed after you confirmed, so it was kept.` };
+    throw new Error(reply.error || "unknown error");
+  } catch (error) {
+    return { erased: false, name, message: `Could not erase the ${name} personal dictionary source: ${describeErrorOrJson(error)}.` };
+  }
+}
+
+// Remove all with profiles: every package of every profile, and with the
+// personal choice every language's source (docs/languages.md 14).
+async function removeEveryLanguage(erasePersonal) {
+  flushDictionaryOrder();
+  await dictionaryCommitTail;
+  if (!await reloadDictionaries()) return;
+  const entries = allPackages(storedDictionaryState).filter(row => !isManagedCustomDictionary(row)).map(normaliseDictionary);
+  const sources = erasePersonal ? await personalSources() : [];
+  if (entries.length === 0 && sources.length === 0) {
+    setLibraryResetStatus("There is nothing to remove.", "ready");
+    return;
+  }
+  if (!window.confirm(allLanguagesConfirmation(entries.length, sources))) return;
+  if (sharingLinkedAddress !== null) throw new Error("this browser is now linked to another Hachidori");
+  setLibraryResetStatus("Removing dictionaries…", "working");
+  const failures = await removePackages(entries);
+  const outcomes = [];
+  for (const source of sources) outcomes.push(await eraseLanguageSource(source)); // NOSONAR: one language at a time
+  const messages = entries.length > 0 ? [removedSummary(entries, failures)] : [];
+  const erased = outcomes.filter(outcome => outcome.erased).map(outcome => outcome.name);
+  if (erased.length > 0) messages.push(`Erased the personal dictionary source of ${listOf(erased)}.`);
+  messages.push(...outcomes.filter(outcome => !outcome.erased).map(outcome => outcome.message));
+  const succeeded = failures.length === 0 && outcomes.every(outcome => outcome.erased);
+  setLibraryResetStatus(messages.join(" "), succeeded ? "ready" : "error", succeeded);
+  if (outcomes.length > 0) await reloadDictionaries();
+}
+
 // Settings → Dictionaries → Remove all imported dictionaries. The confirmation names
 // the packages left once pending edits settle; each is removed in turn, so a
 // failure is reported by title rather than undoing the others.
 async function removeAllDictionaries() {
   const erasePersonal = element("library-reset-personal").checked;
+  if (libraryHasProfiles()) {
+    removing = true;
+    setControlsDisabled(true);
+    try {
+      await removeEveryLanguage(erasePersonal);
+    } catch (error) {
+      setLibraryResetStatus(`Could not remove the dictionaries: ${describeErrorOrJson(error)}`, "error", false, error);
+    } finally {
+      removing = false;
+      setControlsDisabled(importing);
+    }
+    return;
+  }
   removing = true;
   setControlsDisabled(true);
   try {
@@ -1233,7 +1480,8 @@ function setPendingManagementFocus(value) {
 export {
   adoptDictionaryState, attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitDictionaries,
   commitGroups, committing, dictionaries, dictionaryLabel, dictionaryState, handleDictionaryStateChange,
-  moveListItem, pendingDictionaryCommits, reloadDictionaries, removing, renderChangedDictionaryState,
-  renderDeferredAfterBlur, reprojectDictionaryState, setControlsDisabled, setPendingManagementFocus,
-  settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary, updateItemById
+  libraryHasProfiles, moveListItem, moveToProfile, pendingDictionaryCommits, reloadDictionaries, removing,
+  renderChangedDictionaryState, renderDeferredAfterBlur, reprojectDictionaryState, setControlsDisabled,
+  setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary,
+  updateItemById
 };
