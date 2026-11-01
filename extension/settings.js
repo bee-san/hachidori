@@ -762,6 +762,9 @@ function updateAnkiSettings() {
   ankiController ??= createAnkiTemplateSettingsController({ document, readAnki: () => options.anki,
     capabilities: MINING_CAPABILITIES,
     readExperimental: () => options.experimental,
+    // The edited profile's language decides which markers, note-type
+    // families and field-name suggestions Anki offers (docs/languages.md 12).
+    readProfile: () => editedProfile,
     readButtons: () => options.customButtons,
     editAnki: anki => {
       options.anki = anki;

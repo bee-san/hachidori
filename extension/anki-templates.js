@@ -79,6 +79,17 @@ const DYNAMIC_MARKER_OPTIONS = [
   ["single-frequency-number-DICTIONARY", "Numeric value from one frequency dictionary"],
 ];
 export const ANKI_TEMPLATE_MARKERS = Object.freeze([...CORE_MARKERS, ...MARKER_ALIASES.keys()]);
+// What a marker needs of the edited profile's language (docs/languages.md 7.1,
+// 12). Settings offers it only where the language has it; a saved template
+// keeps it, and it produces what it produces today.
+export const ANKI_MARKER_REQUIREMENTS = Object.freeze({
+  reading: "readings",
+  furigana: "ruby", "furigana-plain": "ruby", "sentence-furigana": "ruby", "sentence-furigana-plain": "ruby",
+  ...Object.fromEntries(["pitch", "pitch-accent", "pitch-accents", "pitch-position", "pitch-accent-positions",
+    "pitch-categories", "pitch-accent-categories", "pitch-accent-graphs", "pitch-accent-graphs-jj"]
+    .map(marker => [marker, "pitchAccent"])),
+  ...Object.fromEntries(["character", "onyomi", "kunyomi", "stroke-count"].map(marker => [marker, "characterView"])),
+});
 // Markers of an experimental feature, by the flag that lists them in Settings.
 // They stay valid with the flag off, so a saved template still renders.
 const EXPERIMENTAL_MARKERS = new Map([["sentence-audio", "netflixMining"], ["gif", "netflixMining"]]);
@@ -292,12 +303,24 @@ export function resolveAnkiTemplates(config, fields) {
   return { templates, staleFields, errors };
 }
 
-export function applyAnkiPreset(config, fields, preset) {
+// `fieldAliases` are the edited profile's pack's `host.anki.fieldAliases`
+// (docs/languages.md 12): more field names, by the marker they suggest, for
+// Automatic suggestions beside the generic ones. A key that names no marker
+// suggests nothing.
+export function applyAnkiPreset(config, fields, preset, fieldAliases = {}) {
   const table = PRESETS[preset] ?? KIKU;
   const suggestions = new Map();
   if (preset === "automatic") {
     for (const [semantic, aliases] of Object.entries(genericAliases)) {
       for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semanticMarker(semantic)}}` });
+    }
+    for (const [marker, aliases] of Object.entries(fieldAliases)) {
+      if (!MARKERS.has(marker) || !Array.isArray(aliases)) continue;
+      for (const alias of aliases) {
+        if (typeof alias === "string" && !suggestions.has(fieldKey(alias))) {
+          suggestions.set(fieldKey(alias), { slot: marker, value: `{${marker}}` });
+        }
+      }
     }
   }
   for (const [field, value] of Object.entries(table)) {
