@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { after } from "node:test";
@@ -543,9 +543,10 @@ function startUpdateServer() {
     "-keyout", resolve(directory, "key.pem"), "-out", resolve(directory, "cert.pem"),
     "-subj", `/CN=${UPDATE_HOST}`, "-addext", `subjectAltName=DNS:${UPDATE_HOST}`], { encoding: "utf8" });
   if (made.status !== 0) fatal(`openssl could not make a test certificate:\n${made.stderr}`);
+  const tls = { key: readFileSync(resolve(directory, "key.pem")), cert: readFileSync(resolve(directory, "cert.pem")) };
+  rmSync(directory, { recursive: true, force: true });
   return new Promise(resolveServer => {
-    const created = createHttpsServer({ key: readFileSync(resolve(directory, "key.pem")),
-      cert: readFileSync(resolve(directory, "cert.pem")) }, (request, response) => {
+    const created = createHttpsServer(tls, (request, response) => {
       const route = updateRoutes.get(new URL(request.url, "https://localhost").pathname);
       if (!route) {
         response.writeHead(404);
