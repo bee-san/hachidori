@@ -79,13 +79,16 @@ available in Design. See [details and measurements](bee.md).
 ## Crystal
 
 Crystal is theme idea 5 in [hachidori-themes#24](https://github.com/bee-san/hachidori-themes/issues/24):
-a navy panel in a fine gold frame with a blue crystal crest. Each result has
-one header (serif headword, gold reading with its pitch, the deinflection trail
-and book/star frequency badges), then a framed section per dictionary with a
-crystal plaque, numbered senses in gold diamonds, tag chips and its own audio,
-Anki and pencil buttons. Group tabs, formatted definitions, custom actions,
-the Note editor and the image preview behave as in Bee's Theme. See
-[details and measurements](crystal.md).
+a fine gold frame with a blue crystal crest. Design → Colours chooses Grey or
+Beige, after FFXIV's Dark and Light windows with red and gold buttons, or Retro
+blue, the classic Final Fantasy menu window; Automatic is Beige in the system's
+light mode and Grey in its dark mode (see [colour variants](#colour-variants)).
+Each result has one header (serif headword, the reading with its pitch, the
+deinflection trail and book/star frequency badges), then a framed section per
+dictionary with a crystal plaque, numbered senses in diamonds, tag chips and
+its own audio, Anki and pencil buttons. Group tabs, formatted definitions,
+custom actions, the Note editor and the image preview behave as in Bee's Theme.
+See [details and measurements](crystal.md).
 
 ## Version 2 view contract
 

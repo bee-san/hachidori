@@ -49,11 +49,12 @@
     {
       "slug": "crystal",
       "name": "Crystal",
-      "description": "A navy panel in a fine gold frame with a blue crystal crest. One header per word, then a framed section per dictionary with numbered senses and its own audio, Anki and Note buttons.",
+      "description": "A gold frame with a blue crystal crest on FFXIV-style grey or beige, with red and gold buttons, or a retro Final Fantasy blue window. One header per word, then a framed section per dictionary with numbered senses and its own audio, Anki and Note buttons.",
       "contentMode": "rich",
       "benchmark": "Render 1.60 ms",
       "benchmarkUrl": "https://github.com/bee-san/hachidori/blob/main/docs/themes/crystal.md",
-      "designSettings": ["popupOpacityPercent", "glossaryLayoutMode", "kanjiClickDictionary", "showFrequencyDictionaryNames", "compactFrequencyNumbers", "averageFrequency", "showFrequencyTagsWithAverage", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "popupImageSource", "imageHoverPreview", "customButtons"]
+      "designSettings": ["popupOpacityPercent", "glossaryLayoutMode", "kanjiClickDictionary", "showFrequencyDictionaryNames", "compactFrequencyNumbers", "averageFrequency", "showFrequencyTagsWithAverage", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "popupImageSource", "imageHoverPreview", "customButtons"],
+      "variants": [{ "id": "grey", "name": "Grey" }, { "id": "beige", "name": "Beige" }, { "id": "blue", "name": "Retro blue" }]
     }
   ]
 }

@@ -648,6 +648,24 @@ test("each theme implements exactly the Design settings its catalogue entry decl
   }
 });
 
+test("each theme's colour variants are stored option values that its stylesheet styles", () => {
+  const dom = environment();
+  try {
+    const { POPUP_THEME_VARIANTS } = dom.window.HDReaderOptions;
+    const { themes } = JSON.parse(readFileSync(resolve(extension, "vendor/themes/index.json"), "utf8"));
+    const varied = themes.filter(entry => Object.hasOwn(entry, "variants"));
+    assert.ok(varied.length > 0, "a bundled theme lists colour variants");
+    for (const entry of varied) {
+      const ids = entry.variants.map(variant => variant.id);
+      assert.ok(entry.variants.every(variant => typeof variant.name === "string" && variant.name !== ""), `${entry.slug} names its variants`);
+      assert.equal(new Set(ids).size, ids.length, `${entry.slug} lists each variant once`);
+      assert.ok(ids.every(id => id !== "auto" && POPUP_THEME_VARIANTS.includes(id)), `${entry.slug} lists stored variant ids after Automatic`);
+      const css = readFileSync(resolve(extension, `vendor/themes/${entry.slug}/theme.css`), "utf8");
+      for (const id of ids) assert.ok(css.includes(`[data-hoshidicts-theme-variant="${id}"]`), `${entry.slug} styles ${id}`);
+    }
+  } finally { dom.window.close(); }
+});
+
 test("Bee reuses per-result metadata and repaints only changed frequency inputs", t => {
   const f = beeFixture(t);
   let frequencyCalls = 0, pitchCalls = 0;
