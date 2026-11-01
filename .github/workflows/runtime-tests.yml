@@ -200,7 +200,7 @@ jobs:
         run: |
           unpacked="$RUNNER_TEMP/hachidori-firefox"
           python3 -m zipfile -e "$RUNNER_TEMP"/hachidori-release/*-firefox.zip "$unpacked"
-          node test/tooling/node_modules/web-ext/bin/web-ext.js lint --source-dir "$unpacked" --no-config-discovery
+          HACHIDORI_FIREFOX_EXTENSION="$unpacked" node test/run.mjs firefox-lint
 
   firefox:
     name: firefox-e2e (Firefox ${{ matrix.firefox }})

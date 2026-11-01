@@ -76,7 +76,7 @@ test("CI checks the supported Chrome and Firefox edges and packages every releas
   assert.match(runtime, /python3 scripts\/package-store\.py/u);
   assert.match(runtime, /sha256sum -c/u);
   // The release's own Firefox ZIP passes addons.mozilla.org's linter.
-  assert.match(runtime, /\*-firefox\.zip[\s\S]*web-ext\.js lint/u);
+  assert.match(runtime, /\*-firefox\.zip[\s\S]*HACHIDORI_FIREFOX_EXTENSION="\$unpacked" node test\/run\.mjs firefox-lint/u);
 });
 
 test("bare-tag and manual release runs verify and publish the checksummed package pair", () => {

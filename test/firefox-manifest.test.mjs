@@ -50,6 +50,16 @@ test("Firefox runs background.js in an event page and leaves out what Firefox do
   assert.deepEqual(shared(firefox), shared(chrome));
 });
 
+// Firefox's content-script window is the page's window, where another content
+// script's globalThis.HD* namespace and the extension's chrome are not visible.
+test("content scripts read their namespaces and chrome from globalThis, not window", () => {
+  const scripts = [...new Set(chrome.content_scripts.flatMap(script => script.js ?? []))];
+  assert.ok(scripts.includes("content.js"));
+  for (const script of scripts) {
+    assert.doesNotMatch(read(`extension/${script}`), /\bwindow\.(?:HD\w+|chrome)\b/u, script);
+  }
+});
+
 test("the Firefox minimum is the tested minimum Firefox build", () => {
   const version = buildId => /^stable_(\d+\.\d+)$/u.exec(buildId)?.[1];
   assert.equal(firefox.browser_specific_settings.gecko.strict_min_version, version(tooling.config.minimumFirefox));

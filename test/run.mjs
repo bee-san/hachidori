@@ -12,8 +12,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLING = resolve(ROOT, "test/tooling");
 const OUTPUT = resolve(ROOT, "test/tmp/ci");
 const CACHE = resolve(ROOT, "test/tmp/browsers");
-// scripts/build-firefox.py writes the Firefox build of extension/ here.
-const FIREFOX_EXTENSION = resolve(ROOT, "test/tmp/firefox-extension");
+// scripts/build-firefox.py writes the Firefox build of extension/ here, unless
+// HACHIDORI_FIREFOX_EXTENSION names another unpacked build to test.
+const FIREFOX_EXTENSION = process.env.HACHIDORI_FIREFOX_EXTENSION || resolve(ROOT, "test/tmp/firefox-extension");
 const require = createRequire(resolve(TOOLING, "package.json"));
 const { config } = JSON.parse(readFileSync(resolve(TOOLING, "package.json"), "utf8"));
 const { Browser, computeExecutablePath, install } = await import(require.resolve("@puppeteer/browsers"));
@@ -54,7 +55,8 @@ async function run(name, args, overrides = {}, executable = process.execPath) {
 // once every test has finished even though the code under test leaves timers behind.
 const NODE_TEST = ["--test-force-exit", "--test-reporter=spec"];
 
-const buildFirefox = () => run("firefox-build", ["scripts/build-firefox.py", "--output-dir", FIREFOX_EXTENSION], {}, "python3");
+const buildFirefox = () => process.env.HACHIDORI_FIREFOX_EXTENSION
+  || run("firefox-build", ["scripts/build-firefox.py", "--output-dir", FIREFOX_EXTENSION], {}, "python3");
 
 const suite = process.argv[2];
 mkdirSync(OUTPUT, { recursive: true });
