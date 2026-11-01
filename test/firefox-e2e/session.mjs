@@ -592,6 +592,7 @@ async function startSession() {
   updateOrigin = `https://${UPDATE_HOST}:${updateServer.address().port}`;
   console.log(`profile: ${PROFILE}`);
   ({ browser, session: bidi, downloads } = await launchFirefox(PROFILE));
+  console.log(`browser: ${await browser.version()}`);
   installedId = await installHachidori();
   page = await openExtensionPage("settings.html");
   return installedId;
