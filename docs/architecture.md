@@ -879,9 +879,12 @@ Add note, View notes and Back click the current entry's existing buttons, so
 duplicate and disabled behavior is unchanged. Forward reopens the view the last
 Back left ([clicked-kanji navigation](#clicked-kanji-navigation-and-back)).
 Back without a Back control and Forward with nothing ahead leave the key to the
-page. Audio replays without
-the click toggle, or plays the first choice from the selected source. Toggle
-option writes one boolean through the revisioned options CAS.
+page. Yomitan's popup takes Alt+B and Alt+F even then, because its history
+handlers return nothing, which its `HotkeyHandler` counts as handled. With the
+popup scope meaning an open popup, doing the same here would take Alt+F, which
+also opens Chrome's menu on Windows and Linux, whenever a popup shows. Audio
+replays without the click toggle, or plays the first choice from the selected
+source. Toggle option writes one boolean through the revisioned options CAS.
 
 The Default popup's header shows the result being read: the last result whose
 own header has scrolled above the definitions, or the first result (#488). In
