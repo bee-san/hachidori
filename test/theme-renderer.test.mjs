@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import plain from "../extension/vendor/themes/plain/theme.js";
 import theme from "../extension/vendor/themes/nazeka/theme.js";
 import bee from "../extension/vendor/themes/bee/theme.js";
+import crystal from "../extension/vendor/themes/crystal/theme.js";
 import { createView as createJLView } from "../extension/vendor/themes/jl/theme.js";
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
@@ -24,8 +25,8 @@ const results = [{ matched: "食べる", trace: [], term: { expression: "食べ�
     { tag: "img", path: "test.png" },
   ] }]) }] } }];
 
-test("JL, Bee and Nazeka bind native kanji mining to each dictionary's own entry", t => {
-  for (const createView of [createJLView, bee.createView, theme.createView]) {
+test("JL, Bee, Nazeka and Crystal bind native kanji mining to each dictionary's own entry", t => {
+  for (const createView of [createJLView, bee.createView, theme.createView, crystal.createView]) {
     const dom = environment(), { window } = dom, { document } = window;
     const popup = document.createElement("div");
     document.body.append(popup);
@@ -48,10 +49,10 @@ test("JL, Bee and Nazeka bind native kanji mining to each dictionary's own entry
       assert.equal(item.result.term.glossaries.length, 1);
       assert.equal(item.result.term.glossaries[0].kanji.dictionary, entries[index].dictionary);
     }
-    if (createView === bee.createView) {
+    if (createView === bee.createView || createView === crystal.createView) {
       assert.equal(bound.miningActions[0].actions.querySelector(".gsm-hoshidicts-custom-anki-button").dataset.ankiTemplateId, "kanji");
     }
-    popup.querySelectorAll(".jl-kanji, .nazeka-kanji-info")[1].click();
+    popup.querySelectorAll(".jl-kanji, .nazeka-kanji-info, .crystal-kanji")[1].click();
     assert.equal(view.currentEntryIndex(), 1, "keybinds follow the clicked dictionary's mining action");
   }
 });
@@ -698,4 +699,123 @@ test("Bee reuses per-result metadata and repaints only changed frequency inputs"
   assert.equal(f.popup.querySelector(".bee-rich-content"), glossary);
   assert.equal(form.hidden, false);
   assert.equal(form.elements.definition.value, "Keep my draft");
+});
+
+function crystalFixture(t, overrides = {}) {
+  const dom = environment(), { window } = dom, { document } = window;
+  const popup = document.createElement("div"); document.body.append(popup);
+  const bound = {};
+  const view = crystal.createView({ document, window, popup, positionPopup() {},
+    components: { ...window.HDPopup, ...window.HDGlossary },
+    appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
+    onResultsRendered(value) { bound.rendered = value; bound.current = value; },
+    onResultsExpanded(value) { bound.current = value; }, ...overrides });
+  t.after(() => { view.destroy(); window.close(); });
+  return { popup, view, bound };
+}
+const crystalResult = { matched: "食べた", trace: [{ name: "-た" }], term: { expression: "食べる", reading: "たべる",
+  frequencies: [{ dictionary: "Ranks", frequencies: [{ value: 120, displayValue: "120" }] },
+    { dictionary: "Corpus", frequencies: [{ value: 18240, displayValue: "18,240" }] }],
+  pitches: [{ dictionary: "NHK", pitches: [{ position: 2, pattern: "", nasal: [], devoice: [] }] }],
+  glossaries: [
+    { dictionary: "JMdict", glossary: JSON.stringify(["to eat"]), definitionTags: "v1 vt" },
+    { dictionary: "JMdict", glossary: JSON.stringify(["to live on", "to subsist on"]), definitionTags: "v1 vt col" },
+    { dictionary: "国語", glossary: JSON.stringify(["①食物を口に入れる。②生活する。"]), definitionTags: "" },
+  ] } };
+const crystalContext = { dictionaryPresentation: [{ title: "JMdict" }, { title: "国語" },
+  { title: "Ranks", frequencyMode: "rank-based" }, { title: "Corpus", frequencyMode: "occurrence-based" }],
+dictionaryTabGroups: [{ id: "words", name: "Words", dictionaries: ["JMdict"] }, { id: "japanese", name: "Japanese", dictionaries: ["国語"] }] };
+
+test("Crystal gives each result one header and each dictionary a framed section with its own controls and definitions", t => {
+  const { popup, view, bound } = crystalFixture(t);
+  view.renderResults([crystalResult], { query: "食べた" }, crystalContext);
+  assert.equal(popup.querySelectorAll(".crystal-head").length, 1, "the word is not repeated per dictionary");
+  const blocks = [...popup.querySelectorAll(".gsm-hoshidicts-entry")];
+  assert.deepEqual(blocks.map(block => block.dataset.dictionary), ["JMdict", "国語"]);
+  assert.deepEqual(bound.rendered.miningActions.map(item => item.result.term.glossaries.length), [2, 1],
+    "each section mines and plays only its own dictionary");
+  assert.deepEqual(bound.rendered.audioButtons.map(item => item.result), bound.rendered.miningActions.map(item => item.result));
+  assert.equal(bound.rendered.lookupStats, null);
+  assert.equal(popup.querySelector(".crystal-head-actions > .gsm-hoshidicts-entry-actions"), bound.rendered.miningActions[0].actions,
+    "the first section's controls end the header");
+  assert.equal(blocks[1].querySelector(".crystal-banner > .gsm-hoshidicts-entry-actions"), bound.rendered.miningActions[1].actions);
+  assert.equal(popup.querySelector(".crystal-deconj").textContent, "食べた ～た");
+  assert.deepEqual([...popup.querySelectorAll(".crystal-reading .crystal-mora")]
+    .map(mora => [mora.textContent, mora.dataset.pitch, mora.dataset.transition]),
+  [["た", "low", "rise"], ["べ", "high", "drop"], ["る", "low", undefined]]);
+  assert.deepEqual([...popup.querySelectorAll(".gsm-hoshidicts-tag-frequency")].map(tag => [tag.textContent, tag.dataset.crystalIcon]),
+    [["120", "star"], ["18,240", "book"]], "a star marks ranks and a book corpus counts");
+  const senses = blocks.map(block => block.querySelector(".crystal-senses"));
+  assert.deepEqual(senses.map(list => list.dataset.count), ["2", "1"], "only several senses are numbered");
+  assert.deepEqual([...senses[0].children].map(sense => [...sense.querySelectorAll(".crystal-tag")].map(tag => tag.textContent)),
+    [["v1", "vt"], ["v1", "vt", "col"]]);
+  assert.equal(senses[0].querySelector(".crystal-gloss").dataset.hoshidictsDictionary, "JMdict", "scoped dictionary styles apply");
+  assert.deepEqual([...blocks[1].querySelectorAll(".crystal-circled")].map(node => node.textContent), ["①", "②"]);
+  assert.equal(blocks[1].querySelector(".crystal-gloss .gloss-content").textContent, "①食物を口に入れる。②生活する。", "marking keeps the text");
+  blocks[1].click();
+  assert.equal(view.currentEntryIndex(), 1, "keyboard actions follow the clicked section");
+  popup.querySelector(".crystal-head").click();
+  assert.equal(view.currentEntryIndex(), 0, "the header belongs to its first section");
+});
+
+test("Crystal group tabs filter sections in place and hide the header's controls with its first section", t => {
+  let selected;
+  const { popup, view, bound } = crystalFixture(t);
+  const second = { ...crystalResult, term: { ...crystalResult.term, expression: "食う", reading: "くう",
+    glossaries: [{ dictionary: "国語", glossary: JSON.stringify(["食べる。"]), definitionTags: "" }] } };
+  const context = { ...crystalContext, onDictionaryTabSelected(value) { selected = value; } };
+  view.renderResults([crystalResult, second], { query: "食べた" }, context);
+  const tabs = [...popup.querySelectorAll(".crystal-tab")];
+  assert.deepEqual(tabs.map(tab => [tab.textContent, tab.getAttribute("aria-pressed")]),
+    [["All", "true"], ["Words", "false"], ["Japanese", "false"]]);
+  const [heads, blocks] = [[...popup.querySelectorAll(".crystal-result")], [...popup.querySelectorAll(".gsm-hoshidicts-entry")]];
+  const slot = popup.querySelector(".crystal-head-actions");
+  tabs[2].click();
+  assert.deepEqual(selected, { groupId: "japanese" });
+  assert.deepEqual(blocks.map(block => block.hidden), [true, false, false]);
+  assert.equal(slot.hidden, true, "the hidden first section takes its controls along");
+  assert.deepEqual(bound.current.miningActions.map(item => item.result.term.glossaries[0].dictionary), ["国語", "国語"]);
+  assert.equal(view.currentEntryIndex(), 0);
+  tabs[1].click();
+  assert.deepEqual(heads.map(head => head.hidden), [false, true], "a result without shown sections hides its header");
+  assert.equal(slot.hidden, false);
+  assert.equal(popup.querySelectorAll(".gsm-hoshidicts-entry")[0], blocks[0], "switching tabs does not rebuild");
+  view.renderResults([crystalResult, second], { query: "食べた" }, { ...context, ...view.captureTermView() });
+  assert.deepEqual([...popup.querySelectorAll(".gsm-hoshidicts-entry")].map(block => block.hidden), [false, true, true],
+    "Back restores the selected group");
+});
+
+test("Crystal opens Note under the controls that own it and lists extra custom actions under More", t => {
+  const saves = [];
+  const { popup, view } = crystalFixture(t, { onAddCustomEntry(entry) { saves.push({ ...entry }); },
+    customButtons: ["one", "two", "three"].map(id => ({ id, type: "link", label: id, url: `https://example.test/${id}` })) });
+  view.renderResults([crystalResult], { query: "食べた" }, crystalContext);
+  const blocks = [...popup.querySelectorAll(".gsm-hoshidicts-entry")];
+  const actions = [...popup.querySelectorAll(".gsm-hoshidicts-entry-actions[aria-label='Entry actions']")];
+  assert.deepEqual(actions.map(group => [...group.querySelectorAll(":scope .crystal-custom-action-icon")].map(icon => icon.dataset.icon)),
+    [["open", "open", "open"], ["open", "open", "open"]]);
+  assert.equal(popup.querySelectorAll(".crystal-more-actions .crystal-action-menu [data-custom-button-id='three']").length, 2);
+  const [first, second] = [...popup.querySelectorAll(".gsm-hoshidicts-note-button")];
+  first.click();
+  const form = popup.querySelector("form");
+  assert.equal(blocks[0].firstElementChild, form, "the header's pencil opens Note just beneath the header");
+  form.elements.definition.value = "My meaning";
+  view.updateDictionaryPresentation({ ...crystalContext, dictionaryTabGroups: [] });
+  assert.equal(form.hidden, false);
+  assert.equal(form.elements.definition.value, "My meaning", "presentation updates keep a draft");
+  form.dispatchEvent(new popup.ownerDocument.defaultView.Event("submit", { cancelable: true }));
+  assert.deepEqual(saves, [{ term: "食べる", reading: "たべる", definition: "My meaning" }]);
+  second.click();
+  assert.equal(blocks[1].querySelector(".crystal-banner").nextElementSibling.matches("form"), true,
+    "a later section's pencil opens Note beneath its banner");
+  assert.equal(view.closeNoteForm(), true);
+  const more = popup.querySelector(".crystal-more-actions");
+  more.open = true;
+  assert.equal(view.closeActionMenu(), true);
+  assert.equal(more.open, false);
+  view.renderNotice("No results", { query: "ぬぺぽ", sentence: "ぬぺぽ。" });
+  popup.querySelector(".crystal-nav .gsm-hoshidicts-note-button").click();
+  assert.equal(popup.querySelector(".gsm-hoshidicts-lookup-notice").nextElementSibling, popup.querySelector("form"),
+    "a missing word's pencil opens Note beneath the notice");
+  assert.equal(popup.querySelector("form").elements.term.value, "ぬぺぽ");
 });

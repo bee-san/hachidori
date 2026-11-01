@@ -169,7 +169,7 @@ const PLANNED = [
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
   "Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable",
-  "Design exposes AUTO, 42 grouped palettes and four layouts and applies live browser preference changes",
+  "Design exposes AUTO, 42 grouped palettes and five layouts and applies live browser preference changes",
   "Design previews opacity and dimensions immediately and resets only Design settings",
   "live appearance changes preserve reader Notes and resources while applying the selected page highlight",
   "toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards",
