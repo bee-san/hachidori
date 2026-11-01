@@ -323,6 +323,32 @@
     wordStatusActions?.update(next);
   }
 
+  // The popup names the profile in effect when it is not the active one
+  // (docs/languages.md 8.1): a small label in the popup's top corner, beside
+  // where the close button sits.
+  function syncProfileLabel(level) {
+    if (!level.popup) return;
+    const profile = readingProfiles === null ? null : requestProfile(level.currentViewRequest);
+    if (profile === null || profile.id === activeProfileId()) {
+      level.profileLabel?.remove();
+      level.profileLabel = null;
+      return;
+    }
+    let label = level.profileLabel;
+    if (!label) {
+      label = document.createElement("span");
+      label.className = "gsm-hoshidicts-profile-label";
+      label.lang = "en";
+      label.style.cssText = "position:absolute;inset-block-start:2px;inset-inline-end:8px;z-index:1;"
+        + "pointer-events:none;font-size:10px;line-height:1.4;padding:0 4px;border-radius:4px;opacity:0.8;"
+        + "color:var(--hoshidicts-text-faint,currentColor);background:var(--hoshidicts-palette-base-200,transparent);";
+      level.profileLabel = label;
+    }
+    const name = globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;
+    if (label.textContent !== name) label.textContent = name;
+    if (label.parentNode !== level.popup) level.popup.append(label);
+  }
+
   // A root view's profile becomes the controls' before it binds them.
   function adoptControlsProfile(request, level) {
     if (readingProfiles === null || level !== rootLevel) return;
@@ -3131,6 +3157,7 @@
       return false;
     }
     level.activeHighlightText = matchedText;
+    syncProfileLabel(level);
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
     if (!replayOptions?.preserveViewControls
@@ -3465,6 +3492,7 @@
       console.warn("hachidori: could not render kanji", error);
       return handleLookupFailure(token, error, level, request, true);
     }
+    syncProfileLabel(level);
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
     if (!replayOptions?.preserveViewControls) focusPopupControl(".gsm-hoshidicts-kanji-back", level);

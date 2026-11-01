@@ -519,14 +519,15 @@
       return words === null ? entries.slice(0, scanLength) : extendToWordEnd(entries, scanLength, words, words.limit);
     }
 
-    // The text node before `node` that a scan from it would have read, or null
-    // at a block boundary, a line break or a control.
+    // The text node before `node` in the same block that a scan from it would
+    // have read, or null at a block boundary, a line break or a control.
     function previousScanText(walker, node, styleCache) {
       walker.currentNode = node;
       const previous = walker.previousNode();
       if (!previous || previous.nodeType !== Node.TEXT_NODE || BLOCK_SEPARATOR_PATTERN.test(previous.nodeValue || "")
           || preservesWhitespace(previous.parentElement, styleCache)
-          || isEditingElement(previous.parentElement?.closest(EDITING_SELECTOR))) return null;
+          || isEditingElement(previous.parentElement?.closest(EDITING_SELECTOR))
+          || blockAncestor(previous.parentElement, styleCache) !== blockAncestor(node.parentElement, styleCache)) return null;
       return previous;
     }
 
