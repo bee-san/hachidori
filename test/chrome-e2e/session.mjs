@@ -22,7 +22,7 @@ import {
   RECOMMENDED_DICTIONARIES as RECOMMENDED_CATALOGUE,
 } from "../../extension/recommended-dictionaries.js";
 import { answerAnkiConnect } from "../anki-connect-fake.mjs";
-import { buildRecommendedZip, GENERIC_KANJI_TITLE } from "../make-fixture.mjs";
+import { buildRecommendedZip, GENERIC_KANJI_TITLE, RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
 import {
   check,
   diagnostics,
@@ -136,29 +136,6 @@ const CHROME = process.env.HACHIDORI_CHROME
 const PUPPETEER = process.env.HACHIDORI_PUPPETEER
   || resolve(CACHE, "hachidori-e2e/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js");
 
-const RECOMMENDED_FIXTURE_METADATA = {
-  jitendex: {
-    title: "Jitendex.org [2026-08-11]",
-    revision: "2026.08.11.0",
-    capabilities: ["term", "media"],
-  },
-  jmnedict: {
-    title: "JMnedict [2026-09-04]",
-    revision: "JMnedict.2026-09-04",
-    capabilities: ["term"],
-  },
-  "bees-ultimate-kanji-dictionary": {
-    title: "Bee's Ultimate Kanji Dictionary",
-    revision: "2026.09.02",
-    capabilities: ["term", "freq", "media"],
-  },
-  jiten: { title: "Jiten", revision: "Jiten 26-09-02", capabilities: ["freq"] },
-  "bees-ultimate-grammar-dictionary": {
-    title: "Bee's Ultimate Grammar Dictionary",
-    revision: "2026.09.10",
-    capabilities: ["term"],
-  },
-};
 const RECOMMENDED_DICTIONARIES = RECOMMENDED_CATALOGUE.map((entry) => ({
   ...entry,
   ...RECOMMENDED_FIXTURE_METADATA[entry.sourceId],

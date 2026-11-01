@@ -1043,6 +1043,32 @@ export function monochromeImageFixture() {
   return { archive, bytes, cases, path, query, title };
 }
 
+// The title, revision and capabilities each recommended catalogue source's
+// fixture archive declares, which the installer validates against the catalogue.
+export const RECOMMENDED_FIXTURE_METADATA = {
+  jitendex: {
+    title: 'Jitendex.org [2026-08-11]',
+    revision: '2026.08.11.0',
+    capabilities: ['term', 'media'],
+  },
+  jmnedict: {
+    title: 'JMnedict [2026-09-04]',
+    revision: 'JMnedict.2026-09-04',
+    capabilities: ['term'],
+  },
+  'bees-ultimate-kanji-dictionary': {
+    title: "Bee's Ultimate Kanji Dictionary",
+    revision: '2026.09.02',
+    capabilities: ['term', 'freq', 'media'],
+  },
+  jiten: { title: 'Jiten', revision: 'Jiten 26-09-02', capabilities: ['freq'] },
+  'bees-ultimate-grammar-dictionary': {
+    title: "Bee's Ultimate Grammar Dictionary",
+    revision: '2026.09.10',
+    capabilities: ['term'],
+  },
+};
+
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises
 // the complete download/import path without depending on live publishers.
