@@ -202,3 +202,58 @@ test("word highlighting segments each block with its profile and cuts chunks at 
   assert.equal(segments.some(request => request.fields.chunks.some(chunk => chunk.text.includes("bonjour"))), false,
     "a block whose profile marks no words is left alone");
 });
+
+// ------------------------------------------------------------------ Netflix
+
+// netflix-page.js's main world, as test/netflix-page.test.mjs builds it.
+async function netflixPage() {
+  const vm = await import("node:vm");
+  const source = extension("netflix-page.js");
+  const document = new EventTarget();
+  document.querySelector = () => null;
+  const posted = [];
+  document.addEventListener("hachidori-netflix-page", event => posted.push(JSON.parse(event.detail)));
+  const bodies = { "https://cdn.example/ja.vtt": "WEBVTT\n\n00:00.000 --> 00:01.000\n食べる\n",
+    "https://cdn.example/en.vtt": "WEBVTT\n\n00:00.000 --> 00:01.000\nShe was\nrunning late\n" };
+  const context = vm.createContext({ document, CustomEvent, EventTarget, ArrayBuffer, Promise, Reflect, performance,
+    setTimeout, clearTimeout, setInterval, clearInterval, location: { pathname: "/watch/81000001" },
+    fetch: async url => ({ ok: true, status: 200, text: async () => bodies[url] }) });
+  context.window = context;
+  vm.runInContext(source, context);
+  const command = message => document.dispatchEvent(new CustomEvent("hachidori-netflix-command", { detail: JSON.stringify(message) }));
+  const read = tracks => vm.runInContext(`JSON.parse(${JSON.stringify(JSON.stringify({ result: { movieId: 81000001, textTracks: tracks } }))})`, context);
+  return { posted, command, read };
+}
+
+const vttTrack = (id, language, url) => ({ id, language, rawTrackType: "subtitles",
+  downloadables: { "webvtt-lssdh-ios8": { urls: [{ url }] } } });
+const tick = () => new Promise(resolveTick => { setTimeout(resolveTick, 0); });
+
+test("Netflix posts the reading language's subtitle tracks: Japanese until the reader names another", async () => {
+  const { posted, command, read } = await netflixPage();
+  read([vttTrack("t-ja", "ja", "https://cdn.example/ja.vtt"), vttTrack("t-en", "en-US", "https://cdn.example/en.vtt")]);
+  await tick();
+  assert.deepEqual(posted.filter(message => message.kind === "subtitle").map(message => message.trackId), ["t-ja"]);
+  posted.length = 0;
+  command({ type: "language", language: "en" });
+  await tick();
+  assert.deepEqual(posted.filter(message => message.kind === "subtitle").map(message => message.trackId), ["t-en"],
+    "the kept manifest's English track is posted");
+  posted.length = 0;
+  command({ type: "resend", movieId: "81000001" });
+  assert.deepEqual(posted.map(message => message.trackId), ["t-en"], "a resend posts what this language posted");
+  posted.length = 0;
+  command({ type: "language", language: "../x" });
+  await tick();
+  assert.deepEqual(posted, [], "a malformed language changes nothing");
+});
+
+test("a Netflix cue's lines are joined with the language's joiner", t => {
+  const { window } = page(t, "");
+  window.eval(extension("netflix-subtitles.js"));
+  const { cueSentence } = window.HDNetflixSubtitles;
+  assert.deepEqual({ ...cueSentence("She was\nrunning late", "running late", 0, " ") },
+    { sentence: "She was running late", matchOffset: 8 });
+  // Without a joiner, today's Japanese join.
+  assert.deepEqual({ ...cueSentence("食べ\nたかった", "食べたかった", 0) }, { sentence: "食べたかった", matchOffset: 0 });
+});
