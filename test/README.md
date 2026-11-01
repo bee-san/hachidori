@@ -215,6 +215,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. The Issue template workflow also runs it on relevant pull requests and pushes to `main`; that workflow's issue-event job enforces the template on opened, edited and reopened issues. |
 | `kanji-click-settings`, `kanji-group-mining`, `reader-options` | The clicked-kanji chooser and groups, `kanjiEntryResult` against the engine's `LookupResult`, and reader option normalisation. |
 | `keybind-settings` | Yomitan's default keybinds, capture, Alt+wheel rows and Chrome's browser shortcuts list. |
+| `language-packs` | `extension/vendor/languages/` is what `scripts/sync-languages.mjs` makes of the submodule's packs: class fields and display transforms expanded by hoshidicts' `tools/lib/classes.mjs` and matching each pack's `tests/classes.json`, `registry-reader.js` within 64 KB, valid host blocks, personal-dictionary ids (docs/languages.md 9.1). Needs the submodule. |
 | `linked-import` | Dictionary uploads from a linked browser: chunk order and limits, replace or install beside, aborts and timeouts. |
 | `local-audio-setup`, `local-file-access`, `startup-practice` | Local audio detection, the file-access prompt and the startup practice step's recovery. |
 | `lookup-stats` | Canonical lookup-count keys and their row updates. |
@@ -223,6 +224,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `note-editor` | The personal-dictionary pencil on term, kanji and missing-word views. |
 | `pitch-accent-colors`, `pitch-badges` | Pitch colours at 3:1 in every palette; Yomitan's pronunciation markup in the popup, with every accent in the first and later entries whatever their frequency tags, each repeated accent drawn once. |
 | `popup-scale`, `popup-theme`, `progressive-results` | Popup scale, AUTO appearance, the host attributes of Design options and progressively appended results. |
+| `profiles` | The profile layer (docs/languages.md 4-6): every option record the other suites use projects as `normaliseOptions` did before profiles (`test/data/profiles-golden.json`), the one writer, masking, dictionary-state views, and the service worker's profile requests, language-scoped records, requests without a profile and lookup routing. |
 | `recommended-dictionaries`, `recommended-install-client`, `setup-installer`, `setup-state` | The catalogue as the single description of the recommended set, the installer's runs, the revisioned setup record and mining capabilities. |
 | `release-compatibility` | The manifest, minimum Chrome, current Chrome and release tag share one contract. |
 | `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
@@ -261,6 +263,15 @@ pinned/latest package commands and the schema-only boundary.
   own test runs Yomitan's full corpus natively). Exits 0 on success, 1 on a
   failed check, 2 when the wasm module has not been built. See
   [node-smoke details](#node-smoke-details).
+- **`node-smoke-languages.mjs`** drives the language ABI (docs/languages.md 9,
+  engine contract 10.4) on the same three bundles with the fixture packs of
+  `test/data/languages/` and the English and Arabic dictionaries of
+  `make-language-fixtures.mjs`: Japanese requests without language keys answer
+  with the bytes of the build before the ABI (`test/data/languages-japanese-replies.json`),
+  `hdw_language_load`, `hdw_languages`, `hdw_deinflect`, lookups with
+  `language` and `dictionaries` (an empty list finds nothing; a selection
+  answers as if only it were loaded), `hdw_kanji_with_options` and
+  segmentation per language.
 - **`threaded-bridge-smoke.mjs`** imports the real offscreen bridge with
   controlled worker and fallback endpoints (through Node 22.15's
   `module.registerHooks`): the 128-request admission bound, responsive status,

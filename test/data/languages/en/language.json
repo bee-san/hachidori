@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "code": "en",
+  "iso639_3": "eng",
+  "name": "English",
+  "nativeName": "English",
+  "bcp47": "en",
+  "scripts": [
+    "Latn"
+  ],
+  "direction": "ltr",
+  "classes": {
+    "letter": "[A-Za-z\\u00C0-\\u024F]",
+    "word": "[{letter}\\p{M}\\p{Nd}]"
+  },
+  "text": {
+    "pattern": "{letter}",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "{word}",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        ".",
+        "!",
+        "?",
+        "…"
+      ],
+      "quotePairs": [
+        [
+          "“",
+          "”"
+        ],
+        [
+          "\"",
+          "\""
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {
+        "id": "decapitalize",
+        "name": "Decapitalize text",
+        "variants": [
+          [
+            {
+              "case": "lower"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "capitalizeFirstLetter",
+        "name": "Capitalize first letter",
+        "variants": [
+          [
+            {
+              "case": "upperFirst"
+            }
+          ]
+        ]
+      }
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {},
+    "displayTransforms": {}
+  },
+  "settings": [],
+  "host": {
+    "ttsLanguage": "en-US",
+    "audioLanguage": "en",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {
+        "pronunciation": [
+          "IPA"
+        ]
+      },
+      "partOfSpeechLabels": {
+        "v": "Verb",
+        "n": "Noun"
+      }
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Fixture",
+        "url": "https://example.org/en",
+        "description": "A test fixture.",
+        "licence": "CC0"
+      }
+    ],
+    "sample": {
+      "warmup": "running",
+      "practice": {
+        "text": "She was running late.",
+        "lookup": "running"
+      },
+      "entry": {
+        "expression": "run",
+        "reading": "run",
+        "glossary": [
+          "to move swiftly on foot"
+        ],
+        "definitionTags": "v",
+        "matched": "running",
+        "trace": [
+          "-ing"
+        ]
+      },
+      "character": null
+    }
+  }
+}

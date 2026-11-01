@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "conditions": {
+    "v": {
+      "name": "Verb",
+      "isDictionaryForm": true
+    },
+    "n": {
+      "name": "Noun",
+      "isDictionaryForm": true,
+      "subConditions": [
+        "ns",
+        "np"
+      ]
+    },
+    "ns": {
+      "name": "Noun, singular",
+      "isDictionaryForm": true
+    },
+    "np": {
+      "name": "Noun, plural",
+      "isDictionaryForm": true
+    }
+  },
+  "transforms": [
+    {
+      "id": "plural",
+      "name": "plural",
+      "description": "Plural form of a noun.",
+      "source": "own",
+      "rules": [
+        {
+          "type": "suffix",
+          "inflected": "s",
+          "deinflected": "",
+          "conditionsIn": [
+            "np"
+          ],
+          "conditionsOut": [
+            "ns"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "past",
+      "name": "past",
+      "description": "Past tense of a verb.",
+      "source": "own",
+      "rules": [
+        {
+          "type": "suffix",
+          "inflected": "ed",
+          "deinflected": "",
+          "conditionsIn": [],
+          "conditionsOut": [
+            "v"
+          ],
+          "stemMinLength": 2
+        },
+        {
+          "type": "wholeWord",
+          "inflected": "went",
+          "deinflected": "go",
+          "conditionsIn": [],
+          "conditionsOut": [
+            "v"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ing",
+      "name": "-ing",
+      "description": "Present participle of a verb.",
+      "source": "own",
+      "rules": [
+        {
+          "type": "suffix",
+          "inflected": "ning",
+          "deinflected": "n",
+          "conditionsIn": [],
+          "conditionsOut": [
+            "v"
+          ],
+          "stemMinLength": 1
+        },
+        {
+          "type": "suffix",
+          "inflected": "ing",
+          "deinflected": "",
+          "conditionsIn": [],
+          "conditionsOut": [
+            "v"
+          ],
+          "stemMinLength": 2
+        }
+      ]
+    }
+  ]
+}

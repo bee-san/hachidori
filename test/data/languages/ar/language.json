@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "code": "ar",
+  "iso639_3": "arb",
+  "name": "Arabic",
+  "nativeName": "العربية",
+  "bcp47": "ar",
+  "scripts": [
+    "Arab"
+  ],
+  "direction": "rtl",
+  "classes": {
+    "letter": "[\\u0620-\\u063F\\u0641-\\u064A\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF]",
+    "harakat": "[\\u0618-\\u061A\\u064B-\\u0656\\u0670]"
+  },
+  "text": {
+    "pattern": "[{letter}{harakat}\\u0640]",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "[{letter}{harakat}\\u0640]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        ".",
+        "!",
+        "؟",
+        "…"
+      ],
+      "quotePairs": [
+        [
+          "«",
+          "»"
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {
+        "id": "removeArabicScriptDiacritics",
+        "name": "Remove diacritics",
+        "variants": [
+          [
+            {
+              "strip": "{harakat}"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "removeTatweel",
+        "name": "Remove tatweel",
+        "variants": [
+          [
+            {
+              "strip": "[\\u0640]"
+            }
+          ]
+        ]
+      }
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": true
+    },
+    "labels": {},
+    "displayTransforms": {
+      "stripVowelMarks": [
+        {
+          "strip": "{harakat}"
+        }
+      ]
+    }
+  },
+  "settings": [
+    {
+      "id": "vowelMarks",
+      "type": "enum",
+      "default": "show",
+      "values": [
+        {
+          "id": "show",
+          "label": "Show"
+        },
+        {
+          "id": "hide",
+          "label": "Hide"
+        }
+      ],
+      "label": "Vowel marks in headwords",
+      "description": "Hide the short vowels dictionaries write.",
+      "group": "display",
+      "effect": {
+        "display": {
+          "fields": [
+            "expression",
+            "reading"
+          ],
+          "when": "hide",
+          "transform": "stripVowelMarks"
+        }
+      }
+    }
+  ],
+  "host": {
+    "ttsLanguage": "ar-SA",
+    "audioLanguage": "ar",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Fixture",
+        "url": "https://example.org/ar",
+        "description": "A test fixture.",
+        "licence": "CC0"
+      }
+    ],
+    "sample": {
+      "warmup": "كتب",
+      "practice": {
+        "text": "الكتاب جديد.",
+        "lookup": "الكتاب"
+      },
+      "entry": {
+        "expression": "كتاب",
+        "reading": "كتاب",
+        "glossary": [
+          "book"
+        ],
+        "definitionTags": "n",
+        "matched": "الكتاب",
+        "trace": [
+          "definite"
+        ]
+      },
+      "character": null
+    }
+  }
+}

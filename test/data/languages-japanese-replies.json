@@ -1,0 +1,65 @@
+{
+  "description": "SHA-256 of the replies of hoshidicts WebAssembly to Japanese requests without language keys, on the Japanese fixture alone, recorded from the build before the language ABI (test/node-smoke-languages.mjs --record).",
+  "requests": [
+    {
+      "name": "hdw_lookup",
+      "text": "食べたかった",
+      "options": "",
+      "sha256": "72a336ee5a0821ee3d2f640c481161508cd056cc5c6593d21e14e899be75d214"
+    },
+    {
+      "name": "hdw_lookup",
+      "text": "食べたかった",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "72a336ee5a0821ee3d2f640c481161508cd056cc5c6593d21e14e899be75d214"
+    },
+    {
+      "name": "hdw_lookup",
+      "text": "漢字を読む",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "f869a12d2d4f50f228cc93d67cbf5bade2dadfd432019acec2e62d6feaf5b682"
+    },
+    {
+      "name": "hdw_lookup",
+      "text": "ありがとう",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "e71ae488a456a68017f23dbf19a7b7b942b48e6686c941afa2d98c9bdc220c73"
+    },
+    {
+      "name": "hdw_lookup",
+      "text": "読まなかった",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "1abd3f465fa3f3ce072c86d441b7117f874dcf46e6291c182ac162e04483485a"
+    },
+    {
+      "name": "hdw_lookup",
+      "text": "run",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "23c8cb312a4ce297807b634794da064fd419817242de1b86665978e92615e332"
+    },
+    {
+      "name": "hdw_lookup_dictionary",
+      "text": "食べた",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "9d9eb131536bd2cdfde08529bafe1eac90ede19d6c9365687d5a9bd43fe1b7fb"
+    },
+    {
+      "name": "hdw_segment",
+      "text": "漢字を読んで食べた。",
+      "options": "{\"frequencyDictionary\":\"\",\"frequencyOrder\":\"auto\",\"primaryReading\":\"\",\"metadataOnlyTerms\":false}",
+      "sha256": "91021e56212ac6c0bae3f9b8e0e79dd6d7e09ef78be84d334a5e1ece783c21df"
+    },
+    {
+      "name": "hdw_kanji",
+      "text": "食",
+      "options": "",
+      "sha256": "1e86ed7e407d3be5e75978ca71c24302abb5316e8659b635ab93b4ce6369d6e7"
+    },
+    {
+      "name": "hdw_kanji",
+      "text": "漢",
+      "options": "",
+      "sha256": "bb5d7d5c365d88c997494e659b24863bde929e69415e04f28b917988ecc09ee0"
+    }
+  ]
+}
