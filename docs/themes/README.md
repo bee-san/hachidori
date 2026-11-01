@@ -362,9 +362,15 @@ The existing `appendTextOnlyGlossary` is a rich helper and is not text mode.
 
 ```sh
 node test/make-fixture.mjs
-node --test test/theme-renderer.test.mjs test/settings-search.test.mjs
+node --test test/theme-renderer.test.mjs test/settings-search.test.mjs test/theme-languages.test.mjs
 node test/chrome-theme-store.mjs
+node test/run.mjs chrome-theme-languages
 ```
+
+`chrome-theme-languages` renders every theme in Japanese, English, Arabic and
+Korean on left-to-right and right-to-left pages and measures direction,
+alignment and markers; it needs fonts for those scripts (`fonts-noto-core`
+and `fonts-noto-cjk`) and saves screenshots under `test/tmp/languages`.
 
 The browser check saves real popup, kanji and Store screenshots under
 `test/tmp/theme-store`. See the benchmark report for repeatable performance
