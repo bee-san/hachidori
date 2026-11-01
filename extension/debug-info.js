@@ -65,10 +65,14 @@ function summariseCustomDictionary(value) {
     : value;
 }
 
+// One snapshot, or one per source key once profiles name several (languages.md 12).
 function summariseAnkiIndex(value) {
+  const omitted = snapshot => (Array.isArray(snapshot?.rows)
+    ? { ...snapshot, rows: { omitted: true, count: snapshot.rows.length } } : snapshot);
+  if (Array.isArray(value?.snapshots)) return { ...value, snapshots: value.snapshots.map(omitted) };
   const rows = value?.snapshot?.rows;
   if (!Array.isArray(rows)) return value;
-  return { ...value, snapshot: { ...value.snapshot, rows: { omitted: true, count: rows.length } } };
+  return { ...value, snapshot: omitted(value.snapshot) };
 }
 
 function summariseWordStatusOverrides(value) {

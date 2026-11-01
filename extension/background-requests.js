@@ -55,7 +55,7 @@ import {
   assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
 } from "./background-core.js";
-import { trackAnkiOperation, readAnkiOptions, sendAnkiRequest, answerAnkiRequest } from "./background-anki.js";
+import { trackAnkiOperation, readAnkiOptions, readAnkiProfile, sendAnkiRequest, answerAnkiRequest } from "./background-anki.js";
 import {
   getBackupDownloads, assertBackupEngineSender, readBackupPayload, automaticBackupSummary, relayEngineRequest,
 } from "./background-backup.js";
@@ -81,12 +81,14 @@ function getAnkiDuplicateIndex() {
     },
     lookupLive: (source, expression, invoke) => lookupAnkiIndex(invoke, source, expression),
     lookupLiveMany: (source, expressions, invoke) => lookupAnkiIndexMany(invoke, source, expressions),
-    readOptions: readAnkiOptions,
+    // The stored options record: the index keeps a snapshot of every
+    // profile's first Template (docs/languages.md 12).
+    readOptions: async () => (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY],
     readState: async () => (await chrome.storage.local.get(ANKI_INDEX_KEY))[ANKI_INDEX_KEY],
     updateState: update => serialiseStorage(async () => {
       const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_INDEX_KEY]);
       const state = stored[ANKI_INDEX_KEY];
-      const next = await update({ options: normaliseOptions(stored[OPTIONS_KEY]), state });
+      const next = await update({ options: stored[OPTIONS_KEY], state });
       if (next !== undefined && !sameJsonValue(state, next)) {
         await writeLocalState({ [ANKI_INDEX_KEY]: next });
       }
@@ -1050,6 +1052,7 @@ function getAnkiMining() {
     ankiGateway ??= createAnkiGateway();
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
+      readProfile: readAnkiProfile,
       duplicateIndex: getAnkiDuplicateIndex(),
       // The dictionaries of the profile a note is for (docs/languages.md 5.4).
       readDictionaries: async profileId => {

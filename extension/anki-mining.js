@@ -3,7 +3,7 @@ import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
-import { ankiSetupFamily } from "./anki-setup.js";
+import { ankiListedFamily } from "./anki-setup.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
   findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
 
@@ -22,7 +22,8 @@ const netflixRequest = (config, request) => config.netflixMining === true
 // never changed.
 function requestConfiguration(current, request) {
   if (!netflixRequest(current.config, request)) return current;
-  const field = SENTENCE_AUDIO_FIELDS[ankiSetupFamily(current.config.model)];
+  const families = Array.isArray(current.config.noteTypeFamilies) ? current.config.noteTypeFamilies : null;
+  const field = SENTENCE_AUDIO_FIELDS[ankiListedFamily(current.config.model, families)];
   const template = field === undefined ? undefined : current.resolved.templates[field];
   if (template === undefined || template.value.trim() !== "") return current;
   return { ...current, resolved: { ...current.resolved,

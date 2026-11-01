@@ -3,6 +3,7 @@ import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiLanguageFamilies } from "./anki-setup.js";
 import {
   MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
   validateLinkedAnkiClientMedia,
@@ -57,12 +58,29 @@ function requestProfile(request) {
 export function createAnkiWorkerService({
   gateway,
   readOptions,
+  // `readProfile(profileId)` is `{ id, language, packSettings }` once the
+  // records have profiles, else null (docs/languages.md 12).
+  readProfile = async () => null,
   readDictionaries,
   engine,
   offscreen,
   duplicateIndex,
 }) {
   const linkedClientMedia = new WeakMap();
+
+  // The language of the profile a note is for, which decides how the note is
+  // written: null in the single-profile shape, whose notes are today's.
+  async function profileOf(profileId) {
+    const profile = await readProfile(profileId);
+    return profile ? { language: profile.language, packSettings: profile.packSettings ?? {} } : null;
+  }
+
+  // A Template's configuration as the duplicate index keys it: with the
+  // note-type families of its language when that lists fewer than Japanese.
+  function withFamilies(config, profile) {
+    const families = ankiLanguageFamilies(profile?.language);
+    return families === null ? config : { ...config, noteTypeFamilies: families };
+  }
   const linkedClientPreflights = new WeakSet();
   const ankiMediaStore = createAnkiMediaStore();
 
@@ -93,15 +111,21 @@ export function createAnkiWorkerService({
       selection: request.audioSelection,
       sources: config.audioSources,
       recordSpeech,
+      // URL templates fill {language} from the profile's pack (docs/languages.md 13).
+      ...(config.profile ? { language: config.profile.language } : {}),
       ...(linkedClientPreflights.has(request) ? { clientSpeechProbe: true } : {}),
       ...(clientSpeech ? { clientSpeech } : {}),
     });
   };
   // The words of the text before and after the match, split as a hover splits
-  // them, for templates that ask for the sentence with furigana.
-  async function sentenceSegments(request, templates) {
+  // them, for templates that ask for the sentence with furigana. A language
+  // without ruby has none, so its sentence stays plain (docs/languages.md 12).
+  async function sentenceSegments(request, templates, profile) {
     if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template.value)
       .some(name => SENTENCE_FURIGANA_MARKERS.has(name)))) return null;
+    if (profile !== null && !globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings)) {
+      return null;
+    }
     const profileId = requestProfile(request);
     const options = await readOptions(profileId);
     const end = request.matchOffset + request.matched.length;
@@ -116,9 +140,12 @@ export function createAnkiWorkerService({
     return reply.segments.map(segment => segment.spans);
   }
   const render = async (request, templates, audio, resources) => {
-    const segments = await sentenceSegments(request, templates);
+    const profile = resources.profile ?? null;
+    const segments = await sentenceSegments(request, templates, profile);
     return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
-      templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true });
+      templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true,
+      // The note builder writes the profile's language (docs/languages.md 12).
+      ...(profile === null ? {} : { profile }) });
   };
 
   // One pending item of each kind at a time: a later capture supersedes an
@@ -201,11 +228,11 @@ export function createAnkiWorkerService({
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
       const { profileId, templateId } = profileTemplateTarget(key);
-      const options = await readOptions(profileId);
+      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
       return {
-        ...template,
+        ...withFamilies(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards
         // between a preflight and Add refuses the stale Add.
@@ -213,6 +240,8 @@ export function createAnkiWorkerService({
         // Likewise for the experimental Netflix mining switch, which decides
         // whether a Netflix request gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
+        // And for the profile's language, which decides how the note is written.
+        ...(profile === null ? {} : { profile }),
       };
     },
     buildFields: async (request, current, { preflight = false } = {}) => {
@@ -223,7 +252,8 @@ export function createAnkiWorkerService({
       const dictionaries = await readDictionaries(requestProfile(request));
       const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
         .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
-        audioPrepared: false, audio: null, deferDuplicateCheck: false };
+        audioPrepared: false, audio: null, deferDuplicateCheck: false,
+        ...(current.config.profile ? { profile: current.config.profile } : {}) };
       const first = current.resolved.templates[current.discovery.fields[0]];
       if (ankiTemplateMarkerNames(first.value).includes("audio") && current.config.audioSources.length) {
         // Audio in the first field is part of Anki's duplicate identity. A
@@ -470,22 +500,25 @@ export function createAnkiWorkerService({
     clientMedia, settleClientMedia,
     screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
-      const options = await readOptions(requestProfile(request));
+      const profileId = requestProfile(request);
+      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
       return { mature: options.definitionBlurAnkiMature === true
-        && await duplicateIndex.has(options.anki, request?.term?.expression) };
+        && await duplicateIndex.has(withFamilies(options.anki, profile), request?.term?.expression) };
     } catch {
       // Missing local evidence never prevents dictionary lookup.
       return { mature: false };
     }
   },
-    // Page-wide word status (#520): the first Template's cached index rows, read
-    // locally without contacting Anki. The reader reconciles against revision.
+    // Page-wide word status (#520): the cached index rows of the requested
+    // profile's first Template, read locally without contacting Anki. The
+    // reader reconciles against revision.
     async wordStatus(request) {
       const headwords = request?.headwords;
       if (!Array.isArray(headwords) || headwords.some(headword => typeof headword !== "string")) {
         throw new Error("Word status requires an array of headwords.");
       }
-      const options = await readOptions(requestProfile(request));
-      return duplicateIndex.statuses(options.anki, headwords);
+      const profileId = requestProfile(request);
+      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
+      return duplicateIndex.statuses(withFamilies(options.anki, profile), headwords);
     } };
 }

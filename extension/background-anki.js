@@ -51,6 +51,16 @@ async function readAnkiOptions(profileId) {
   });
 }
 
+// The profile an Anki request is for, whose language decides how its notes are
+// written and which note types its duplicate index recognises
+// (docs/languages.md 12): null in the single-profile shape. A request that
+// names none means the Japanese profile (5.2).
+async function readAnkiProfile(profileId) {
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  const layer = globalThis.HDReaderOptions;
+  return layer.hasProfiles(stored) ? layer.profileDescriptor(stored, profileId ?? layer.JAPANESE_PROFILE_ID) : null;
+}
+
 const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
 
 // Every reading tab's content script re-reads word status for the headwords it
@@ -364,6 +374,6 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
 }
 
 export {
-  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
+  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
   reconcileAnkiIndex, handleAnkiRequest, sendAnkiRequest, answerAnkiRequest,
 };

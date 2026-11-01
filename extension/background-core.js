@@ -67,12 +67,11 @@ function ankiSettingsSender(sender) {
 
 // Called within the background storage queue. Options and index invalidation
 // share one write so a delayed storage event cannot publish an obsolete pull.
+// The index compares every profile's first Template, so it reads the records.
 async function writeLocalState(values, store = chrome.storage.local) {
   if (store === chrome.storage.local && Object.hasOwn(values, OPTIONS_KEY)) {
     const stored = await chrome.storage.local.get([OPTIONS_KEY, ANKI_INDEX_KEY]);
-    const index = await ankiIndexConfigurationChange(
-      normaliseOptions(stored[OPTIONS_KEY]), normaliseOptions(values[OPTIONS_KEY]), stored[ANKI_INDEX_KEY],
-    );
+    const index = await ankiIndexConfigurationChange(stored[OPTIONS_KEY], values[OPTIONS_KEY], stored[ANKI_INDEX_KEY]);
     if (index !== undefined) values = { ...values, [ANKI_INDEX_KEY]: index };
   }
   await store.set(values);

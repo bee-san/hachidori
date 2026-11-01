@@ -22,6 +22,30 @@ export function ankiSetupFamily(modelName) {
   return match === null ? null : match[1].toLowerCase();
 }
 
+/**
+ * The note-type families a profile's language lists in its pack's
+ * `host.anki.noteTypeFamilies` (docs/languages.md 12), or null for a language
+ * that lists every family, as Japanese does, whose detection, presets and
+ * duplicate sources are today's. A request that names no language means
+ * Japanese.
+ * @param {string | null | undefined} language
+ * @returns {string[] | null}
+ */
+export function ankiLanguageFamilies(language) {
+  if (language === undefined || language === null) return null;
+  const listed = globalThis.HDLanguages?.get?.(language)?.host?.anki?.noteTypeFamilies;
+  let families;
+  if (Array.isArray(listed)) families = ANKI_SETUP_FAMILIES.filter(family => listed.includes(family));
+  else families = language === "ja" ? ANKI_SETUP_FAMILIES : [];
+  return families.length === ANKI_SETUP_FAMILIES.length ? null : families;
+}
+
+// A model's family when the language lists it (null: every family).
+export function ankiListedFamily(modelName, families) {
+  const family = ankiSetupFamily(modelName);
+  return family !== null && (families === null || families.includes(family)) ? family : null;
+}
+
 function positiveId(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
