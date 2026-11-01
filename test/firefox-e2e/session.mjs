@@ -11,14 +11,14 @@
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { after, describe } from "node:test";
+import { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { RECOMMENDED_DICTIONARIES as CATALOGUE } from "../../extension/recommended-dictionaries.js";
 import { RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
-import { check, diagnostics, fatal, keepProfiles, report, step } from "./harness.mjs";
+import { diagnostics, fatal, keepProfiles, report } from "./harness.mjs";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION = process.env.HACHIDORI_FIREFOX_EXTENSION || resolve(HERE, "tmp/firefox-extension");
@@ -78,14 +78,9 @@ const routes = new Map();
 // Handlers for POSTs to the page server's fake AnkiConnect.
 const anki = { handle: null, requests: [], refused: 0 };
 const servedAudio = new Map();
-
-function setBrowser(next) {
-  browser = next;
-}
-
-function setPage(next) {
-  page = next;
-}
+// Local files the page server streams, by path: archives too large to hand
+// to a page through WebDriver BiDi.
+const servedFiles = new Map();
 
 const sleep = ms => new Promise(resolve => { setTimeout(resolve, ms); });
 
@@ -255,14 +250,16 @@ async function reloadPage(target) {
 
 // A file input in an extension page: WebDriver BiDi's input.setFiles refuses
 // privileged documents, so the files are given to the input through a
-// DataTransfer and its change event, as a drop or the picker would.
+// DataTransfer and its change event, as a drop or the picker would. A file
+// with a `url` is read by the page from that address instead of being sent.
 async function setInputFiles(target, selector, files) {
-  const payload = files.map(file => ({ name: file.name, type: file.type ?? "application/zip",
-    base64: (file.bytes ?? readFileSync(file.path)).toString("base64") }));
-  return target.evaluate((inputSelector, json) => {
+  const payload = files.map(file => ({ name: file.name, type: file.type ?? "application/zip", url: file.url ?? null,
+    base64: file.url ? null : (file.bytes ?? readFileSync(file.path)).toString("base64") }));
+  return target.evaluate(async (inputSelector, json) => {
     const transfer = new DataTransfer();
-    for (const { name, type, base64 } of JSON.parse(json)) {
-      transfer.items.add(new File([Uint8Array.from(atob(base64), character => character.charCodeAt(0))], name, { type }));
+    for (const { name, type, url, base64 } of JSON.parse(json)) {
+      const bytes = url ? await (await fetch(url)).blob() : Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], name, { type }));
     }
     const input = document.querySelector(inputSelector);
     input.files = transfer.files;
@@ -518,6 +515,13 @@ function startServer() {
           response.end(JSON.stringify(reply));
           return;
         }
+        if (servedFiles.has(url.pathname)) {
+          const file = servedFiles.get(url.pathname);
+          response.writeHead(200, { "content-type": "application/zip", "content-length": statSync(file).size,
+            "access-control-allow-origin": "*" });
+          createReadStream(file).pipe(response);
+          return;
+        }
         if (servedAudio.has(url.pathname)) {
           servedAudio.get(url.pathname).requests += 1;
           response.writeHead(200, { "content-type": "audio/wav", "access-control-allow-origin": "*" });
@@ -578,61 +582,32 @@ async function tabUrls() {
   return result.contexts.map(context => context.url);
 }
 
-describe("session", () => {
-  step("Firefox loads the Firefox build", async () => {
-    if (!FIREFOX || !existsSync(FIREFOX)) fatal("no Firefox found (run node test/run.mjs install-firefox, or set HACHIDORI_FIREFOX)");
-    if (!PUPPETEER || !existsSync(PUPPETEER)) fatal(`no puppeteer-core at ${PUPPETEER} (set HACHIDORI_PUPPETEER)`);
-    if (!existsSync(resolve(EXTENSION, "manifest.json"))) {
-      const built = spawnSync("python3", [resolve(HERE, "../scripts/build-firefox.py"), "--output-dir", EXTENSION], { encoding: "utf8" });
-      if (built.status !== 0) fatal(`build-firefox.py failed:\n${built.stdout}\n${built.stderr}`);
-    }
-    if (!existsSync(FIXTURE)) {
-      const made = spawnSync(process.execPath, [resolve(HERE, "make-fixture.mjs")], { encoding: "utf8" });
-      if (made.status !== 0) fatal(`make-fixture.mjs failed:\n${made.stdout}\n${made.stderr}`);
-    }
-    if (!HIGHLIGHT_NAME) fatal("could not read HIGHLIGHT_NAME out of extension/content.js");
-    const module = await import(pathToFileURL(PUPPETEER).href);
-    launchApi = module.default?.launch ? module.default : module;
-    server = await startServer();
-    serverUrl = `http://127.0.0.1:${server.address().port}`;
-    updateServer = await startUpdateServer();
-    updateOrigin = `https://${UPDATE_HOST}:${updateServer.address().port}`;
-    console.log(`profile: ${PROFILE}`);
-    const launched = await launchFirefox(PROFILE);
-    ({ browser, session: bidi, downloads } = launched);
-    installedId = await installHachidori();
-    check("Firefox installs the Firefox build with its gecko ID", installedId === GECKO_ID, `installed ${installedId}`);
-
-    page = await openExtensionPage("settings.html");
-    const contexts = await page.evaluate(async () => (await chrome.runtime.getContexts({}))
-      .map(({ contextType, documentUrl, frameId }) => [contextType, documentUrl, frameId]));
-    // The background page, and the engine document in its frame.
-    const background = contexts.filter(([type]) => type === "BACKGROUND").map(([, url]) => url).sort();
-    const status = await waitFor(async () => {
-      const reply = await engineStatus(page);
-      return reply?.ready ? reply : false;
-    }, { timeout: 60_000 });
-    const manifest = await page.evaluate(() => chrome.runtime.getManifest());
-    check("the background page runs background.js and holds the engine, with no offscreen document",
-      JSON.stringify(background) === JSON.stringify([extensionUrl("background.html"), extensionUrl("offscreen.html")])
-        && !contexts.some(([type]) => type === "OFFSCREEN_DOCUMENT")
-        && manifest.background?.page === extensionUrl("background.html") && !manifest.background.service_worker
-        && status?.ok === true && status.ready === true,
-      JSON.stringify({ contexts, status, background: manifest.background }));
-    const isolation = await page.evaluate(() => ({ isolated: globalThis.crossOriginIsolated, shared: typeof SharedArrayBuffer }));
-    check("the engine runs single-threaded on IndexedDB in Firefox",
-      status?.threaded === false && status.storageBackend === "idbfs" && isolation.isolated === false,
-      JSON.stringify({ status, isolation }));
-    const startupPages = await waitFor(async () => {
-      const urls = (await tabUrls()).filter(url => url.startsWith(extensionUrl("startup.html")));
-      return urls.length > 0 ? urls : false;
-    }, { timeout: 20_000 });
-    await sleep(500);
-    check("a first install opens one startup page",
-      (await tabUrls()).filter(url => url.startsWith(extensionUrl("startup.html"))).length === 1,
-      JSON.stringify({ startupPages, tabs: await tabUrls() }));
-  });
-});
+// Launches Firefox on this run's profile with Hachidori installed and
+// Settings open in a tab, and returns the add-on ID Firefox installed.
+async function startSession() {
+  if (!FIREFOX || !existsSync(FIREFOX)) fatal("no Firefox found (run node test/run.mjs install-firefox, or set HACHIDORI_FIREFOX)");
+  if (!PUPPETEER || !existsSync(PUPPETEER)) fatal(`no puppeteer-core at ${PUPPETEER} (set HACHIDORI_PUPPETEER)`);
+  if (!existsSync(resolve(EXTENSION, "manifest.json"))) {
+    const built = spawnSync("python3", [resolve(HERE, "../scripts/build-firefox.py"), "--output-dir", EXTENSION], { encoding: "utf8" });
+    if (built.status !== 0) fatal(`build-firefox.py failed:\n${built.stdout}\n${built.stderr}`);
+  }
+  if (!existsSync(FIXTURE)) {
+    const made = spawnSync(process.execPath, [resolve(HERE, "make-fixture.mjs")], { encoding: "utf8" });
+    if (made.status !== 0) fatal(`make-fixture.mjs failed:\n${made.stdout}\n${made.stderr}`);
+  }
+  if (!HIGHLIGHT_NAME) fatal("could not read HIGHLIGHT_NAME out of extension/content.js");
+  const module = await import(pathToFileURL(PUPPETEER).href);
+  launchApi = module.default?.launch ? module.default : module;
+  server = await startServer();
+  serverUrl = `http://127.0.0.1:${server.address().port}`;
+  updateServer = await startUpdateServer();
+  updateOrigin = `https://${UPDATE_HOST}:${updateServer.address().port}`;
+  console.log(`profile: ${PROFILE}`);
+  ({ browser, session: bidi, downloads } = await launchFirefox(PROFILE));
+  installedId = await installHachidori();
+  page = await openExtensionPage("settings.html");
+  return installedId;
+}
 
 after(async () => {
   await browser?.close().catch(() => {});
@@ -641,18 +616,28 @@ after(async () => {
   report(false);
 });
 
+function setBrowser(next) {
+  browser = next;
+}
+
+function setPage(next) {
+  page = next;
+}
+
+function setDownloads(next) {
+  downloads = next;
+}
+
+function setBidi(next) {
+  bidi = next;
+}
+
 export {
-  activate, anki, browser, characterPoint, check, clickInPopup, downloadsDirectory, evaluateJson, findPage, reloadPage, dictionaryState, dismissPopup, downloadedFiles, engineStatus, EXTENSION,
-  extensionUrl, FIXTURE, FIXTURE_ID, GECKO_ID, HERE, highlightSize, hoverForPopup, importArchives, inPopup,
-  installHachidori, launchFirefox, listIdbfsPaths, makeAudioWav, navigate, updateOrigin, updateRoutes, ANKI_REFUSED_PATH,
-  openExtensionPage, openPage, ORIGIN, page, PROFILE, readPopup, readStorage, RECOMMENDED, routes, sendRuntime,
-  servedAudio, serverUrl, setBrowser, setInputFiles, setPage, showSettingsSection, sleep, tabUrls, UUID, waitFor,
-  writeOptions, ANKI_PATH, bidiSession, contextId,
+  activate, ANKI_PATH, ANKI_REFUSED_PATH, anki, bidiSession, browser, characterPoint, clickInPopup, contextId,
+  dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateJson, EXTENSION,
+  extensionUrl, findPage, FIXTURE, FIXTURE_ID, GECKO_ID, HERE, highlightSize, hoverForPopup, importArchives, inPopup,
+  installHachidori, launchFirefox, listIdbfsPaths, makeAudioWav, navigate, openExtensionPage, openPage, ORIGIN, page,
+  PROFILE, readPopup, readStorage, RECOMMENDED, reloadPage, routes, sendRuntime, servedAudio, servedFiles, serverUrl,
+  setBidi, setBrowser, setDownloads, setInputFiles, setPage, showSettingsSection, sleep, startSession, tabUrls,
+  updateOrigin, updateRoutes, UUID, waitFor, writeOptions
 };
-export function setDownloads(value) {
-  downloads = value;
-}
-export function setBidi(value) {
-  bidi = value;
-}
-export { bidi };

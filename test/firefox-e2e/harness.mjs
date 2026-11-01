@@ -22,7 +22,11 @@ const steps = [];
 const NAME_FILTERED = [...process.execArgv, ...(process.env.NODE_OPTIONS ?? "").split(/\s+/u)]
   .some(argument => /^--test-(?:name-pattern|skip-pattern|only)\b/u.test(argument));
 
-function markCompleteSuite() {
+// The entry file names its plan; until it does, every check is refused.
+let PLANNED = [];
+
+function markCompleteSuite(planned) {
+  PLANNED = planned;
   completeSuite = true;
 }
 
@@ -62,7 +66,7 @@ async function run(entry) {
   }
 }
 
-const PLANNED = [
+const E2E_PLANNED = [
   // session
   "Firefox installs the Firefox build with its gecko ID",
   "the background page runs background.js and holds the engine, with no offscreen document",
@@ -193,4 +197,4 @@ function report(exit = true) {
   if (exit) process.exit(failed ? 1 : 0);
 }
 
-export { check, diagnostics, fatal, keepProfiles, markCompleteSuite, PLANNED, report, step };
+export { check, diagnostics, E2E_PLANNED, fatal, keepProfiles, markCompleteSuite, report, step };

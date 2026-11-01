@@ -15,7 +15,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./firefox-e2e/session.mjs";
+import "./firefox-e2e/install.mjs";
 import "./firefox-e2e/first-run.mjs";
 import "./firefox-e2e/import.mjs";
 import "./firefox-e2e/reader.mjs";
@@ -23,6 +23,6 @@ import "./firefox-e2e/settings.mjs";
 import "./firefox-e2e/anki.mjs";
 import "./firefox-e2e/backup.mjs";
 import "./firefox-e2e/restart.mjs";
-import { markCompleteSuite } from "./firefox-e2e/harness.mjs";
+import { E2E_PLANNED, markCompleteSuite } from "./firefox-e2e/harness.mjs";
 
-markCompleteSuite();
+markCompleteSuite(E2E_PLANNED);

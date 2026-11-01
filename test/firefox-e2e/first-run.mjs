@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./session.mjs";
+import "./install.mjs";
 import { describe } from "node:test";
 import { buildRecommendedZip } from "../make-fixture.mjs";
 import { check, step } from "./harness.mjs";
