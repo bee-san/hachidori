@@ -24,7 +24,7 @@ const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXTENSION = process.env.HACHIDORI_FIREFOX_EXTENSION || resolve(HERE, "tmp/firefox-extension");
 const FIREFOX = process.env.HACHIDORI_FIREFOX;
 const PUPPETEER = process.env.HACHIDORI_PUPPETEER;
-const GECKO_ID = "hachidori@skerritt.blog";
+const GECKO_ID = "hachidori@bee-san";
 // Pinned so extension URLs are known before the add-on is installed.
 const UUID = "5a1d4c2e-8f3b-4e6a-9c7d-0b1e2f3a4b5c";
 const ORIGIN = `moz-extension://${UUID}`;

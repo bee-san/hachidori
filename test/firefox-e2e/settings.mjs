@@ -174,7 +174,7 @@ describe("settings", () => {
     }
     check("Get debug info reports Firefox and its IndexedDB engine",
       /Firefox\/\d+/u.test(report?.browser?.userAgent ?? "") && report.engine?.status?.storageBackend === "idbfs"
-        && report.extension?.manifest?.browser_specific_settings?.gecko?.id === "hachidori@skerritt.blog",
+        && report.extension?.manifest?.browser_specific_settings?.gecko?.id === "hachidori@bee-san",
       JSON.stringify({ file, userAgent: report?.browser?.userAgent, status: report?.engine?.status, error: report?.error }));
   });
 });

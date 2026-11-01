@@ -8,7 +8,7 @@ names the background page and leaves out what Firefox does not implement.
 
 import copy
 
-GECKO_ID = "hachidori@skerritt.blog"
+GECKO_ID = "hachidori@bee-san"
 MINIMUM_FIREFOX = "153.0"
 # Only the Firefox build loads these; the Chrome ZIP leaves them out.
 FIREFOX_ONLY_FILES = ("background.html", "event-page.js")
