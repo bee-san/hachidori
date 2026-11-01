@@ -1,0 +1,28 @@
+imported Jitendex.org [2026-10-03]                terms 436555 freq 0 pitch 0 ipa 0 kanji 0
+imported JMnedict [2026-10-31]                    terms 668025 freq 0 pitch 0 ipa 0 kanji 0
+imported Bee's Ultimate Kanji Dictionary          terms 12634 freq 3897 pitch 0 ipa 0 kanji 0
+imported Jiten                                    terms 0 freq 590666 pitch 0 ipa 0 kanji 0
+imported Bee's Ultimate Grammar Dictionary        terms 7640 freq 0 pitch 0 ipa 0 kanji 0
+words 454276
+words no term entry has as an expression or reading: 18235
+words whose exact-word hover gains a frequency-only result: 16795 (3.70%)
+  of which had no result at all without the option: 7
+lists that changed other than by results without glossaries in front: 0
+  rank      1-  1000: 0
+  rank   1001-  5000: 4
+  rank   5001- 10000: 2
+  rank  10001- 20000: 5
+  rank  20001- 50000: 36
+  rank  50001-100000: 193
+  rank 100001-200000: 1529
+  rank 200001-500000: 15026
+most frequent examples: という訳だ(1166) と言う訳だ(1166) はずです(1425) というわけだ(4338) ことこそ(9391) 事こそ(9391) 出る前(10299) 顔を覗く(10808) 一足先(11127) お茶する(15810) じゅる(17179) 刻一刻と(20693) ちゅ(22989) じゅっ(23204) 命に代えても(23813) やべ(26171) がちゃりと(26671) うふ(28302) カチッ(28872) あは(28979) ぐわー(29484) 室を出る(29933) どどう(31174) こたろう(34154) およしなさい(35338) おかれましては(35868) 於かれましては(35868) びくり(35899) に超したことはない(36047) うへえ(40619) あいむ(40786) お気を確かに(40976) ぱくっと(41502) くたり(42110) わあい(43477) にしな(43708) やしません(46077) きゅきゅ(46422) 深い霧(46617) ふわわ(46635)
+random examples: たかだ(147490) たらが(190217) えびすの(385992) ろくえもん(230092) よしかげ(318109) やまきじ(334333) まつしげ(391177) かゆな(403547) みひと(212688) にほんざか(403547) りひな(354654) こいち(194390) くじらい(403547) むらべ(403547) ぽんた(90335) あおど(403547) にしじょう(264436) よしづき(391177) いくわ(320365) みねなか(403547) かばくら(334772) はらも(403547) ちきな(354654) まんがね(285073) たかかげ(338080) ようけんじ(403547) エビスもり(381047) ななさ(320365) ばいざん(403547) こうたち(235880) かがや(253637) よない(312257) せくい(354654) こまごみ(403547) もそめ(403547) しんらく(354654) べりーな(296078) はまやま(343739) つほ(248020) のほ(213188)
+windows 40000, with a result off 36998
+hovers whose first result becomes frequency-only with the option on: 1387 (3.47%)
+examples: はまだ こで たかと めじめ はここ こで うも とで かったか わゆ うも きは てまる もだい みなら らず うも これが れが うも うや くは ると ると らいくら ると はいない くさん さんお がおか のそ ると うや やくの てど うした らよ れと らくし いから るこ うも うや やくの ると したか たかも るま ると でもう いから るく ると とその たのだ こで したの のが さんで るや
+cfef815d2920d302569127d5f1355bc3d3c482c0989c836c38e8158c690ccf49  /local/home/skerraut/herd-synth3/clones/hachi-fix-620-work/measure/dump-base.txt
+cfef815d2920d302569127d5f1355bc3d3c482c0989c836c38e8158c690ccf49  /local/home/skerraut/herd-synth3/clones/hachi-fix-620-work/measure/dump-off.txt
+72556f77024cc3e4f5b11e3d70b1770db628a2a2a99451de8d9868740c835f6a  /local/home/skerraut/herd-synth3/clones/hachi-fix-620-work/measure/dump-on.txt
+OFF IDENTICAL TO BASE
+inputs 494979 changed by the option 18211 ordinary lists not the off prefix 0 glossary-less not in front 0
