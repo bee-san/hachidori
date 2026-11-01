@@ -35,8 +35,16 @@ async function createOffscreen(url) {
   }
 }
 
+// Firefox has no offscreen documents: its background page, background.html,
+// holds the engine document in a frame. The page's load event follows the
+// frame's, by which time offscreen.js is listening.
+function backgroundPageLoaded() {
+  if (globalThis.document === undefined || globalThis.document.readyState === "complete") return Promise.resolve();
+  return new Promise(resolve => globalThis.addEventListener("load", resolve, { once: true }));
+}
+
 export async function ensureChromeOffscreen(url) {
-  if (!chromeOffscreenSupported()) return;
+  if (!chromeOffscreenSupported()) return backgroundPageLoaded();
   if (await offscreenExists(url)) return;
   if (creating === null) creating = createOffscreen(url);
   await creating;

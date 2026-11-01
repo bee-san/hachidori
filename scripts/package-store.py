@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the committed Chrome ZIP and matching source using only Git/Python."""
+"""Package the committed Chrome and Firefox ZIPs and their matching source using only Git/Python."""
 
 import argparse
 import hashlib
@@ -10,6 +10,8 @@ import subprocess
 import tarfile
 import urllib.request
 import zipfile
+
+from firefox_manifest import FIREFOX_ONLY_FILES, firefox_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,7 +106,7 @@ def write_zip(path, entries):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, required=True, help="Directory outside the checkout for both ZIPs and checksums")
+    parser.add_argument("--output-dir", type=Path, required=True, help="Directory outside the checkout for the ZIPs and checksums")
     parser.add_argument("--cache-dir", type=Path, default=Path.home() / ".cache/hachidori-store-sources", help="Reusable checksum-verified dependency source cache")
     args = parser.parse_args()
     if args.output_dir.resolve().is_relative_to(ROOT):
@@ -150,14 +152,18 @@ def main():
         "The publisher distributes this source archive alongside this release.\n"
         "It includes recursive submodule sources, pinned zip.js and gifenc\n"
         "sources, and docs/source-build.md. The store listing provides the download location.\n"
-        "This source archive matches the Chrome ZIP of this release.\n"
+        "This source archive matches the Chrome and Firefox ZIPs of this release.\n"
     ).encode(), 0o100644)
-    upload_name = stem + "-chrome.zip"
-    upload_hash = write_zip(args.output_dir / upload_name, upload)
-    checksums = f"{upload_hash}  {upload_name}\n{source_hash}  {source_name}\n"
+    chrome = {name: entry for name, entry in upload.items() if name not in FIREFOX_ONLY_FILES}
+    firefox = dict(upload, **{"manifest.json": (json_bytes(firefox_manifest(manifest)), 0o100644)})
+    checksums = ""
+    for browser, entries in (("chrome", chrome), ("firefox", firefox)):
+        upload_name = f"{stem}-{browser}.zip"
+        checksums += f"{write_zip(args.output_dir / upload_name, entries)}  {upload_name}\n"
+    checksums += f"{source_hash}  {source_name}\n"
     (args.output_dir / (stem + "-SHA256SUMS.txt")).write_text(checksums)
     print(checksums, end="")
-    print("Publish the matching source archive before uploading the Chrome ZIP; add its public location to the store listing.")
+    print("Publish the matching source archive before uploading a browser ZIP; add its public location to the store listing.")
 
 
 if __name__ == "__main__":
