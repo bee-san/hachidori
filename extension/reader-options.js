@@ -828,7 +828,7 @@
     return {};
   }
 
-  function projectOptions(value, strict) {
+  function projectOptionKeys(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const result = { ...legacyActivationOptions(source, strict), ...legacyBlurCountOption(source, strict) };
     // Keep the existing mining choice when the experiment becomes an Anki
@@ -867,19 +867,25 @@
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
 
+  // A record with profiles reads, for code that predates them, as its Japanese
+  // profile flattened with the global keys (docs/languages.md 5.1).
   function projectStoredOptions(value) {
-    return projectOptions(value, false);
+    return projectOptionKeys(hasProfiles(value) ? flatProfileRecord(value, JAPANESE_PROFILE_ID) : value, false);
   }
 
   function validateOptionsPatch(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new Error("the options write request carried no object");
     }
-    return projectOptions(value, true);
+    return projectOptionKeys(value, true);
   }
 
   function normaliseOptions(value) {
-    const options = { ...DEFAULT_OPTIONS, ...projectStoredOptions(value) };
+    return normaliseFlatOptions(hasProfiles(value) ? flatProfileRecord(value, JAPANESE_PROFILE_ID) : value);
+  }
+
+  function normaliseFlatOptions(value) {
+    const options = { ...DEFAULT_OPTIONS, ...projectOptionKeys(value, false) };
     const source = value && typeof value === "object" ? value : {};
     options.anki = normaliseAnki(options.anki);
     if (Object.hasOwn(source, "customButtons")) {
@@ -909,6 +915,393 @@
     return normaliseOptions(value);
   }
 
+  // ---------------------------------------------------------------------------
+  // The profile layer (docs/languages.md, sections 4 and 5). A record without
+  // `profiles` is the single-profile shape: today's record, read as one
+  // Japanese profile through today's code path. Once the records have profiles,
+  // global keys stay at the top level of `options`, profile keys live only in
+  // `profiles[].settings`, and `anki` is split: `url` and `apiKey` at the top,
+  // `templates` in the profile.
+  // ---------------------------------------------------------------------------
+
+  const JAPANESE_PROFILE_ID = "ja";
+  const JAPANESE_LANGUAGE = "ja";
+  // Appendix A of the design: the keys that describe the reader's hands,
+  // screen and machine rather than a language. Every other option key except
+  // `anki` belongs to the profile.
+  const GLOBAL_OPTION_KEYS = Object.freeze([
+    "hoverEnabled", "lookupMode", "activationKey", "definitionLookupMode", "scanDelayMs", "definitionScanDelayMs",
+    "popupHideDelayMs", "hidePopupOnCursorExit", "hidePopupOnCursorExitDelayMs", "popupNestingMaxDepth",
+    "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "smallerAnkiCards", "experimental",
+    "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
+    "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
+    "showToolbarSearchButton", "keybinds",
+  ]);
+  const GLOBAL_KEYS = new Set(GLOBAL_OPTION_KEYS);
+  const PROFILE_OPTION_KEYS = Object.freeze(OPTION_KEYS.filter(key => !GLOBAL_KEYS.has(key) && key !== "anki"));
+  const PROFILE_KEYS = new Set(PROFILE_OPTION_KEYS);
+  // Retired keys migrate into the scope of the key they became.
+  const GLOBAL_RETIRED_KEYS = ["modifier", "hoverDelayMs"];
+  const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
+  // `Hani` in a requirement matches every script code that includes Han.
+  const HAN_SCRIPTS = new Set(["Hani", "Hans", "Hant", "Hanb", "Jpan", "Kore"]);
+
+  // Section 7.3: each option key that needs something of the language, and the
+  // value that makes it behave as off for a profile that lacks it.
+  const OPTION_REQUIREMENTS = Object.freeze({
+    showPitchAccentFurigana: { requires: "pitchAccent", neutral: false },
+    pitchAccentFuriganaDictionary: { requires: "pitchAccent", neutral: "" },
+    pitchAccentFuriganaStyle: { requires: "pitchAccent", neutral: "contour" },
+    showPitchAccentBadge: { requires: "pitchAccent", neutral: false },
+    showPitchAccentDictionaryNames: { requires: "pitchAccent", neutral: false },
+    showPitchAccentText: { requires: "pitchAccent", neutral: false },
+    showPitchAccentPosition: { requires: "pitchAccent", neutral: false },
+    showPitchAccentGraph: { requires: "pitchAccent", neutral: false },
+    showPitchAccentColors: { requires: "pitchAccent", neutral: false },
+    kanjiClickDictionary: { requires: "characterView", neutral: "" },
+    wordHighlightEnabled: { requires: "wordHighlighting", neutral: false },
+    wordHighlightUnknown: { requires: "wordHighlighting", neutral: true },
+    wordHighlightLearning: { requires: "wordHighlighting", neutral: true },
+    wordHighlightKnown: { requires: "wordHighlighting", neutral: false },
+    wordHighlightIgnored: { requires: "wordHighlighting", neutral: false },
+    wordHighlightStyle: { requires: "wordHighlighting", neutral: "underline" },
+  });
+
+  function plainObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  }
+
+  function hasProfiles(storedOptions) {
+    return Array.isArray(plainObject(storedOptions)?.profiles);
+  }
+
+  function storedRevision(storedOptions) {
+    const revision = plainObject(storedOptions)?.revision;
+    return Number.isInteger(revision) && revision >= 0 ? revision : 0;
+  }
+
+  function pick(source, keys) {
+    return Object.fromEntries(keys.filter(key => Object.hasOwn(source, key)).map(key => [key, source[key]]));
+  }
+
+  // The top-level `anki` of a record with profiles: the connection only.
+  function ankiConnection(value) {
+    const source = plainObject(value);
+    if (source === null) return null;
+    return {
+      ...(Object.hasOwn(source, "url") ? { url: normaliseAnkiConnectUrl(source.url) ?? "" } : {}),
+      apiKey: typeof source.apiKey === "string" ? source.apiKey : DEFAULT_ANKI.apiKey,
+    };
+  }
+
+  // A profile's own `anki`: its Templates only.
+  function ankiTemplates(value) {
+    const source = plainObject(value);
+    return source === null ? null : { templates: normaliseAnki({ templates: source.templates }).templates };
+  }
+
+  // A stored profile with anything malformed dropped; null when it has no
+  // usable id or language. Its settings are the sparse profile keys it holds.
+  function normaliseProfile(value) {
+    const source = plainObject(value);
+    if (source === null || !validIdentifier(source.id)
+        || typeof source.language !== "string" || !LANGUAGE_CODE.test(source.language)) return null;
+    const settings = plainObject(source.settings) ?? {};
+    const projected = projectOptionKeys(pick(settings, [...PROFILE_OPTION_KEYS, "definitionBlurEnabled"]), false);
+    const anki = ankiTemplates(settings.anki);
+    return {
+      id: source.id,
+      language: source.language,
+      settings: { ...pick(projected, PROFILE_OPTION_KEYS), ...(anki === null ? {} : { anki }) },
+      packSettings: { ...(plainObject(source.packSettings) ?? {}) },
+    };
+  }
+
+  function storedProfiles(storedOptions) {
+    const ids = new Set();
+    return storedOptions.profiles.flatMap(value => {
+      const profile = normaliseProfile(value);
+      if (profile === null || ids.has(profile.id)) return [];
+      ids.add(profile.id);
+      return [profile];
+    });
+  }
+
+  // A flat record's own profile keys, as a profile's settings.
+  function profileSettingsOf(flat) {
+    const anki = flat.anki === undefined ? null : { templates: normaliseAnki(flat.anki).templates };
+    return { ...pick(flat, PROFILE_OPTION_KEYS), ...(anki === null ? {} : { anki }) };
+  }
+
+  /**
+   * The profile list. A record without `profiles` is one Japanese profile
+   * holding the record's own profile keys.
+   * @returns {{id: string, language: string, settings: object, packSettings: object}[]}
+   */
+  function profiles(storedOptions) {
+    if (!hasProfiles(storedOptions)) {
+      return [{ id: JAPANESE_PROFILE_ID, language: JAPANESE_LANGUAGE,
+        settings: profileSettingsOf(projectOptionKeys(storedOptions, false)), packSettings: {} }];
+    }
+    return storedProfiles(storedOptions);
+  }
+
+  function findProfile(storedOptions, profileId) {
+    return profiles(storedOptions).find(profile => profile.id === profileId) ?? null;
+  }
+
+  // The flat record a profile reads as: the global keys from the top level,
+  // the profile keys from the profile (none without one), `anki` joined.
+  function flatProfileRecord(storedOptions, profileId) {
+    const source = plainObject(storedOptions);
+    const profile = findProfile(storedOptions, profileId);
+    const flat = pick(source, [...GLOBAL_OPTION_KEYS, ...GLOBAL_RETIRED_KEYS]);
+    if (profile !== null) {
+      const { anki: profileAnki, ...settings } = profile.settings;
+      Object.assign(flat, settings);
+      const connection = ankiConnection(source.anki);
+      if (connection !== null || profileAnki !== undefined) {
+        flat.anki = { ...connection, ...(profileAnki === undefined ? {} : { templates: profileAnki.templates }) };
+      }
+    } else {
+      const connection = ankiConnection(source.anki);
+      if (connection !== null) flat.anki = connection;
+    }
+    return flat;
+  }
+
+  function registry() {
+    const languages = globalThis.HDLanguages;
+    return languages && typeof languages.get === "function" ? languages : null;
+  }
+
+  // A language's descriptor from the registry; null outside a build that has
+  // its pack, and in contexts that load no registry.
+  function languageDescriptor(language) {
+    return registry()?.get(language) ?? null;
+  }
+
+  function validPackSettingValue(setting, value) {
+    if (setting?.type === "boolean") return typeof value === "boolean";
+    if (setting?.type === "enum") return Array.isArray(setting.values) && setting.values.some(entry => entry?.id === value);
+    if (setting?.type === "number") {
+      return typeof value === "number" && Number.isFinite(value)
+        && (typeof setting.min !== "number" || value >= setting.min)
+        && (typeof setting.max !== "number" || value <= setting.max);
+    }
+    return false;
+  }
+
+  // A pack setting's value for a profile: the stored one when the pack
+  // declares the setting and the value is valid for it, otherwise its default.
+  function packSettingValue(descriptor, packSettings, id) {
+    const setting = (Array.isArray(descriptor?.settings) ? descriptor.settings : []).find(entry => entry?.id === id);
+    if (!setting) return undefined;
+    const value = plainObject(packSettings)?.[id];
+    return validPackSettingValue(setting, value) ? value : setting.default;
+  }
+
+  // Whether a language has a capability: optional ones only while a pack
+  // setting with that capability effect turns them on.
+  function languageCapability(descriptor, name, packSettings = {}) {
+    const value = descriptor?.capabilities?.[name];
+    if (name === "readings") return value === "required" || value === "optional";
+    if (value === undefined || value === null || value === false) return false;
+    if (plainObject(value)?.optional === true) {
+      const setting = (Array.isArray(descriptor.settings) ? descriptor.settings : [])
+        .find(entry => entry?.effect?.capability === name);
+      return setting !== undefined && packSettingValue(descriptor, packSettings, setting.id) === true;
+    }
+    return true;
+  }
+
+  // Section 7.3: a capability name, {scripts: [...]} or "ankiNoteTypeFamilies".
+  // Japanese meets every requirement, also where no registry is loaded; a
+  // language this context has no descriptor for meets none.
+  function optionRequirementMet(requirement, language, packSettings = {}) {
+    const descriptor = languageDescriptor(language);
+    if (descriptor === null) return language === JAPANESE_LANGUAGE;
+    if (requirement === "ankiNoteTypeFamilies") {
+      const families = descriptor.host?.anki?.noteTypeFamilies;
+      return Array.isArray(families) && families.length > 0;
+    }
+    if (Array.isArray(plainObject(requirement)?.scripts)) {
+      const scripts = Array.isArray(descriptor.scripts) ? descriptor.scripts : [];
+      return requirement.scripts.some(wanted => scripts.some(script => script === wanted
+        || (wanted === "Hani" && HAN_SCRIPTS.has(script))));
+    }
+    return typeof requirement === "string" && languageCapability(descriptor, requirement, packSettings);
+  }
+
+  function maskOptions(options, language, packSettings) {
+    for (const [key, { requires, neutral }] of Object.entries(OPTION_REQUIREMENTS)) {
+      if (!optionRequirementMet(requires, language, packSettings)) options[key] = neutral;
+    }
+    return options;
+  }
+
+  /**
+   * Flat options for one profile, shaped exactly like normaliseOptions' result:
+   * global keys from the top level, profile keys from the profile, then
+   * capability masking (section 7.3) unless `masked` is false. A profile the
+   * record lacks reads as the global keys over the defaults.
+   */
+  function projectOptions(storedOptions, profileId = JAPANESE_PROFILE_ID, { masked = true } = {}) {
+    if (!hasProfiles(storedOptions)) {
+      if (profileId === JAPANESE_PROFILE_ID) return normaliseFlatOptions(storedOptions);
+      const options = normaliseFlatOptions(pick(plainObject(storedOptions) ?? {}, [...GLOBAL_OPTION_KEYS, ...GLOBAL_RETIRED_KEYS]));
+      return masked ? maskOptions(options, null, {}) : options;
+    }
+    const profile = findProfile(storedOptions, profileId);
+    const options = normaliseFlatOptions(flatProfileRecord(storedOptions, profileId));
+    return masked ? maskOptions(options, profile?.language ?? null, profile?.packSettings ?? {}) : options;
+  }
+
+  // `{ id, language, packSettings }`, or null when the record has no such profile.
+  function profileDescriptor(storedOptions, profileId) {
+    const profile = findProfile(storedOptions, profileId);
+    return profile === null ? null : { id: profile.id, language: profile.language, packSettings: { ...profile.packSettings } };
+  }
+
+  // The top level of a record with profiles, normalised: sparse global keys
+  // and the Anki connection.
+  function storedGlobals(storedOptions) {
+    const source = plainObject(storedOptions) ?? {};
+    const globals = pick(projectOptionKeys(pick(source, [...GLOBAL_OPTION_KEYS, ...GLOBAL_RETIRED_KEYS]), false),
+      GLOBAL_OPTION_KEYS);
+    const connection = ankiConnection(source.anki);
+    return connection === null ? globals : { ...globals, anki: connection };
+  }
+
+  function patchHoldsProfileKeys(patch) {
+    return Object.keys(patch).some(key => key === "anki" || PROFILE_KEYS.has(key));
+  }
+
+  /**
+   * The one options writer (section 5.2): applies a validated flat patch to the
+   * stored, unmasked record, keeping its revision; callers move the revision.
+   * Global keys go to the top level, profile keys to the named profile, `anki`
+   * split. For a single-profile record it is exactly what today's writers do:
+   * the stored projection, its revision, then the patch.
+   */
+  function applyOptionsPatch(storedOptions, patch, profileId = JAPANESE_PROFILE_ID) {
+    const revision = storedRevision(storedOptions);
+    const flatPatch = plainObject(patch) ?? {};
+    if (!hasProfiles(storedOptions)) {
+      if (profileId !== JAPANESE_PROFILE_ID && patchHoldsProfileKeys(flatPatch)) {
+        throw new Error("the options write names a profile that does not exist");
+      }
+      return { ...projectOptionKeys(storedOptions, false), revision, ...flatPatch };
+    }
+    const list = storedProfiles(storedOptions);
+    const index = list.findIndex(profile => profile.id === profileId);
+    if (index < 0 && patchHoldsProfileKeys(flatPatch)) {
+      throw new Error("the options write names a profile that does not exist");
+    }
+    const top = storedGlobals(storedOptions);
+    const settings = index < 0 ? null : { ...list[index].settings };
+    for (const [key, value] of Object.entries(flatPatch)) {
+      if (key === "anki") {
+        top.anki = ankiConnection(value);
+        settings.anki = ankiTemplates(value);
+      } else if (GLOBAL_KEYS.has(key)) {
+        top[key] = value;
+      } else if (PROFILE_KEYS.has(key)) {
+        settings[key] = value;
+      }
+    }
+    return { revision, ...top,
+      profiles: list.map((profile, position) => position === index ? { ...profile, settings } : profile) };
+  }
+
+  // A patch of pack settings by id (section 7.5): ids the language's pack
+  // declares must carry valid values, ids the patch omits keep theirs, and a
+  // value for an id this build's pack does not declare is kept as sent.
+  function applyPackSettingsPatch(storedOptions, packPatch, profileId) {
+    const patch = plainObject(packPatch);
+    if (patch === null) throw new Error("the pack settings write carried no object");
+    if (Object.keys(patch).length === 0) return storedOptions;
+    if (!hasProfiles(storedOptions)) throw new Error("This language has no settings of its own.");
+    const list = storedProfiles(storedOptions);
+    const index = list.findIndex(profile => profile.id === profileId);
+    if (index < 0) throw new Error("the options write names a profile that does not exist");
+    const descriptor = languageDescriptor(list[index].language);
+    for (const [id, value] of Object.entries(patch)) {
+      const setting = (Array.isArray(descriptor?.settings) ? descriptor.settings : []).find(entry => entry?.id === id);
+      if (setting !== undefined && !validPackSettingValue(setting, value)) {
+        throw new Error(`the pack setting ${JSON.stringify(id)} carried an invalid value`);
+      }
+    }
+    const profilesList = list.map((profile, position) => position === index
+      ? { ...profile, packSettings: { ...profile.packSettings, ...patch } } : profile);
+    return { ...applyOptionsPatch(storedOptions, {}, profileId), profiles: profilesList };
+  }
+
+  // dictionaryState schema 2 (section 4.2): `dictionaries` lists every package
+  // once, without `enabled`; `profiles[id]` holds each profile's ordered list
+  // of `{ id, enabled }` and its groups.
+  const DICTIONARY_STATE_PROFILES_SCHEMA = 2;
+
+  function hasDictionaryProfiles(storedState) {
+    const state = plainObject(storedState);
+    return state?.schemaVersion === DICTIONARY_STATE_PROFILES_SCHEMA && plainObject(state.profiles) !== null;
+  }
+
+  // A package row with `enabled` where today's rows carry it: after `path`.
+  function packageWithEnabled(row, enabled) {
+    const result = {};
+    let placed = false;
+    for (const [key, value] of Object.entries(row)) {
+      if (key === "enabled") continue;
+      result[key] = value;
+      if (key === "path") {
+        result.enabled = enabled;
+        placed = true;
+      }
+    }
+    if (!placed) result.enabled = enabled;
+    return result;
+  }
+
+  /**
+   * The schema-1 view of one profile: its packages in its order with its
+   * `enabled` flags, and its groups. A single-profile state is the Japanese
+   * profile's view as stored; null when the state has no such profile.
+   */
+  function projectDictionaryState(storedState, profileId = JAPANESE_PROFILE_ID) {
+    if (storedState === null || storedState === undefined) return null;
+    if (!hasDictionaryProfiles(storedState)) return profileId === JAPANESE_PROFILE_ID ? storedState : null;
+    const profile = plainObject(storedState.profiles[profileId]);
+    if (profile === null) return null;
+    const packages = new Map((Array.isArray(storedState.dictionaries) ? storedState.dictionaries : [])
+      .filter(row => plainObject(row) !== null).map(row => [row.id, row]));
+    const dictionaries = (Array.isArray(profile.dictionaries) ? profile.dictionaries : []).flatMap(entry => {
+      const row = packages.get(entry?.id);
+      return row === undefined ? [] : [packageWithEnabled(row, entry.enabled !== false)];
+    });
+    return {
+      schemaVersion: 1,
+      revision: storedState.revision,
+      dictionaries,
+      groups: Array.isArray(profile.groups) ? profile.groups : [],
+    };
+  }
+
+  /**
+   * Every package once, in installation order, with `enabled` meaning
+   * "enabled in any profile": what the engine loads, what managed updates and
+   * the installer see. A single-profile state's own list.
+   */
+  function allPackages(storedState) {
+    if (storedState === null || storedState === undefined) return [];
+    const rows = Array.isArray(storedState.dictionaries) ? storedState.dictionaries : [];
+    if (!hasDictionaryProfiles(storedState)) return rows;
+    const enabled = new Set(Object.values(storedState.profiles).flatMap(profile =>
+      (Array.isArray(profile?.dictionaries) ? profile.dictionaries : [])
+        .filter(entry => entry?.enabled !== false).map(entry => entry?.id)));
+    return rows.filter(row => plainObject(row) !== null).map(row => packageWithEnabled(row, enabled.has(row.id)));
+  }
+
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
@@ -927,5 +1320,9 @@
     projectStoredOptions, projectContentOptions, validateOptionsPatch, normaliseDictionarySelections,
     resolvePopupImageSources,
     hasCapability, resolveKanjiDictionary,
+    JAPANESE_PROFILE_ID, GLOBAL_OPTION_KEYS, PROFILE_OPTION_KEYS, OPTION_REQUIREMENTS,
+    hasProfiles, profiles, projectOptions, profileDescriptor, applyOptionsPatch, applyPackSettingsPatch,
+    hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
+    languageDescriptor, languageCapability, optionRequirementMet, packSettingValue,
   };
 }());

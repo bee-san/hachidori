@@ -1,0 +1,156 @@
+{
+  "$comment": "Registry descriptors (docs/languages.md 9.1) for the profile tests, shaped as the engine contract section 4 gives Japanese, English and Arabic; the real ones come from scripts/sync-languages.mjs.",
+  "ja": {
+    "code": "ja",
+    "bcp47": "ja",
+    "name": "Japanese",
+    "nativeName": "日本語",
+    "direction": "ltr",
+    "scripts": [
+      "Jpan"
+    ],
+    "text": {
+      "pattern": "[\\u3005-\\u3007\\u303B\\u3040-\\u30FF\\u31F0-\\u31FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\uFF66-\\uFF9F\\u{20000}-\\u{2FA1F}]",
+      "scanStart": "cursor",
+      "segmentation": "scan"
+    },
+    "capabilities": {
+      "readings": "required",
+      "ruby": {
+        "alignment": "kana"
+      },
+      "pitchAccent": true,
+      "characterView": {
+        "name": "Kanji",
+        "pattern": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]",
+        "readingLabels": {
+          "onyomi": "On",
+          "kunyomi": "Kun"
+        },
+        "readingSeparator": "、"
+      },
+      "wordHighlighting": true
+    },
+    "settings": [],
+    "host": {
+      "ttsLanguage": "ja-JP",
+      "audioLanguage": "ja",
+      "anki": {
+        "noteTypeFamilies": [
+          "kiku",
+          "lapis",
+          "senren"
+        ]
+      },
+      "sample": {
+        "warmup": "食べました"
+      }
+    },
+    "personalDictionary": {
+      "id": "e4c2e20a1a964b6cbd4ae3f87643c1f0",
+      "title": "Hachidori Custom Dictionary"
+    }
+  },
+  "en": {
+    "code": "en",
+    "bcp47": "en",
+    "name": "English",
+    "nativeName": "English",
+    "direction": "ltr",
+    "scripts": [
+      "Latn"
+    ],
+    "text": {
+      "pattern": "[A-Za-z\\u00C0-\\u024F]",
+      "scanStart": "word",
+      "segmentation": "spaces"
+    },
+    "capabilities": {
+      "readings": "none",
+      "ruby": null,
+      "pitchAccent": false,
+      "characterView": null,
+      "wordHighlighting": true
+    },
+    "settings": [],
+    "host": {
+      "ttsLanguage": "en-US",
+      "audioLanguage": "en",
+      "anki": {
+        "noteTypeFamilies": []
+      },
+      "sample": {
+        "warmup": "running"
+      }
+    },
+    "personalDictionary": {
+      "id": "0c1bc726585d6127bd099e6097ee2636",
+      "title": "Hachidori Custom Dictionary (English)"
+    }
+  },
+  "ar": {
+    "code": "ar",
+    "bcp47": "ar",
+    "name": "Arabic",
+    "nativeName": "العربية",
+    "direction": "rtl",
+    "scripts": [
+      "Arab"
+    ],
+    "text": {
+      "pattern": "[\\u0620-\\u065F\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF\\u0618-\\u061A\\u064B-\\u0656\\u0670\\u0640]",
+      "scanStart": "word",
+      "segmentation": "spaces"
+    },
+    "capabilities": {
+      "readings": "none",
+      "ruby": null,
+      "pitchAccent": false,
+      "characterView": null,
+      "wordHighlighting": true
+    },
+    "settings": [
+      {
+        "id": "vowelMarks",
+        "type": "enum",
+        "default": "show",
+        "values": [
+          {
+            "id": "show",
+            "label": "Show"
+          },
+          {
+            "id": "hide",
+            "label": "Hide"
+          }
+        ],
+        "label": "Vowel marks in headwords",
+        "group": "display",
+        "effect": {
+          "display": {
+            "fields": [
+              "expression",
+              "reading"
+            ],
+            "when": "hide",
+            "transform": "stripVowelMarks"
+          }
+        }
+      }
+    ],
+    "host": {
+      "ttsLanguage": "ar-SA",
+      "audioLanguage": "ar",
+      "anki": {
+        "noteTypeFamilies": []
+      },
+      "sample": {
+        "warmup": "قرأ"
+      }
+    },
+    "personalDictionary": {
+      "id": "611ea0de3a1fca044b3d62af6d730770",
+      "title": "Hachidori Custom Dictionary (Arabic)"
+    }
+  }
+}
