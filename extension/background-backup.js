@@ -18,10 +18,11 @@ import {
 } from "./lookup-stats.js";
 import { normaliseUpdateSettings } from "./managed-dictionary-source.js";
 import { normaliseCustomDictionaryDocument, parseCustomDictionary } from "./custom-dictionary.js";
+import { japaneseDictionaryView } from "./profile-state.js";
 import { sameJsonValue } from "./json-value.js";
 import {
   normaliseOptions, projectStoredOptions, normaliseWordStatusOverrides, OFFSCREEN_DOCUMENT, TARGET, relay,
-  optionsRevision, serialiseStorage,
+  optionsRevision, serialiseStorage, hasProfiles, hasDictionaryProfiles,
 } from "./background-core.js";
 import { WORKER_HANDLERS } from "./background-requests.js";
 import { reconcileAnkiIndex } from "./background-anki.js";
@@ -49,11 +50,19 @@ function assertBackupEngineSender(sender) {
 
 class AutomaticBackupNotReadyError extends Error {}
 
+// A backup of records with profiles holds their Japanese view
+// (docs/languages.md 17.1), a valid version 3 snapshot: the Japanese profile
+// flattened with the global keys, the Japanese dictionary view, and the
+// Japanese personal document, marks and lookup rows. Version 4 archives add
+// the other languages beside it.
 async function readBackupPayload() {
   const { snapshot } = await WORKER_HANDLERS.hd_backup_base_read();
   const stored = await chrome.storage.local.get(null);
-  const descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
+  let descriptor = stored[LOOKUP_STATS_KEY] === undefined ? emptyLookupStats() : stored[LOOKUP_STATS_KEY];
   assertLookupStatsDescriptor(descriptor);
+  if (hasProfiles(snapshot.options) || descriptor.languages !== undefined) {
+    descriptor = { generation: descriptor.generation, revision: descriptor.revision };
+  }
   const prefix = lookupStatsPrefix(descriptor);
   const lookupStatsRows = Object.entries(stored).filter(([key]) => key.startsWith(prefix)).map(([key, row]) => {
     if (lookupStatsKey(descriptor, row) !== key) throw new Error("The lookup statistics row does not match its key.");
@@ -61,7 +70,7 @@ async function readBackupPayload() {
   });
   assertLookupStatsRows(descriptor, lookupStatsRows);
   return { snapshot: {
-    state: snapshot.state,
+    state: hasDictionaryProfiles(snapshot.state) ? japaneseDictionaryView(snapshot.state) : snapshot.state,
     options: { ...projectStoredOptions(snapshot.options), revision: optionsRevision(snapshot.options) },
     document: normaliseCustomDictionaryDocument(snapshot.document),
     updates: normaliseUpdateSettings(snapshot.updates),
@@ -209,6 +218,10 @@ async function relayEngineRequest(message) {
   if (message.type === "hd_engine_config") throw new Error("Unknown engine request.");
   await sharingReady;
   if (sharingLinked && forwardableRequest(message)) return forwardToHost(message);
+  // A linked browser's languages are the host's.
+  if (sharingLinked && ["hd_profile_add", "hd_profile_remove"].includes(message.type)) {
+    throw new Error("Add and remove languages on the linked Hachidori.");
+  }
   if (message.type === "hd_backup_cancel") {
     const preparation = backupPreparations.get(message.token);
     if (preparation) preparation.cancelled = true;

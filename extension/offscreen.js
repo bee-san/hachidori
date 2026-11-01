@@ -47,6 +47,10 @@ const MUTATION_TYPES = new Set([
   "hd_backup_auto_cleanup",
   "hd_backup_restore",
   "hd_backup_cancel",
+  // Adding and removing a language change what the engine loads
+  // (docs/languages.md 5.2).
+  "hd_profile_add",
+  "hd_profile_remove",
 ]);
 const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
 const POLL_TYPES = new Set(["hd_status", "hd_memory"]);
@@ -204,6 +208,10 @@ function finishRequest(id, response) {
       failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
       generation: Number(response.generation) || 0,
     };
+    // Present once the records have profiles (docs/languages.md 9.2), so the
+    // single-profile reply served during a mutation stays today's.
+    if (Array.isArray(response.failedLanguages)) lastEngineStatus.failedLanguages = response.failedLanguages;
+    else delete lastEngineStatus.failedLanguages;
     // The engine cannot see the bridge's lock; Settings waits on it.
     request.sendResponse({ ...response, mutating: mutating() });
   } else {

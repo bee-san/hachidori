@@ -926,6 +926,12 @@
 
   const JAPANESE_PROFILE_ID = "ja";
   const JAPANESE_LANGUAGE = "ja";
+  // Section 5.2: requests that name no profile mean the Japanese data, and a
+  // request naming a profile that does not exist is refused.
+  const PROFILE_MESSAGES = Object.freeze({
+    noJapaneseProfile: "This Hachidori has no Japanese profile. Add Japanese in its Settings, or update the linked browser.",
+    profileRemoved: "This language was removed in another Hachidori page.",
+  });
   // Appendix A of the design: the keys that describe the reader's hands,
   // screen and machine rather than a language. Every other option key except
   // `anki` belongs to the profile.
@@ -1302,6 +1308,30 @@
     return rows.filter(row => plainObject(row) !== null).map(row => packageWithEnabled(row, enabled.has(row.id)));
   }
 
+  // The installation-local active profile and automatic switching (section
+  // 4.4). The key exists only once the records have profiles; an absent key
+  // reads as revision 0 with no choice.
+  const LANGUAGE_SELECTION_KEY = "languageSelection";
+
+  function normaliseLanguageSelection(value) {
+    const source = plainObject(value) ?? {};
+    return {
+      revision: storedRevision(source),
+      activeProfileId: validIdentifier(source.activeProfileId) ? source.activeProfileId : null,
+      autoSwitch: source.autoSwitch === true,
+    };
+  }
+
+  // The profile this installation looks words up in: the selection's when it
+  // names an existing profile, otherwise the Japanese profile, or the first
+  // profile when there is none.
+  function activeProfileId(storedOptions, selection) {
+    const list = profiles(storedOptions);
+    const chosen = normaliseLanguageSelection(selection).activeProfileId;
+    if (list.some(profile => profile.id === chosen)) return chosen;
+    return list.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? list[0]?.id ?? JAPANESE_PROFILE_ID;
+  }
+
   globalThis.HDReaderOptions = {
     ANKI_FIELDS, ANKI_DUPLICATE_SCOPES, ANKI_DUPLICATE_BEHAVIORS, ANKI_OVERWRITE_MODES,
     ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_ANKI_TEMPLATE, STABLE_ID_MAX_LENGTH,
@@ -1320,9 +1350,10 @@
     projectStoredOptions, projectContentOptions, validateOptionsPatch, normaliseDictionarySelections,
     resolvePopupImageSources,
     hasCapability, resolveKanjiDictionary,
-    JAPANESE_PROFILE_ID, GLOBAL_OPTION_KEYS, PROFILE_OPTION_KEYS, OPTION_REQUIREMENTS,
+    JAPANESE_PROFILE_ID, GLOBAL_OPTION_KEYS, PROFILE_OPTION_KEYS, OPTION_REQUIREMENTS, PROFILE_MESSAGES,
     hasProfiles, profiles, projectOptions, profileDescriptor, applyOptionsPatch, applyPackSettingsPatch,
     hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
     languageDescriptor, languageCapability, optionRequirementMet, packSettingValue,
+    LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
   };
 }());

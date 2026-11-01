@@ -184,12 +184,19 @@ function requireStrings(value, name) {
 
 // `engine(fields)` answers a "hoshidicts-offscreen" request, `render(fields)`
 // a "hachidori-anki-render" one; both resolve to the reply envelope or throw
-// its error. `readDictionaries()` is the stored dictionary list,
-// `readAudioSources()` the enabled pronunciation sources and
-// `readAnkiTemplates()` the Anki Templates in Settings order.
-export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version }) {
-  async function whereabouts() {
-    const dictionaries = await readDictionaries();
+// its error. `readDictionaries(profileId)` is a profile's dictionary list,
+// `readAudioSources(profileId)` its enabled pronunciation sources and
+// `readAnkiTemplates(profileId)` its Anki Templates in Settings order.
+// `resolveProfile(profileIndex)` names the profile a Yomitan profile index
+// selects, as { profileId } (undefined while the records have no profiles),
+// or null for an index that names none (docs/languages.md 12).
+export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version,
+  resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null) }) {
+  // Engine requests made for a profile name it (docs/languages.md 9.3).
+  const named = (profileId, fields) => (profileId === undefined ? fields : { ...fields, profileId });
+
+  async function whereabouts(profileId) {
+    const dictionaries = await readDictionaries(profileId);
     const titles = dictionaries.map(item => item.title);
     return {
       dictionaries,
@@ -199,14 +206,14 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     };
   }
 
-  async function lookup(text, fields = {}) {
-    const reply = await engine({ type: "hd_lookup", text, ...fields });
+  async function lookup(profileId, text, fields = {}) {
+    const reply = await engine(named(profileId, { type: "hd_lookup", text, ...fields }));
     return { results: reply.results, generation: reply.generation };
   }
 
-  async function ankiTermFields(text, markers, maxEntries, includeMedia) {
-    const where = await whereabouts();
-    const { results, generation } = await lookup(text, maxEntries > 0 ? { maxResults: maxEntries } : {});
+  async function ankiTermFields(profileId, text, markers, maxEntries, includeMedia) {
+    const where = await whereabouts(profileId);
+    const { results, generation } = await lookup(profileId, text, maxEntries > 0 ? { maxResults: maxEntries } : {});
     const enabled = where.dictionaries.filter(item => item.enabled !== false);
     const dictionaryPaths = Object.fromEntries(enabled.map(item => [item.title, item.path]));
     const frequencyModes = new Map(where.dictionaries.map(item => [item.title, item.frequencyMode]));
@@ -223,7 +230,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
         frequencyDictionaries: where.dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title) };
       let audio = "";
       if (markers.includes("audio") && includeMedia) {
-        const sources = await readAudioSources();
+        const sources = await readAudioSources(profileId);
         const prepared = sources.length
           ? await render({ type: "hd_anki_audio", term: result.term, sources, recordSpeech: false }).catch(() => null)
           : null;
@@ -249,16 +256,16 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     return { fields, dictionaryMedia, audioMedia };
   }
 
-  async function ankiKanjiFields(text, markers, maxEntries) {
-    const where = await whereabouts();
+  async function ankiKanjiFields(profileId, text, markers, maxEntries) {
+    const where = await whereabouts(profileId);
     const character = [...text][0] ?? "";
-    const reply = await engine({ type: "hd_kanji", character });
+    const reply = await engine(named(profileId, { type: "hd_kanji", character }));
     const entries = reply.kanji?.entries ?? [];
     return { fields: (maxEntries > 0 ? entries.slice(0, maxEntries) : entries).map(entry => kanjiFields(character, entry, markers, where)),
       dictionaryMedia: [], audioMedia: [] };
   }
 
-  async function tokenize(text, index, scanLength) {
+  async function tokenize(profileId, text, index, scanLength) {
     const lines = [];
     for (const line of text.split("\n")) {
       const segments = [];
@@ -271,7 +278,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       let position = 0;
       while (position < line.length) {
         const rest = line.slice(position);
-        const { results } = await lookup(rest, { maxResults: 1, ...(scanLength ? { scanLength } : {}) });
+        const { results } = await lookup(profileId, rest, { maxResults: 1, ...(scanLength ? { scanLength } : {}) });
         const best = results[0];
         if (!best || !best.matched || !rest.startsWith(best.matched)) {
           const step = String.fromCodePoint(rest.codePointAt(0));
@@ -293,26 +300,26 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
   const handlers = {
     hd_api_version: () => ({ version }),
 
-    async hd_api_term_entries(message) {
+    async hd_api_term_entries(message, profileId) {
       const terms = requireStrings(message.terms, "terms");
-      const where = await whereabouts();
+      const where = await whereabouts(profileId);
       const results = [];
       for (const [index, text] of terms.entries()) {
-        const found = text === "" ? [] : (await lookup(text)).results;
+        const found = text === "" ? [] : (await lookup(profileId, text)).results;
         results.push({ index, dictionaryEntries: found.map(result => termEntry(result, where)),
           originalTextLength: found[0]?.matched.length ?? 0 });
       }
       return { results };
     },
 
-    async hd_api_kanji_entries(message) {
+    async hd_api_kanji_entries(message, profileId) {
       const characters = requireStrings(message.characters, "characters");
-      const where = await whereabouts();
+      const where = await whereabouts(profileId);
       const results = [];
       for (const [index, text] of characters.entries()) {
         const entries = [];
         for (const character of [...text]) {
-          const reply = await engine({ type: "hd_kanji", character });
+          const reply = await engine(named(profileId, { type: "hd_kanji", character }));
           for (const entry of reply.kanji?.entries ?? []) entries.push(kanjiEntry(character, entry, where));
         }
         results.push({ index, dictionaryEntries: entries });
@@ -320,41 +327,38 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       return { results };
     },
 
-    async hd_api_anki_fields(message) {
+    async hd_api_anki_fields(message, profileId) {
       const text = requireText(message.text, "text");
       const markers = requireStrings(message.markers, "markers").map(marker => marker.toLowerCase());
       const maxEntries = Number.isSafeInteger(message.maxEntries) && message.maxEntries > 0 ? message.maxEntries : 0;
       const includeMedia = message.includeMedia === true;
-      if (message.entryType === "kanji") return ankiKanjiFields(text, markers, maxEntries);
+      if (message.entryType === "kanji") return ankiKanjiFields(profileId, text, markers, maxEntries);
       if (message.entryType !== "term") throw new Error(`unsupported entry type ${JSON.stringify(message.entryType)}`);
-      return ankiTermFields(text, markers, maxEntries, includeMedia);
+      return ankiTermFields(profileId, text, markers, maxEntries, includeMedia);
     },
 
-    // Hachidori has one set of Templates, Yomitan's profile 0.
-    async hd_api_anki_card_formats(message) {
-      if (message.profileIndex !== undefined && message.profileIndex !== 0) {
-        throw new Error(`Invalid input for ankiCardFormats, expected "profileIndex" to be a valid profile index but got ${message.profileIndex}`);
-      }
-      return { cardFormats: (await readAnkiTemplates()).map(cardFormat) };
+    // Each profile has its own Templates; Yomitan's profile 0 is Japanese's.
+    async hd_api_anki_card_formats(message, profileId) {
+      return { cardFormats: (await readAnkiTemplates(profileId)).map(cardFormat) };
     },
 
-    async hd_api_tokenize(message) {
+    async hd_api_tokenize(message, profileId) {
       const texts = requireStrings(message.texts, "texts");
       const scanLength = Number.isSafeInteger(message.scanLength) && message.scanLength > 0 ? message.scanLength : 0;
       const results = [];
-      for (const [index, text] of texts.entries()) results.push(await tokenize(text, index, scanLength));
+      for (const [index, text] of texts.entries()) results.push(await tokenize(profileId, text, index, scanLength));
       return { results };
     },
 
-    async hd_api_dictionaries() {
-      const dictionaries = await readDictionaries();
+    async hd_api_dictionaries(message, profileId) {
+      const dictionaries = await readDictionaries(profileId);
       return { dictionaries: dictionaries.map(item => ({ id: item.id, title: item.title, revision: item.revision,
         fileName: fileName(item.title) })) };
     },
 
-    async hd_api_dictionary_open(message) {
+    async hd_api_dictionary_open(message, profileId) {
       const id = requireText(message.id, "id");
-      const dictionary = (await readDictionaries()).find(item => item.id === id);
+      const dictionary = (await readDictionaries(profileId)).find(item => item.id === id);
       if (!dictionary) return { error: "unknown dictionary", notFound: true };
       const reply = await engine({ type: "hd_api_dictionary_open", id });
       return { token: reply.token, size: reply.size, fileName: fileName(dictionary.title) };
@@ -371,8 +375,20 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     },
   };
 
+  // Downloads stream an archive their open already chose.
+  const UNPROFILED = new Set(["hd_api_version", "hd_api_dictionary_read", "hd_api_dictionary_close"]);
+
   return async function answerApiRequest(message) {
     if (!Object.hasOwn(handlers, message.type)) throw new Error(`unsupported API request ${JSON.stringify(message.type)}`);
-    return handlers[message.type](message);
+    if (UNPROFILED.has(message.type)) return handlers[message.type](message, undefined);
+    let profile = await resolveProfile(message.profileIndex ?? 0);
+    if (profile === null) {
+      if (message.type === "hd_api_anki_card_formats") {
+        throw new Error(`Invalid input for ankiCardFormats, expected "profileIndex" to be a valid profile index but got ${message.profileIndex}`);
+      }
+      // Other requests have always answered from profile 0 whatever index they named.
+      profile = await resolveProfile(0);
+    }
+    return handlers[message.type](message, profile.profileId);
   };
 }

@@ -7,8 +7,9 @@ import { captureNetflixPreview } from "./netflix-preview.js";
 import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
+import { profileTemplateKey } from "./anki-worker.js";
 import {
-  normaliseOptions, OPTIONS_KEY, sleep, relay, readerPageSender, workerReply, failureReply,
+  normaliseOptions, OPTIONS_KEY, sleep, relay, readerPageSender, workerReply, failureReply, requestProfileId,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, getAnkiMining } from "./background-requests.js";
 import {
@@ -34,8 +35,16 @@ function waitForAnkiIdle() {
   return new Promise(resolve => ankiIdleWaiters.add(resolve));
 }
 
-async function readAnkiOptions() {
-  const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
+// The options of the profile an Anki request is for (docs/languages.md 5.4),
+// or, for one that names none, today's.
+async function readAnkiOptions(profileId) {
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  let options;
+  if (profileId === undefined) options = normaliseOptions(stored);
+  else {
+    requestProfileId({ profileId }, stored);
+    options = globalThis.HDReaderOptions.projectOptions(stored, profileId);
+  }
   return capabilityAnkiOptions(options, {
     screenshot: MINING_CAPABILITIES.screenshot,
     browserSpeech: MINING_CAPABILITIES.browserSpeech,
@@ -299,8 +308,30 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   return reply;
 }
 
+// Once the records have profiles, a request names its profile: the Template
+// ids it carries become keys of that profile's Templates, so the mining
+// service's caches and configuration digests are the profile's own, and the
+// requests that read no Template carry the profile itself.
+function withAnkiProfile(message) {
+  const { profileId } = message;
+  if (profileId === undefined) return message;
+  if (typeof profileId !== "string" || profileId === "") throw new TypeError("the Anki request named an invalid profile");
+  const scoped = request => request && typeof request === "object" && !Array.isArray(request)
+    ? { ...request, templateId: profileTemplateKey(profileId, request.templateId), profileId } : request;
+  return {
+    ...message,
+    ...(Object.hasOwn(message, "templateId") || message.type === "hd_anki_status" || message.type === "hd_anki_screenshot"
+      ? { templateId: profileTemplateKey(profileId, message.templateId) } : {}),
+    ...(message.request === undefined ? {} : { request: scoped(message.request) }),
+    ...(message.type === "hd_anki_browse" && message.request === undefined && typeof message.expression === "string"
+      ? { request: scoped({ expression: message.expression }) } : {}),
+    ...(Array.isArray(message.requests) ? { requests: message.requests.map(scoped) } : {}),
+  };
+}
+
 function answerAnkiRequest(message, sender, linkedClient = false) {
   return Promise.resolve().then(async () => {
+    message = withAnkiProfile(message);
     if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
     const service = getAnkiMining();
     // Only the screenshot needs to know which page asked, and it is given the

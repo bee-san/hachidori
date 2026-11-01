@@ -6,7 +6,7 @@ import {
   DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
   ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
-  serialiseStorage, workerReply, failureReply,
+  serialiseStorage, workerReply, failureReply, requestProfileId, updateLookupProfiles,
 } from "./background-core.js";
 import {
   WORKER_HANDLERS, handleRecommendedInstall, handleWorkerRequest, SHARING_TARGET,
@@ -118,6 +118,13 @@ let latestAudioOperation = null;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[DICTIONARY_STATE_KEY]) return;
   sharingHost?.setDictionaries(dictionaryCount(changes[DICTIONARY_STATE_KEY].newValue));
+});
+
+// The profile map relay() resolves lookups with (docs/languages.md 9.3).
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || (!changes[OPTIONS_KEY] && !changes[DICTIONARY_STATE_KEY])) return;
+  updateLookupProfiles(Object.fromEntries([OPTIONS_KEY, DICTIONARY_STATE_KEY]
+    .filter(key => changes[key]).map(key => [key, changes[key].newValue])));
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -303,10 +310,17 @@ function validateAudioRequest(message) {
       || (choice.url !== null && typeof choice.url !== "string"))) throw new Error("Invalid pronunciation selection.");
 }
 
+// The pronunciation sources of the profile a request names (docs/languages.md
+// 5.4), or today's for one that names none.
 async function prepareAudioRequest(message) {
   if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return message;
   const stored = await chrome.storage.local.get(OPTIONS_KEY);
-  const options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
+  let options;
+  if (message.profileId === undefined) options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
+  else {
+    requestProfileId(message, stored[OPTIONS_KEY]);
+    options = globalThis.HDReaderOptions.projectOptions(stored[OPTIONS_KEY], message.profileId);
+  }
   return { ...message, sources: options.audioSources.filter(source => source.enabled) };
 }
 

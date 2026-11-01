@@ -11,8 +11,9 @@ import {
   LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED, browserName, mutatingForwardedRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
 import { createUploadHost, uploadImportDecision } from "./linked-import.js";
-import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, emptyLookupStats, lookupStatsPrefix } from "./lookup-stats.js";
-import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
+import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, emptyLookupStats, unreachableLookupStatsKeys } from "./lookup-stats.js";
+import { CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages } from "./custom-dictionary.js";
+import { applyToEveryProfile, singleProfileShape } from "./profile-state.js";
 import { sameJsonValue } from "./json-value.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { OVERLAY_LOCAL_OPTION_KEYS, withOverlayLookupDefault } from "./setup-state.js";
@@ -20,7 +21,8 @@ import {
   ANKI_TEMPLATE_CONFIG_KEYS, normaliseOptions, projectStoredOptions, validateOptionsPatch, WORD_STATUS_OVERRIDES_KEY,
   TARGET, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY, UPDATE_SETTINGS_KEY, engineSender, writeLocalState, relay,
   readDictionaryStorage, optionsRevision, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply,
-  checkedOptionsResult, failureReply,
+  checkedOptionsResult, failureReply, hasProfiles, hasDictionaryProfiles, optionProfiles, projectDictionaryState,
+  JAPANESE_PROFILE_ID, LANGUAGE_SELECTION_KEY, updateLookupProfiles,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background-requests.js";
 import {
@@ -118,16 +120,37 @@ async function answerUploadRequest(message, owner) {
 }
 
 // The relay's API asks like a linked browser; its lookups and renders go
-// through the same engine and offscreen senders as Anki mining.
+// through the same engine and offscreen senders as Anki mining. Profile index
+// 0 is the Japanese profile, which every older GameSentenceMiner uses; later
+// indexes list the other profiles in order (docs/languages.md 12).
 let apiHost;
+async function apiProfile(profileIndex) {
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  if (!hasProfiles(stored)) return profileIndex === 0 ? { profileId: undefined } : null;
+  const others = optionProfiles(stored).filter(profile => profile.id !== JAPANESE_PROFILE_ID);
+  if (profileIndex === 0) {
+    return optionProfiles(stored).some(profile => profile.id === JAPANESE_PROFILE_ID)
+      ? { profileId: JAPANESE_PROFILE_ID } : { profileId: undefined };
+  }
+  const profile = others[profileIndex - 1];
+  return profile === undefined ? null : { profileId: profile.id };
+}
+
+async function apiDictionaries(profileId) {
+  const { state } = await readDictionaryStorage();
+  if (!hasDictionaryProfiles(state)) return state?.dictionaries ?? [];
+  return projectDictionaryState(state, profileId ?? JAPANESE_PROFILE_ID)?.dictionaries ?? [];
+}
+
 function getApiHost() {
   apiHost ??= createApiHost({
     version: chrome.runtime.getManifest().version,
     engine: fields => sendAnkiRequest(TARGET, fields),
     render: fields => sendAnkiRequest("hachidori-anki-render", fields),
-    readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
-    readAudioSources: async () => (await readAnkiOptions()).audioSources.filter(source => source.enabled),
-    readAnkiTemplates: async () => (await readAnkiOptions()).anki.templates,
+    readDictionaries: apiDictionaries,
+    readAudioSources: async profileId => (await readAnkiOptions(profileId)).audioSources.filter(source => source.enabled),
+    readAnkiTemplates: async profileId => (await readAnkiOptions(profileId)).anki.templates,
+    resolveProfile: apiProfile,
   });
   return apiHost;
 }
@@ -174,10 +197,13 @@ function stateStore(sender) {
   return sharingLinked && engineSender(sender) ? sharingLocalStore : chrome.storage.local;
 }
 
+// The overlay's local keys stay one value per overlay, laid over every
+// profile of a shared record with profiles (docs/languages.md 17.5).
 function composeOverlayOptions(shared, local, revision) {
   const preferences = normaliseOptions(withOverlayLookupDefault(local));
-  return { ...projectStoredOptions(shared),
-    ...Object.fromEntries(OVERLAY_LOCAL_OPTION_KEYS.map(key => [key, preferences[key]])), revision };
+  const localValues = Object.fromEntries(OVERLAY_LOCAL_OPTION_KEYS.map(key => [key, preferences[key]]));
+  if (hasProfiles(shared)) return { ...applyToEveryProfile(shared, localValues), revision };
+  return { ...projectStoredOptions(shared), ...localValues, revision };
 }
 
 // The offset keeps one increasing revision for existing readers and Settings,
@@ -359,7 +385,9 @@ function localOverlayOptionsValues(options, patch, stored) {
     [SHARING_OPTIONS_VERSION_KEY]: { ...version, offset: version.offset + changed } };
   const captured = stored[SHARING_LOCAL_STATE_KEY];
   if (captured) values[SHARING_LOCAL_STATE_KEY] = { ...captured,
-    options: { ...captured.options, ...patch, revision: optionsRevision(captured.options) + 1 } };
+    options: hasProfiles(captured.options)
+      ? { ...applyToEveryProfile(captured.options, patch), revision: optionsRevision(captured.options) + 1 }
+      : { ...captured.options, ...patch, revision: optionsRevision(captured.options) + 1 } };
   return values;
 }
 
@@ -374,7 +402,12 @@ async function prepareOverlayOptionsWrite(message) {
     (OVERLAY_LOCAL_OPTION_KEYS.includes(key) ? local : shared)[key] = value;
   }
   if (Object.keys(shared).length === 0) {
-    const values = localOverlayOptionsValues(result.options, local, stored);
+    let options = result.options;
+    if (hasProfiles(stored[OPTIONS_KEY])) {
+      options = applyToEveryProfile(stored[OPTIONS_KEY], local);
+      if (!sameJsonValue(options, stored[OPTIONS_KEY])) options.revision += 1;
+    }
+    const values = localOverlayOptionsValues(options, local, stored);
     if (Object.keys(values).length > 0) await writeLocalState(values);
     return { reply: workerReply(message, result) };
   }
@@ -398,8 +431,13 @@ async function finishOverlayOptionsWrite(message, prepared, reply) {
   } else {
     let options = current;
     if (reply.ok !== false) {
-      options = { ...current, ...prepared.local };
-      if (Object.entries(prepared.local).some(([key, value]) => current[key] !== value)) options.revision += 1;
+      if (hasProfiles(current)) {
+        options = applyToEveryProfile(current, prepared.local);
+        if (!sameJsonValue(options, current)) options.revision += 1;
+      } else {
+        options = { ...current, ...prepared.local };
+        if (Object.entries(prepared.local).some(([key, value]) => current[key] !== value)) options.revision += 1;
+      }
       Object.assign(values, localOverlayOptionsValues(options, prepared.local, { ...stored, ...values }));
     }
     result = checkedOptionsResult(message, { ...reply, options });
@@ -442,7 +480,18 @@ function serialiseSharingTransition(job) {
 // overlay composed a mode-less local options record on hover; it stays there.
 function unlinkedLocalValue(key, local, mirrored) {
   const value = OVERLAY_MODE && key === OPTIONS_KEY ? withOverlayLookupDefault(local) : local;
-  return { ...value, revision: Math.max(optionsRevision(local), optionsRevision(mirrored)) + 1 };
+  const restored = { ...value, revision: Math.max(optionsRevision(local), optionsRevision(mirrored)) + 1 };
+  // Every language's personal document is adopted like the top-level one
+  // (docs/languages.md 4.3), so it too comes back above the mirror's revision.
+  if (key === CUSTOM_DICTIONARY_SOURCE_KEY && restored.languages) {
+    restored.languages = Object.fromEntries(customDictionaryDocumentLanguages(local).map(code => {
+      const mirroredDocument = customDictionaryDocumentLanguages(mirrored).includes(code)
+        ? customDictionaryDocumentFor(mirrored, code) : null;
+      return [code, { ...local.languages[code],
+        revision: Math.max(local.languages[code].revision ?? 0, mirroredDocument?.revision ?? 0) + 1 }];
+    }));
+  }
+  return restored;
 }
 
 const SHARING_HANDLERS = {
@@ -473,7 +522,7 @@ const SHARING_HANDLERS = {
       await getAnkiDuplicateIndex().suspend();
       suspendedIndex = true;
       await serialiseStorage(async () => {
-        const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY]);
+        const stored = await chrome.storage.local.get([...SHARED_STATE_KEYS, SHARING_KEY, LANGUAGE_SELECTION_KEY]);
         if (!sameJsonValue(stored[SHARING_KEY], config)) {
           throw new Error("Sharing changed while linking. Try again.");
         }
@@ -484,6 +533,9 @@ const SHARING_HANDLERS = {
         // that is currently unlinked may capture the live keys as local data.
         if (!config?.client?.address) {
           values[SHARING_LOCAL_STATE_KEY] = Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null]));
+          if (stored[LANGUAGE_SELECTION_KEY] !== undefined) {
+            values[SHARING_LOCAL_STATE_KEY][LANGUAGE_SELECTION_KEY] = stored[LANGUAGE_SELECTION_KEY];
+          }
         }
         if (OVERLAY_MODE) values[SHARING_OPTIONS_VERSION_KEY] = null;
         await chrome.storage.local.set(values);
@@ -528,8 +580,18 @@ const SHARING_HANDLERS = {
           }
           values[key] = unlinkedLocalValue(key, local, stored[key]);
         }
-        const prefix = lookupStatsPrefix(values[LOOKUP_STATS_KEY] ?? emptyLookupStats());
-        removals.push(...Object.keys(stored).filter(key => key.startsWith(LOOKUP_STATS_ROW_PREFIX) && !key.startsWith(prefix)));
+        removals.push(...unreachableLookupStatsKeys(Object.keys(stored), values[LOOKUP_STATS_KEY] ?? emptyLookupStats()));
+        // The browser's own language choice comes back with its records; an
+        // unlink whose restored records are in the single-profile shape
+        // removes the key (docs/languages.md 4.4).
+        if (captured[LANGUAGE_SELECTION_KEY] !== undefined && captured[LANGUAGE_SELECTION_KEY] !== null) {
+          values[LANGUAGE_SELECTION_KEY] = unlinkedLocalValue(LANGUAGE_SELECTION_KEY, captured[LANGUAGE_SELECTION_KEY],
+            stored[LANGUAGE_SELECTION_KEY]);
+        } else if (stored[LANGUAGE_SELECTION_KEY] !== undefined && singleProfileShape({ options: captured[OPTIONS_KEY],
+          state: captured[DICTIONARY_STATE_KEY], document: captured[CUSTOM_DICTIONARY_SOURCE_KEY],
+          lookupStats: captured[LOOKUP_STATS_KEY], wordStatusOverrides: captured[WORD_STATUS_OVERRIDES_KEY] })) {
+          removals.push(LANGUAGE_SELECTION_KEY);
+        }
         await writeLocalState(values);
         if (removals.length > 0) await chrome.storage.local.remove(removals);
       }
@@ -564,7 +626,8 @@ const SHARING_HANDLERS = {
 // A browser install shares by default; the overlay copy is a client, so it
 // does not. Turning sharing off stores `host: null`; linking stores it off.
 async function initialiseSharing() {
-  const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY]);
+  const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
+  updateLookupProfiles({ [OPTIONS_KEY]: stored[OPTIONS_KEY], [DICTIONARY_STATE_KEY]: stored[DICTIONARY_STATE_KEY] });
   const host = stored[SHARING_KEY]?.host;
   if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) {
     getSharingHost().enable({ port: host?.port, network: host?.network === true, dictionaries: dictionaryCount(stored[DICTIONARY_STATE_KEY]) });

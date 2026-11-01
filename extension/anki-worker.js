@@ -31,6 +31,29 @@ const CAPTURED_MEDIA = {
     replaced: "the recorded GIF was replaced before this note was saved." },
 };
 
+// A Template of a named profile (docs/languages.md 5.4). Once the records have
+// profiles, background-anki.js gives the mining service this key in place of
+// the Template id, so its caches and configuration digests belong to the
+// profile; a plain id is the single-profile shape. Ids hold no control
+// characters, so the key cannot be mistaken for one.
+const PROFILE_TEMPLATE_SEPARATOR = "\u0000";
+
+export function profileTemplateKey(profileId, templateId) {
+  return `${PROFILE_TEMPLATE_SEPARATOR}${profileId}${PROFILE_TEMPLATE_SEPARATOR}${templateId ?? ""}`;
+}
+
+export function profileTemplateTarget(key) {
+  if (typeof key !== "string" || !key.startsWith(PROFILE_TEMPLATE_SEPARATOR)) return { profileId: undefined, templateId: key };
+  const [, profileId, templateId] = key.split(PROFILE_TEMPLATE_SEPARATOR);
+  return { profileId, templateId: templateId === "" ? undefined : templateId };
+}
+
+// The profile a mining request is for: its Template key's, or the one a
+// request that reads no Template names.
+function requestProfile(request) {
+  return profileTemplateTarget(request?.templateId).profileId ?? request?.profileId;
+}
+
 export function createAnkiWorkerService({
   gateway,
   readOptions,
@@ -79,10 +102,12 @@ export function createAnkiWorkerService({
   async function sentenceSegments(request, templates) {
     if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template.value)
       .some(name => SENTENCE_FURIGANA_MARKERS.has(name)))) return null;
-    const options = await readOptions();
+    const profileId = requestProfile(request);
+    const options = await readOptions(profileId);
     const end = request.matchOffset + request.matched.length;
     const reply = await engine({
       type: "hd_segment",
+      ...(profileId === undefined ? {} : { profileId }),
       chunks: [{ id: 0, text: request.sentence.slice(0, request.matchOffset) }, { id: 1, text: request.sentence.slice(end) }],
       scanLength: options.scanLength,
       options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder,
@@ -174,8 +199,9 @@ export function createAnkiWorkerService({
   }
 
   const mining = createAnkiMiningService({ gateway,
-    readConfig: async templateId => {
-      const options = await readOptions();
+    readConfig: async key => {
+      const { profileId, templateId } = profileTemplateTarget(key);
+      const options = await readOptions(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
       return {
@@ -194,7 +220,7 @@ export function createAnkiWorkerService({
           || typeof request.term?.expression !== "string" || !request.term.expression
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
       await currentGeneration(request);
-      const dictionaries = await readDictionaries();
+      const dictionaries = await readDictionaries(requestProfile(request));
       const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
         .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
         audioPrepared: false, audio: null, deferDuplicateCheck: false };
@@ -260,10 +286,11 @@ export function createAnkiWorkerService({
   // is held here under a name a field may reference and uploaded only when the
   // note is written, so this reply is immediate and the reader can show itself
   // again without waiting for Anki.
-  async function screenshot(captureViewport, templateId) {
+  async function screenshot(captureViewport, key) {
     const token = crypto.randomUUID();
     screenshotRequestToken = token;
-    const options = await readOptions();
+    const { profileId, templateId } = profileTemplateTarget(key);
+    const options = await readOptions(profileId);
     const { anki } = options;
     const template = globalThis.HDReaderOptions.ankiTemplateConfig(anki, templateId);
     if (template === null) throw new Error("The selected Anki Template is no longer available.");
@@ -286,8 +313,9 @@ export function createAnkiWorkerService({
   // Experimental Netflix mining: the WAV of the subtitle line the reader just
   // had replayed and recorded. Like the screenshot it is held here and stored
   // only inside the note's write.
-  async function sentenceAudio(data, templateId) {
-    const options = await readOptions();
+  async function sentenceAudio(data, key) {
+    const { profileId, templateId } = profileTemplateTarget(key);
+    const options = await readOptions(profileId);
     if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
@@ -303,8 +331,9 @@ export function createAnkiWorkerService({
   // Experimental Netflix mining: the animated GIF of the subtitle line the
   // reader just had replayed and recorded. Held here and stored only inside
   // the note's write, exactly like the screenshot and the WAV.
-  async function gifImage(data, templateId) {
-    const options = await readOptions();
+  async function gifImage(data, key) {
+    const { profileId, templateId } = profileTemplateTarget(key);
+    const options = await readOptions(profileId);
     if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
@@ -373,7 +402,7 @@ export function createAnkiWorkerService({
         || plan.expression !== request.term.expression || plan.reading !== request.term.reading) {
       throw new Error("The linked browser-speech request is invalid or stale.");
     }
-    const options = await readOptions();
+    const options = await readOptions(requestProfile(request));
     const sources = options.audioSources.filter(source => source.enabled);
     const source = sources.find(candidate => candidate.id === plan.sourceId
       && JSON.stringify(candidate) === plan.sourceKey
@@ -441,7 +470,7 @@ export function createAnkiWorkerService({
     clientMedia, settleClientMedia,
     screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
-      const options = await readOptions();
+      const options = await readOptions(requestProfile(request));
       return { mature: options.definitionBlurAnkiMature === true
         && await duplicateIndex.has(options.anki, request?.term?.expression) };
     } catch {
@@ -456,7 +485,7 @@ export function createAnkiWorkerService({
       if (!Array.isArray(headwords) || headwords.some(headword => typeof headword !== "string")) {
         throw new Error("Word status requires an array of headwords.");
       }
-      const options = await readOptions();
+      const options = await readOptions(requestProfile(request));
       return duplicateIndex.statuses(options.anki, headwords);
     } };
 }
