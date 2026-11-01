@@ -97,6 +97,9 @@
     },
     "ignoreWord": {
       "description": "Ignore the current popup entry's word"
+    },
+    "switchLanguage": {
+      "description": "Switch to the next language"
     }
   },
   "action": {

@@ -65,6 +65,9 @@
     { id: "toggleWordHighlights", label: "Toggle word highlights", scopes: ["web"] },
     { id: "markWordKnown", label: "Mark word as known" },
     { id: "ignoreWord", label: "Ignore word" },
+    // Makes the next language this browser's active profile (docs/languages.md
+    // 16.2). Not Yomitan's profileNext, which Hachidori drops.
+    { id: "switchLanguage", label: "Switch to the next language", scopes: ["web"] },
   ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,

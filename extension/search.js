@@ -18,7 +18,7 @@ captureDocumentActions(document, captureDebugLog(window, {
   context: "search", store: openDebugLogStore(window.indexedDB),
 }));
 
-const { normaliseOptions } = globalThis.HDReaderOptions;
+const { normaliseOptions, hasProfiles, profileDescriptor, activeProfileId, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
 const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
@@ -101,13 +101,52 @@ window.addEventListener("paste", (event) => {
   search();
 });
 
+// With profiles the box and the echoed query take the active profile's
+// language, and a right-to-left language's direction from the text
+// (docs/languages.md 8.5); the single-profile page keeps its markup.
+let storedOptions;
+let selection = null;
+const JAPANESE_PLACEHOLDER = input.placeholder;
+
+function applyLanguage() {
+  if (!hasProfiles(storedOptions)) {
+    if (!input.dataset.language) return;
+    for (const node of [input, query]) {
+      node.lang = "ja";
+      node.removeAttribute("dir");
+    }
+    input.placeholder = JAPANESE_PLACEHOLDER;
+    delete input.dataset.language;
+    return;
+  }
+  const language = profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja";
+  const descriptor = globalThis.HDLanguages?.get?.(language);
+  for (const node of [input, query]) {
+    node.lang = descriptor?.bcp47 ?? language;
+    if (descriptor?.direction === "rtl") node.dir = "auto";
+    else node.removeAttribute("dir");
+  }
+  input.placeholder = JAPANESE_PLACEHOLDER.replace("Japanese", descriptor?.name ?? (language === "ja" ? "Japanese" : language));
+  input.dataset.language = language;
+}
+
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
+  if (area !== "local") return;
+  if (changes.options) {
+    storedOptions = changes.options.newValue;
+    applyPageTheme(document, normaliseOptions(changes.options.newValue));
+  }
+  if (changes[LANGUAGE_SELECTION_KEY]) selection = changes[LANGUAGE_SELECTION_KEY].newValue ?? null;
+  if (changes.options || changes[LANGUAGE_SELECTION_KEY]) applyLanguage();
 });
 // The page opens ready to type into, as Yomitan's focuses its box.
 input.focus();
 try {
-  applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
+  storedOptions ??= stored.options;
+  selection ??= stored[LANGUAGE_SELECTION_KEY] ?? null;
+  applyPageTheme(document, normaliseOptions(stored.options));
+  applyLanguage();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
   status.textContent = "Type or paste a word above, then press Enter.";

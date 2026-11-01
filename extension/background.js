@@ -120,6 +120,34 @@ chrome.storage.onChanged.addListener((changes, area) => {
   sharingHost?.setDictionaries(dictionaryCount(changes[DICTIONARY_STATE_KEY].newValue));
 });
 
+// The toolbar badge names the active language once there are two
+// (docs/languages.md 16.2): its code, JA or EN. An installation that never had
+// two profiles never touches the badge. `hadProfiles`: the change that calls
+// this left records that had profiles, so a badge set before a worker restart
+// may still show.
+let languageBadge = null;
+
+async function syncLanguageBadge(api, { hadProfiles = false } = {}) {
+  if (typeof api.action?.setBadgeText !== "function") return;
+  const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
+  const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
+  const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
+  const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
+  const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
+  if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;
+  languageBadge = text;
+  await api.action.setBadgeText({ text });
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  const { hasProfiles, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
+  const options = changes[OPTIONS_KEY];
+  const hadProfiles = hasProfiles(options?.oldValue);
+  if (!changes[LANGUAGE_SELECTION_KEY] && !(options && (hadProfiles || hasProfiles(options.newValue)))) return;
+  void syncLanguageBadge(chrome, { hadProfiles }).catch(() => {});
+});
+
 // The profile map relay() resolves lookups with (docs/languages.md 9.3).
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || (!changes[OPTIONS_KEY] && !changes[DICTIONARY_STATE_KEY])) return;
@@ -496,7 +524,8 @@ async function toggleLookupsFromCommand() {
 const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
-  "historyForward", "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord"]);
+  "historyForward", "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord",
+  "switchLanguage"]);
 // Yomitan's search page shortcuts (#610) and how each opens the page.
 const SEARCH_COMMANDS = new Map([["openSearchPage", "existingOrNewTab"],
   ["openSearchPageCurrentTab", "existingOrCurrentTab"], ["openPopupWindow", "popup"]]);
@@ -558,6 +587,7 @@ sharingReady = initialiseSharing().catch((error) => {
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
+  if (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY])) void syncLanguageBadge(chrome).catch(() => {});
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
