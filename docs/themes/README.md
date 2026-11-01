@@ -220,6 +220,129 @@ popup element declares it.) Hachidori's own palettes are unaffected.
 `test/theme-renderer.test.mjs` checks that every listed id is a stored value and
 that the theme's stylesheet styles it.
 
+### Languages
+
+Hachidori looks words up in several languages, one profile per language
+([docs/languages.md](../languages.md), sections 10 and 11). A view gets the
+language of what it shows and marks language text with it; core does the
+rest, including for themes written before languages existed.
+
+**What a view receives.** `createView(options)` gets `options.language`, and
+every render context (`renderResults`, `renderKanji`, `renderNotice`,
+`updateDictionaryPresentation`) carries `context.language`. Two consecutive
+renders can carry different languages, so read `context.language` on every
+render and keep `options.language` for one-time work such as font warm-up. A
+caller that passes no language gets Japanese. Fields are added within
+`version: 1`; ignore fields you do not know.
+
+```js
+{
+  version: 1, code: "ar", bcp47: "ar", name: "Arabic", direction: "rtl", scripts: ["Arab"],
+  capabilities: { readings: "none", ruby: null, pitchAccent: false, characterView: null, wordHighlighting: true },
+  typography: { fontFamily: null, wordBreak: null, lineBreak: null, joinedScript: true },
+  labels: { reading: "Reading", traceMarker: "", readingBrackets: ["(", ")"], senseSeparator: "; ", listSeparator: ", ",
+            character: null, onyomi: null, kunyomi: null, readingSeparator: null },
+  settings: { vowelMarks: "hide" }, sampleText: "قرأ",
+  sourceAttributes(), readingAttributes(), glossaryAttributes(title, result), nameAttributes(name),
+  isolate(text), isCharacterLink(character), display(result, field), readingFor(result), sliceText(text, start, end),
+}
+```
+
+Until a second language is added the language is *unmarked*: every attribute
+helper returns `{}` and `isolate` returns its text, so a theme that uses them
+renders exactly what it rendered before. Japanese labels are the Japanese
+pack's (`～`, `《》`, `On`, `Kun`, `、`).
+
+**Where each helper goes.**
+
+| Text | What to use |
+| --- | --- |
+| Headword (`.gsm-hoshidicts-expression`), the matched form in a deinflection trail, the character in the character view, a sentence excerpt | `sourceAttributes()` on its element; `display(result, "expression")` for its text |
+| Reading | `readingAttributes()`; `display(result, "reading")`, or `readingFor(result)`, which is `""` when the reading equals the displayed headword |
+| One dictionary's block of definitions | `glossaryAttributes(title, result)` on the element holding the whole block, so numbers, bullets and text turn together |
+| Dictionary titles, display names, group names, frequency labels | `nameAttributes(name)` on an inline element that holds only the name, never on a box layout can widen; in plain text, `isolate(name)` |
+| Clickable characters | `isCharacterLink(character)`; the links' labels name `labels.character` |
+| Trace markers, reading brackets, sense and list separators, character-view reading labels | `labels` |
+| Excerpts cut to a length | `sliceText(text, start, end)`, which never splits a grapheme |
+
+Results may carry `presentation` (a display setting such as Arabic vowel
+marks); `display()` reads it. Mining, counts and word status read `term`, so
+never mine or compare stored data with displayed text.
+
+**Shared components.** `options.components.language` holds the helpers above
+as functions that take the language first (`components.language.isolate(language,
+text)`), for code that runs outside a render, plus:
+
+- `appendHeadword(document, parent, result, language, onCharacterClick)`:
+  Default's headword with the language's ruby mode (kana furigana, one ruby
+  per syllable, one over the word, or a reading line beside the headword);
+- `characterEntryResult(character, entry, language)`: `kanjiEntryResult` with
+  the language's reading labels, for mining a character;
+- `glossaryToPlainText(glossary, language, { direction })`: the text-mode
+  flattener; `direction` is the dictionary's, `glossaryAttributes(title,
+  result).dir ?? "ltr"`. A paragraph of the other direction is wrapped in a
+  directional isolate after its list marker; it keeps its order, not its
+  alignment;
+- `isolateParagraph(language, text, direction)`: the same for a line a theme
+  composes itself, such as JL's `; `-joined senses;
+- `setAttributes(element, attributes)`.
+
+`options.appendTextOnlyGlossary` applies the language's glossary rules
+(direction per paragraph, language per string) for the render's language;
+pass `language` and `direction` in its options to name them yourself.
+
+**What core does to the popup.** Once the records have profiles, core sets
+`dir="ltr"` and `lang="en"` on `.gsm-hoshidicts-popup`, because the interface
+is English, plus `data-hd-language`, `data-hd-direction` and the custom
+properties `--hd-language-font-family`, `--hd-language-word-break` and
+`--hd-language-line-break` from the pack's typography (each unset when the
+pack leaves it null). Use them with your own values as fallbacks:
+
+```css
+.gsm-hoshidicts-popup {
+  font: 15px/1.5 var(--hd-language-font-family, "My Serif", serif);
+  word-break: var(--hd-language-word-break, normal);
+  line-break: var(--hd-language-line-break, auto);
+  text-align: start;
+}
+```
+
+Write spacing inside definitions with logical properties
+(`padding-inline-start`, `margin-inline-end`, `border-inline-start`), which
+compute to the physical ones left to right. Do not letter-space text when
+`typography.joinedScript` is true (Arabic, Syriac): spacing breaks the joins.
+
+After every render, after `onResultsExpanded` and `updateDictionaryPresentation`,
+and whenever the popup's content changes, core labels text whose nearest
+`lang` is the popup's own or a block's default (`data-hd-lang-default`): it
+sets `lang` on the text's parent, or moves the text, or one line of it, into
+a `span[lang]`. Do not keep references to text nodes across a render. Core
+also gives a list of mixed direction (`[data-hd-mixed-list]`) an inline
+`padding-inline-end` equal to its start padding, so every number stays inside
+its card.
+
+**Declaring support.** A catalogue entry says which directions the theme lays
+out and whether it shows `display()` text:
+
+```json
+"language": { "directions": ["ltr", "rtl"], "presentation": true }
+```
+
+An entry without `language` reads as `{ "directions": ["ltr"],
+"presentation": false }`. For such a theme, core marks the contract's content
+hooks when a render needs another direction: `.gsm-hoshidicts-expression`
+gets the source attributes, and each `.gsm-hoshidicts-definitions` gets its
+dictionary's direction and `text-align: start` when core can name its one
+dictionary (`data-dictionary` on it or an ancestor, else
+`data-hoshidicts-dictionary` on the glossary content inside it), or
+`unicode-bidi: plaintext` and `text-align: start` on itself and its block
+descendants when it holds several or none, where a row takes the direction of
+whatever text comes first. Outside Japanese core ignores its character
+clicks and hides the clicked-character dictionary, and a theme that does not
+declare `presentation` shows the stored headword while Design hides the
+pack's display settings. Every vendored theme declares both directions;
+Plain, which shows no headword, declares `presentation: false`.
+
 ## Content and stylesheet ownership
 
 Default loads `render/reader.css`; Default, Bee and Crystal load scoped dictionary CSS. Bee
