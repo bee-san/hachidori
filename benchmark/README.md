@@ -235,6 +235,32 @@ Its `deep-nesting-*` scans hover 深層, whose gloss sits under 40 nested
 elements, alternating with the flat entries (`deep-nesting-flat-*`); compact
 summaries are on, so those timings include the summary walkers.
 
+## Large popups in every theme with a second profile
+
+`theme-languages.mjs` measures the large-popup case of
+[docs/languages.md](../docs/languages.md) section 19: 32 results, each with its
+Jitendex entry and two short monolingual entries, in every theme on a
+`lang="ja"` page. It compares a before checkout with an after checkout in the
+single-profile shape and with a second profile (a marked Japanese language,
+whose labelling pass runs). A sample follows content.js: `show()` resets the
+scroll, the theme renders, and the first placement reads the word's rectangle,
+which lays out the document. `first` ends at a forced layout after that;
+`complete` ends when the popup has not changed for three frames, so it also
+covers Default's deferred fills. The conditions alternate in rotating order on
+one browser, with 3 warmups and `HACHIDORI_BENCH_SAMPLES` (15) measurements
+each; `HACHIDORI_BENCH_THEMES` picks themes. Run it once with the host's fonts
+and once with `FONTCONFIG_FILE` naming a configuration that has the themes'
+named fonts.
+
+```sh
+node benchmark/theme-languages-sample.mjs path/to/hoshidicts-cli \
+  "path/to/Jitendex.org [2026-10-03]" /tmp/jitendex-32.json
+node benchmark/theme-languages.mjs /tmp/theme-languages /path/to/before /path/to/after /tmp/jitendex-32.json
+```
+
+The timings exclude lookup, messaging, images and paint; the hover harness
+measures input to frame.
+
 ## Entry moves on Alt+ArrowDown/ArrowUp (#597)
 
 `entry-keybind.mjs` times Go to next and previous entry in the real extension:
