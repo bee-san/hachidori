@@ -54,6 +54,8 @@
     let subtitleOffset = { x: 0, y: 0 };
     let subtitleDrag = null;
     let subtitleClick = false;
+    // The reading language whose subtitle tracks the page posts (docs/languages.md 8.5).
+    let subtitleLanguage = "ja";
 
     const command = message => {
       document.dispatchEvent(new window.CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
@@ -209,7 +211,8 @@
       const resolved = resolve(observation);
       if (!resolved.cue) return { netflix: { unavailable: resolved.reason } };
       const { movieId, startMs, endMs, text } = resolved.cue;
-      const whole = sentence ? subtitles.cueSentence(text, sentence.sentence, sentence.matchOffset) : null;
+      // A candidate of a language pack joins the cue's lines with its joiner.
+      const whole = sentence ? subtitles.cueSentence(text, sentence.sentence, sentence.matchOffset, sentence.lineJoiner) : null;
       return { netflix: { cue: { movieId, startMs, endMs } }, ...whole };
     }
 
@@ -513,7 +516,17 @@
       release();
     });
 
-    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging };
+    // The reader reads another language: the tracks of this one are dropped and
+    // the page posts that language's.
+    function setSubtitleLanguage(code) {
+      if (typeof code !== "string" || code === subtitleLanguage) return;
+      subtitleLanguage = code;
+      movies.clear();
+      resent.clear();
+      command({ type: "language", language: code });
+    }
+
+    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging, setSubtitleLanguage };
   }
 
   globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };

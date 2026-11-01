@@ -197,6 +197,7 @@
     words: null,
     sentenceRules: undefined,
     highlightBreaks: null,
+    lineJoiner: "",
   });
 
   function patternOf(source) {
@@ -223,6 +224,7 @@
       isText: value => pattern.test(value),
       words: word === null ? null : { word, internal: patternOf(text.wordInternal), limit: MAX_SCAN_WINDOW },
       sentenceRules: sentence === null ? undefined : globalThis.HDSentence.sentenceRules(sentence),
+      lineJoiner: typeof text.lineJoiner === "string" ? text.lineJoiner : "",
       highlightBreaks: { sentenceEnd: new Set(breaks.sentenceEnd ?? []), clauseEnd: new Set(breaks.clauseEnd ?? []) },
     };
   }
@@ -608,9 +610,10 @@
     return Math.min(MAX_SCAN_WINDOW, Math.max(scanLength, longest + LONG_KEY_INFLECTION_SLACK));
   }
 
-  // A candidate's profile and the language rules it was read with.
+  // A candidate's profile and the language rules it was read with; a Netflix
+  // cue's lines are joined with the language's joiner (8.5).
   function profileCandidateFields(profile) {
-    return profile ? { profile, sentenceRules: profile.text.sentenceRules } : {};
+    return profile ? { profile, sentenceRules: profile.text.sentenceRules, lineJoiner: profile.text.lineJoiner } : {};
   }
 
   // Google Docs paints text to <canvas>. While Settings → Advanced →
@@ -651,6 +654,12 @@
     globalThis.HDNetflix.setHoverPause(enabled);
     globalThis.HDNetflix.setLineAudio(enabled);
     globalThis.HDNetflix.setSubtitleDragging(enabled);
+    // The subtitle tracks are the active language's, by its primary subtag (8.5).
+    const active = activeReadingProfile();
+    if (active !== null && enabled) {
+      const tag = globalThis.HDLanguages?.get?.(active.language)?.bcp47 ?? active.language;
+      globalThis.HDNetflix.setSubtitleLanguage?.(primarySubtag(tag));
+    }
   }
 
   // background.js registers netflix-content.js for Netflix pages that load
@@ -790,6 +799,9 @@
   }
 
   /** The SVG <text> carrying `rect`'s run at its position, transform and font; invisible and not hit-testable. */
+  // A run whose first letter is of a right-to-left script.
+  const RIGHT_TO_LEFT_RUN = /^\P{L}*[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}]/u;
+
   function docsImposterFor(rect) {
     const run = rect.getAttribute("aria-label");
     if (docsImposter?.rect === rect && docsImposter.text.isConnected && docsImposter.node.nodeValue === run) {
@@ -808,6 +820,12 @@
     important("transform", transform);
     important("font", rect.getAttribute("data-font-css") || "");
     important("text-anchor", "start");
+    // With profiles the imposter reads in the run's direction, from its first
+    // letter (docs/languages.md 8.5); a right-to-left run ends at the rect's left.
+    if (readingProfiles !== null && RIGHT_TO_LEFT_RUN.test(run)) {
+      important("direction", "rtl");
+      important("text-anchor", "end");
+    }
     rect.parentNode.append(text);
     // Docs positions the rect by its box and the <text> by its baseline.
     const box = rect.getBoundingClientRect();

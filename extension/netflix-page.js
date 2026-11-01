@@ -66,6 +66,11 @@
   // them can ask again. Only the movie being watched and the latest manifest's
   // movie (the next episode Netflix prepares) are kept.
   const posted = new Map();
+  // Their manifests' tracks, so another reading language can be read from them.
+  const manifests = new Map();
+  // The reading language's primary subtag (docs/languages.md 8.5): Japanese
+  // until the reader names another.
+  let subtitleLanguage = "ja";
   let replaying = false;
 
   const post = message => {
@@ -109,9 +114,9 @@
     return null;
   }
 
-  function japanese(track) {
+  function wanted(track) {
     const language = String(track.language ?? track.bcp47 ?? "").toLowerCase();
-    return language === "ja" || language.startsWith("ja-");
+    return language === subtitleLanguage || language.startsWith(`${subtitleLanguage}-`);
   }
 
   function trackId(track, index) {
@@ -121,7 +126,11 @@
 
   function retain(movieId) {
     const watched = WATCH_PATH.exec(location.pathname)?.[1];
-    for (const id of posted.keys()) if (id !== movieId && id !== watched) posted.delete(id);
+    for (const id of posted.keys()) {
+      if (id === movieId || id === watched) continue;
+      posted.delete(id);
+      manifests.delete(id);
+    }
     if (!posted.has(movieId)) posted.set(movieId, new Map());
   }
 
@@ -136,9 +145,11 @@
     const movieId = String(result.movieId);
     if (!/^\d+$/u.test(movieId)) return;
     retain(movieId);
+    manifests.set(movieId, result.textTracks);
+    const language = subtitleLanguage;
     // Subadub's filter, plus image subtitles, which have no text to time.
     const tracks = result.textTracks.filter(track => track && typeof track === "object"
-      && !track.isForcedNarrative && !track.isNoneTrack && japanese(track));
+      && !track.isForcedNarrative && !track.isNoneTrack && wanted(track));
     const text = tracks.map((track, index) => ({ track, index, file: track.isImageBased ? null : download(track) }))
       .filter(entry => entry.file !== null);
     if (text.length === 0) {
@@ -153,8 +164,15 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.text();
         })
-        .then(body => publish(movieId, id, { kind: "subtitle", movieId, trackId: id, closedCaptions, format: file.format, text: body }))
-        .catch(() => publish(movieId, "status", { kind: "status", movieId, subtitles: "failed" }));
+        .then(body => {
+          // A track of a language the reader has since left is not posted.
+          if (language === subtitleLanguage) {
+            publish(movieId, id, { kind: "subtitle", movieId, trackId: id, closedCaptions, format: file.format, text: body });
+          }
+        })
+        .catch(() => {
+          if (language === subtitleLanguage) publish(movieId, "status", { kind: "status", movieId, subtitles: "failed" });
+        });
     }
   }
 
@@ -356,6 +374,15 @@
       void replay(command);
     } else if (command?.type === "pause" || command?.type === "resume") {
       pauseOrResume(command.type);
+    } else if (command?.type === "language" && typeof command.language === "string"
+        && /^[a-z]{2,3}$/u.test(command.language) && command.language !== subtitleLanguage) {
+      // The reader reads another language: the kept manifests' tracks of it
+      // are posted instead (docs/languages.md 8.5).
+      subtitleLanguage = command.language;
+      for (const [movieId, textTracks] of [...manifests]) {
+        posted.set(movieId, new Map());
+        readTracks({ movieId, textTracks });
+      }
     }
   });
 }());
