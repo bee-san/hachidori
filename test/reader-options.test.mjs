@@ -157,6 +157,22 @@ test("compact glossaries default off and keep only Yomitan's two popup layout va
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("glossaryLayoutMode"), "not a boolean hotkey toggle");
 });
 
+test("a theme's colours default to Automatic and keep only the bundled variant ids", () => {
+  const { POPUP_THEME_VARIANTS, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.popupThemeVariant, "auto");
+  assert.deepEqual(POPUP_THEME_VARIANTS, ["auto", "grey", "beige", "blue"]);
+  for (const variant of POPUP_THEME_VARIANTS) {
+    assert.equal(normaliseOptions({ popupThemeVariant: variant }).popupThemeVariant, variant);
+    assert.deepEqual(validateOptionsPatch({ popupThemeVariant: variant }), { popupThemeVariant: variant });
+  }
+  for (const garbage of ["bogus", "Grey", "", true, null]) {
+    assert.equal(normaliseOptions({ popupThemeVariant: garbage }).popupThemeVariant, "auto", `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ popupThemeVariant: garbage }), /invalid reader option/);
+  }
+  assert.ok(DESIGN_OPTION_KEYS.includes("popupThemeVariant"), "Design's reset restores it");
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("popupThemeVariant"), "not a boolean hotkey toggle");
+});
+
 test("words that only frequency or pitch dictionaries have stay hidden by default (#620)", () => {
   const { DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
   assert.equal(DEFAULT_OPTIONS.showMetadataOnlyResults, false);

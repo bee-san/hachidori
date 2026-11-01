@@ -88,7 +88,8 @@ const OPTION_SECTIONS = {
 };
 const {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, FREQUENCY_ORDERS,
-  POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS,
+  POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, POPUP_THEME_VARIANTS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS,
+  DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
   activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
   normaliseOptions,
@@ -132,6 +133,7 @@ const METADATA_FIELDS = [
 ];
 const APPEARANCE_CHOICES = [
   { key: "popupTheme", id: "opt-popup-theme" },
+  { key: "popupThemeVariant", id: "opt-popup-theme-variant", values: POPUP_THEME_VARIANTS },
   { key: "popupToolbarPosition", id: "opt-popup-toolbar" },
   { key: "imageHoverPreview", id: "opt-image-hover-preview" },
   { key: "glossaryLayoutMode", id: "opt-glossary-layout" },

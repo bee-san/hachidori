@@ -504,7 +504,9 @@ test("switching after a retired lookup applies saved actions to the next rendere
 
 // Settings → Design shows a theme only the settings its catalogue entry
 // declares, so each declaration must match its renderer in both directions.
-const CORE_DESIGN_SETTINGS = ["popupTheme", "popupWidthPx", "popupHeightPx", "popupScalePercent",
+// Colours (popupThemeVariant) is core too: a host attribute for every renderer,
+// shown for a theme whose catalogue entry lists colour variants.
+const CORE_DESIGN_SETTINGS = ["popupTheme", "popupThemeVariant", "popupWidthPx", "popupHeightPx", "popupScalePercent",
   "sourceHighlightEnabled", "customPopupCss", "customPopupJavascript", "customLinks"];
 const designResult = { matched: "食べた", deinflected: "食べる", preprocessorSteps: 0,
   trace: [{ name: "-た", description: "past" }],
