@@ -1,7 +1,7 @@
 # Issue #610 evidence: the search page
 
 Screenshots from the real-Chrome suite's search page step (`test/chrome-e2e/search.mjs`) on PR head
-`44230773`, Chrome for Testing 152.0.7977.75, with the suite's fixture dictionaries only:
+`aadb13f3`, Chrome for Testing 152.0.7977.75, with the suite's fixture dictionaries only:
 
 ```sh
 HACHIDORI_SEARCH_SCREENSHOTS=docs/evidence/issue-610 node test/run.mjs chrome-e2e
