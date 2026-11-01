@@ -23,6 +23,21 @@ function hostSummary(host, display) {
   return `the Hachidori in ${host?.name || "another browser"} ${where} (${dictionaries(host?.dictionaryCount)})`;
 }
 
+// "Vietnamese", "Arabic and Vietnamese": English names, also of a language
+// this build has no pack for.
+function languageList(codes) {
+  const names = codes.map(code => {
+    const name = globalThis.HDLanguages?.get?.(code)?.name;
+    if (typeof name === "string" && name !== "") return name;
+    try {
+      return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+    } catch {
+      return code;
+    }
+  });
+  return new Intl.ListFormat("en-GB", { type: "conjunction" }).format(names);
+}
+
 // "Chrome on this computer", "another browser at 100.75.152.76"
 function clientLabel(entry) {
   const where = entry.local ? "on this computer" : `at ${entry.address}`;
@@ -56,6 +71,13 @@ export function createSharingSettingsController({
   function derivedStatus() {
     if (linked()) {
       const link = client();
+      // A host that refused this browser's opt-in: it reads the Japanese view
+      // until it is updated (docs/languages.md 17.6).
+      const refused = link.languageProfiles?.optIn === "refused";
+      if (link.connected && refused) {
+        return [`Using ${hostSummary(link.host, link.display)}. Update Hachidori in this browser to use `
+          + `${languageList(link.languageProfiles.missingLanguages)} from ${link.host?.name || "the linked Hachidori"}.`, undefined];
+      }
       if (link.connected) return [`Using ${hostSummary(link.host, link.display)}.`, "ready"];
       return [link.display === "this computer"
         ? "Linked to a Hachidori on this computer, but it is not reachable. Check that Anki and the sharing browser are open."

@@ -29,7 +29,7 @@ import {
 import { WORKER_HANDLERS } from "./background-requests.js";
 import { reconcileAnkiIndex } from "./background-anki.js";
 import { UPDATE_ALARM, queueManagedUpdate } from "./background-updates.js";
-import { getSharingHost, sharingLinked, forwardToHost } from "./background-sharing.js";
+import { getSharingHost, sharingLinked, forwardToHost, forwardProfileRequest } from "./background-sharing.js";
 import { alarms, sharingReady } from "./background.js";
 
 let backupDownloads;
@@ -235,11 +235,9 @@ async function relayEngineRequest(message) {
   // Pushed by the options storage listener only; a page cannot relay it.
   if (message.type === "hd_engine_config") throw new Error("Unknown engine request.");
   await sharingReady;
+  // A linked browser's languages are the host's (docs/languages.md 17.3).
+  if (sharingLinked && ["hd_profile_add", "hd_profile_remove"].includes(message.type)) return forwardProfileRequest(message);
   if (sharingLinked && forwardableRequest(message)) return forwardToHost(message);
-  // A linked browser's languages are the host's.
-  if (sharingLinked && ["hd_profile_add", "hd_profile_remove"].includes(message.type)) {
-    throw new Error("Add and remove languages on the linked Hachidori.");
-  }
   if (message.type === "hd_backup_cancel") {
     const preparation = backupPreparations.get(message.token);
     if (preparation) preparation.cancelled = true;

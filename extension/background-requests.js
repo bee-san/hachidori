@@ -1180,7 +1180,8 @@ async function dispatchSharedRequest(message, clientId, capabilities = []) {
         }
         if (message.type === "hd_anki_setup") {
           const allowed = allowLinkedAnkiSetupRequest(message);
-          const options = await readAnkiOptions();
+          // The Template of the profile the request names (docs/languages.md 5.4).
+          const options = await readAnkiOptions(allowed.profileId);
           const config = ankiTemplateConfig(options.anki, allowed.templateId);
           if (config === null) throw new Error("The selected Anki Template is no longer available.");
           return workerReply(allowed, await trackAnkiOperation(() => checkAnkiSetup(config)));

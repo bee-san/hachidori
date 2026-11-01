@@ -77,6 +77,8 @@
     "hd_import_commit",
     "hd_import_commit_result",
     "hd_kanji",
+    // A linked browser's opt-in to a host's profiles, answered by its sharing code.
+    "hd_language_profiles_opt_in",
     "hd_language_selection_write",
     "hd_lookup",
     "hd_lookup_dictionary",

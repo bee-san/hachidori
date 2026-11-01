@@ -44,17 +44,26 @@ export const LINKED_ANKI_REQUESTS = new Set([
   "hd_anki_word_status",
 ]);
 
+// A host whose records have profiles advertises this in its hello, and a
+// client that sees it opts in with its pack codes before it applies the
+// hello's snapshot (docs/languages.md 17.3, decision 0009). A single-profile
+// host sends today's hello.
+export const LANGUAGE_PROFILES_CAPABILITY = "language-profiles-v1";
+export const LANGUAGE_PROFILES_OPT_IN = "hd_language_profiles_opt_in";
+
 // Which runtime messages a linked client sends to the host instead of its own
 // engine or worker. Screenshot capture/discard stays
 // in the reading browser; the host owns every Anki and generation decision.
+// The language choice (hd_language_selection_write) stays in each browser.
 export const FORWARDED_REQUESTS = {
   "hoshidicts-offscreen": new Set([
     "hd_lookup", "hd_lookup_dictionary", "hd_segment", "hd_kanji", "hd_styles", "hd_media", "hd_status", "hd_memory", "hd_memory_total",
     "hd_custom_append", "hd_custom_save", "hd_apply_state", "hd_reload", "hd_remove", "hd_import",
+    "hd_profile_add", "hd_profile_remove",
   ]),
   "hoshidicts-worker": new Set([
     "hd_state_read", "hd_state_cas", "hd_custom_read", "hd_custom_cas", "hd_options_write",
-    "hd_lookup_stats_read", "hd_lookup_stats_record", "hd_word_status_override",
+    "hd_lookup_stats_read", "hd_lookup_stats_record", "hd_word_status_override", LANGUAGE_PROFILES_OPT_IN,
   ]),
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),
@@ -65,6 +74,7 @@ export const FORWARDED_REQUESTS = {
 const MUTATING_FORWARDED_REQUESTS = {
   "hoshidicts-offscreen": new Set([
     "hd_custom_append", "hd_custom_save", "hd_apply_state", "hd_reload", "hd_remove", "hd_import",
+    "hd_profile_add", "hd_profile_remove",
   ]),
   "hoshidicts-worker": new Set([
     "hd_state_cas", "hd_custom_cas", "hd_options_write", "hd_lookup_stats_record", "hd_word_status_override",
@@ -185,6 +195,17 @@ function selectedTemplateId(value) {
   return { templateId: value.templateId };
 }
 
+// The profile a linked request is for (docs/languages.md 5.4, 17.3 item 5):
+// a request without one means the Japanese profile on the host.
+function selectedProfileId(value) {
+  if (!Object.hasOwn(value ?? {}, "profileId")) return {};
+  if (typeof value.profileId !== "string" || value.profileId === "" || value.profileId.length > 256
+      || /[\u0000-\u001f\u007f]/u.test(value.profileId)) {
+    throw new Error("malformed linked profile");
+  }
+  return { profileId: value.profileId };
+}
+
 // A linked browser is untrusted at the host boundary. Rebuild only the request
 // shape each operation needs; endpoint credentials and local-only operations
 // never enter the host's ordinary Anki handler.
@@ -195,7 +216,7 @@ export function allowLinkedAnkiRequest(message) {
   }
   const requestId = typeof message.requestId === "string" || Number.isFinite(message.requestId)
     ? message.requestId : null;
-  const base = { target: "hachidori-anki", type: message.type, requestId };
+  const base = { target: "hachidori-anki", type: message.type, requestId, ...selectedProfileId(message) };
   if (message.type === "hd_anki_status") return { ...base, ...selectedTemplateId(message) };
   if (message.type === "hd_anki_view") {
     const request = selectedFields(message.request, ["term", "templateId"]);
@@ -257,6 +278,7 @@ export function allowLinkedAnkiSetupRequest(message) {
     type: "hd_anki_setup",
     requestId,
     ...selectedTemplateId(message),
+    ...selectedProfileId(message),
   };
 }
 
@@ -283,7 +305,8 @@ export function allowLinkedImportRequest(message) {
           || !Number.isSafeInteger(message.size) || typeof message.replace !== "boolean") {
         throw new TypeError("malformed dictionary upload request");
       }
-      return { ...base, fileName: message.fileName, size: message.size, replace: message.replace };
+      // The import joins the profile it names (docs/languages.md 5.2).
+      return { ...base, fileName: message.fileName, size: message.size, replace: message.replace, ...selectedProfileId(message) };
     case "hd_import_chunk":
       if (!Number.isSafeInteger(message.offset) || typeof message.data !== "string") {
         throw new TypeError("malformed dictionary upload chunk");

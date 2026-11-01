@@ -246,7 +246,9 @@ async function forwardLinkedAnki(message) {
 // told apart by their sharing frames, and a host without batches keeps
 // answering. Each entry becomes what the reader made of that single reply.
 async function linkedPreflight(message, request) {
-  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request };
+  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request,
+    // The batch names its profile; each single preflight names it too.
+    ...(message.profileId === undefined ? {} : { profileId: message.profileId }) };
   const reply = await forwardLinkedAnki(single);
   if (reply?.type !== `${single.type}_result` || reply.requestId !== single.requestId) {
     return { state: "error", canAdd: false, error: `unexpected reply for ${single.type}` };

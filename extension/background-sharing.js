@@ -5,11 +5,17 @@ import { extensionApi as chrome } from "./browser-api.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { SHARING_KEY, createSharingHost } from "./sharing-host.js";
 import { createApiHost } from "./api-host.js";
-import { SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
+import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
-  API_CAPABILITY, FORWARDED_REQUESTS, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES,
-  LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED, browserName, mutatingForwardedRequest, parseLinkAddress,
+  API_CAPABILITY, API_CLIENT_ORIGIN, FORWARDED_REQUESTS, LANGUAGE_PROFILES_CAPABILITY, LANGUAGE_PROFILES_OPT_IN,
+  LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
+  browserName, mutatingForwardedRequest, parseLinkAddress,
 } from "./sharing-protocol.js";
+import {
+  CHANGING_LANGUAGES, PROFILES_NOT_SHARED, PROFILE_REQUEST_TYPES, RECORD_REPLY_TYPES, createLanguageTracker,
+  hasLanguagePack, japaneseChanges, japaneseReply, japaneseView, languageName, languageNames, missingLanguages,
+  optInLanguages, packCodes, recordLanguages, snapshotLanguages, withoutProfile,
+} from "./sharing-languages.js";
 import { createUploadHost, uploadImportDecision } from "./linked-import.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, emptyLookupStats, unreachableLookupStatsKeys } from "./lookup-stats.js";
 import { CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages } from "./custom-dictionary.js";
@@ -22,7 +28,7 @@ import {
   TARGET, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY, UPDATE_SETTINGS_KEY, engineSender, writeLocalState, relay,
   readDictionaryStorage, optionsRevision, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply,
   checkedOptionsResult, failureReply, hasProfiles, hasDictionaryProfiles, optionProfiles, projectDictionaryState,
-  JAPANESE_PROFILE_ID, LANGUAGE_SELECTION_KEY, updateLookupProfiles,
+  JAPANESE_PROFILE_ID, LANGUAGE_SELECTION_KEY, updateLookupProfiles, languageDescriptor,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background-requests.js";
 import {
@@ -49,6 +55,148 @@ async function readSharedState() {
   return Object.fromEntries(SHARED_STATE_KEYS.map(key => [key, stored[key] ?? null]));
 }
 
+// ---------------------------------------------------------------------------
+// What each linked browser receives from a host whose records have profiles
+// (docs/languages.md 17.3-17.6, decision 0009). A browser that opted in gets
+// the records as stored; any other gets their Japanese view, and its requests
+// are read as naming no profile. A single-profile host keeps today's frames,
+// replies and broadcast; these hooks then return at once.
+// ---------------------------------------------------------------------------
+
+const SHARING_HOST_CAPABILITIES = [...SHARING_CAPABILITIES, API_CAPABILITY, LINKED_IMPORT_CAPABILITY];
+// Whether the records have profiles, as the last read or storage event gave
+// them; the projections below run only while they do.
+let hostProfiles = false;
+let languageTracker = null;
+
+function trackedLanguages() {
+  languageTracker ??= createLanguageTracker();
+  return languageTracker;
+}
+
+// A connection that opted in and still receives the records as stored.
+function optedIn(connection) {
+  return connection.optIn === "accepted";
+}
+
+// The relay's API client keeps no mirror, so no projection change concerns it.
+function reconnects(connection) {
+  return connection.client.origin !== API_CLIENT_ORIGIN;
+}
+
+// The opt-in, answered in one turn of the storage queue (17.3 item 2, 17.6):
+// the snapshot read, the client's pack codes checked against every language
+// it holds, the outcome recorded for this connection, whose change frames are
+// held until the host has sent this reply.
+async function answerLanguageOptIn(message, connection) {
+  const packs = optInLanguages(message);
+  if (packs === null) return failureReply(message, new Error("The language opt-in named no language packs."));
+  return serialiseStorage(async () => {
+    const snapshot = await readSharedState();
+    if (connection.closing) return failureReply(message, new Error(CHANGING_LANGUAGES));
+    hostProfiles = hasProfiles(snapshot[OPTIONS_KEY]);
+    trackedLanguages().read(snapshot);
+    const missing = missingLanguages(snapshotLanguages(snapshot), packs);
+    connection.packs = packs;
+    connection.optIn = missing.length === 0 ? "accepted" : "refused";
+    connection.queue = [];
+    return workerReply(message, { optIn: connection.optIn, snapshot: missing.length === 0 ? snapshot : japaneseView(snapshot),
+      missingLanguages: missing, hostLanguages: packCodes() });
+  });
+}
+
+// A request from a connection that has not opted in names no profile; one
+// that opted in may add a language this host has a pack for, never at first run.
+function languageRequest(message, connection) {
+  const type = message?.type;
+  const profileRequest = message?.target === TARGET && PROFILE_REQUEST_TYPES.has(type);
+  if (connection.closing && (RECORD_REPLY_TYPES.has(type) || profileRequest)) {
+    return { response: failureReply(message, new Error(CHANGING_LANGUAGES)) };
+  }
+  if (!optedIn(connection)) {
+    if (profileRequest) return { response: failureReply(message, new Error(PROFILES_NOT_SHARED)) };
+    return { message: withoutProfile(message) };
+  }
+  if (profileRequest && type === "hd_profile_add") {
+    if (!hasLanguagePack(message.language)) {
+      return { response: failureReply(message,
+        new Error(`The linked Hachidori does not have ${languageName(message.language)}. Update it and try again.`)) };
+    }
+    const { firstRun, ...ordinary } = message;
+    return { message: ordinary };
+  }
+  return { message };
+}
+
+// Whether a reply carries records with profiles, read with the names every
+// worker context has.
+function replyHasProfiles(response) {
+  return hasProfiles(response?.options) || hasDictionaryProfiles(response?.state)
+    || (response?.document !== null && typeof response?.document === "object" && Object.hasOwn(response.document, "languages"))
+    || Array.isArray(response?.languages);
+}
+
+const HOST_LANGUAGE_HOOKS = {
+  hello(snapshot) {
+    if (!hasProfiles(snapshot[OPTIONS_KEY])) return null;
+    hostProfiles = true;
+    trackedLanguages().read(snapshot);
+    return { snapshot: japaneseView(snapshot), capabilities: [...SHARING_HOST_CAPABILITIES, LANGUAGE_PROFILES_CAPABILITY] };
+  },
+  async request(message, connection) {
+    if (message?.target === WORKER_TARGET && message.type === LANGUAGE_PROFILES_OPT_IN) {
+      return { response: await answerLanguageOptIn(message, connection), optIn: true };
+    }
+    if (!hostProfiles && !connection.closing && connection.optIn === undefined) return { message };
+    return languageRequest(message, connection);
+  },
+  // A connection that would receive a language it lacks gets the Japanese
+  // view from that commit and reconnects (17.3 item 6).
+  reply(response, message, connection) {
+    if (!replyHasProfiles(response)) return response;
+    if (optedIn(connection)) {
+      const carried = new Set([...recordLanguages(OPTIONS_KEY, response.options),
+        ...recordLanguages(DICTIONARY_STATE_KEY, response.state), ...recordLanguages(CUSTOM_DICTIONARY_SOURCE_KEY, response.document)]);
+      if (missingLanguages(carried, connection.packs).length === 0) return response;
+      connection.optIn = "refused";
+      if (reconnects(connection)) connection.closing = true;
+    }
+    return japaneseReply(message?.type, response);
+  },
+  storageChanged(changes, connections) {
+    const options = changes[OPTIONS_KEY];
+    const leftSingleProfile = options !== undefined && !hasProfiles(options.oldValue) && hasProfiles(options.newValue);
+    if (options !== undefined) hostProfiles = hasProfiles(options.newValue);
+    // With nobody connected nothing is followed; the next hello reads afresh.
+    if (connections.length === 0) {
+      languageTracker = null;
+      return null;
+    }
+    if (!hostProfiles && !leftSingleProfile
+        && !connections.some(connection => connection.closing || connection.queue !== null || connection.optIn !== undefined)) {
+      return null;
+    }
+    // Records that gain profiles are read afresh by the next hello.
+    if (leftSingleProfile) languageTracker = null;
+    const tracker = trackedLanguages();
+    const { carried } = tracker.observe(changes);
+    const held = tracker.known ? tracker.held() : null;
+    for (const connection of connections) {
+      if (connection.closing || !reconnects(connection)) continue;
+      if (leftSingleProfile) connection.closing = true;
+      else if (optedIn(connection) && missingLanguages(carried, connection.packs).length > 0) {
+        connection.optIn = "refused";
+        connection.closing = true;
+      } else if (connection.optIn === "refused" && held !== null && missingLanguages(held, connection.packs).length === 0) {
+        connection.closing = true;
+      }
+    }
+    return {
+      frame: (connection, values) => (optedIn(connection) ? values : japaneseChanges(values, tracker.descriptor)),
+    };
+  },
+};
+
 function getSharingHost() {
   sharingHost ??= createSharingHost({
     WebSocket: globalThis.WebSocket,
@@ -58,8 +206,9 @@ function getSharingHost() {
     sharedKey: key => SHARED_STATE_KEYS.includes(key) || key.startsWith(LOOKUP_STATS_ROW_PREFIX),
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
-    capabilities: [...SHARING_CAPABILITIES, API_CAPABILITY, LINKED_IMPORT_CAPABILITY],
+    capabilities: SHARING_HOST_CAPABILITIES,
     clientClosed: clientId => uploadHost?.dropWhere(owner => owner === remoteUploadOwner(clientId)),
+    languages: HOST_LANGUAGE_HOOKS,
   });
   return sharingHost;
 }
@@ -93,12 +242,14 @@ function getUploadHost() {
       discard: token => relayUpload("hd_upload_discard", { token }),
     },
     // Never hold the storage queue here: the engine commit calls back into it.
-    importUpload: async (token, { fileName, replace }) => {
+    importUpload: async (token, { fileName, replace, profileId }) => {
       const { identity } = await relayUpload("hd_upload_identity", { token });
       const dictionaries = (await readDictionaryStorage()).state?.dictionaries ?? [];
       return relay({
         target: UPLOAD_STORE_TARGET, type: "hd_upload_import", token, fileName,
         importDecision: uploadImportDecision(identity, dictionaries, replace),
+        // The profile the upload names joins the package (docs/languages.md 17.3 item 5).
+        ...(profileId === undefined ? {} : { profileId }),
         requestId: `uploaded-import-${crypto.randomUUID()}`,
       });
     },
@@ -240,6 +391,13 @@ async function applyMirror(changes, snapshot = false) {
   if (removals.length > 0) await chrome.storage.local.remove(removals);
 }
 
+// This build's pack codes, which the client offers a host with profiles; null
+// where no language registry is loaded, so such a client never opts in.
+function clientPackCodes() {
+  const codes = globalThis.HDLanguages?.codes;
+  return Array.isArray(codes) ? [...new Set([JAPANESE_PROFILE_ID, ...codes])] : null;
+}
+
 function getSharingClient() {
   sharingClient ??= createSharingClient({
     WebSocket: globalThis.WebSocket,
@@ -251,6 +409,7 @@ function getSharingClient() {
     version: chrome.runtime.getManifest().version,
     name: SHARING_NAME,
     onWordStatus: revision => broadcastWordStatus(revision),
+    languages: clientPackCodes,
   });
   return sharingClient;
 }
@@ -267,6 +426,46 @@ function forwardToHost(message, capability = null) {
     unsupported: capability === LINKED_IMPORT_CAPABILITY ? LINKED_IMPORT_UNSUPPORTED : LINKED_ANKI_UNSUPPORTED,
     mutation: mutatingForwardedRequest(message),
   }).catch(error => failureReply(message, error));
+}
+
+// The English name of a language for the messages below, also of one this
+// build has no pack for.
+function linkedLanguageName(code) {
+  const name = languageDescriptor(code)?.name;
+  if (typeof name === "string" && name !== "") return name;
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+// A linked browser adds and removes languages on its host, once the host has
+// accepted its opt-in (docs/languages.md 16.1, 17.3 item 5, 17.6); a first-run
+// choice is never forwarded, and an add names a language both have a pack for.
+async function forwardProfileRequest(message) {
+  const status = getSharingClient().status();
+  if (!status.connected) throw new Error(NOT_REACHABLE);
+  const host = status.host?.name || "the linked Hachidori";
+  const profiles = status.languageProfiles;
+  const language = message.type === "hd_profile_add" && typeof message.language === "string" ? message.language : null;
+  if (profiles?.optIn !== "accepted") {
+    if (language !== null && profiles?.optIn === "refused") {
+      throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
+    }
+    if (language !== null && profiles === undefined) {
+      throw new Error(`Add ${linkedLanguageName(language)} on ${host} first; if its Settings have no Language section, update it.`);
+    }
+    throw new Error("Add and remove languages on the linked Hachidori.");
+  }
+  if (language !== null) {
+    if (!profiles.hostLanguages.includes(language)) {
+      throw new Error(`The linked Hachidori does not have ${linkedLanguageName(language)}. Update it and try again.`);
+    }
+    if (languageDescriptor(language) === null) throw new Error(`This Hachidori has no pack for ${language}.`);
+  }
+  const { firstRun, ...forwarded } = message;
+  return forwardToHost(forwarded);
 }
 
 function linkedOptionsCapability(message) {
@@ -516,9 +715,12 @@ const SHARING_HANDLERS = {
     const host = getSharingHost();
     const hosting = host.status();
     let suspendedIndex = false;
+    let hello;
     if (hosting.enabled) host.disable();
     try {
-      const hello = await getSharingClient().probe(address);
+      // A host with profiles answers the probe's opt-in; the link stores
+      // that reply's snapshot (docs/languages.md 17.3 item 2).
+      hello = await getSharingClient().probe(address, { optIn: true });
       await waitForAnkiIdle();
       await getAnkiDuplicateIndex().suspend();
       suspendedIndex = true;
@@ -555,7 +757,9 @@ const SHARING_HANDLERS = {
     await reconcileUpdateAlarm();
     await reconcileAutomaticBackupsAfterSharingTransition();
     await applyAnkiIndexRole();
-    return { sharing: sharingStatus() };
+    // What the probe's opt-in found, for the page that linked; a host without
+    // the capability gives today's reply.
+    return { sharing: sharingStatus(), ...(hello.languageProfiles === undefined ? {} : { languageProfiles: hello.languageProfiles }) };
   },
   // Restored values outrank the mirror in every reader's revision comparison,
   // and the host's lookup-count rows leave with it.
@@ -629,6 +833,7 @@ const SHARING_HANDLERS = {
 async function initialiseSharing() {
   const stored = await chrome.storage.local.get([SHARING_KEY, DICTIONARY_STATE_KEY, OPTIONS_KEY]);
   updateLookupProfiles({ [OPTIONS_KEY]: stored[OPTIONS_KEY], [DICTIONARY_STATE_KEY]: stored[DICTIONARY_STATE_KEY] });
+  hostProfiles = hasProfiles(stored[OPTIONS_KEY]);
   const host = stored[SHARING_KEY]?.host;
   if (host?.enabled === true || (host === undefined && !OVERLAY_MODE)) {
     getSharingHost().enable({ port: host?.port, network: host?.network === true, dictionaries: dictionaryCount(stored[DICTIONARY_STATE_KEY]) });
@@ -647,6 +852,6 @@ async function initialiseSharing() {
 export {
   SHARED_STATE_KEYS, sharingHost, dictionaryCount, getSharingHost, LOCAL_UPLOAD_OWNER, remoteUploadOwner,
   answerUploadRequest, getApiHost, sharingLinked, sharingTransitionTail, WORKER_FORWARDS, linkedAnkiConfigKey,
-  hostLinkedAnkiRequest, stateStore, getSharingClient, forwardToHost, compatibleLinkedWorkerMessage,
+  hostLinkedAnkiRequest, stateStore, getSharingClient, forwardToHost, forwardProfileRequest, compatibleLinkedWorkerMessage,
   forwardWorkerRequest, serialiseSharingTransition, SHARING_HANDLERS, initialiseSharing,
 };

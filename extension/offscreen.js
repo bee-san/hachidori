@@ -634,9 +634,11 @@ async function answerUpload(message) {
     case "hd_upload_import": {
       const blobUrl = URL.createObjectURL(uploadedArchive(message.token));
       try {
+        // The import joins the profile the upload named (docs/languages.md 17.3 item 5).
         return await new Promise((resolve) => dispatchEngine({
           target: TARGET, type: "hd_import", requestId: message.requestId ?? null,
           blobUrl, fileName: message.fileName, importDecision: message.importDecision,
+          ...(message.profileId === undefined ? {} : { profileId: message.profileId }),
         }, resolve));
       } finally {
         URL.revokeObjectURL(blobUrl);
