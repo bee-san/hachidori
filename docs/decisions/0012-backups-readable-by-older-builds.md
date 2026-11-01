@@ -1,6 +1,6 @@
 # 0012: Version 4 backups carry a version 3 snapshot of the Japanese view
 
-Status: proposed (multi-language design, Phase 1, revision 4)
+Status: proposed (multi-language design, Phase 1, revision 5)
 
 ## Context
 

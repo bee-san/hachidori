@@ -1,6 +1,6 @@
 # 0008: Automatic switching chooses a profile per lookup from `lang`, without changing the active profile
 
-Status: proposed (multi-language design, Phase 1, revision 4)
+Status: proposed (multi-language design, Phase 1, revision 5)
 
 ## Context
 

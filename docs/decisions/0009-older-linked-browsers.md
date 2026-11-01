@@ -1,6 +1,6 @@
 # 0009: Older linked browsers see the host's Japanese profile as their only one
 
-Status: proposed (multi-language design, Phase 1, revision 4)
+Status: proposed (multi-language design, Phase 1, revision 5)
 
 ## Context
 
@@ -40,8 +40,10 @@ once, after the converting request's reply, so clients say hello again.
 
 ## Consequences
 
-- An older client keeps working on the Japanese profile; its target never
-  changes, so a stale base revision is still refused as today.
+- An older client keeps working on the Japanese profile; its target is always
+  the Japanese data, so a stale base revision is still refused as today. It
+  cannot delete a package that a profile other than Japanese uses, because it
+  shows those packages as disabled Japanese dictionaries.
 - The sharing host changes in several places: per-client change frames
   instead of one broadcast, projected replies by request type, allowlists that
   keep a validated `profileId`, and one reconnect when profiles first appear.

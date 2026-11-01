@@ -1,6 +1,6 @@
 # 0002: One profile per language; personal words belong to the language
 
-Status: proposed (multi-language design, Phase 1, revision 4)
+Status: proposed (multi-language design, Phase 1, revision 5)
 
 ## Context
 

@@ -2,7 +2,7 @@
 # Appendix: language inventory
 
 Phase 0 of the multi-language design ([languages.md](languages.md)), updated
-for revision 4 of the design. Seven
+for revision 5 of the design. Seven
 readers went through the code at `main` b1964358 (hoshidicts 35e2dab) and
 recorded every setting, popup feature and theme hook with the language
 assumption it makes, citing file and line. This appendix condenses those
@@ -131,7 +131,7 @@ top level of a single-profile record.
 | `hd_audio_play`, `hd_audio_candidates` | background.js:292-311 | Reads the one `audioSources` | `profileId` (5.4) |
 | Every `hd_anki_*` request (status, view, preflight, batch preflight, submit, browse, fields, maturity, word status); Relay API card formats | anki-worker.js:79-92, 177-191, 442-461; background-anki.js:193-201; api-host.js:334-339 | First Template of the one list | `profileId`; Relay `profileIndex` 0 = Japanese (5.4, 12) |
 | `hd_lookup_stats_record`, `hd_lookup_stats_read`, `hd_word_status_override`, `hd_custom_read/cas/save/append`, `hd_import` | background-requests.js:92-167, 344-437; engine-service.js | No profile or language | `profileId` (5.4) |
-| new `hd_profile_add`, `hd_profile_remove` (worker, forwarded to a sharing host), `hd_language_selection_write` (worker, never forwarded), `hd_language_profiles_opt_in` (sharing) | — | — | Sections 5.2 and 17.3 |
+| new `hd_profile_add`, `hd_profile_remove` (engine mutations under `hoshidicts-offscreen`, forwarded to a sharing host), `hd_profile_cas` (worker, from the engine service), `hd_language_selection_write` (worker, never forwarded), `hd_language_profiles_opt_in` (`hoshidicts-worker`, answered by the sharing host) | — | — | Sections 5.2 and 17.3 |
 | Sharing host frames and replies: one `broadcast` for storage changes, replies carrying stored records, linked allowlists | sharing-host.js:94-99, 240-247; sharing-client.js:87-93; sharing-protocol.js:50-76, 165-272 | One record shape for every client | Per-client frames and projected replies for clients that have not opted in; allowlists keep `profileId` (17.3) |
 | Writers that rebuild `options` through `projectStoredOptions` | background-core.js:267, 321; background-requests.js:597-642; background-sharing.js:177-193, 354-364; background-backup.js:65; backup-state.js:26-36, 123-136 | Flat record | `applyOptionsPatch` on the unmasked record (5.2) |
 | Backup archive version 3, six snapshot keys | backup-archive.js:7; docs/backup-format.md | No profiles | Version 3 unchanged for single-profile installs; version 4 with profiles (17.1) |
