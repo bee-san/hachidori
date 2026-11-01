@@ -126,6 +126,7 @@
         "anki-content.js",
         "render/glossary.js",
         "render/popup.js",
+        "language-text.js",
         "theme-host.js",
         "word-status-overrides.js",
         "word-highlights.js",
