@@ -75,6 +75,16 @@ describe("reader", () => {
     }, { timeout: 10_000 });
     check("a structured-content image resolves through hd_media to a data: URL", image !== null,
       JSON.stringify((await readPopup(tab))?.images));
+    // The fixture's styles.css reaches the popup as a stylesheet scoped to its
+    // dictionary's definitions. Firefox keeps the shadow root's sheets from the
+    // page's realm, so the check reads the rules the reader wrote into it.
+    const styled = await waitFor(() => inPopup(tab, `root => {
+      const style = root.querySelector('style[data-hoshidicts-dictionary-style="hachidori-fixture"]');
+      const text = style?.textContent ?? "";
+      return text.startsWith("@scope (.gsm-hoshidicts-glossary-content[data-hoshidicts-dictionary=hachidori-fixture])")
+        && text.includes(".hachidori-fixture-table { border-collapse: collapse; }") ? { text } : false;
+    }`), { timeout: 10_000 });
+    check("the dictionary's styles.css reaches the popup as a scoped stylesheet", styled !== null, JSON.stringify(styled));
 
     // A popup shows just before and just after the Latin hover, so the reader
     // was live while Latin text looked nothing up.

@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./settings.mjs";
+import "./search.mjs";
 import { describe } from "node:test";
 import { AnkiConnectError, answerAnkiConnect } from "../anki-connect-fake.mjs";
 import { check, step } from "./harness.mjs";

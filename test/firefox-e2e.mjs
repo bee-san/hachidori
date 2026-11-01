@@ -20,6 +20,7 @@ import "./firefox-e2e/first-run.mjs";
 import "./firefox-e2e/import.mjs";
 import "./firefox-e2e/reader.mjs";
 import "./firefox-e2e/settings.mjs";
+import "./firefox-e2e/search.mjs";
 import "./firefox-e2e/anki.mjs";
 import "./firefox-e2e/backup.mjs";
 import "./firefox-e2e/sharing.mjs";

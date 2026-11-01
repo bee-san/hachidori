@@ -98,6 +98,7 @@ const E2E_PLANNED = [
   "the popup shows the fixture's frequency and pitch accents",
   "hovering 漢字 shows its structured content: bold span, list and table",
   "a structured-content image resolves through hd_media to a data: URL",
+  "the dictionary's styles.css reaches the popup as a scoped stylesheet",
   "the popup is showing immediately before the non-Japanese hover",
   "hovering non-Japanese text shows no popup",
   "the same hover shows a popup again after the non-Japanese one",
@@ -121,6 +122,9 @@ const E2E_PLANNED = [
   "browser shortcuts list Firefox's commands and open Firefox's shortcut manager",
   "Custom JavaScript runs on pages once Firefox grants user scripts",
   "Get debug info reports Firefox and its IndexedDB engine",
+  // search page
+  "the popup window opens one search page and brings it forward instead of opening another",
+  "the search page looks up a typed word and docks the reader's popup under its box",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",
