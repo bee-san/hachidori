@@ -95,7 +95,8 @@ export default defineConfig([
   // Puppeteer runs their evaluate() callbacks in extension pages, the service
   // worker and content-script worlds.
   {
-    files: ["test/chrome-*.mjs", "test/chrome-e2e/*.mjs", "test/firefox-*.mjs", "test/firefox-e2e/*.mjs", "benchmark/*.mjs",
+    files: ["test/chrome-*.mjs", "test/chrome-e2e/*.mjs", "test/chrome-languages/*.mjs", "test/firefox-*.mjs", "test/firefox-e2e/*.mjs",
+      "benchmark/*.mjs",
       "scripts/capture-store-assets.mjs", "media/**"],
     ignores: ["**/*.test.mjs"],
     languageOptions: { globals: { ...globals.browser, ...chrome, ...published } },

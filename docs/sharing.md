@@ -243,6 +243,96 @@ and the complete Anki transaction go through the host. A screenshot request
 carries the selected Template ID through the reading browser's worker so only
 that Template's `{screenshot}` choice can authorize it.
 
+## Languages
+
+A host with one language, Japanese, shares exactly as described above. Once
+it has a second language ([languages.md](languages.md) section 17.3), each
+linked browser receives what it can read:
+
+- **Browsers from before languages** (an older Hachidori, or the copy inside an
+  older GameSentenceMiner) receive the host's **Japanese view**: its Japanese
+  settings, its Japanese dictionaries in their order (every other dictionary
+  shown disabled, other languages' personal dictionaries left out), its
+  Japanese personal dictionary, lookup counts and marked words. Their edits
+  go to the Japanese profile, whatever language the host reads in, and they
+  cannot delete a dictionary another language uses. If the host has no
+  Japanese profile, their lookups find nothing and their edits are refused,
+  except edits of settings shared by every language.
+- **Browsers that know about languages** opt in: they send the languages
+  their own Hachidori has, and receive every profile as the host stores it.
+  Each browser still chooses the language it reads in itself; the choice is
+  never shared. **Add or remove languages** on such a browser changes the
+  host's languages, offering those both Hachidoris have.
+- A browser that **lacks one of the host's languages** (a language arrived
+  with a newer Hachidori on the host) is refused at opt-in and works as an
+  older browser does until it is updated. Settings → Sharing says which
+  language it needs: *Update Hachidori in this browser to use Vietnamese from
+  Chrome.*
+
+When the host adds or removes a language in a way that changes what a
+browser should receive, that browser reconnects by itself once its running
+requests have answered; meanwhile its edits are refused with *The linked
+Hachidori is changing its languages. Try again.*
+
+### The protocol
+
+A host whose records have profiles adds `language-profiles-v1` to its `hello`
+capabilities, and its `hello` snapshot is the Japanese view. A single-profile
+host sends today's `hello`, today's replies and one `broadcast` storage frame
+per change, so nothing changes for Japanese-only installations or for
+existing clients. The client's `hello` never changes.
+
+1. **Opt-in.** A client that sees the capability, before it stores the
+   `hello` snapshot, sends `hd_language_profiles_opt_in { languages: [<its
+   pack codes>] }` to `hoshidicts-worker`. The host answers in one turn of its
+   storage queue: it reads the shared records, compares the client's codes
+   with every language they hold (a profile, a personal dictionary, a
+   personal document with text, a lookup-count entry, or a marked word), and
+   records the outcome for that connection. The reply is `{ optIn:
+   "accepted" | "refused", snapshot, missingLanguages, hostLanguages }`: the
+   records as stored when accepted, the Japanese view when refused. The host
+   holds the client's change frames until the reply is sent; the client
+   discards any that arrive before it, and stores the reply's snapshot
+   instead of the hello's. A new link's probe connection opts in the same way,
+   so the link stores the opt-in reply's snapshot. The client reports the
+   outcome as `hd_sharing_status.sharing.client.languageProfiles`
+   (`{ capability, optIn, missingLanguages, hostLanguages }`), only while
+   the host has the capability.
+2. **Change frames.** With profiles, the host sends each connection its own
+   `storage` frame (`send`, not `broadcast`): the records as stored to an
+   opted-in connection, the Japanese view to any other, with only the lookup
+   rows of Japanese's count generation.
+3. **Replies.** To a connection that has not opted in, the host gives the
+   Japanese view in every reply field that carries options, dictionary state or
+   a personal document: `hd_options_write`, `hd_state_read`, `hd_state_cas`,
+   `hd_custom_read`, `hd_custom_cas`, `hd_custom_save`, `hd_custom_append`,
+   `hd_apply_state` and `hd_remove`, conflicts included. It ignores a
+   `profileId` from such a connection, so its requests mean the Japanese
+   profile.
+4. **Requests.** `hd_profile_add` and `hd_profile_remove` are forwarded to
+   `hoshidicts-offscreen` (both mutating) from an opted-in connection only;
+   the host refuses an add for a language it has no pack for (*The linked
+   Hachidori does not have Arabic. Update it and try again.*) and never
+   forwards a first-run add. `hd_language_selection_write` is never forwarded.
+   The linked Anki, Anki setup and linked-import requests keep a validated
+   `profileId`; the upload host passes it to the import.
+5. **Forced reconnections.** A connection must reconnect when a commit
+   changes what it should receive: the records leave the single-profile shape,
+   an opted-in connection would receive a language it lacks, or a refused
+   connection would now be accepted. From that commit the host sends it no
+   change frames and treats it as not opted in if it would receive a language
+   it lacks; requests it sends afterwards are dispatched unless their replies
+   carry records, which are refused with *The linked Hachidori is changing its
+   languages. Try again.*; requests already running finish with their replies,
+   and the host sends the relay `close` for that client once they have. The
+   client says `hello` again and receives the new revisions in one projection.
+   The relay's own API connection keeps no mirror and is not closed.
+
+Unlink keeps the linked browser's own languages as before: each language's
+personal document comes back one revision above the higher of the kept and
+the mirrored revisions, its own lookup counts stay, and its language choice
+returns with it (or goes, when its records are Japanese-only).
+
 ## The relay
 
 [hachidori-anki](https://github.com/bee-san/hachidori-anki) owns the add-on:
@@ -289,9 +379,11 @@ the older per-field mapping answers the rows mining builds from it. The answer
 never carries the AnkiConnect address or key, tags or duplicate settings.
 Tools such as GSM Companion and Yomine fill their field setup from it and
 render the markers with `/ankiFields`. Every format is a `term` format, since
-Hachidori mines term notes only. Hachidori has one set of Templates: no
-`profileIndex` or `0` selects it, and any other profile index is an error, as
-in Yomitan.
+Hachidori mines term notes only. No `profileIndex`, or `0`, selects the
+Japanese profile's Templates, as every older GameSentenceMiner expects; with
+other languages, `1`, `2` and so on select the other profiles in the order
+Settings lists them, and an index past the last is an error, as in Yomitan
+([languages.md](languages.md) section 12).
 
 The relay forwards each request to this browser as an `hd_api_*` runtime
 message (the contract is
@@ -341,3 +433,9 @@ For offline testing or a coordinated add-on change, set
 `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a locally
 built archive at the pinned URL in the test browser. Otherwise the suite
 downloads the live release. See the [test harness guide](../test/README.md).
+
+Languages: `node --test test/sharing-profiles.test.mjs` runs the host, older
+and profile-aware linked browsers and an in-memory relay through the
+service worker's own sharing code, and `test/chrome-languages-sharing.mjs`
+(run by `node test/run.mjs chrome-languages`) does the same with real Chromes,
+the released Hachidori as the older browser and the pinned relay.

@@ -245,6 +245,23 @@ Linking clears the local automatic-backup alarm and suppresses snapshots of the
 host mirror while retaining the local index. Unlink restores the kept local
 state before reconciling local snapshots and scheduling again.
 
+With language profiles ([languages.md](languages.md) 17.2,
+[backup format](backup-format.md#version-4-languages)), `readBackupPayload`
+returns the installation's Japanese view (`extension/japanese-view.js`) as
+the six-key snapshot, beside `profiles` with the complete options and
+dictionary state and every other language's document, marks and lookup rows
+(`profileBackupPayload` in `backup-state.js`). Archives become version 4,
+automatic records keep the same three parts, and `hd_backup_auto_roots`
+returns the packages of both parts. `prepareBackupProfiles` decides what a
+restore keeps for this build's packs; the engine stages the archived
+generations, compiles other languages' personal packages from their documents
+into fresh generations (or, for an automatic record, validates the retained
+ones in place), strict-loads the union, and `restoredBackupSnapshot` builds
+the records the same transaction commits. `hd_backup_cas` checks them as a
+backup again, with every language's document revision and count generation,
+and writes them with each language's rows in one storage write. The engine
+loads the restored profiles' packs before it publishes.
+
 ## Managed update cycle
 
 The service worker derives managed candidates from `dictionaryState`, including
@@ -3713,6 +3730,27 @@ The startup page's
 welcome view probes this computer once and, when a shared Hachidori answers,
 offers to use it; that link then advances setup to `complete`. See
 [sharing](sharing.md) for use.
+
+A host whose records have language profiles ([languages.md](languages.md)
+17.3-17.6, decision record [0009](decisions/0009-older-linked-browsers.md))
+speaks to each connection according to that connection.
+`createSharingHost` keeps a per-connection record (requests running, whether
+it must reconnect, change frames held during its opt-in) and takes its
+decisions from `languages` hooks, which `background-sharing.js` supplies
+(`HOST_LANGUAGE_HOOKS`) and which return at once for a single-profile host, so
+its hello, replies and one `broadcast` stay byte for byte today's. With
+profiles the hello adds `language-profiles-v1` and carries the Japanese view;
+`hd_language_profiles_opt_in` is answered in one storage-queue turn against
+every language the shared records hold (`sharing-languages.js`); change
+frames go to each connection with `send`, projected for connections that did
+not opt in, as are the replies listed in section 17.3 item 4. A commit that
+changes a connection's projection marks it closing: it gets no more change
+frames, its record-carrying requests are refused, and the relay `close` goes
+out once its running requests have answered. `sharing-client.js` opts in
+before storing anything when the hello has the capability and the build has
+a registry, discards change frames until the reply, and reports the outcome in
+its status; the link's probe opts in the same way, so a new link stores the
+opt-in reply's snapshot.
 
 Linked Anki mining keeps `hd_anki_screenshot`/discard local to the reading
 browser. Settings discovery, preflight, submit, browse and maturity go to the

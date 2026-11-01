@@ -191,6 +191,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `audio-*` (`sources`, `player`, `offscreen`, `cache`, `repository`, `content`) | Audio source options, candidate order, the player and its cleanup, TTS voices, Test deadlines, LRU/TTL/byte accounting, leases, exact candidate identity, the pronunciation chooser's placement and focus, autoplay, and named failures (#499, #501). |
 | `autumn-theme` | Autumn stays one light theme and keeps text, badges and statuses readable. |
 | `backup-archive`, `backup-automatic`, `backup-downloads`, `backup-settings`, `backup-state` | Backup export and restore without stream-to-blob consumption, automatic cadence and schema, download URL lifetime, Settings ages and confirmation, restore revisions. |
+| `backup-profiles` | Backups with language profiles (docs/languages.md 17.1, 17.2, 17.6): the Japanese view as the version 3 snapshot beside `profiles`, version 4 archives that builds without profiles read as version 3, restores that leave out a language without a pack, keep data-only languages, build the Japanese profile when no profile remains and give every language's document and count generation fresh revisions, the preview's language lines, the worker's payload, automatic snapshots and restore compare-and-set, and an export, preparation and restore through the real WebAssembly engine. |
 | `base64`, `browser-api` | Base64 helpers against `btoa`/`atob`; the extension API module and exact sender URLs. |
 | `browser-commands` | The worker's command listener against the manifest: the toggle's revisioned write, Settings, the three search page shortcuts, and argument-free keybind actions forwarded to the active tab. |
 | `chrome-web-store` | The service-account assertion and its token endpoint. |
@@ -231,6 +232,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `search-window` | Opening the search page (#610) as Yomitan does: a new tab, the current tab or a popup window, bringing an open search page forward and reusing only a popup window for the popup window shortcut. |
 | `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
 | `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
+| `sharing-profiles` | Sharing with language profiles (docs/languages.md 17.3-17.6) through the worker's own sharing code, an in-memory relay and older and profile-aware linked browsers: today's frames for a single-profile host, the opt-in and its refusals, the Japanese view in hellos, change frames and replies, forced reconnections with requests in flight, profile requests through a link, unlink and overlay mode with profiles, and the allowlists' `profileId`. |
 | `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee, Crystal): their DOM, actions, tabs, Notes, the Design settings each theme declares and the colour variants it lists. |
 | `toolbar` | The toolbar toggle and its revision conflicts; Search beside Settings and Reading's switch for it. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
@@ -519,6 +521,22 @@ These run separately:
   non-loopback address and the pinned GitHub release, or
   `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` to serve a local
   archive instead.
+- **`chrome-languages/backup.mjs`** and **`chrome-languages/sharing.mjs`**, run by
+  `node test/run.mjs chrome-languages` after `chrome-languages.mjs`, cover
+  backups and sharing with language profiles (docs/languages.md 18). The
+  first exports a version 4 backup with Japanese and English, restores it
+  through Settings in a fresh profile, in a build without the English pack
+  and in the released build that `chrome-backup-release.mjs` pins, and
+  restores an automatic snapshot. The second runs a host, the released build
+  as an older linked browser and three profile-aware builds through the
+  pinned relay (`HACHIDORI_LANGUAGES_SHARING_PORT`, default 18773): a host
+  that gains profiles while both kinds are linked, refusals for a missing
+  pack and for a language held only through data, a write in flight across
+  an add, unlink with the browser's own English data, and an English-only
+  host. Both build their extension copies with
+  `chrome-languages/builds.mjs`; the sharing suite needs `python3` and the
+  relay from `HACHIDORI_RELAY_SERVER`, `HACHIDORI_ANKI_ADDON` or the pinned
+  release.
 - **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
   Dark Reader API build against the production popup in a tab of its own. It
   checks Default, Light, Dark, High contrast and Custom CSS while the page

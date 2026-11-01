@@ -159,6 +159,10 @@ download, immutable preview/conflict, complete restore, corrupt-archive cleanup
 and actual page closure during staged preparation, dictionary restore with
 unreadable settings and a 16 MiB binary restore/re-export in both OPFS
 and IDBFS suites, followed by browser restart.
+`test/backup-profiles.test.mjs` covers version 4 against the worker and the
+real WebAssembly engine, and `test/chrome-languages-backup.mjs` in real
+Chrome, including a restore in the released build that
+`test/chrome-backup-release.mjs` pins.
 
 ## Archive representation
 
@@ -178,6 +182,71 @@ status; versions 1 and 2 restore none, as does an automatic snapshot taken
 before it existed. A one-dictionary archive from the relay's download carries
 none either. A newer version's archive is read as version 3, skipping what it
 added.
+
+### Version 4: languages
+
+An installation with only Japanese, and no other language's personal
+dictionary, counts or marked words, keeps writing version 3, byte for byte,
+and the automatic snapshots it always wrote. Once it holds another language
+([languages.md](languages.md) section 17.2, decision record
+[0012](decisions/0012-backups-readable-by-older-builds.md)), every backup is
+version 4:
+
+- `snapshot` is a valid version 3 snapshot of the installation's **Japanese
+  view**: the Japanese profile's settings flattened with the settings every
+  language shares (or the shared settings alone when there is no Japanese
+  profile); a schema 1 dictionary state with the Japanese personal dictionary
+  first and enabled, the Japanese profile's dictionaries in its order, and every
+  other dictionary disabled, except other languages' personal dictionaries,
+  which it leaves out; the Japanese groups; and the Japanese personal document,
+  marked words and lookup rows. A build from before languages restores this
+  part, dictionaries included, and skips the rest.
+- `profiles` holds `options` (the complete record with every profile),
+  `dictionaryState` (schema 2: every package once, and each profile's list
+  and groups), and `languages`, one entry per other language with a
+  `document` (`{ revision, semanticRevision, text }`), `wordStatusOverrides`
+  (`{ known, ignored }`) and `lookupStatsRows`, each present when the language
+  has one.
+- The archive's files are those of the packages the snapshot lists. Other
+  languages' personal dictionaries are not archived; a restore compiles each
+  from its document into a fresh generation, as a save in Settings does, and
+  keeps its display name and favourite.
+
+Automatic snapshots store the same object (`snapshot`, `lookupStatsRows` and
+`profiles`). Their validator checks the snapshot as before and `profiles` by
+the version 4 rules, so a snapshot with languages is never counted as corrupt,
+and the roots it protects are those of every package either part names, other
+languages' personal dictionaries included. The relay's dictionary download
+reads the Japanese view, so it never offers another language's personal
+dictionary.
+
+A version 4 restore validates the snapshot as before and `profiles` beside it:
+the snapshot must be the Japanese view of the complete records, and every
+language's personal dictionary must match its document and sit first and
+enabled in that language's profiles only. It restores every language this
+build has a pack for. A language it has no pack for is left out with its
+profile, personal dictionary, document, counts and marked words; its other
+dictionaries stay in the library, in no profile, and the preview says
+*Vietnamese needs a newer Hachidori and is not restored.* When no profile of
+the backup remains (an installation set up in a language this build lacks),
+the restore builds the Japanese profile from the backup's Japanese view, as an
+older build would, keeps the other languages it has packs for, and the preview
+says *The Japanese settings and dictionaries are restored in place of
+Vietnamese.* Each profile's dictionary selections are pruned against its own
+dictionaries and groups. The preview also names the restored languages and
+every language of the current installation whose data the restore removes.
+
+The restore writes every language's personal document one revision above the
+current one, a language that keeps a profile but has no document in the backup
+getting an emptied one, so open Settings pages adopt it; Japanese and every
+other language with counts get a fresh count generation, and the restored rows
+are written under it in the same storage write. `hd_backup_cas` checks the
+restored records as a backup before writing them, together with those
+revisions and generations. The packs of the restored profiles load before the
+restore publishes, so the first lookup after it finds its language. The
+installation's own language choice (`languageSelection`) is kept, except that a
+restore whose result is Japanese-only removes it. A version 1 to 3 backup
+restores as one Japanese profile, as before.
 
 Every entry's CRC32, declared size, path and ZIP headers are validated before
 restore. CRC32 detects accidental corruption, not authenticity: only restore

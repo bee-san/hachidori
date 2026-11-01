@@ -115,6 +115,10 @@ try {
     // Languages in real Chrome (docs/languages.md 18); its screenshots go to test/tmp/languages/.
     await run("fixture", ["test/make-fixture.mjs"]);
     await run(suite, [`test/${suite}.mjs`]);
+    // Backups and sharing with profiles; the sharing part needs python3 and the
+    // pinned add-on (or HACHIDORI_ANKI_ADDON / HACHIDORI_RELAY_SERVER).
+    await run("chrome-languages-backup", ["test/chrome-languages/backup.mjs"]);
+    await run("chrome-languages-sharing", ["test/chrome-languages/sharing.mjs"]);
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
     // The released backup is also restored in the Firefox build.

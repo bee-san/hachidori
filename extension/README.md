@@ -121,12 +121,18 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
   text-to-speech.
 - **Backup.** `backup-archive.js` is the manual ZIP format, `backup-state.js`
-  the shared snapshot rules, `backup-automatic.js` the two-record daily
+  the shared snapshot rules (with version 4's `profiles`, docs/languages.md
+  17.2), `backup-automatic.js` the two-record daily
   retention, cadence and age rules, `backup-downloads.js` the pending downloads,
   and `backup-settings.js` the manual and automatic restore controls.
+  `japanese-view.js` builds the Japanese view of records with profiles
+  (17.1), which backups, older linked browsers and the relay's dictionary
+  download read.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
-  worker; `sharing-settings.js` is the Settings section. `linked-import.js`
+  worker; `sharing-languages.js` holds what a host with language profiles
+  sends each linked browser (17.3-17.6); `sharing-settings.js` is the Settings
+  section. `linked-import.js`
   sends a dictionary archive to a host in chunks and, on the host, holds the
   upload until it imports it ([docs/sharing.md](../docs/sharing.md#imports-from-linked-browsers)). `anki-addon.js` pins
   and downloads the compatible `.ankiaddon` release from
