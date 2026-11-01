@@ -589,6 +589,11 @@
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Results</legend>
+            <label class="lookup-enable">
+              <span>Show words that only frequency or pitch dictionaries have</span>
+              <input type="checkbox" id="opt-metadata-only-results" aria-describedby="metadata-only-results-help" />
+            </label>
+            <p class="field-hint" id="metadata-only-results-help">A word that no installed dictionary defines shows its frequency and pitch accent, without definitions. These dictionaries give no part of speech, so the word's inflected forms are not found. Frequency lists also list fragments of text, such as はまだ, and these come first wherever they match more of the text than any defined word. The JL, Bee's Theme, Plain and Crystal popups show only words with definitions.</p>
             <div class="fields">
               <label class="field">
                 <span class="field-label">Maximum results</span>
