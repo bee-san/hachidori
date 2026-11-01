@@ -57,8 +57,12 @@ function renderScopes(row, action, bind) {
   }
 }
 
+// `optionAvailable(key)` says whether the edited profile's language has what a
+// Toggle option target needs, and `languageName()` names that language
+// (docs/languages.md 7.3 and 7.4); both default to today's Japanese page.
 export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources,
-  getBrowserCommands, openBrowserShortcuts, browserShortcutsAvailable = true }) {
+  getBrowserCommands, openBrowserShortcuts, browserShortcutsAvailable = true,
+  optionAvailable = () => true, languageName = () => "Japanese" }) {
   const window = document.defaultView;
   const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS, keybindModifiers, keybindWheelKey } = window.HDReaderOptions;
@@ -112,12 +116,13 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
       <label class="field"><span class="field-label">Action</span><select class="keybind-action"></select></label>
       <label class="field keybind-count-field"><span class="field-label">Count</span><input class="keybind-count" type="number" min="1" step="1" inputmode="numeric"></label>
       <label class="field keybind-source-field"><span class="field-label">Source</span><select class="keybind-source"></select></label>
-      <label class="field keybind-option-field"><span class="field-label">Option</span><select class="keybind-option"></select></label>
+      <label class="field keybind-option-field"><span class="field-label">Option</span><select class="keybind-option"></select><span class="field-hint keybind-option-note" hidden></span></label>
       </div>
       <div class="keybind-scopes"></div>`;
     const row = { element, index: -1, sourceKey: "" };
-    for (const name of ["enabled-input", "number", "clear", "reset", "remove", "input", "action", "count", "source", "option"]) {
-      row[name.replace("-input", "")] = element.querySelector(`.keybind-${name}`);
+    for (const name of ["enabled-input", "number", "clear", "reset", "remove", "input", "action", "count", "source", "option",
+      "option-note"]) {
+      row[name.replace("-input", "").replace("-note", "Note")] = element.querySelector(`.keybind-${name}`);
     }
     row.fields = { count: element.querySelector(".keybind-count-field"), audioSource: element.querySelector(".keybind-source-field"),
       option: element.querySelector(".keybind-option-field") };
@@ -184,13 +189,33 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     if (control !== document.activeElement && control.value !== value) control.value = value;
   }
 
+  // Keybinds are global; their Toggle option targets are profile keys. New
+  // arguments are those the edited profile's language has; a stored one it
+  // lacks stays selected and says so (docs/languages.md 7.3).
+  function renderOptionChoices(row, bind) {
+    const language = languageName();
+    for (const choice of row.option.options) {
+      if (choice.value === "") continue;
+      const label = KEYBIND_OPTION_LABELS[choice.value].replace("Japanese", language);
+      if (choice.textContent !== label) choice.textContent = label;
+      const hidden = choice.value !== bind.argument && !optionAvailable(choice.value);
+      if (choice.hidden !== hidden) choice.hidden = hidden;
+    }
+    const unavailable = bind.argument !== "" && !optionAvailable(bind.argument);
+    setText(row.optionNote, unavailable ? `Not available in ${language}` : "");
+    if (row.optionNote.hidden === unavailable) row.optionNote.hidden = !unavailable;
+  }
+
   function renderArgument(row, action, bind) {
     for (const [kind, field] of Object.entries(row.fields)) {
       if (field.hidden !== (action.argument !== kind)) field.hidden = action.argument !== kind;
     }
     if (action.argument === "count") setValue(row.count, bind.argument);
     if (action.argument === "audioSource") renderSources(row, bind);
-    if (action.argument === "option") setValue(row.option, bind.argument);
+    if (action.argument === "option") {
+      renderOptionChoices(row, bind);
+      setValue(row.option, bind.argument);
+    }
   }
 
   function renderRow(row, bind, index) {

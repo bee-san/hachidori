@@ -13,7 +13,8 @@ import {
   parseCustomDictionary,
 } from "./custom-dictionary.js";
 import {
-  backingUp, dictionaryGroupController, element, memorySettings, nameDrafts, numberFormat,
+  backingUp, characterViewName, dictionaryGroupController, element, languageName, memorySettings, nameDrafts,
+  numberFormat,
   refreshMemorySettings, refreshStatus, renderEngineStatus, scheduleStatusPoll, send, setSectionStatus,
   setStatus, sharingLinkedAddress, TARGET, WORKER_TARGET,
 } from "./settings.js";
@@ -225,10 +226,10 @@ function renderLibraryReset(blocked) {
     || (!erasePersonal.checked && !dictionaries.some(entry => !isManagedCustomDictionary(entry)));
 }
 
-function addCountBadge(container, label, count) {
+function addCountBadge(container, label, count, capability = label.toLowerCase()) {
   const badge = document.createElement("span");
   badge.className = "dict-badge";
-  badge.dataset.capability = label.toLowerCase();
+  badge.dataset.capability = capability;
   badge.classList.toggle("is-empty", count === 0);
   badge.textContent = `${label} ${numberFormat.format(count)}`;
   container.appendChild(badge);
@@ -562,7 +563,7 @@ function renderDictionaryRow(template, entry, index) {
   addCountBadge(badges, "Terms", entry.termCount);
   addCountBadge(badges, "Frequency", entry.frequencyCount);
   addCountBadge(badges, "Pitch", entry.pitchCount);
-  addCountBadge(badges, "Kanji", entry.kanjiCount);
+  addCountBadge(badges, characterViewName() ?? "Kanji", entry.kanjiCount, "kanji");
   addCountBadge(badges, "Media", entry.mediaCount);
   const metadata = dictionaryMetadata(entry);
   row.querySelector(".dict-metadata").textContent = isManagedCustomDictionary(entry)
@@ -666,7 +667,7 @@ function renderDictionaries(reuseRows = false) {
   element("library-reset").hidden = dictionaries.length === 0;
   const empty = element("dict-empty");
   const isEmpty = dictionaries.length === 0;
-  element("dict-empty-heading").textContent = isEmpty ? "Your Japanese library starts here" : "No dictionaries found";
+  element("dict-empty-heading").textContent = isEmpty ? `Your ${languageName()} library starts here` : "No dictionaries found";
   element("dict-empty-description").textContent = isEmpty
     ? "Install the recommended set, or bring your own Yomitan ZIP files."
     : "Try a different title or display name.";

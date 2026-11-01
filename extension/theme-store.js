@@ -2,12 +2,15 @@
 
 // Shows the Design controls a theme declares. Untagged controls are core and
 // always show; "all", a missing entry or a missing declaration shows them all.
+// A control the edited profile's language lacks (data-requirement-unmet, set
+// by Settings from data-requires) stays hidden whatever the theme declares.
 // Colours lists a theme's colour variants after Automatic and shows only for a
 // theme whose entry has some.
 export function applyDesignSettings(section, theme) {
   const declared = Array.isArray(theme?.designSettings) ? theme.designSettings : null;
   for (const control of section.querySelectorAll("[data-design-setting]")) {
-    control.hidden = declared !== null && !declared.includes(control.dataset.designSetting);
+    control.hidden = (declared !== null && !declared.includes(control.dataset.designSetting))
+      || control.hasAttribute("data-requirement-unmet");
   }
   for (const group of section.querySelectorAll("[data-design-group]")) {
     group.hidden = [...group.querySelectorAll("[data-design-setting]")].every(control => control.hidden);
@@ -28,7 +31,9 @@ export function applyDesignSettings(section, theme) {
   colours.hidden = variants.length === 0;
 }
 
-export function createThemeStore({ root, design, onSelect }) {
+// `onDesign(theme)` follows each catalogue entry the Design controls are
+// filtered by (undefined when the catalogue cannot be read).
+export function createThemeStore({ root, design, onSelect, onDesign = null }) {
   const document = root.ownerDocument;
   const cards = new Map();
   let options;
@@ -123,7 +128,7 @@ export function createThemeStore({ root, design, onSelect }) {
     if (slug === designTheme) return;
     designTheme = slug;
     void loadCatalogue().then(themes => themes.find(theme => theme.slug === slug)).catch(() => undefined)
-      .then(theme => { applyDesignSettings(design, theme); renderVariant(); });
+      .then(theme => { applyDesignSettings(design, theme); renderVariant(); onDesign?.(theme); });
   }
 
   return { render(next) {
@@ -133,5 +138,11 @@ export function createThemeStore({ root, design, onSelect }) {
     updateSelection();
     updateDesign();
     renderVariant();
+  },
+  // Applies the theme's declarations again, as when the edited profile's
+  // language changes what Design can show.
+  invalidateDesign() {
+    designTheme = undefined;
+    if (options) updateDesign();
   } };
 }

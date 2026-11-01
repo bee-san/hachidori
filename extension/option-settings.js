@@ -10,11 +10,13 @@ import { describeErrorOrJson } from "./error-text.js";
 import { inferFrequencyDirection } from "./frequency-direction.js";
 import { applyPageTheme } from "./settings-dom.js";
 import {
-  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, clampOption, customButtonController,
+  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, characterViewName, clampOption, customButtonController,
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, DESIGN_OPTION_KEYS, element, FREQUENCY_ORDERS, frequencyModeOrder,
-  hasCapability, METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS, options,
+  hasCapability, languageName, METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS,
+  options,
   OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
-  renderCurrentOptions, renderExperimentalSettings, renderLowMemoryMode, savedOptions, send, setSectionStatus,
+  renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, savedOptions, send,
+  setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
   updateKeybindSettings, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
 } from "./settings.js";
@@ -243,7 +245,7 @@ function renderFrequencyOrder() {
   else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
   else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto direction puts the lowest numbers first.";
   else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto direction puts the highest numbers first.";
-  else hint = "No mode declared: Auto direction compares common and less-common Japanese words; inconclusive results read it as ranks, lowest numbers first.";
+  else hint = `No mode declared: Auto direction compares common and less-common ${languageName()} words; inconclusive results read it as ranks, lowest numbers first.`;
   const hintElement = element("frequency-order-hint");
   if (hintElement.textContent !== hint) hintElement.textContent = hint;
 }
@@ -348,7 +350,9 @@ function renderKanjiChoices() {
 
   const automatic = document.createElement("option");
   automatic.value = "";
-  automatic.textContent = "Automatic — use every kanji dictionary";
+  // A character view's dictionaries are named for its characters (docs/languages.md 7.4).
+  const characters = (characterViewName() ?? "Kanji").toLowerCase();
+  automatic.textContent = `Automatic — use every ${characters} dictionary`;
   select.appendChild(automatic);
 
   const enabled = dictionaries.filter((entry) => entry.enabled !== false);
@@ -359,10 +363,10 @@ function renderKanjiChoices() {
     enabled.filter((entry) => hasCapability(entry, "term")).map((entry) => entry.title),
   );
   const groups = [
-    { kind: "kanji", label: "Kanji dictionaries", titles: [...withKanji] },
+    { kind: "kanji", label: `${characters[0].toUpperCase()}${characters.slice(1)} dictionaries`, titles: [...withKanji] },
     {
       kind: "term",
-      label: "Term dictionaries — requires a matching single-kanji entry",
+      label: `Term dictionaries — requires a matching single-${characters} entry`,
       titles: [...withTerms],
     },
   ];
@@ -454,6 +458,7 @@ function renderScanDelayControls() {
 }
 
 function renderOptions() {
+  renderLanguageCapabilities();
   applyPageTheme(document, options);
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);

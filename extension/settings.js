@@ -92,7 +92,7 @@ const {
   DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
   activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
-  normaliseOptions,
+  normaliseOptions, JAPANESE_PROFILE_ID, OPTION_REQUIREMENTS, languageDescriptor, optionRequirementMet,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -318,7 +318,128 @@ function setSectionStatus(id, message, tone, completed = false, error = null) {
 
 // Whether an experimental flag that is off hides `section`.
 function sectionGated(section) {
-  return EXPERIMENTAL_FEATURES.some(feature => feature.section === section && !options.experimental[feature.id]);
+  return EXPERIMENTAL_FEATURES.some(feature => feature.section === section && !options.experimental[feature.id])
+    || requirementGatedSection(section);
+}
+
+// ---------------------------------------------------------------------------
+// The language of the profile this page edits (docs/languages.md 5.3 and 7).
+// In the single-profile shape the edited profile is Japanese, which meets every
+// requirement and keeps every label, so nothing below changes the page.
+// ---------------------------------------------------------------------------
+
+let editedProfile = { id: JAPANESE_PROFILE_ID, language: "ja", packSettings: {} }; // NOSONAR: shared with the other Settings modules
+let renderedCapabilities = JSON.stringify(["ja", {}]);
+const languageLabelOriginals = new WeakMap();
+
+function languageName(code = editedProfile.language) {
+  const descriptor = languageDescriptor(code);
+  if (typeof descriptor?.name === "string") return descriptor.name;
+  if (code === "ja") return "Japanese";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+// What a profile's pack calls the characters its character view shows
+// ("Kanji" for Japanese), or null without a character view.
+function characterViewName(code = editedProfile.language) {
+  const view = languageDescriptor(code)?.capabilities?.characterView;
+  if (typeof view?.name === "string" && view.name !== "") return view.name;
+  return code === "ja" ? "Kanji" : null;
+}
+
+// data-requires holds a capability name, "ankiNoteTypeFamilies" or the JSON of
+// { "scripts": [...] } (section 7.3).
+function parseRequirement(value) {
+  if (!value.startsWith("{")) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function requirementMet(requirement) {
+  return optionRequirementMet(requirement, editedProfile.language, editedProfile.packSettings);
+}
+
+function optionAvailable(key) {
+  const requirement = OPTION_REQUIREMENTS[key];
+  return requirement === undefined || requirementMet(requirement.requires);
+}
+
+// A section the edited profile's language lacks, as Word highlighting without
+// word highlighting. It leads to the destination it is a tab of.
+function requirementGatedSection(section) {
+  const node = element(section);
+  return node?.localName === "section" && node.hasAttribute("data-requires")
+    && !requirementMet(parseRequirement(node.dataset.requires));
+}
+
+// Flat options as a profile without a requirement reads them: each setting it
+// lacks at its neutral value. The options themselves when nothing is masked.
+function maskedOptions(value) {
+  let masked = null;
+  for (const [key, { requires, neutral }] of Object.entries(OPTION_REQUIREMENTS)) {
+    if (requirementMet(requires)) continue;
+    masked ??= { ...value };
+    masked[key] = neutral;
+  }
+  return masked ?? value;
+}
+
+// Text that names the language ("Japanese text only") names the edited
+// profile's; text that names its characters ("Clicked-kanji dictionary")
+// names the pack's character view. Japanese keeps today's strings.
+function renderLanguageText(selector, from, to) {
+  for (const container of document.querySelectorAll(selector)) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!languageLabelOriginals.has(node)) languageLabelOriginals.set(node, node.data);
+      const text = languageLabelOriginals.get(node).replaceAll(from, to);
+      if (node.data !== text) node.data = text;
+    }
+  }
+}
+
+// Section 7.3: hides what the edited profile's language lacks, keeps it in
+// storage, and never touches a control while the language meets its
+// requirement, so a Japanese profile's page is today's.
+function renderLanguageCapabilities() {
+  const key = JSON.stringify([editedProfile.language, editedProfile.packSettings]);
+  if (key === renderedCapabilities) return;
+  renderedCapabilities = key;
+  let designChanged = false;
+  for (const node of document.querySelectorAll("[data-requires]")) {
+    const unmet = !requirementMet(parseRequirement(node.dataset.requires));
+    if (unmet === node.hasAttribute("data-requirement-unmet")) continue;
+    node.toggleAttribute("data-requirement-unmet", unmet);
+    if (node.hasAttribute("data-design-setting")) {
+      // The theme filter decides with the requirement (theme-store.js).
+      designChanged = true;
+      if (unmet) node.hidden = true;
+    } else if (node.localName === "section") {
+      const id = node.id;
+      const hidden = unmet || !sectionAvailable(id);
+      const link = document.querySelector(`.settings-nav a[href="#${id}"], .section-tabs a[href="#${id}"]`);
+      if (link) (link.closest(".nav-item") ?? link).hidden = hidden;
+      const option = element("settings-section").querySelector(`option[value="${id}"]`);
+      if (option) option.hidden = hidden;
+      node.toggleAttribute("data-settings-gated", hidden);
+    } else {
+      node.hidden = unmet;
+    }
+  }
+  const name = languageName();
+  renderLanguageText("[data-language-label]", "Japanese", name);
+  renderLanguageText("[data-character-label]", "kanji", (characterViewName() ?? "Kanji").toLowerCase());
+  if (designChanged) themeStore.invalidateDesign();
+  keybindController?.render();
+  if (resolveSection(requestedSection()) !== activeSection) showSettingsSection();
+  else renderSectionTabs();
 }
 
 function requestedSection() {
@@ -337,6 +458,9 @@ function sectionAvailable(id) {
 
 function resolveSection(requested) {
   if (!availableSections().some((section) => section.id === requested)) return "dictionaries";
+  // A section the edited profile's language lacks leads to the destination it
+  // is a tab of (docs/languages.md 7.3).
+  if (requirementGatedSection(requested)) return primaryNavigationSection(requested);
   // A gated section leads to the switch that reveals it.
   return sectionGated(requested) ? "advanced" : requested;
 }
@@ -421,6 +545,8 @@ function updateKeybindSettings() {
     openBrowserShortcuts: () => (typeof chrome.commands.openShortcutSettings === "function"
       ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
+    // Toggle option offers what the edited profile's language has (docs/languages.md 7.3).
+    optionAvailable, languageName: () => languageName(),
   });
   keybindController.render();
 }
@@ -523,7 +649,8 @@ function renderExperimentalSettings() {
   experimentalController.render(options.experimental);
   for (const feature of EXPERIMENTAL_FEATURES) {
     if (!feature.section) continue;
-    const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section);
+    const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section)
+      || requirementGatedSection(feature.section);
     // A gated section is a rail destination or one tab of one.
     const link = document.querySelector(`.settings-nav a[href="#${feature.section}"], .section-tabs a[href="#${feature.section}"]`);
     (link.closest(".nav-item") ?? link).hidden = hidden;
@@ -684,7 +811,8 @@ function updateDesignPreview() {
   }
   if (frame.style.width !== `${options.popupWidthPx * options.popupScalePercent / 100 + 96}px`
       || frame.style.height !== `${options.popupHeightPx * options.popupScalePercent / 100 + 216}px`) resizeDesignPreview();
-  frame.contentWindow.HDDesignPreview?.update(options, dictionaryState);
+  // The preview shows what the edited profile's popups show (docs/languages.md 7.3).
+  frame.contentWindow.HDDesignPreview?.update(maskedOptions(options), dictionaryState);
 }
 
 function resizeDesignPreview() {
@@ -989,14 +1117,15 @@ async function start() {
 }
 
 export {
-  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, backingUp, clampOption,
+  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, backingUp, characterViewName, clampOption,
   customButtonController, DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, definitionBlurFrequencyDictionary,
-  DESIGN_OPTION_KEYS, dictionaryGroupController, element, FREQUENCY_ORDERS, frequencyModeOrder, hasCapability,
-  lastEngineStatus,
+  DESIGN_OPTION_KEYS, dictionaryGroupController, editedProfile, element, FREQUENCY_ORDERS, frequencyModeOrder,
+  hasCapability, languageName, lastEngineStatus, maskedOptions,
   memorySettings, METADATA_FIELDS, nameDrafts, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat,
-  OPTION_SECTIONS, options, OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
-  popupRenderer, recommendedInstallation, refreshMemorySettings, refreshStatus, renderCurrentOptions,
-  renderEngineStatus, renderExperimentalSettings, renderLowMemoryMode, savedOptions, scheduleStatusPoll, send,
+  OPTION_SECTIONS, optionAvailable, options, OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS,
+  POPUP_THEME_GROUPS, popupRenderer, recommendedInstallation, refreshMemorySettings, refreshStatus, renderCurrentOptions,
+  renderEngineStatus, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, requirementMet,
+  savedOptions, scheduleStatusPoll, send,
   setSectionStatus, setStatus, sharingLinkedAddress, syncNavigationStatus, TARGET, themeStore, UPDATE_TARGET,
   updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings,
   WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET
