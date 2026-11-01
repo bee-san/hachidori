@@ -78,7 +78,7 @@
         {
           "type": "suffix",
           "inflected": "ning",
-          "deinflected": "n",
+          "deinflected": "",
           "conditionsIn": [],
           "conditionsOut": [
             "v"

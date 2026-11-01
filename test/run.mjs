@@ -90,6 +90,10 @@ try {
     await run("node-threaded", ["test/node-smoke.mjs"]);
     await run("node-threaded-idbfs", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
+    // The language ABI on every build (docs/languages.md 18).
+    await run("node-languages-threaded", ["test/node-smoke-languages.mjs"]);
+    await run("node-languages-threaded-idbfs", ["test/node-smoke-languages.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
+    await run("node-languages-fallback", ["test/node-smoke-languages.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", [...NODE_TEST, "test/extension-smoke.mjs"]);
   } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
