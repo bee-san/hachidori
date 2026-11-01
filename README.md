@@ -108,3 +108,9 @@ I have reviewed all plans, I set the direction of how this program works. Large 
 I also have personally been using this for months, and as I am the main user of this program I find bugs pretty often which I fix.
 
 The assets used are AI generated. If you are an artist and want to contribute to open source, please feel free to make a real logo or a visual novel style background.
+
+# Credits
+
+Thanks to Manhhao of hoshi-dicts for creating the underlying dictionary program.
+
+Thanks to Yomitan for whom this project would not be possible.
