@@ -883,7 +883,9 @@ covered:
 
 The worker sets these keys on every request, replacing any a forwarded
 request carried. The engine service maps the package ids to the paths it has
-loaded, which it already tracks by id (`loadedManifest`), so a lookup
+loaded, which it already tracks by id (`loadedPackages`, the enabled packages
+it loaded; disabled and failed packages are not loaded and would be ignored
+anyway), so a lookup
 resolved before a reimport or update swaps a generation, or before the worker
 sees the commit, still finds the dictionary. The engine service passes the
 keys to the engine (engine contract, section 9.7); a profile without
