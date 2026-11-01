@@ -28,6 +28,8 @@ after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
 cpSync(join(HOSHIDICTS, "tools/lib/classes.mjs"), join(fixtureRoot, "tools/lib/classes.mjs"), { recursive: true });
 cpSync(join(HOSHIDICTS, "tools/test/fixtures/languages/xx"), join(fixtureRoot, "languages/xx"), { recursive: true });
 cpSync(join(HOSHIDICTS, "languages/_template"), join(fixtureRoot, "languages/_template"), { recursive: true });
+// Hachidori's Arabic fixture pack has a display setting.
+cpSync(join(ROOT, "test/data/languages/ar"), join(fixtureRoot, "languages/ar"), { recursive: true });
 
 // The registry a script sets, with its descriptors copied into this realm.
 function loadRegistry(source, globals = {}) {
@@ -69,12 +71,17 @@ test("both scripts load as classic scripts; the reader's copy leaves a fuller re
 
 test("class fields and display transforms are expanded by hoshidicts' classes.mjs", async () => {
   const files = await languageFiles({ hoshidicts: fixtureRoot, commit: "fixture" });
-  assert.deepEqual([...files.keys()].sort(), ["registry-reader.js", "registry.js", "xx/language.json", "xx/transforms.json"],
-    "packs are directories without a leading _");
+  assert.deepEqual([...files.keys()].sort(), ["ar/language.json", "ar/transforms.json", "registry-reader.js", "registry.js",
+    "xx/language.json", "xx/transforms.json"], "packs are directories without a leading _");
+  const arabic = loadRegistry(files.get("registry-reader.js")).get("ar");
+  assert.deepEqual(arabic.settings, [{ id: "vowelMarks", type: "enum", default: "show",
+    effect: { display: { fields: ["expression", "reading"], when: "hide", transform: "stripVowelMarks" } } }]);
+  assert.deepEqual(arabic.presentation.displayTransforms.stripVowelMarks,
+    [{ strip: new ClassSet(JSON.parse(files.get("ar/language.json")).classes).source("{harakat}") }]);
   const pack = JSON.parse(files.get("xx/language.json"));
   const classes = new ClassSet(pack.classes);
-  const [entry] = loadRegistry(files.get("registry.js")).codes.map(code => loadRegistry(files.get("registry.js")).get(code));
-  const [readerEntry] = [loadRegistry(files.get("registry-reader.js")).get("xx")];
+  const entry = loadRegistry(files.get("registry.js")).get("xx");
+  const readerEntry = loadRegistry(files.get("registry-reader.js")).get("xx");
   for (const descriptor of [entry, readerEntry]) {
     assert.equal(descriptor.text.pattern, classes.source(pack.text.pattern));
     assert.equal(descriptor.text.wordCharacters, classes.source(pack.text.wordCharacters));
@@ -94,7 +101,8 @@ test("class fields and display transforms are expanded by hoshidicts' classes.mj
   assert.deepEqual(rangesOfSource(entry.text.wordCharacters), expectations.fields["text.wordCharacters"]);
   assert.deepEqual(entry.personalDictionary, personalDictionary(pack));
   assert.equal(Object.hasOwn(readerEntry, "personalDictionary"), false, "the reader's copy holds only what the reader uses");
-  assert.ok(readerEntry.settings.every(setting => setting.effect?.display !== undefined));
+  assert.ok(readerEntry.settings.every(setting => setting.effect?.display !== undefined || setting.effect?.capability !== undefined));
+  for (const setting of readerEntry.settings) assert.deepEqual(Object.keys(setting).sort(), ["default", "effect", "id", "type"]);
 });
 
 test("every shipped pack's classes agree with its engine expectation table and its host block is valid", () => {

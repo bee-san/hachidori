@@ -314,7 +314,7 @@ async function profileCas(message) {
   if (message.erase === true) {
     const languageDocument = customDictionaryDocumentFor(document, language);
     if (message.baseDocumentRevision !== languageDocument.revision) {
-      return { ok: false, stale: true, error: "the personal dictionary changed while the language was being erased",
+      return { ok: false, stale: true, error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again.",
         document: languageDocument, state: current };
     }
     if (state.dictionaries.some(row => row.id === personal?.id)) throw new Error("an erase removes the personal dictionary");

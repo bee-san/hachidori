@@ -18,15 +18,21 @@
  */
 
 // Adapted from Manabitan's SortFrequencyDictionaryController. Settings handles
-// declared modes synchronously; sample undeclared Japanese dictionaries on demand.
+// declared modes synchronously; sample undeclared dictionaries on demand.
 const COMMON_TERMS = ["来る", "言う", "出る", "入る", "方", "男", "女", "今", "何", "時"];
 const LESS_COMMON_TERMS = ["行なう", "論じる", "過す", "行方", "人口", "猫", "犬", "滝", "理", "暁"];
 
-export async function inferFrequencyDirection(dictionary, lookup) {
-  if (dictionary.language && dictionary.language !== "ja") return null;
+// Another language samples with its pack's `host.frequencySamples`
+// ({ common, rare }) and reports no direction without them
+// (docs/languages.md 9.4); Japanese keeps the twenty words above.
+export async function inferFrequencyDirection(dictionary, lookup, { language = "ja", samples } = {}) {
+  if (dictionary.language && dictionary.language !== language) return null;
+  const commonTerms = language === "ja" && samples === undefined ? COMMON_TERMS : samples?.common;
+  const rareTerms = language === "ja" && samples === undefined ? LESS_COMMON_TERMS : samples?.rare;
+  if (!Array.isArray(commonTerms) || !Array.isArray(rareTerms)) return null;
 
-  const samples = [];
-  for (const term of [...COMMON_TERMS, ...LESS_COMMON_TERMS]) {
+  const samplesFound = [];
+  for (const term of [...commonTerms, ...rareTerms]) {
     const reply = await lookup(term); // NOSONAR: one engine turn at a time lets obsolete sampling stop and releases each glossary reply before the next.
     const values = reply.results.flatMap(result => result.term.expression === term
       ? result.term.frequencies.filter(group => group.dictionary === dictionary.title)
@@ -34,11 +40,11 @@ export async function inferFrequencyDirection(dictionary, lookup) {
       : []);
     let min = Infinity, max = -Infinity;
     for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); }
-    samples.push(values.length ? { min, max } : null);
+    samplesFound.push(values.length ? { min, max } : null);
   }
   let score = 0;
-  const commonSamples = samples.slice(0, COMMON_TERMS.length).filter(sample => sample !== null);
-  const rareSamples = samples.slice(COMMON_TERMS.length).filter(sample => sample !== null);
+  const commonSamples = samplesFound.slice(0, commonTerms.length).filter(sample => sample !== null);
+  const rareSamples = samplesFound.slice(commonTerms.length).filter(sample => sample !== null);
   for (const common of commonSamples) {
     for (const rare of rareSamples) {
       score += Math.sign(common.max - rare.min) + Math.sign(common.min - rare.max);

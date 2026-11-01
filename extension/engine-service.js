@@ -1421,6 +1421,10 @@ async function recoverPendingRemovals(snapshot) {
 async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_PROFILE_ID } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
+    // The single-profile shape has only the Japanese profile (section 5.2).
+    if (!snapshot.state?.stored && profileId !== JAPANESE_PROFILE_ID) {
+      throw profileRequestError(profileMessages().profileRemoved, "profile-missing");
+    }
     const next = await buildCandidate(snapshot);
     const loadedCount = loadDictionaries(next, { committed: snapshot.state?.dictionaries ?? [] });
     if (snapshot.state !== null && sameDictionaries(next, snapshot.state.dictionaries)) {
@@ -2183,6 +2187,14 @@ async function removeProfile(message) {
   if (!/^[a-z]{2,3}$/u.test(language) || (profileId === undefined && !erase)) {
     throw new TypeError("the language request named no language");
   }
+  // An erase carries the document revision its confirmation read; a newer
+  // document is kept (docs/languages.md 5.2), as today's erase keeps it.
+  const confirmed = message.baseDocumentRevision;
+  if (erase && (!Number.isInteger(confirmed) || confirmed < 0)) {
+    throw new TypeError("the erase carried no valid document revision");
+  }
+  const changedAfterConfirmation = (document) => ({ ok: false, stale: true, document,
+    error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again." });
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
     const stored = snapshot.state?.stored;
@@ -2196,7 +2208,12 @@ async function removeProfile(message) {
     const profiles = Object.fromEntries(Object.entries(stored.profiles).filter(([id]) => id !== profileId)
       .map(([id, profile]) => [id, { ...profile, dictionaries: profile.dictionaries.filter((entry) => kept.has(entry.id)) }]));
     const next = { schemaVersion: 2, revision: stored.revision, dictionaries, profiles };
-    const baseDocumentRevision = erase ? (await readCustomStorage(language)).document.revision : undefined;
+    let baseDocumentRevision;
+    if (erase) {
+      const { document } = await readCustomStorage(language);
+      if (document.revision !== confirmed) return changedAfterConfirmation(document);
+      baseDocumentRevision = document.revision;
+    }
     let reply;
     try {
       reply = await ask("hd_profile_cas", { action: "remove", language, ...(profileId === undefined ? {} : { profileId }),
@@ -2222,8 +2239,9 @@ async function removeProfile(message) {
       if (erase) await cleanupCommittedDictionaries();
       return { state: publicState(reply.state), ...(profileRecords ? { languages: recordLanguages } : {}) };
     }
+    if (reply.stale === true) return { ...changedAfterConfirmation(reply.document), state: publicState(reply.state ?? null) };
     if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
-      return { ok: false, conflict: reply.conflict === true, stale: reply.stale === true,
+      return { ok: false, conflict: reply.conflict === true,
         error: reply.error || "the language could not be removed", state: publicState(reply.state ?? null) };
     }
   }

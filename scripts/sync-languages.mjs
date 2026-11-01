@@ -12,8 +12,9 @@
 //                       pack's personal dictionary;
 //   registry-reader.js  for content scripts, within 64 KB for every pack
 //                       together: identity, text, capabilities, presentation,
-//                       the warm-up sample and the pack settings' display
-//                       effects. It leaves an HDLanguages that is already set.
+//                       the warm-up sample and the pack settings with a
+//                       display or capability effect. It leaves an
+//                       HDLanguages that is already set.
 //
 // Both hold every class field and display-transform step with its class
 // references expanded by hoshidicts' tools/lib/classes.mjs. The copy is
@@ -107,8 +108,10 @@ export function registryEntries(pack, ClassSet) {
   };
   const reader = {
     ...shared,
-    settings: settings.filter(setting => setting?.effect?.display !== undefined)
-      .map(setting => pick(setting, ["id", "type", "default", "values", "effect"])),
+    // Display effects, and capability effects: an optional capability such
+    // as Korean's hanja character view decides what the popup links.
+    settings: settings.filter(setting => setting?.effect?.display !== undefined || setting?.effect?.capability !== undefined)
+      .map(setting => pick(setting, ["id", "type", "default", "effect"])),
     host: { sample: { warmup: host.sample?.warmup ?? null } },
   };
   return { registry, reader };

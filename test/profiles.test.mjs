@@ -248,18 +248,21 @@ test("pack settings are validated against the profile's pack and unknown ids are
   assert.equal(options.applyPackSettingsPatch(stored, {}, "ar"), stored);
 });
 
+// The Japanese personal package (docs/languages.md 15).
+const PERSONAL = "e4c2e20a1a964b6cbd4ae3f87643c1f0";
+
 function schema2() {
   return {
     schemaVersion: 2,
     revision: 31,
     dictionaries: [
-      { id: "custom", title: "Hachidori Custom Dictionary", displayName: null, path: "/dicts/a", favorite: false, language: "ja" },
+      { id: PERSONAL, title: "Hachidori Custom Dictionary", displayName: null, path: "/dicts/a", favorite: false, language: "ja" },
       { id: "jitendex", title: "Jitendex", displayName: null, path: "/dicts/b", favorite: true, language: "ja" },
       { id: "arabic", title: "Arabic", displayName: "AR", path: "/dicts/c", favorite: false, language: "ar" },
       { id: "spare", title: "Spare", displayName: null, path: "/dicts/d", favorite: false, language: "en" },
     ],
     profiles: {
-      ja: { dictionaries: [{ id: "custom", enabled: true }, { id: "jitendex", enabled: false }], groups: [] },
+      ja: { dictionaries: [{ id: PERSONAL, enabled: true }, { id: "jitendex", enabled: false }], groups: [] },
       ar: { dictionaries: [{ id: "arabic", enabled: true }, { id: "jitendex", enabled: true }],
         groups: [{ id: "g1", name: "Main", dictionaryIds: ["arabic"] }] },
     },
@@ -277,10 +280,10 @@ test("projectDictionaryState is one profile's schema-1 view; allPackages is the 
     "enabled sits where today's rows carry it");
   assert.deepEqual(ar.groups, [{ id: "g1", name: "Main", dictionaryIds: ["arabic"] }]);
   assert.deepEqual(options.projectDictionaryState(state, "ja").dictionaries.map(row => [row.id, row.enabled]),
-    [["custom", true], ["jitendex", false]]);
+    [[PERSONAL, true], ["jitendex", false]]);
   assert.equal(options.projectDictionaryState(state, "en"), null);
   assert.deepEqual(options.allPackages(state).map(row => [row.id, row.enabled]),
-    [["custom", true], ["jitendex", true], ["arabic", true], ["spare", false]]);
+    [[PERSONAL, true], ["jitendex", true], ["arabic", true], ["spare", false]]);
   const single = { schemaVersion: 1, revision: 3, dictionaries: [{ id: "x", title: "X", enabled: false }], groups: [] };
   assert.equal(options.projectDictionaryState(single, "ja"), single, "a single-profile state is its own view");
   assert.deepEqual(options.allPackages(single), single.dictionaries);
@@ -415,7 +418,7 @@ test("a profile's dictionary view merges into the whole state; an older client's
   reply = await worker({ type: "hd_state_cas", baseRevision: 32, dictionaries: legacy });
   assert.equal(reply.ok, true, reply.error);
   state = stored("dictionaryState");
-  assert.deepEqual(state.profiles.ja.dictionaries.map(entry => entry.id), ["custom", "jitendex", "spare"],
+  assert.deepEqual(state.profiles.ja.dictionaries.map(entry => entry.id), [PERSONAL, "jitendex", "spare"],
     "the Japanese profile keeps its packages and gains only enabled ones");
   reply = await worker({ type: "hd_state_cas", baseRevision: 33, profileId: "ar",
     dictionaries: [{ id: "unknown", title: "Unknown", enabled: true }] });
@@ -664,7 +667,7 @@ test("lookups name their profile's language, dictionaries and engine effects; Ja
   assert.deepEqual(arabic.dictionaries, ["arabic", "jitendex"]);
   assert.deepEqual(arabic.languageOptions, []);
   assert.equal(japanese.language, "ja", "a request that names no profile means Japanese, whatever it carried");
-  assert.deepEqual(japanese.dictionaries, ["custom"]);
+  assert.deepEqual(japanese.dictionaries, [PERSONAL]);
   const refused = await lookup({ ...request, requestId: "r3", profileId: "en" });
   assert.equal(refused.ok, false);
   assert.equal(refused.errorCode, "profile-missing");
@@ -688,4 +691,73 @@ test("a single-profile worker writes nothing of the profile layer", async () => 
   assert.deepEqual(stored("dictionaryState"), records.dictionaryState);
   assert.equal(storage.raw.has("languageSelection"), false);
   assert.deepEqual(Object.keys(stored("lookupStats")), ["generation", "revision"]);
+});
+
+test("first-install selections write the Japanese profile, and nothing without one", async () => {
+  const records = profileRecords();
+  records.dictionaryState.dictionaries[1] = { ...records.dictionaryState.dictionaries[1], sourceId: "jitendex", termCount: 1 };
+  const { context } = backgroundWorker(records);
+  context.__records = structuredClone(records);
+  const result = plain(await vm.runInContext(`firstInstallSelections([], { jitendex: { status: "installed" } },
+    __records.dictionaryState, __records.options)`, context));
+  assert.deepEqual(result.applied, ["jitendex"]);
+  assert.equal(result.options.revision, 10);
+  assert.equal(result.options.profiles[0].settings.compactDefinitionSummaryDictionary, "Jitendex");
+  assert.equal(Object.hasOwn(result.options.profiles[1].settings, "compactDefinitionSummaryDictionary"), false);
+  const withoutJapanese = structuredClone(records);
+  withoutJapanese.options.profiles = withoutJapanese.options.profiles.filter(profile => profile.id !== "ja");
+  context.__records = withoutJapanese;
+  const skipped = plain(await vm.runInContext(`firstInstallSelections([], { jitendex: { status: "installed" } },
+    __records.dictionaryState, __records.options)`, context));
+  assert.equal(skipped.options, null);
+});
+
+test("the overlay's local keys are laid over every profile", () => {
+  const record = withProfiles();
+  const next = profileState.applyToEveryProfile(record, { hoverEnabled: false, onlyScanJapaneseText: false, popupColumns: 2 });
+  assert.equal(next.hoverEnabled, false);
+  for (const profile of next.profiles) {
+    assert.equal(profile.settings.onlyScanJapaneseText, false, profile.id);
+    assert.equal(profile.settings.popupColumns, 2, profile.id);
+  }
+  assert.equal(next.profiles[0].settings.scanLength, 12, "other keys are kept");
+  assert.equal(next.revision, record.revision);
+});
+
+test("a Japanese personal save keeps the other languages' documents", async () => {
+  const records = profileRecords();
+  records.customDictionarySource = { schemaVersion: 1, revision: 0,
+    semanticRevision: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945", text: "",
+    languages: { ar: { revision: 2, semanticRevision: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945", text: "# ar\n" } } };
+  // The records hold the Japanese personal package; a zero-row save removes it.
+  const { fromEngine, stored } = backgroundWorker(records);
+  const { customDictionarySemanticRevision } = await import("../extension/custom-dictionary.js");
+  const empty = await customDictionarySemanticRevision([]);
+  const state = stored("dictionaryState");
+  const next = { dictionaries: state.dictionaries.filter(row => row.id !== PERSONAL),
+    profiles: { ...state.profiles, ja: { ...state.profiles.ja, dictionaries: state.profiles.ja.dictionaries.filter(entry => entry.id !== PERSONAL) } } };
+  const reply = await fromEngine({ type: "hd_custom_cas", baseDocumentRevision: 0, baseRevision: 31, text: "# notes\n",
+    semanticRevision: empty, state: next });
+  assert.equal(reply.ok, true, reply.error);
+  const document = stored("customDictionarySource");
+  assert.equal(document.text, "# notes\n");
+  assert.equal(document.revision, 1);
+  assert.deepEqual(document.languages, records.customDictionarySource.languages);
+  assert.equal(stored("dictionaryState").dictionaries.some(row => row.id === PERSONAL), false);
+});
+
+test("an erase whose confirmed document revision is older keeps the document", async () => {
+  const records = profileRecords();
+  records.customDictionarySource = { schemaVersion: 1, revision: 0,
+    semanticRevision: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945", text: "",
+    languages: { ar: { revision: 4, semanticRevision: "c".repeat(64), text: "\u0628\u064A\u062A, , house\n" } } };
+  const { fromEngine, stored } = backgroundWorker(records);
+  const state = stored("dictionaryState");
+  const reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "ar", language: "ar", erase: true,
+    baseRevision: 31, baseDocumentRevision: 3, state: { dictionaries: state.dictionaries, profiles: { ja: state.profiles.ja } } });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.stale, true);
+  assert.match(reply.error, /changed after you confirmed/u);
+  assert.deepEqual(stored("customDictionarySource"), records.customDictionarySource);
+  assert.deepEqual(stored("options"), records.options);
 });
