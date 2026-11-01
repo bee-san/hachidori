@@ -29,7 +29,7 @@ These instructions apply to the entire repository.
 
 ## Issue #9 scope
 
-- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work (L2 backup/restore, L3 per-dictionary update schedules, L4 lookup statistics and L5 definition blur). L3 intentionally extends D6's original global-only schedule. L1 profiles and L6 configurable/custom popup actions remain excluded, as does localization.
+- The dictionary-only contract below limits dictionary-only tasks; it does not prohibit separately authorized E-series or L2-L5 work (L2 backup/restore, L3 per-dictionary update schedules, L4 lookup statistics and L5 definition blur). L3 intentionally extends D6's original global-only schedule. L1 profiles are authorized as per-language profiles by the owner's multi-language request (2026-11-01); [docs/languages.md](docs/languages.md) is their contract. L6 configurable/custom popup actions remain excluded, as does localization of the user interface; text in other languages is in scope through language packs.
 
 ## Dictionary-only issue #9 contract
 
