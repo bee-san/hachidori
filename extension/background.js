@@ -317,9 +317,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       || !operation || (!operation.readerPage && operation.tabId === undefined) || operation.owner !== message.owner
       || operation.requestId !== message.requestId || message.type !== "hd_audio_playing") return false;
   const progress = { ...message, target: "hachidori-audio-content" };
-  // The startup and search pages' readers live in extension pages, outside the
-  // content-script audience of tabs.sendMessage. Their controller accepts only
-  // its active random request ID; the worker already checked the document owner.
+  // The startup and search pages' readers live in extension pages, whose
+  // messages may come without sender.tab, so a runtime message reaches them.
+  // Their controller accepts only its active random request ID; the worker
+  // already checked the document owner.
   const delivery = operation.readerPage ? chrome.runtime.sendMessage(progress)
     : chrome.tabs.sendMessage(operation.tabId, progress, { documentId: operation.owner });
   delivery.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));

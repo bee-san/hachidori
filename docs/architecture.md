@@ -979,10 +979,10 @@ page's Results landmark). A search shows the box's text above the results, as
 Yomitan shows its query, and looks it up from its first character, as a hover
 there would, after any brackets, punctuation, spaces or wave dash (〜 or ～) it
 opens with: a pasted line such as 「食べたかった」 looks up 食べたかった, and
-〜ている looks up ている rather than a dictionary's 〜ている pointer. Its other words can then be
-looked up like any page text. Mining takes the sentence around the word from
-that text, cut at its terminators as on a page, where Yomitan's search page
-takes the whole query. The docked popup is the reader's own, with its renderer,
+～ている looks up ている rather than the grammar dictionary's ～ている
+pointer. Its other words can then be looked up like any page text. Mining
+takes the sentence around the word from that text, cut at its terminators as
+on a page, where Yomitan's search page takes the whole query. The docked popup is the reader's own, with its renderer,
 tabs, Anki and pronunciation controls, Notes and child popups. It fills the
 results area, follows its size and has no resize grip. A search ignores
 **Japanese text only** and the lookup switch, since the reader asked for it;
