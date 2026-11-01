@@ -11,7 +11,7 @@ const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDO
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture(t, { allowed = false, dismissible = true } = {}) {
+async function fixture(t, { allowed = false, dismissible = true, scheme = "chrome-extension:" } = {}) {
   const dom = new JSDOM('<div id="files"></div><button id="finish">Finish</button>', { pretendToBeVisual: true });
   const { document } = dom.window;
   // Let jsdom's initial pageshow settle before mounting the controller.
@@ -25,7 +25,7 @@ async function fixture(t, { allowed = false, dismissible = true } = {}) {
     } },
     runtime: {
       id: "hachidori-test-extension",
-      getURL: path => `chrome-extension://hachidori-test-extension/${path}`,
+      getURL: path => `${scheme}//hachidori-test-extension/${path}`,
     },
     tabs: { async create(details) { tabs.push(details); } },
   };
@@ -128,4 +128,25 @@ test("Settings retains the shortcut, pageshow refreshes it, and stale checks can
   assert.match(f.el("local-file-status").textContent, /Could not check/u);
   assert.doesNotMatch(f.el("local-file-status").textContent, /enabled/u);
   assert.equal(f.el("local-file-actions").hidden, false);
+});
+
+test("Firefox says where its local-file switch is, because Hachidori cannot open about:addons", async t => {
+  for (const dismissible of [true, false]) {
+    const f = await fixture(t, { dismissible, scheme: "moz-extension:" });
+    await tick();
+    assert.equal(f.el("files").hidden, false);
+    assert.equal(f.el("local-file-open"), null);
+    assert.match(f.el("local-file-description").textContent, /“Access local files on your computer” in Hachidori’s permissions in Firefox/u);
+    assert.equal(f.el("local-file-instruction").hidden, false);
+    assert.match(f.el("local-file-instruction").textContent, /about:addons.*Permissions and data/u);
+    // Firefox applies the switch without reloading Hachidori.
+    assert.equal(f.el("local-file-recovery"), null);
+    assert.equal(f.el("local-file-actions").hidden, !dismissible);
+    f.access(true);
+    f.returnToTab();
+    await tick();
+    assert.equal(f.el("local-file-status").textContent, "Local-file lookups enabled");
+    assert.equal(f.el("local-file-instruction").hidden, true);
+    assert.equal(f.tabs.length, 0);
+  }
 });

@@ -1,6 +1,8 @@
 // Keep engine-owned backup URLs alive until Chrome finishes saving the file.
 // Session storage survives service-worker restarts, but is not backup content.
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { isFirefox } from "./browser-api.js";
+
 const KEY = "backupDownloads";
 const TARGET = "hoshidicts-offscreen";
 
@@ -34,7 +36,9 @@ export function createBackupDownloads(chrome, relay) {
       if (!exported?.ok) throw new Error(exported?.error || "Could not create a backup archive.");
       let id;
       try {
-        id = await chrome.downloads.download({ url: exported.blobUrl, saveAs: true,
+        // Chrome asks where to save the backup. Firefox asks only when its own
+        // "Always ask you where to save files" setting is on, as for its other downloads.
+        id = await chrome.downloads.download({ url: exported.blobUrl, ...(isFirefox(chrome) ? {} : { saveAs: true }),
           filename: `hachidori-backup-${new Date().toISOString().slice(0, 10)}.zip`, conflictAction: "uniquify" });
       } catch (error) {
         await serialise(() => release(exported.blobUrl));

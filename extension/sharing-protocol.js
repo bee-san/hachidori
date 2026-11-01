@@ -123,10 +123,12 @@ export function parseLinkAddress(text) {
 
 // The brand a Chromium browser reports about itself, for "the Hachidori in
 // Chrome": the first brand that is not the placeholder and not plain Chromium.
+// Firefox reports no brands, only its user agent.
 export function browserName(navigator) {
   const brands = (navigator?.userAgentData?.brands ?? []).map(entry => String(entry?.brand ?? "")).filter(brand => brand !== "" && !/not.?a.?brand/iu.test(brand));
   const brand = brands.find(name => name !== "Chromium") ?? brands[0];
   if (brand) return brand;
+  if (/\bFirefox\//u.test(String(navigator?.userAgent ?? ""))) return "Firefox";
   return "another browser";
 }
 

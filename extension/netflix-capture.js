@@ -225,6 +225,11 @@ export function createNetflixRecorder(window, {
       videoClock: createVideoFrameClock({ timeOrigin: window.performance.timeOrigin, now }) };
     session = current;
     try {
+      // Firefox has no tab capture for extensions.
+      if (typeof window.chrome.tabCapture?.getMediaStreamId !== "function") {
+        stop(current);
+        return { unavailable: "unsupported" };
+      }
       let streamId;
       try {
         streamId = await window.chrome.tabCapture.getMediaStreamId({ targetTabId });

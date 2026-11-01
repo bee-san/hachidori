@@ -30,6 +30,7 @@ function fixture(t, { hash = "#advanced", stored = {}, threaded = true, memory =
   const { window } = dom;
   const requests = [];
   window.OVERLAY_MODE = false;
+  window.isFirefox = () => false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: true, linkButtons: true, externalLinkHost: false, customJavaScript: true,
     localFileAccessPrompt: true, lowMemoryMode: true,

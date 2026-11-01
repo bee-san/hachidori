@@ -23,7 +23,7 @@ const settle = () => new Promise(done => { setImmediate(done); });
 // that hands the element's sound to a track processor in 10 ms blocks at
 // 1 kHz, and the clock both read. Blocks arrive `latency` ms after they end,
 // and every ninth is stamped 9 ms late, as Chrome 152 does.
-function playback(t, { contextState = "running", allowed = true, taken = false, latency = 15 } = {}) {
+function playback(t, { contextState = "running", allowed = true, taken = false, latency = 15, processor = true } = {}) {
   const dom = new JSDOM(`<!doctype html><div class="watch-video"><video></video></div>`,
     { url: `https://www.netflix.com/watch/${MOVIE}` });
   t.after(() => dom.window.close());
@@ -83,7 +83,7 @@ function playback(t, { contextState = "running", allowed = true, taken = false, 
     }
   }
   const host = { document: window.document, performance: { timeOrigin: TIME_ORIGIN }, AudioContext,
-    MediaStreamAudioDestinationNode, MediaStreamTrackProcessor, setTimeout, clearTimeout,
+    MediaStreamAudioDestinationNode, ...(processor ? { MediaStreamTrackProcessor } : {}), setTimeout, clearTimeout,
     addEventListener: window.addEventListener.bind(window), removeEventListener: window.removeEventListener.bind(window) };
   const lineAudio = createLineAudio(host, { video: () => video, movie: () => env.movie, now: () => now });
 
@@ -271,6 +271,16 @@ test("the buffer waits for Chrome to let the page start audio, and the switch fr
   owned.lineAudio.start();
   assert.equal(owned.lineAudio.ready(), false);
   assert.equal(owned.record.sinks.length, 0);
+});
+
+test("without a track processor, as in Firefox, the video's sound is left alone", async t => {
+  const f = playback(t, { processor: false });
+  f.lineAudio.start();
+  await f.play();
+  await f.advance(1000);
+  assert.deepEqual({ contexts: f.record.contexts.length, sources: f.record.sources.length }, { contexts: 0, sources: 0 });
+  assert.equal(f.lineAudio.ready(), false);
+  assert.equal(f.lineAudio.covers(MOVIE, 0, 800), false);
 });
 
 test("settled waits for what has played until now to arrive", async t => {

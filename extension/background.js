@@ -549,6 +549,13 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
 });
+// Firefox grants userScripts only when Settings asks for it, so the saved code
+// applies once that grant arrives.
+chrome.permissions?.onAdded.addListener(({ permissions = [] }) => {
+  if (!permissions.includes("userScripts")) return;
+  void chrome.storage.local.get(OPTIONS_KEY)
+    .then(stored => applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).customPopupJavascript));
+});
 
 if (OVERLAY_MODE) {
   seedOverlayModeOptions().catch((error) => {
