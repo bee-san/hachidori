@@ -2058,8 +2058,9 @@
       // dictionary's default.
       state.detectLanguage = (text, parent) => {
         const detected = language.detectGlossary(text, options.dictionary);
+        if (!detected) return null;
         const inherited = parent?.closest?.("[lang]")?.getAttribute("lang") ?? blockLanguage;
-        return detected && detected !== inherited ? detected : null;
+        return detected !== inherited ? detected : null;
       };
       direction = options.direction ?? language.dictionaryDirection?.(options.dictionary) ?? "ltr";
     }
