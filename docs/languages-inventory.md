@@ -2,7 +2,7 @@
 # Appendix: language inventory
 
 Phase 0 of the multi-language design ([languages.md](languages.md)), updated
-for revision 8 of the design. Seven
+for revision 9 of the design. Seven
 readers went through the code at `main` b1964358 (hoshidicts 35e2dab) and
 recorded every setting, popup feature and theme hook with the language
 assumption it makes, citing file and line. This appendix condenses those
@@ -118,8 +118,8 @@ top level of a single-profile record.
 | Package `pitchCount` includes IPA rows | engine-service.js:980 | Pitch and IPA counted together | Unchanged; IPA shown in every language |
 | Package `kanjiCount`, library badge "Kanji" | engine-service.js:981, library-settings.js:562-566 | Character bank named kanji | Badge label from pack `characterView.name` |
 | `id = stableDictionaryId(title)`, unique titles | engine-service.js:967; backup-state.js:42-49 | One title namespace | Kept global (decision 0001) |
-| `customDictionarySource`, fixed id/title, `language === "ja"` check; written by `hd_custom_cas` (and `hd_custom_save`/`hd_custom_append` through it), the erase in `hd_profile_cas`, the restore in `hd_backup_cas` | custom-dictionary.js:10-21, 102-107, 308-317; background-requests.js:364-403 | Personal dictionary is Japanese; writers rebuild the record from known fields | L; one per language (15); every writer keeps `languages` through one helper (4.3) |
-| `lookupStats` rows `[term, reading]`, NFC; descriptor rebuilt by `hd_lookup_stats_record`; obsolete-row cleanup in `hd_lookup_stats_cleanup` and `hd_sharing_client_unlink` | lookup-stats.js:5-33; lookup-stats-identity.js; background-requests.js:118-135; background-sharing.js:509-533 | No language key; cleanup keeps one prefix | L; one generation per language (`languages` entries), rows keep `[term, reading]`, both cleanups keep every live generation through one helper (4.3) |
+| `customDictionarySource`, fixed id/title, `language === "ja"` check; written by `hd_custom_cas` (and `hd_custom_save`/`hd_custom_append` through it), the erase in `hd_profile_cas`, the restore in `hd_backup_cas`, unlink | custom-dictionary.js:10-21, 102-107, 308-317; background-requests.js:364-403; background-backup.js:52-70; backup-state.js:26-36; background-sharing.js:443-446 | Personal dictionary is Japanese; writers rebuild the record from known fields | L; one per language (15); every writer keeps `languages` through one helper (4.3) |
+| `lookupStats` rows `[term, reading]`, NFC; descriptor rebuilt by `hd_lookup_stats_record`; obsolete-row cleanup in `hd_lookup_stats_cleanup` and `hd_sharing_client_unlink`; backup read and rebuild | lookup-stats.js:5-33; lookup-stats-identity.js; background-requests.js:91-115, 118-135; background-sharing.js:509-533; background-backup.js:52-70; backup-state.js:26-36 | No language key; cleanup keeps one prefix | L; one generation per language (`languages` entries), rows keep `[term, reading]`, both cleanups keep every live generation through one helper (4.3) |
 | `wordStatusOverrides` known/ignored headwords; written by `hd_word_status_override`, the erase in `hd_profile_cas`, the restore | word-status-overrides.js:17, 27-60; background-requests.js:158-167 | No language key; helpers return only `revision`, `known`, `ignored` | L; every writer keeps `languages` through one helper (4.3) |
 | `ankiDuplicateIndex`: one `snapshot` and one `attempt`, for the first Template's source | anki-index-cache.js:28-57, 180, 226, 366-390 | One Template list | Today's record with one source; one snapshot per source key with several (4.3, 12) |
 | new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |

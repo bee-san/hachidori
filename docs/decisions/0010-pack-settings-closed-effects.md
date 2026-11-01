@@ -1,6 +1,6 @@
 # 0010: Packs define settings as data with a closed list of effects
 
-Status: proposed (multi-language design, Phase 1, revision 8)
+Status: accepted (multi-language design, Phase 1, revision 9)
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0005: Fallbacks for undeclared themes act on the contract's content hooks only
 
-Status: proposed (multi-language design, Phase 1, revision 8)
+Status: accepted (multi-language design, Phase 1, revision 9)
 
 ## Context
 
