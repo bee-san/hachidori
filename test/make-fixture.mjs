@@ -219,6 +219,18 @@ function pngChunk(type, payload) {
   return Buffer.concat([len, body, crc]);
 }
 
+// A one-second 8 kHz mono PCM clip that real browsers decode and play to the end.
+export function makeAudioWav() {
+  const samples = 8000;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(i % 2 ? 100 : -100, 44 + i * 2);
+  return wav;
+}
+
 export function makePng(size = 16) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
@@ -1042,6 +1054,32 @@ export function monochromeImageFixture() {
   ], 1, '']], mediaEntries: [[path, bytes]] });
   return { archive, bytes, cases, path, query, title };
 }
+
+// The title, revision and capabilities each recommended catalogue source's
+// fixture archive declares, which the installer validates against the catalogue.
+export const RECOMMENDED_FIXTURE_METADATA = {
+  jitendex: {
+    title: 'Jitendex.org [2026-08-11]',
+    revision: '2026.08.11.0',
+    capabilities: ['term', 'media'],
+  },
+  jmnedict: {
+    title: 'JMnedict [2026-09-04]',
+    revision: 'JMnedict.2026-09-04',
+    capabilities: ['term'],
+  },
+  'bees-ultimate-kanji-dictionary': {
+    title: "Bee's Ultimate Kanji Dictionary",
+    revision: '2026.09.02',
+    capabilities: ['term', 'freq', 'media'],
+  },
+  jiten: { title: 'Jiten', revision: 'Jiten 26-09-02', capabilities: ['freq'] },
+  'bees-ultimate-grammar-dictionary': {
+    title: "Bee's Ultimate Grammar Dictionary",
+    revision: '2026.09.10',
+    capabilities: ['term'],
+  },
+};
 
 // Small deterministic stand-ins for the recommended downloads. The browser
 // suite serves these bytes for the production catalogue URLs, so CI exercises

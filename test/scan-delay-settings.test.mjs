@@ -23,6 +23,7 @@ function fixture(t, initial = {}) {
   t.after(() => dom.window.close());
   const { window } = dom;
   window.OVERLAY_MODE = false;
+  window.isFirefox = () => false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: true, linkButtons: true, externalLinkHost: false, customJavaScript: true,
     localFileAccessPrompt: true, lowMemoryMode: true,

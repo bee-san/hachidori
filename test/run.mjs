@@ -1,4 +1,4 @@
-// Run the existing suites with the lockfile's test tooling and pinned Chrome.
+// Run the existing suites with the lockfile's test tooling and pinned Chrome and Firefox.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -12,25 +12,32 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLING = resolve(ROOT, "test/tooling");
 const OUTPUT = resolve(ROOT, "test/tmp/ci");
 const CACHE = resolve(ROOT, "test/tmp/browsers");
+// scripts/build-firefox.py writes the Firefox build of extension/ here, unless
+// HACHIDORI_FIREFOX_EXTENSION names another unpacked build to test.
+const FIREFOX_EXTENSION = process.env.HACHIDORI_FIREFOX_EXTENSION || resolve(ROOT, "test/tmp/firefox-extension");
 const require = createRequire(resolve(TOOLING, "package.json"));
 const { config } = JSON.parse(readFileSync(resolve(TOOLING, "package.json"), "utf8"));
 const { Browser, computeExecutablePath, install } = await import(require.resolve("@puppeteer/browsers"));
 const chromeBuild = process.env.HACHIDORI_CHROME_BUILD || config.chrome;
+const firefoxBuild = process.env.HACHIDORI_FIREFOX_BUILD || config.firefox;
 const env = {
   ...process.env,
   HACHIDORI_JSDOM: process.env.HACHIDORI_JSDOM || TOOLING,
   HACHIDORI_PUPPETEER: process.env.HACHIDORI_PUPPETEER || require.resolve("puppeteer-core"),
   HACHIDORI_CHROME: process.env.HACHIDORI_CHROME
     || computeExecutablePath({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild }),
+  HACHIDORI_FIREFOX: process.env.HACHIDORI_FIREFOX
+    || computeExecutablePath({ cacheDir: CACHE, browser: Browser.FIREFOX, buildId: firefoxBuild }),
+  HACHIDORI_FIREFOX_EXTENSION: FIREFOX_EXTENSION,
 };
 
-async function run(name, args, overrides = {}) {
+async function run(name, args, overrides = {}, executable = process.execPath) {
   const prefix = Object.entries(overrides).map(([key, value]) => `${key}=${JSON.stringify(value)} `).join("");
-  const command = `${prefix}node ${args.join(" ")}`;
+  const command = `${prefix}${executable === process.execPath ? "node" : executable} ${args.join(" ")}`;
   console.log(`\n$ ${command}`);
   const log = createWriteStream(resolve(OUTPUT, `${name}.log`));
   log.write(`$ ${command}\n`);
-  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...env, ...overrides }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(executable, args, { cwd: ROOT, env: { ...env, ...overrides }, stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.pipe(process.stdout, { end: false });
   child.stderr.pipe(process.stderr, { end: false });
   child.stdout.pipe(log, { end: false });
@@ -48,6 +55,9 @@ async function run(name, args, overrides = {}) {
 // once every test has finished even though the code under test leaves timers behind.
 const NODE_TEST = ["--test-force-exit", "--test-reporter=spec"];
 
+const buildFirefox = () => process.env.HACHIDORI_FIREFOX_EXTENSION
+  || run("firefox-build", ["scripts/build-firefox.py", "--output-dir", FIREFOX_EXTENSION], {}, "python3");
+
 const suite = process.argv[2];
 mkdirSync(OUTPUT, { recursive: true });
 try {
@@ -55,6 +65,18 @@ try {
     const browser = await install({ cacheDir: CACHE, browser: Browser.CHROME, buildId: chromeBuild,
       installDeps: process.argv.includes("--install-deps") });
     console.log(`Chrome ${chromeBuild}: ${browser.executablePath}`);
+  } else if (suite === "install-firefox") {
+    const browser = await install({ cacheDir: CACHE, browser: Browser.FIREFOX, buildId: firefoxBuild });
+    console.log(`Firefox ${firefoxBuild}: ${browser.executablePath}`);
+  } else if (suite === "firefox-lint") {
+    // addons-linter, the validator addons.mozilla.org runs, through web-ext.
+    await buildFirefox();
+    const webExt = resolve(TOOLING, "node_modules/web-ext/bin/web-ext.js");
+    await run("firefox-lint", [webExt, "lint", "--source-dir", FIREFOX_EXTENSION, "--no-config-discovery"]);
+  } else if (suite === "firefox-e2e" || suite === "firefox-large") {
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await buildFirefox();
+    await run(suite, [...NODE_TEST, `test/${suite}.mjs`]);
   } else if (suite === "lint") {
     const eslint = resolve(dirname(require.resolve("eslint/package.json")), "bin/eslint.js");
     await run("lint", [eslint, "--config", "test/tooling/eslint.config.mjs", "."]);
@@ -90,7 +112,8 @@ try {
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast, chrome-backup-release or install-chrome.",
+        + " chrome-overlay, chrome-theme-contrast, chrome-backup-release, install-chrome,"
+        + " firefox-lint, firefox-e2e, firefox-large or install-firefox.",
     );
   }
 } catch (error) {

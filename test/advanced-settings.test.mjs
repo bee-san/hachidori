@@ -21,6 +21,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
   t.after(() => dom.window.close());
   const { window } = dom;
   window.OVERLAY_MODE = overlayMode;
+  window.isFirefox = () => false;
   window.HOST_CAPABILITIES = {
     browserShortcuts: !overlayMode, linkButtons: true, externalLinkHost: overlayMode, customJavaScript: true,
     localFileAccessPrompt: !overlayMode, lowMemoryMode: true,

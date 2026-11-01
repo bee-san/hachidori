@@ -6,7 +6,7 @@ unminified zip.js and gifenc sources. It contains no Git metadata and
 does not require access to a private repository. `SOURCE_REVISIONS.json`
 records the repository commits and downloaded dependency checksums.
 
-The Chrome upload ZIP contains `LICENSE`, the dependency notices,
+The Chrome and Firefox upload ZIPs contain `LICENSE`, the dependency notices,
 `SOURCE.txt` and `SOURCE.json`. The source reference names the accompanying
 archive and its SHA-256. Publish that exact source archive at a public download
 location and put the location in the store listing before distributing the
@@ -80,13 +80,17 @@ python3 scripts/package-store.py --output-dir /tmp/hachidori-store
 ```
 
 The command refuses a dirty checkout, reads only committed Git objects, and
-writes the upload ZIP, source ZIP and `SHA256SUMS.txt` outside the repository.
+writes the Chrome and Firefox upload ZIPs, the source ZIP and `SHA256SUMS.txt`
+outside the repository. The Firefox ZIP is the Chrome one with
+`background.html`, `event-page.js` and the manifest `scripts/firefox_manifest.py`
+derives ([Firefox](firefox.md)).
 Its first run downloads only checksum-pinned dependency sources. Pass
 `--cache-dir /path/to/cache` to reuse them across machines or offline runs.
 ZIP paths, timestamps, order and permissions are normalized, giving identical
 bytes when repeated with the same commit and Python/zlib version. ZIP integrity
 is checked before checksums are written. Load unpacked from an extracted Chrome
-ZIP to check the exact staged runtime before uploading it.
+ZIP, or load an extracted Firefox ZIP as a temporary add-on, to check the exact
+staged runtime before uploading it.
 
 CI runs this packaging command and verifies the checksums for every release
 candidate. The **Release** workflow supports package-only manual runs by default.

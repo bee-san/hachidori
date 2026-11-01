@@ -27,6 +27,8 @@ jobs:
           cache-dependency-path: test/tooling/package-lock.json
       - run: npm ci --prefix test/tooling
       - run: npm --prefix test/tooling run lint
+      # addons-linter, the validator addons.mozilla.org runs, on the Firefox build.
+      - run: node test/run.mjs firefox-lint
 
   node:
     name: Node contracts
@@ -72,7 +74,7 @@ jobs:
           retention-days: 7
 
   pixiv:
-    name: Pixiv full import and restart
+    name: Pixiv full import and restart (Chrome and Firefox)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -112,6 +114,10 @@ jobs:
           export HACHIDORI_CHROME="$(node -e "const {Browser,computeExecutablePath}=require('./test/tooling/node_modules/@puppeteer/browsers');console.log(computeExecutablePath({cacheDir:'test/tmp/browsers',browser:Browser.CHROME,buildId:require('./test/tooling/package.json').config.chrome}))")"
           node benchmark/run.mjs --config benchmark/pixiv-full.json --output test/tmp/ci/pixiv-full --allow-no-sandbox
           node benchmark/low-memory-mode.mjs --archive "$HACHIDORI_BENCH_DATA/Pixiv_2026-10-05.zip" --text 'ピクシブ' --lookups 2 --samples 1 --output test/tmp/ci/pixiv-full/low-memory.json
+      - name: Install the pinned Firefox
+        run: node test/run.mjs install-firefox
+      - name: Import, look up, and restart full Pixiv in Firefox
+        run: node test/run.mjs firefox-large
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -123,6 +129,8 @@ jobs:
             test/tmp/ci/pixiv-full/raw.jsonl
             test/tmp/ci/pixiv-full/low-memory.json
             test/tmp/ci/pixiv-full/runs/*/diagnostics.log
+            test/tmp/ci/firefox-large.json
+            test/tmp/ci/firefox-large.log
           retention-days: 7
 
   sonar:
@@ -187,6 +195,57 @@ jobs:
           python3 scripts/package-store.py --output-dir "$output"
           cd "$output"
           sha256sum -c ./*-SHA256SUMS.txt
+      - run: npm ci --prefix test/tooling
+      - name: Lint the Firefox package as addons.mozilla.org would
+        run: |
+          unpacked="$RUNNER_TEMP/hachidori-firefox"
+          python3 -m zipfile -e "$RUNNER_TEMP"/hachidori-release/*-firefox.zip "$unpacked"
+          HACHIDORI_FIREFOX_EXTENSION="$unpacked" node test/run.mjs firefox-lint
+
+  firefox:
+    name: firefox-e2e (Firefox ${{ matrix.firefox }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        firefox: [current, minimum]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.2'
+      - run: npm ci --prefix test/tooling
+      - name: Select the manifest-minimum Firefox build
+        if: matrix.firefox == 'minimum'
+        run: |
+          minimum="$(node -p "require('./test/tooling/package.json').config.minimumFirefox")"
+          echo "HACHIDORI_FIREFOX_BUILD=$minimum" >> "$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: test/tmp/browsers
+          key: firefox-${{ matrix.firefox }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('test/tooling/package.json') }}
+      - name: Install the pinned Firefox and Japanese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          node test/run.mjs install-firefox
+      - run: node test/run.mjs firefox-e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: firefox-${{ matrix.firefox }}-failure
+          path: |
+            test/tmp/ci/
+            /tmp/hachidori-firefox-profile-*
+          include-hidden-files: true
+          retention-days: 7
+
   chrome:
     name: ${{ matrix.suite }}
     runs-on: ubuntu-24.04

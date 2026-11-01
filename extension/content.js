@@ -123,7 +123,7 @@
   const rootLevel = createLevelState(0);
   const levels = [rootLevel];
   let nextLevelId = 0;
-  const themeHost = window.HDThemeHost.createThemeHost({
+  const themeHost = globalThis.HDThemeHost.createThemeHost({
     getOptions: () => options,
     onReady() {
       styleGeneration = -1;
@@ -374,21 +374,21 @@
   const NETFLIX_HOST = location.hostname === "www.netflix.com";
   function netflixMiningEnabled() {
     return NETFLIX_HOST && options.experimental.netflixMining === true
-      && typeof window.HDNetflix?.miningFields === "function";
+      && typeof globalThis.HDNetflix?.miningFields === "function";
   }
 
   // netflix-content.js cannot read the switch, so the reader tells it whether
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
   function syncNetflix() {
-    if (typeof window.HDNetflix?.setHoverPause !== "function") {
+    if (typeof globalThis.HDNetflix?.setHoverPause !== "function") {
       loadNetflix();
       return;
     }
     const enabled = !disposed && netflixMiningEnabled();
-    window.HDNetflix.setHoverPause(enabled);
-    window.HDNetflix.setLineAudio(enabled);
-    window.HDNetflix.setSubtitleDragging(enabled);
+    globalThis.HDNetflix.setHoverPause(enabled);
+    globalThis.HDNetflix.setLineAudio(enabled);
+    globalThis.HDNetflix.setSubtitleDragging(enabled);
   }
 
   // background.js registers netflix-content.js for Netflix pages that load
@@ -423,7 +423,7 @@
   function adoptWordStatusOverrides(value, changed) {
     if (!changed && wordStatusOverridesChanged) return;
     wordStatusOverridesChanged ||= changed;
-    wordStatusOverrides = window.HDWordStatusOverrides.wordStatusOverrideMap(value);
+    wordStatusOverrides = globalThis.HDWordStatusOverrides.wordStatusOverrideMap(value);
     wordHighlights?.setOverrides(wordStatusOverrides);
     wordStatusActions?.setOverrides(wordStatusOverrides);
   }
@@ -435,7 +435,7 @@
       return;
     }
     if (!wordHighlights) {
-      wordHighlights = window.HDWordHighlights.createWordHighlighter({
+      wordHighlights = globalThis.HDWordHighlights.createWordHighlighter({
         window,
         send: sendRequest,
         textBlocks,
@@ -1244,7 +1244,7 @@
   }
 
   function imageSourceContext() {
-    const next = window.HDReaderOptions.resolvePopupImageSources(options.popupImageSource, dictionaries, dictionaryGroups);
+    const next = globalThis.HDReaderOptions.resolvePopupImageSources(options.popupImageSource, dictionaries, dictionaryGroups);
     // Keep the effective route's identity through alias/name-only changes.
     // In-flight consumers capture it, independently of broad storage revisions.
     if (next !== popupImageSources && !sameDictionaries(next, popupImageSources)) popupImageSources = next;
@@ -1294,7 +1294,7 @@
         return;
       }
       if (reply.generation !== generation) throw new Error("obsolete dictionary styles");
-      window.HDGlossary.applyDictionaryStyles(
+      globalThis.HDGlossary.applyDictionaryStyles(
         document,
         shadow,
         generation,
@@ -1314,11 +1314,11 @@
   // one on-screen size, so its lengths are unzoomed pixels and page geometry is
   // converted into them before placement.
   function popupRect(rect) {
-    return window.HDPopup.scaleRect(rect, window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent));
+    return globalThis.HDPopup.scaleRect(rect, globalThis.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent));
   }
 
   function popupViewport() {
-    const factor = window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
+    const factor = globalThis.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
     return { width: window.innerWidth * factor, height: window.innerHeight * factor };
   }
 
@@ -1341,7 +1341,7 @@
   }
 
   function calculatePopupPosition(anchorRect, viewport, vertical, preferBelow = false) {
-    return window.HDPopup.calculatePopupPosition(anchorRect, sessionPopupSize ?? {
+    return globalThis.HDPopup.calculatePopupPosition(anchorRect, sessionPopupSize ?? {
       width: options.popupWidthPx, height: options.popupHeightPx,
     }, viewport, { gap: POPUP_GAP_PX, padding: POPUP_PADDING_PX, vertical, preferBelow });
   }
@@ -1538,7 +1538,7 @@
   }
 
   function positionToolbar(level, placement, reset = false) {
-    const desired = window.HDPopup.resolveToolbarPosition(options.popupToolbarPosition, placement,
+    const desired = globalThis.HDPopup.resolveToolbarPosition(options.popupToolbarPosition, placement,
       reset ? "top" : level.popup.dataset.toolbarPosition);
     if (level.popup.dataset.toolbarPosition !== desired) level.view.setToolbarPosition(desired);
   }
@@ -1647,7 +1647,7 @@
     if (!popupResize || event.pointerId !== popupResize.pointerId) return;
     if ((event.buttons & 1) === 0) { stopPopupResize(); return; }
     const drag = popupResize;
-    const factor = window.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
+    const factor = globalThis.HDPopup.popupCoordinateScale(pageZoom, options.popupScalePercent);
     sessionPopupSize = {
       width: Math.max(drag.minimum.width, drag.width + (event.clientX - drag.x) * factor),
       height: Math.max(drag.minimum.height, drag.height + (event.clientY - drag.y) * factor),
@@ -1770,13 +1770,13 @@
     shadow = host.attachShadow({ mode: options.customPopupJavascript ? "open" : "closed" });
 
     mountHost();
-    appearance = window.HDPopup.createPopupAppearance(host);
+    appearance = globalThis.HDPopup.createPopupAppearance(host);
     appearance.update(options);
-    customStyle = window.HDPopup.createCustomPopupStyle(shadow);
+    customStyle = globalThis.HDPopup.createCustomPopupStyle(shadow);
     customStyle.update(options.customPopupCss);
     themeHost.attach(shadow);
 
-    highlighter = window.HDPopup.createSourceHighlighter(
+    highlighter = globalThis.HDPopup.createSourceHighlighter(
       window,
       document,
       HIGHLIGHT_NAME,
@@ -1786,15 +1786,15 @@
   }
 
   function buildLevelUi(level) {
-    mining ??= window.HDAnki.createAnkiController({
+    mining ??= globalThis.HDAnki.createAnkiController({
       send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
-      recordNetflixLine: (cue, templateId, options) => window.HDNetflix.record(cue, {
+      recordNetflixLine: (cue, templateId, options) => globalThis.HDNetflix.record(cue, {
         send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId, ...options }),
     });
     mining.update(options, optionsStorageRevision >= 0);
-    audio ??= window.HDAudio.createAudioController({ window, popupRect,
+    audio ??= globalThis.HDAudio.createAudioController({ window, popupRect,
       send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
       // The chooser places itself inside its pane. Open, it is that pane's
       // interaction, so a child pane that would cover its choices closes.
@@ -1808,7 +1808,7 @@
       onSelectionChange: owner => mining.refresh(owner),
     });
     audio.update(options, optionsStorageRevision >= 0);
-    wordStatusActions ??= window.HDWordHighlights.createWordStatusActions({
+    wordStatusActions ??= globalThis.HDWordHighlights.createWordStatusActions({
       send: (type, fields) => sendRequest(type, fields, WORKER_TARGET),
     });
     wordStatusActions.update(options);
@@ -1870,7 +1870,7 @@
       (event) => onPopupMouseMove(event, level),
       { capture: true, passive: true }
     );
-    level.definitionReveal = window.HDPopup.createDefinitionReveal(popup, {
+    level.definitionReveal = globalThis.HDPopup.createDefinitionReveal(popup, {
       revealMode: () => options.definitionBlurReveal,
       blurred: () => definitionsBlurred(level),
       reveal: () => revealDefinitions(level.currentViewRequest, level),
@@ -1885,10 +1885,10 @@
         wordStatusActions.retire(level);
         level.noteEditing = false;
       },
-      appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
-      createPronunciationPitchAccent: window.HDGlossary.createPronunciationPitchAccent,
-      appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
-      appendStructuredImage: window.HDGlossary.appendStructuredImage,
+      appendExpressionRuby: globalThis.HDGlossary.appendExpressionRuby,
+      createPronunciationPitchAccent: globalThis.HDGlossary.createPronunciationPitchAccent,
+      appendTextOnlyGlossary: globalThis.HDGlossary.appendTextOnlyGlossary,
+      appendStructuredImage: globalThis.HDGlossary.appendStructuredImage,
       document,
       getPageZoom: () => pageZoom,
       getPopupScalePercent: () => options.popupScalePercent,
@@ -1925,14 +1925,14 @@
         && level.pendingCustomAppends === 0 && levels.length === level.depth + 1
         && requestCanRender(level.lookupToken, level.activeCandidate, level),
       canUpdateCompactSummary: () => requestCanRender(level.lookupToken, level.activeCandidate, level),
-      parseTagList: window.HDGlossary.parseTagList,
+      parseTagList: globalThis.HDGlossary.parseTagList,
       popup,
       positionPopup: () => positionPopup(level),
       queueMasonry: (layout) => queueMasonry(level, layout),
       cancelMasonry: (layout) => cancelMasonry(level, layout),
       sourceHighlighter: level.highlighter,
       sourceHighlightEnabled: options.sourceHighlightEnabled,
-      toolbarPosition: window.HDPopup.resolveToolbarPosition(options.popupToolbarPosition),
+      toolbarPosition: globalThis.HDPopup.resolveToolbarPosition(options.popupToolbarPosition),
       window,
     });
   }
@@ -1977,7 +1977,7 @@
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
         // Experimental Netflix mining: the root popup's pinned cue, and for the
         // root lookup the whole cue as its sentence.
-        ...(netflixMiningEnabled() ? window.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,
+        ...(netflixMiningEnabled() ? globalThis.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,
           level === rootLevel ? candidate : null) : {}),
       };
     } });
@@ -2252,7 +2252,7 @@
   function ensureUi() {
     if (!uiPromise) {
       uiPromise = (async () => {
-        if (!document.body || !window.HDPopup || !window.HDGlossary) {
+        if (!document.body || !globalThis.HDPopup || !globalThis.HDGlossary) {
           throw new Error("render modules or document body unavailable");
         }
         await themeHost.sync();
@@ -2278,7 +2278,7 @@
     // A Netflix subtitle line is pinned as the popup opens, so adding the note
     // after the line has gone still records that line.
     if (level === rootLevel && candidate.sourceDepth === -1 && netflixMiningEnabled()) {
-      candidate.netflixObservation ??= window.HDNetflix.observe(candidate.anchor);
+      candidate.netflixObservation ??= globalThis.HDNetflix.observe(candidate.anchor);
     }
     // The body may have been replaced, or the player may have entered fullscreen.
     mountHost();
@@ -2628,7 +2628,7 @@
 
   function openExternalLink({ url, active }) {
     if (hostCapabilities.externalLinkHost) {
-      void window.HDExternalLinkHost.open(window, { url, active }).catch((error) => {
+      void globalThis.HDExternalLinkHost.open(window, { url, active }).catch((error) => {
         console.debug("hachidori: overlay host could not open external link", error);
       });
       return;
@@ -2649,7 +2649,7 @@
       onInternalLink: (link) => onInternalLink(link, level),
       ...imageSourceContext(),
       ...compactSummaryOptions(),
-      ...window.HDPopup.metadataOptions(options),
+      ...globalThis.HDPopup.metadataOptions(options),
     };
   }
 
@@ -4196,7 +4196,7 @@
   // A presentation update can replace a compact summary without a render.
   function updateDictionaryPresentation() {
     const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      ...compactSummaryOptions(), ...imageSourceContext(), ...window.HDPopup.metadataOptions(options) };
+      ...compactSummaryOptions(), ...imageSourceContext(), ...globalThis.HDPopup.metadataOptions(options) };
     for (const level of levels) {
       if (!level.popup || level.popup.hidden) continue;
       level.view.updateDictionaryPresentation(context);
@@ -4287,7 +4287,7 @@
       || next.compactDefinitionSummaryCount !== options.compactDefinitionSummaryCount
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
     const imageSourceChanged = JSON.stringify(next.popupImageSource) !== JSON.stringify(options.popupImageSource);
-    const metadataChanged = Object.entries(window.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
+    const metadataChanged = Object.entries(globalThis.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
     const countsChanged = next.showLookupCounts !== options.showLookupCounts;

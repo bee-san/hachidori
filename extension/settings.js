@@ -9,7 +9,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { extensionApi as chrome } from "./browser-api.js";
+import { extensionApi as chrome, isFirefox } from "./browser-api.js";
 import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
@@ -208,6 +208,26 @@ function element(id) {
   return document.getElementById(id);
 }
 
+// Firefox names its own add-on pages, and grants userScripts only when asked.
+function configureFirefoxUi() {
+  element("browser-shortcuts-help").textContent = "Firefox runs these on any page. Popup actions need an open popup."
+    + " Change them in Firefox's add-on shortcuts.";
+  element("browser-shortcuts-open").textContent = "Change in Firefox";
+  const renderUserScripts = async () => {
+    const granted = await chrome.permissions.contains({ permissions: ["userScripts"] }).catch(() => false);
+    element("custom-javascript-allow-row").hidden = granted;
+    element("custom-javascript-permission").textContent = granted ? "Firefox lets Hachidori run user scripts."
+      : "Firefox asks before Hachidori can run user scripts. Allow them before using this.";
+  };
+  // Firefox prompts only for a request made while it handles the click.
+  element("custom-javascript-allow").addEventListener("click", () => {
+    void chrome.permissions.request({ permissions: ["userScripts"] }).catch(() => false).then(renderUserScripts);
+  });
+  chrome.permissions.onAdded.addListener(renderUserScripts);
+  chrome.permissions.onRemoved.addListener(renderUserScripts);
+  void renderUserScripts();
+}
+
 function configureBrowserUi() {
   if (!HOST_CAPABILITIES.customJavaScript) {
     const customJavascript = element("custom-javascript");
@@ -217,6 +237,7 @@ function configureBrowserUi() {
   // The search page opens from the browser's shortcuts and toolbar menu,
   // which an overlay host does not have.
   if (!HOST_CAPABILITIES.browserShortcuts) element("search-page-settings").hidden = true;
+  if (isFirefox(chrome)) configureFirefoxUi();
 }
 
 function sectionHasPendingWork(id) {
@@ -394,7 +415,9 @@ function updateKeybindSettings() {
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
     getBrowserCommands: () => chrome.commands.getAll(),
-    openBrowserShortcuts: () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }),
+    // Firefox opens its add-on shortcut manager itself; Chrome's is a page.
+    openBrowserShortcuts: () => (typeof chrome.commands.openShortcutSettings === "function"
+      ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
   });
   keybindController.render();
@@ -557,7 +580,7 @@ function updateBackupSettings() {
     document, send,
     download: typeof chrome.downloads?.download === "function"
       ? () => send("hd_backup_download", {}, WORKER_TARGET) : null,
-    browserName: "Chrome",
+    browserName: isFirefox(chrome) ? "Firefox" : "Chrome",
     listAutomatic: () => send("hd_backup_auto_list", {}, WORKER_TARGET),
     trackPreparation: trackBackupPreparation,
     cancelPreparation(token) {

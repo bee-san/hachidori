@@ -127,6 +127,12 @@ test("a missing grant, silence, a line that never played and an abandoned record
   assert.deepEqual(await createNetflixRecorder(ungranted.window).start({ targetTabId: 7, limitMs: 1000 }), { unavailable: "grant" });
   assert.equal(ungranted.record.constraints, null, "no stream is opened without a grant");
 
+  // Firefox has no tab capture for extensions.
+  const firefox = recorderWindow();
+  delete firefox.window.chrome.tabCapture;
+  assert.deepEqual(await createNetflixRecorder(firefox.window).start({ targetTabId: 7, limitMs: 1000 }), { unavailable: "unsupported" });
+  assert.equal(firefox.record.constraints, null, "no stream is opened without tab capture");
+
   const silent = recorderWindow();
   const recorder = createNetflixRecorder(silent.window);
   await recorder.start({ targetTabId: 7, limitMs: 1000 });

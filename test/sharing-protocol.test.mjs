@@ -37,6 +37,8 @@ test("a browser names itself by its brand", () => {
   assert.equal(browserName(brands()), "another browser");
   assert.equal(browserName({}), "another browser");
   assert.equal(browserName(undefined), "another browser");
+  // Firefox has no user-agent brands; its user agent names it.
+  assert.equal(browserName({ userAgent: "Mozilla/5.0 (X11; Linux x86_64; rv:159.0) Gecko/20100101 Firefox/159.0" }), "Firefox");
 });
 
 test("only host-owned plain-message requests forward; screenshots and blob imports stay local", () => {

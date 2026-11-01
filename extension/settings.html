@@ -1073,7 +1073,10 @@
                 <div id="custom-javascript">
                   <label class="field-label" for="opt-custom-popup-javascript">Custom JavaScript</label>
                   <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
-                  <p class="field-hint">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
+                  <p class="field-hint" id="custom-javascript-permission">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
+                  <div class="setting-row" id="custom-javascript-allow-row" hidden>
+                    <button id="custom-javascript-allow" type="button" class="ghost">Allow user scripts</button>
+                  </div>
                   <textarea id="opt-custom-popup-javascript" rows="8" spellcheck="false" autocapitalize="off"
                     aria-describedby="custom-javascript-warning custom-javascript-count"></textarea>
                   <div class="custom-css-footer">
@@ -1287,7 +1290,7 @@
           <fieldset class="lookup-group" id="browser-shortcuts">
             <legend>Browser shortcuts</legend>
             <p id="browser-shortcuts-overlay-help" class="section-note" hidden>Page and popup keybinds above still work. Electron does not expose Chrome’s browser shortcut manager.</p>
-            <p class="field-hint">Chrome runs these on any page. Popup actions need an open popup. Change them in Chrome's extension shortcuts.</p>
+            <p class="field-hint" id="browser-shortcuts-help">Chrome runs these on any page. Popup actions need an open popup. Change them in Chrome's extension shortcuts.</p>
             <ul id="browser-shortcut-list" class="browser-shortcut-list"></ul>
             <div class="setting-row">
               <button id="browser-shortcuts-open" type="button" class="ghost">Change in Chrome</button>

@@ -863,6 +863,7 @@ async function shareWithLinkedReader(storage) {
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
   window.extensionApi = window.chrome;
   window.selectExtensionApi = scope => scope.chrome ?? null;
+  window.isFirefox = () => false;
   window.OVERLAY_MODE = overlayMode;
   window.HOST_CAPABILITIES = {
 
@@ -891,7 +892,8 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   const searchSettings = readFileSync(resolve(EXTENSION, "settings-search.js"), "utf8").replace(/^export\s+/gmu, "");
   window.eval(`{ ${searchSettings}; window.createSettingsSearch = createSettingsSearch; }`);
   window.chrome.extension ??= { isAllowedFileSchemeAccess: async () => false };
-  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8").replace(/^export\s+/gmu, "");
+  const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   window.eval(readFileSync(resolve(EXTENSION, "blob-download.js"), "utf8").replace(/^export\s+/gmu, ""));
   const automaticBackups = readFileSync(resolve(EXTENSION, "backup-automatic.js"), "utf8")
     .replace(/^import .*\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -1101,6 +1103,7 @@ async function navigateSettingsSection(window, id) {
 
 function loadStartupScript(window) {
   window.canDiscoverSharingHost = canDiscoverSharingHost;
+  window.isFirefox = () => false;
   window.eval(readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, ""));
   window.eval(readFileSync(resolve(EXTENSION, "settings-dom.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, ""));
@@ -1118,7 +1121,7 @@ function loadStartupScript(window) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const localFileAccess = readFileSync(resolve(EXTENSION, "local-file-access.js"), "utf8")
-    .replace(/^export\s+/gmu, "");
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const practice = readFileSync(resolve(EXTENSION, "startup-practice.js"), "utf8")
     .replace(/import\s*\{[^}]+\}\s*from\s*"\.\/local-file-access\.js";\s*/u, "")
     .replace(/import "\.\/reader-options\.js";\s*/u, "")

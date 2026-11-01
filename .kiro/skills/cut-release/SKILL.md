@@ -84,6 +84,15 @@ Write them in the shape of the previous file (`docs/releases/<prev>.md`):
 **Full changelog:** https://github.com/bee-san/hachidori/compare/<prev>...<version>
 ```
 
+The Downloads section lists every asset. If the previous file's section has no
+Firefox ZIP (0.3.2 and earlier), add this bullet after the Chrome one, say
+"checksums for all three packages", and add Firefox 153 to the supported
+browsers:
+
+```
+- **`*-firefox.zip`**: for Firefox 153 or newer. It is not on addons.mozilla.org, so open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on…** and select the ZIP, or install it permanently in Firefox Developer Edition, Nightly or ESR as [the Firefox guide](https://github.com/bee-san/hachidori/blob/main/docs/firefox.md#install) describes.
+```
+
 Source the list from `git log --oneline <prev>..origin/main`. `main` is
 squash-merged, so each commit is `Title (#n)`. Cite the PR in every bullet.
 Say what changed for the reader, not in the code.
@@ -105,12 +114,17 @@ git add extension/manifest.json docs/releases/<version>.md
 git commit -m "release: prepare Hachidori <version>"
 python3 scripts/package-store.py --output-dir /tmp/hachidori-release-<version>
 ( cd /tmp/hachidori-release-<version> && sha256sum -c ./*-SHA256SUMS.txt )
-unzip -p /tmp/hachidori-release-<version>/*-chrome.zip manifest.json \
-  | node -p "JSON.parse(require('fs').readFileSync(0)).version"      # <version>
+for kind in chrome firefox; do
+  unzip -p /tmp/hachidori-release-<version>/*-$kind.zip manifest.json \
+    | node -p "JSON.parse(require('fs').readFileSync(0)).version"    # <version>, twice
+done
+mkdir /tmp/hachidori-release-<version>-firefox
+python3 -m zipfile -e /tmp/hachidori-release-<version>/*-firefox.zip /tmp/hachidori-release-<version>-firefox
+HACHIDORI_FIREFOX_EXTENSION=/tmp/hachidori-release-<version>-firefox node test/run.mjs firefox-lint   # 0 errors
 ```
 
 `package-store.py` reads committed objects only, so commit first. It produces
-`*-chrome.zip`, `*-source.zip` and `*-SHA256SUMS.txt`. If a runtime changed in
+`*-chrome.zip`, `*-firefox.zip`, `*-source.zip` and `*-SHA256SUMS.txt`. If a runtime changed in
 this release, also check that the packaged `vendor/hoshidicts*.wasm` files are
 byte-identical to the committed ones.
 
@@ -187,11 +201,13 @@ gh release view <version> --json assets,isDraft --jq '{isDraft,assets:[.assets[]
 gh release view <version> --json body --jq .body | diff - docs/releases/<version>.md   # GitHub adds one trailing blank line
 gh release download <version> --dir /tmp/hd-<version> && cd /tmp/hd-<version>
 sha256sum -c ./*-SHA256SUMS.txt
-unzip -p ./*-chrome.zip manifest.json | node -p "JSON.parse(require('fs').readFileSync(0)).version"   # <version>
+for kind in chrome firefox; do
+  unzip -p ./*-$kind.zip manifest.json | node -p "JSON.parse(require('fs').readFileSync(0)).version"   # <version>
+done
 ```
 
-Expect three assets named
-`hachidori-<version>-<12-char-sha>-{chrome.zip,source.zip,SHA256SUMS.txt}`,
+Expect four assets named
+`hachidori-<version>-<12-char-sha>-{chrome.zip,firefox.zip,source.zip,SHA256SUMS.txt}`,
 where the sha is the first 12 characters of `$RELEASE_COMMIT`, and
 `isDraft: false`.
 

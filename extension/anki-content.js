@@ -19,6 +19,7 @@
     unheard: "the line did not play through, so its audio was not recorded.",
     player: "Netflix's player controls were not found, so the line could not be replayed.",
     replay: "Netflix did not finish replaying the line.",
+    unsupported: "this browser does not let extensions record a tab.",
     linked: "this browser is linked to another Hachidori, so Netflix lines are not recorded.",
   };
   const netflixReason = reason => Object.hasOwn(NETFLIX_UNAVAILABLE, reason) ? NETFLIX_UNAVAILABLE[reason] : reason;

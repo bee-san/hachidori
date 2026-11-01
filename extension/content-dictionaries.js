@@ -104,7 +104,7 @@
         continue;
       }
       for (const entry of nativeEntries.filter((candidate) => candidate.dictionary === member.title)) {
-        append(window.HDPopup.kanjiEntryResult(character, entry));
+        append(globalThis.HDPopup.kanjiEntryResult(character, entry));
       }
     }
     return merged;
