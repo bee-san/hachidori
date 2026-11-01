@@ -17,7 +17,9 @@
 #include <filesystem>
 #include <fstream>
 #include <malloc.h>
+#include <map>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -36,11 +38,13 @@
 #endif
 #include <glaze/glaze.hpp>
 #include <hoshidicts.h>
+#include <hoshidicts/languages.hpp>
 
 // Not part of the engine's public headers; see the include path added for them
 // in CMakeLists.txt. hdw_import needs a Yomitan archive's declared title before
 // the importer turns it into a directory path, and the MDict header sniff to
 // know when there is no such archive.
+#include "languages/pack.hpp"
 #include "mdict/mdict_reader.hpp"
 #include "scan_index.hpp"
 #include "zip/zip.hpp"
@@ -200,13 +204,21 @@ std::string describe_current_exception() {
   }
 }
 
-// The engine keeps raw references between its parts (Lookup borrows both the
-// query and the deinflector), so the whole bundle lives or dies together and
+// The language packs (engine contract 10.4): the built-in Japanese pack and
+// those hdw_language_load adds. They live outside the Engine that hdw_reset
+// rebuilds, so a reload keeps them. Engine calls are serialised by the
+// extension's engine worker, so a pack is never added during a lookup.
+hoshidicts::LanguageRegistry& languages() {
+  static hoshidicts::LanguageRegistry registry = hoshidicts::LanguageRegistry::with_builtin();
+  return registry;
+}
+
+// The engine keeps raw references between its parts (Lookup borrows the
+// query and the registry), so the whole bundle lives or dies together and
 // hdw_reset rebuilds it wholesale.
 struct Engine {
   DictionaryQuery query;
-  Deinflector deinflector;
-  Lookup lookup{query, deinflector};
+  Lookup lookup{query, languages()};
   size_t dictionary_count = 0;
   std::vector<std::string> term_paths;
 };
@@ -383,6 +395,13 @@ struct WireOptions {
   // hover leaves out the personal dictionary's results while Use the personal
   // dictionary is off. A lookup ignores it, as it does any other key.
   std::string excludedDictionary;
+  // The language of the request, its ordered dictionary paths and the ids of
+  // the pack's optional processors, transforms and passes it enables (engine
+  // contract 9.7 and 10.4). Absent, the request is answered as before them:
+  // Japanese with every loaded dictionary. `"dictionaries": []` selects nothing.
+  std::optional<std::string> language;
+  std::optional<std::vector<std::string>> dictionaries;
+  std::vector<std::string> languageOptions;
 };
 
 LookupFrequencyOrder parse_frequency_order(std::string_view name) {
@@ -421,6 +440,11 @@ LookupOptions parse_options(const char* options_json, std::string* excluded_dict
   }
   options.frequency_order = parse_frequency_order(wire.frequencyOrder);
   options.metadata_only_terms = wire.metadataOnlyTerms;
+  if (wire.language.has_value()) {
+    options.language = std::move(*wire.language);
+  }
+  options.dictionaries = std::move(wire.dictionaries);
+  options.language_options = std::move(wire.languageOptions);
   if (excluded_dictionary != nullptr) {
     require_lookup_text_size(wire.excludedDictionary, "excludedDictionary");
     *excluded_dictionary = std::move(wire.excludedDictionary);
@@ -490,9 +514,13 @@ constexpr std::array FUNCTION_WORDS = std::to_array<std::string_view>({
     "だが", "ところが", "すると",
 });
 
-bool is_function_word(std::string_view surface, std::string_view headword) {
-  return std::ranges::find(FUNCTION_WORDS, surface) != std::ranges::end(FUNCTION_WORDS)
-         || std::ranges::find(FUNCTION_WORDS, headword) != std::ranges::end(FUNCTION_WORDS);
+// The words a language's segmenter may split around (engine contract 9.8):
+// Japanese's are the list above; another pack's are its `functionWords`.
+using FunctionWords = std::span<const std::string_view>;
+
+bool is_function_word(FunctionWords words, std::string_view surface, std::string_view headword) {
+  return std::ranges::find(words, surface) != std::ranges::end(words)
+         || std::ranges::find(words, headword) != std::ranges::end(words);
 }
 
 // The byte and UTF-16 offset of every code point boundary of a text.
@@ -739,13 +767,14 @@ std::vector<SplitStep> best_split(const SegmentLattice& lattice, size_t from, si
 }
 
 template <typename Word>
-Word segment_word(std::string_view text, const TextIndex& index, size_t position, const SegmentMatch& match) {
+Word segment_word(std::string_view text, const TextIndex& index, size_t position, const SegmentMatch& match,
+                  FunctionWords function_words) {
   const size_t stop = position + match.codepoints;
   const std::string_view surface = text.substr(index.bytes[position], index.bytes[stop] - index.bytes[position]);
   Word word;
   word.start = index.utf16[position];
   word.length = index.utf16[stop] - index.utf16[position];
-  word.functionWord = is_function_word(surface, match.candidates.front().expression);
+  word.functionWord = is_function_word(function_words, surface, match.candidates.front().expression);
   word.candidates = match.candidates;
   return word;
 }
@@ -754,7 +783,8 @@ Word segment_word(std::string_view text, const TextIndex& index, size_t position
 // covers all of them (今日は -> 今日 + は); empty when the span is one code
 // point or no gap-free shorter split exists.
 std::vector<WireSegmentWord> alternative_split(const SegmentLattice& lattice, std::string_view text,
-                                               const TextIndex& index, size_t position, size_t stop) {
+                                               const TextIndex& index, size_t position, size_t stop,
+                                               FunctionWords function_words) {
   std::vector<WireSegmentWord> alternative;
   if (stop - position <= 1) {
     return alternative;
@@ -765,14 +795,14 @@ std::vector<WireSegmentWord> alternative_split(const SegmentLattice& lattice, st
   }
   for (size_t part = position; part < stop;) {
     const SegmentMatch& word = lattice[part][*parts[part - position].match];
-    alternative.push_back(segment_word<WireSegmentWord>(text, index, part, word));
+    alternative.push_back(segment_word<WireSegmentWord>(text, index, part, word, function_words));
     part += word.codepoints;
   }
   return alternative;
 }
 
 WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_length, const LookupOptions& options,
-                            std::string_view excluded, LookupCopyBudget& budget) {
+                            std::string_view excluded, LookupCopyBudget& budget, FunctionWords function_words) {
   const TextIndex index = index_text(text);
   const SegmentLattice lattice = build_lattice(e, text, index, scan_length, options, excluded, budget);
   const std::vector<SplitStep> best = best_split(lattice, 0, index.codepoints());
@@ -785,12 +815,91 @@ WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_
     }
     const SegmentMatch& match = lattice[position][*chosen];
     const size_t stop = position + match.codepoints;
-    auto span = segment_word<WireSegmentSpan>(text, index, position, match);
-    span.alternative = alternative_split(lattice, text, index, position, stop);
+    auto span = segment_word<WireSegmentSpan>(text, index, position, match, function_words);
+    span.alternative = alternative_split(lattice, text, index, position, stop, function_words);
     response.spans.push_back(std::move(span));
     position = stop;
   }
   return response;
+}
+
+// `spaces` segmentation (engine contract 9.8): at each word start, a run of
+// the pack's text.pattern, the text is looked up; a span is the matched text
+// of the best result there, which may cover several words. A word that no
+// result covers is no span. Word starts follow text.wordCharacters, with
+// wordInternal characters inside a word between two word characters.
+std::u32string code_points(std::string_view text, const TextIndex& index) {
+  std::u32string out;
+  out.reserve(index.codepoints());
+  for (size_t i = 0; i < index.codepoints(); ++i) {
+    const auto* bytes = reinterpret_cast<const unsigned char*>(text.data() + index.bytes[i]);
+    const size_t width = index.bytes[i + 1] - index.bytes[i];
+    char32_t c = width == 1 ? bytes[0] : width == 2 ? bytes[0] & 0x1F : width == 3 ? bytes[0] & 0x0F : bytes[0] & 0x07;
+    for (size_t k = 1; k < width; ++k) c = (c << 6) | (bytes[k] & 0x3F);
+    out.push_back(c);
+  }
+  return out;
+}
+
+WireSegmentResponse segment_words(const Engine& e, const hoshidicts::lang::PackData& pack, std::string_view text,
+                                  size_t scan_length, const LookupOptions& options, std::string_view excluded,
+                                  LookupCopyBudget& budget, FunctionWords function_words) {
+  const TextIndex index = index_text(text);
+  const std::u32string cps = code_points(text, index);
+  const size_t count = cps.size();
+  const auto word_at = [&](size_t i) {
+    if (pack.word_characters.contains(cps[i])) return true;
+    return pack.word_internal.has_value() && pack.word_internal->contains(cps[i]) && i > 0 && i + 1 < count
+           && pack.word_characters.contains(cps[i - 1]) && pack.word_characters.contains(cps[i + 1]);
+  };
+  WireSegmentResponse response;
+  for (size_t position = 0; position < count;) {
+    if (!pack.text_pattern.contains(cps[position]) || (position > 0 && word_at(position - 1))) {
+      position += 1;
+      continue;
+    }
+    const std::string slice{text.substr(index.bytes[position])};
+    const LookupResult* best = nullptr;
+    const auto results = e.lookup.lookup(slice, INT_MAX, scan_length, options);
+    for (const auto& result : results) {
+      if (!excluded_result(result.term, excluded)) {
+        best = &result;
+        break;
+      }
+    }
+    if (best == nullptr) {
+      // The rest of this word: no span starts inside it.
+      position += 1;
+      while (position < count && word_at(position)) position += 1;
+      continue;
+    }
+    SegmentMatch match{.codepoints = matched_codepoints(index, position, *best)};
+    for (const auto& result : results) {
+      if (result.matched.size() == best->matched.size() && !excluded_result(result.term, excluded)) {
+        match.candidates.emplace_back(copy_lookup_string(result.term.expression, budget, "term expression"),
+                                      copy_lookup_string(result.term.reading, budget, "term reading"));
+      }
+    }
+    response.spans.push_back(segment_word<WireSegmentSpan>(text, index, position, match, function_words));
+    position += match.codepoints;
+  }
+  return response;
+}
+
+// What a language's pack says about segmentation, read from its descriptor
+// when hdw_language_load adds it: `text.segmentation` and the function
+// words. The built-in Japanese pack is `scan` with the list above.
+struct WireSegmentationText {
+  std::string segmentation;
+};
+struct WireSegmentationDescriptor {
+  std::string code;
+  WireSegmentationText text;
+};
+
+std::map<std::string, bool, std::less<>>& spaces_segmentation() {
+  static std::map<std::string, bool, std::less<>> spaces;
+  return spaces;
 }
 
 bool non_empty_file(const std::filesystem::path& path) {
@@ -1280,6 +1389,59 @@ WireImportReport staged_import(const std::string& zip_path, const std::string& o
 
 std::vector<uint8_t> g_media;
 
+// One character's kanji entries, from every loaded dictionary or from the
+// selection `dictionaries` names (engine contract 9.9).
+std::string kanji_json(std::string_view kanji, const std::optional<std::vector<std::string>>& dictionaries) {
+    WireKanji wire;
+    LookupCopyBudget budget;
+    if (!kanji.empty()) {
+      require_lookup_text_size(kanji, "kanji text");
+      KanjiResult result = dictionaries.has_value()
+          ? engine().query.query_kanji(std::string{kanji}, std::span<const std::string>{*dictionaries})
+          : engine().query.query_kanji(std::string{kanji});
+      wire.entries.reserve(result.entries.size());
+      for (const auto& entry : result.entries) {
+        WireKanjiEntry out_entry;
+        out_entry.dictionary = copy_lookup_string(entry.dict_name, budget, "kanji dictionary");
+        out_entry.onyomi = copy_lookup_string(entry.onyomi, budget, "kanji onyomi");
+        out_entry.kunyomi = copy_lookup_string(entry.kunyomi, budget, "kanji kunyomi");
+        out_entry.tags = copy_lookup_string(entry.tags, budget, "kanji tags");
+        out_entry.definitions.reserve(entry.definitions.size());
+        for (const auto& definition : entry.definitions) {
+          out_entry.definitions.push_back(copy_lookup_string(definition, budget, "kanji definition"));
+        }
+        out_entry.stats.reserve(entry.stats.size());
+        for (const auto& [name, value] : entry.stats) {
+          out_entry.stats.emplace_back(copy_lookup_string(name, budget, "kanji stat name"),
+                                       copy_lookup_string(value, budget, "kanji stat value"));
+        }
+        // stats arrive from an unordered_map; sort so the rendered order is stable.
+        std::ranges::sort(out_entry.stats, {}, &WireKanjiStat::name);
+        wire.entries.push_back(std::move(out_entry));
+      }
+      // Empty character is the contract's "nothing matched" sentinel. A
+      // frequency alone is not a kanji entry to show.
+      if (!wire.entries.empty()) {
+        wire.character = copy_lookup_string(result.character, budget, "kanji character");
+        wire.frequencies = convert_frequencies(result.frequencies, budget);
+      }
+    }
+    return lookup_json(wire, budget);
+}
+
+// Every deinflection of `text` in a language, for tests and diagnostics:
+// {"input", "results": [{"text", "conditions": [names], "trace": [transform ids]}]},
+// as hoshidicts-cli deinflect prints it (engine contract 10.3).
+struct WireDeinflection {
+  std::string text;
+  std::vector<std::string> conditions;
+  std::vector<std::string> trace;
+};
+struct WireDeinflections {
+  std::string input;
+  std::vector<WireDeinflection> results;
+};
+
 }  // namespace hdw
 
 using namespace hdw;
@@ -1538,7 +1700,20 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
       require_lookup_text_size(segment_text, "segment text");
       std::string excluded;
       const LookupOptions options = parse_options(options_json, &excluded);
-      response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget);
+      if (options.language == "ja") {
+        response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget,
+                           FunctionWords{FUNCTION_WORDS});
+      } else {
+        const auto pack = languages().find(options.language);
+        if (pack == nullptr) {
+          throw std::invalid_argument("unknown language " + options.language);
+        }
+        const auto& data = pack->data();
+        const std::vector<std::string_view> words(data.function_words.begin(), data.function_words.end());
+        response = spaces_segmentation().contains(options.language)
+            ? segment_words(engine(), data, segment_text, static_cast<size_t>(scan_length), options, excluded, budget, words)
+            : segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget, words);
+      }
     }
     out = lookup_json(response, budget);
   } catch (...) {
@@ -1553,43 +1728,92 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_kanji(const char* character) {
   clear_error();
 
   try {
-    WireKanji wire;
-    LookupCopyBudget budget;
-    const std::string_view kanji{character == nullptr ? "" : character};
-    if (!kanji.empty()) {
-      require_lookup_text_size(kanji, "kanji text");
-      KanjiResult result = engine().query.query_kanji(std::string{kanji});
-      wire.entries.reserve(result.entries.size());
-      for (const auto& entry : result.entries) {
-        WireKanjiEntry out_entry;
-        out_entry.dictionary = copy_lookup_string(entry.dict_name, budget, "kanji dictionary");
-        out_entry.onyomi = copy_lookup_string(entry.onyomi, budget, "kanji onyomi");
-        out_entry.kunyomi = copy_lookup_string(entry.kunyomi, budget, "kanji kunyomi");
-        out_entry.tags = copy_lookup_string(entry.tags, budget, "kanji tags");
-        out_entry.definitions.reserve(entry.definitions.size());
-        for (const auto& definition : entry.definitions) {
-          out_entry.definitions.push_back(copy_lookup_string(definition, budget, "kanji definition"));
-        }
-        out_entry.stats.reserve(entry.stats.size());
-        for (const auto& [name, value] : entry.stats) {
-          out_entry.stats.emplace_back(copy_lookup_string(name, budget, "kanji stat name"),
-                                       copy_lookup_string(value, budget, "kanji stat value"));
-        }
-        // stats arrive from an unordered_map; sort so the rendered order is stable.
-        std::ranges::sort(out_entry.stats, {}, &WireKanjiStat::name);
-        wire.entries.push_back(std::move(out_entry));
-      }
-      // Empty character is the contract's "nothing matched" sentinel. A
-      // frequency alone is not a kanji entry to show.
-      if (!wire.entries.empty()) {
-        wire.character = copy_lookup_string(result.character, budget, "kanji character");
-        wire.frequencies = convert_frequencies(result.frequencies, budget);
-      }
-    }
-    out = lookup_json(wire, budget);
+    out = kanji_json(character == nullptr ? "" : character, std::nullopt);
   } catch (...) {
     set_error(describe_current_exception());
     out = R"({"character":"","entries":[],"frequencies":[]})";
+  }
+  return out.c_str();
+}
+
+// hdw_kanji for a profile (engine contract 10.4): `options_json` may name the
+// `dictionaries` to read. Without them it is hdw_kanji.
+EMSCRIPTEN_KEEPALIVE const char* hdw_kanji_with_options(const char* character, const char* options_json) {
+  static std::string out;
+  clear_error();
+
+  try {
+    const LookupOptions options = parse_options(options_json);
+    out = kanji_json(character == nullptr ? "" : character, options.dictionaries);
+  } catch (...) {
+    set_error(describe_current_exception());
+    out = R"({"character":"","entries":[],"frequencies":[]})";
+  }
+  return out.c_str();
+}
+
+// Adds a language pack (engine contract 10.4): its language.json and the
+// transforms file it names, or "" when it names none. A pack with the code of
+// a loaded one replaces it. Returns 1, or 0 with hdw_last_error.
+EMSCRIPTEN_KEEPALIVE int hdw_language_load(const char* language_json, const char* transforms_json) {
+  clear_error();
+  try {
+    const std::string_view language{language_json == nullptr ? "" : language_json};
+    std::string error;
+    if (!languages().add(language, transforms_json == nullptr ? "" : transforms_json, &error)) {
+      set_error(error.empty() ? "the language pack could not be loaded" : error);
+      return 0;
+    }
+    // The descriptor parsed, so its code and text block are there.
+    WireSegmentationDescriptor descriptor;
+    if (!glz::read<glz::opts{.error_on_unknown_keys = false}>(descriptor, language)) {
+      if (descriptor.text.segmentation == "spaces") spaces_segmentation().insert_or_assign(descriptor.code, true);
+      else spaces_segmentation().erase(descriptor.code);
+    }
+    return 1;
+  } catch (...) {
+    set_error(describe_current_exception());
+    return 0;
+  }
+}
+
+// The codes of the loaded packs, sorted, as a JSON array.
+EMSCRIPTEN_KEEPALIVE const char* hdw_languages(void) {
+  static std::string out;
+  clear_error();
+  try {
+    out = to_json(languages().codes());
+  } catch (...) {
+    set_error(describe_current_exception());
+    out = "[]";
+  }
+  return out.c_str();
+}
+
+// hdw_deinflect's reply (WireDeinflections).
+EMSCRIPTEN_KEEPALIVE const char* hdw_deinflect(const char* text, const char* code) {
+  static std::string out;
+  clear_error();
+  try {
+    const std::string input{text == nullptr ? "" : text};
+    require_lookup_text_size(input, "deinflect text");
+    const auto pack = languages().find(code == nullptr ? "" : code);
+    if (pack == nullptr) {
+      throw std::invalid_argument("unknown language " + std::string{code == nullptr ? "" : code});
+    }
+    WireDeinflections wire{.input = input, .results = {}};
+    for (const auto& result : Deinflector(pack).deinflect(input)) {
+      WireDeinflection entry{.text = result.text, .conditions = {}, .trace = {}};
+      if (pack->data().transforms) {
+        for (const auto name : pack->data().transforms->condition_names(result.conditions)) entry.conditions.emplace_back(name);
+      }
+      for (const auto& step : result.trace) entry.trace.push_back(step.id);
+      wire.results.push_back(std::move(entry));
+    }
+    out = to_json(wire);
+  } catch (...) {
+    set_error(describe_current_exception());
+    out = R"({"input":"","results":[]})";
   }
   return out.c_str();
 }
