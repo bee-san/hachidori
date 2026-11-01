@@ -133,6 +133,30 @@
       if (shadow) ensureDictionaryStyles(currentGeneration);
     },
   });
+  // The stored options record, whose `profiles` say whether the records have
+  // profiles (docs/languages.md 4.5).
+  let storedOptionsRecord = null;
+  let renderLanguageCache = { key: null, language: null };
+
+  // The language a render is for (11.1): the profile its request names, else
+  // the Japanese profile, which a request without a profile always means
+  // (5.2). In the single-profile shape, or without the registry, it is the
+  // unmarked Japanese language, with which every theme renders today's markup.
+  function renderLanguage(request = null) {
+    const layer = globalThis.HDReaderOptions;
+    const registry = globalThis.HDLanguages;
+    const profileId = registry && layer.hasProfiles(storedOptionsRecord) ? request?.profileId ?? "ja" : null;
+    const profile = profileId ? layer.profileDescriptor(storedOptionsRecord, profileId) : null;
+    const key = profileId ? JSON.stringify([profileId, profile?.language ?? null, profile?.packSettings ?? null,
+      optionsStorageRevision, dictionaryStateRevision]) : "single-profile";
+    if (renderLanguageCache.key !== key) {
+      const descriptor = profile ? registry.get?.(profile.language) ?? null : null;
+      renderLanguageCache = { key, language: globalThis.HDThemeHost.createLanguage(descriptor, profileId ? {
+        marked: true, packSettings: profile?.packSettings ?? {}, dictionaries,
+      } : {}) };
+    }
+    return renderLanguageCache.language;
+  }
 
   function createLevelState(depth) {
     return {
@@ -1886,6 +1910,8 @@
         wordStatusActions.retire(level);
         level.noteEditing = false;
       },
+      // One-time work (font warm-up); each render carries its own (11.1).
+      language: renderLanguage(),
       appendExpressionRuby: globalThis.HDGlossary.appendExpressionRuby,
       createPronunciationPitchAccent: globalThis.HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: globalThis.HDGlossary.appendTextOnlyGlossary,
@@ -2649,6 +2675,7 @@
       dictionaryPresentation: dictionaryPresentation(),
       dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
+      language: renderLanguage(level.currentViewRequest),
       onExternalLink: openExternalLink,
       onInternalLink: (link) => onInternalLink(link, level),
       ...imageSourceContext(),
@@ -4319,6 +4346,7 @@
     }
     optionsStorageRevision = revision;
     options = next;
+    storedOptionsRecord = stored ?? null;
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
     syncNetflix();

@@ -11,9 +11,38 @@
   popup.className = "gsm-hoshidicts-popup";
   shadow.append(popup);
   const source = document.getElementById("preview-source");
-  const sourceOffset = source.textContent.indexOf("食べる");
-  const candidate = { query: "食べる", sentence: source.textContent, matchOffset: sourceOffset,
-    sourceElements: [source], sourceText: source.textContent, sourceOffset };
+  const dialogue = source.closest(".vn-dialogue");
+  const speaker = dialogue.querySelector(".vn-speaker");
+  // Today's Japanese scene; another language's comes from its pack's
+  // `host.sample.practice` (docs/languages.md 11.5).
+  const JAPANESE_SCENE = Object.freeze({ text: source.textContent, lookup: "食べる" });
+  const JAPANESE_SPEAKER = speaker.textContent;
+  let candidate;
+  function setScene(scene, sceneLanguage) {
+    if (source.textContent !== scene.text) source.textContent = scene.text;
+    const other = sceneLanguage && sceneLanguage.code !== "ja";
+    const speakerText = other ? "" : JAPANESE_SPEAKER;
+    if (speaker.textContent !== speakerText) speaker.textContent = speakerText;
+    speaker.hidden = Boolean(other);
+    dialogue.lang = other ? sceneLanguage.bcp47 : "ja";
+    if (other && sceneLanguage.direction === "rtl") dialogue.dir = "rtl";
+    else dialogue.removeAttribute("dir");
+    const typography = other ? sceneLanguage.typography : null;
+    dialogue.style.fontFamily = typography?.fontFamily ?? "";
+    dialogue.style.lineBreak = other ? typography.lineBreak ?? "auto" : "";
+    dialogue.style.wordBreak = typography?.wordBreak ?? "";
+    if (!dialogue.getAttribute("style")) dialogue.removeAttribute("style");
+    const sourceOffset = Math.max(0, scene.text.indexOf(scene.lookup));
+    candidate = { query: scene.lookup, sentence: scene.text, matchOffset: sourceOffset,
+      sourceElements: [source], sourceText: scene.text, sourceOffset };
+  }
+  setScene(JAPANESE_SCENE, null);
+  // The edited profile's language (11.1), unmarked Japanese before the records
+  // have profiles, and its pack's samples once fetched.
+  let language = HDThemeHost.createLanguage();
+  let languageKey = null;
+  let packSample = null;
+  const packSamples = new Map();
   let options = { ...HDReaderOptions.DEFAULT_OPTIONS };
   let state;
   let sample;
@@ -91,7 +120,7 @@
     if (popup.dataset.toolbarPosition !== edge) view.setToolbarPosition(edge);
   }
 
-  const view = themeHost.createView({ document, window, popup,
+  const view = themeHost.createView({ document, window, popup, language,
     sourceHighlighter: HDPopup.createSourceHighlighter(window, document, "gsm-hoshidicts-match", shadow),
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
     createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
@@ -175,35 +204,66 @@
     const verbTags = [sampleTag("v1", "partOfSpeech", 0, "Ichidan verb"), sampleTag("vt", "default", 0, "")];
     const glossary = (dictionary, items, tags = verbTags) => ({ dictionary, glossary: JSON.stringify(items),
       definitionTags: tags.map(tag => tag.name).join(" "), termTags: "common", tags });
-    const results = [{ matched: "食べる", deinflected: "食べる", trace: [], preprocessorSteps: 0,
-      term: { expression: "食べる", reading: "たべる", rules: "v1", score: 0,
+    const entry = language.code !== "ja" ? packSample?.entry ?? null : null;
+    const results = entry ? languageSampleResults(entry, { first, second, installedFrequencies, sampleTag, glossary })
+      : [{ matched: "食べる", deinflected: "食べる", trace: [], preprocessorSteps: 0,
+        term: { expression: "食べる", reading: "たべる", rules: "v1", score: 0,
+          glossaries: [
+            glossary(first, ["to eat", "to live on (e.g. a salary)", "to have a meal"], [...verbTags,
+              sampleTag("priority\u00a0form", "frequent", 1, "high priority spelling or reading of this term"),
+              sampleTag("★", "popular", 2, "high priority entry")]),
+            glossary(second, [{ type: "structured-content", content: [
+              { tag: "p", content: "朝ごはんを食べる。 — To eat breakfast." },
+              { tag: "img", path: "sample-meal.svg", width: 160, height: 80, title: "A bowl of rice and chopsticks" },
+              { tag: "details", content: [{ tag: "summary", content: "Usage note" },
+                { tag: "p", content: "食べる is an ichidan verb. Its polite form is 食べます。" }] },
+            ] }], [sampleTag("rarely\u00a0used\u00a0form", "archaism", 0, "rarely used form of this term"),
+              sampleTag("special\u00a0reading", "expression", 1, "an idiomatic reading of a kanji compound")]),
+            glossary("Sample collocations", ["ご飯を食べる — to eat a meal", "外で食べる — to eat out"]),
+            glossary("Sample expressions", ["食べてみる — to try a food", "食べ終わる — to finish eating"]),
+          ],
+          frequencies: [
+            { dictionary: "Sample ranks", frequencies: [{ value: 120, displayValue: "120" }, { value: 240, displayValue: "240" }] },
+            { dictionary: "Sample corpus", frequencies: [{ value: 18240, displayValue: "18,240" }] },
+            ...installedFrequencies,
+          ],
+          // The engine's shape for Yomitan's string form: the pattern beside a
+          // placeholder position of 0.
+          pitches: [{ dictionary: pitch, pitches: [{ position: 0, pattern: "LHL", nasal: [], devoice: [] }], transcriptions: ["ta̠be̞ɾɯ̟ᵝ"] }],
+        } }];
+    return { results, dictionaryPresentation: [
+      { title: "Sample ranks", frequencyMode: "rank-based", frequencyCount: 2 },
+      { title: "Sample corpus", frequencyMode: "occurrence-based", frequencyCount: 1 }, ...enabled,
+    ] };
+  }
+
+  // Core's scaffolding (a second dictionary, frequencies, tags, an image and
+  // structured content) around the pack's `host.sample.entry` (11.5).
+  function languageSampleResults(entry, { first, second, installedFrequencies, sampleTag, glossary }) {
+    const tags = String(entry.definitionTags || "").split(" ").filter(Boolean)
+      .map((name, index) => sampleTag(name, "partOfSpeech", index, ""));
+    const glosses = Array.isArray(entry.glossary) ? entry.glossary : [String(entry.glossary ?? "")];
+    const practice = packSample?.practice?.text ?? entry.expression;
+    return [{ matched: entry.matched || entry.expression, deinflected: entry.expression,
+      trace: (entry.trace ?? []).map(name => ({ name: String(name), description: "" })), preprocessorSteps: 0,
+      term: { expression: entry.expression, reading: entry.reading ?? entry.expression, rules: entry.definitionTags ?? "", score: 0,
         glossaries: [
-          glossary(first, ["to eat", "to live on (e.g. a salary)", "to have a meal"], [...verbTags,
-            sampleTag("priority\u00a0form", "frequent", 1, "high priority spelling or reading of this term"),
-            sampleTag("★", "popular", 2, "high priority entry")]),
+          glossary(first, glosses, tags),
           glossary(second, [{ type: "structured-content", content: [
-            { tag: "p", content: "朝ごはんを食べる。 — To eat breakfast." },
+            { tag: "p", content: practice },
             { tag: "img", path: "sample-meal.svg", width: 160, height: 80, title: "A bowl of rice and chopsticks" },
-            { tag: "details", content: [{ tag: "summary", content: "Usage note" },
-              { tag: "p", content: "食べる is an ichidan verb. Its polite form is 食べます。" }] },
-          ] }], [sampleTag("rarely\u00a0used\u00a0form", "archaism", 0, "rarely used form of this term"),
-            sampleTag("special\u00a0reading", "expression", 1, "an idiomatic reading of a kanji compound")]),
-          glossary("Sample collocations", ["ご飯を食べる — to eat a meal", "外で食べる — to eat out"]),
-          glossary("Sample expressions", ["食べてみる — to try a food", "食べ終わる — to finish eating"]),
+            { tag: "details", content: [{ tag: "summary", content: "Usage note" }, { tag: "p", content: `${entry.expression}: ${glosses[0] ?? ""}` }] },
+          ] }], []),
+          glossary("Sample collocations", [`${entry.expression} — ${glosses[0] ?? ""}`], []),
+          glossary("Sample expressions", [`${entry.matched || entry.expression} — ${glosses.at(-1) ?? ""}`], []),
         ],
         frequencies: [
           { dictionary: "Sample ranks", frequencies: [{ value: 120, displayValue: "120" }, { value: 240, displayValue: "240" }] },
           { dictionary: "Sample corpus", frequencies: [{ value: 18240, displayValue: "18,240" }] },
           ...installedFrequencies,
         ],
-        // The engine's shape for Yomitan's string form: the pattern beside a
-        // placeholder position of 0.
-        pitches: [{ dictionary: pitch, pitches: [{ position: 0, pattern: "LHL", nasal: [], devoice: [] }], transcriptions: ["ta̠be̞ɾɯ̟ᵝ"] }],
+        pitches: [],
       } }];
-    return { results, dictionaryPresentation: [
-      { title: "Sample ranks", frequencyMode: "rank-based", frequencyCount: 2 },
-      { title: "Sample corpus", frequencyMode: "occurrence-based", frequencyCount: 1 }, ...enabled,
-    ] };
   }
 
   function context() {
@@ -218,6 +278,7 @@
       );
     }
     return { ...HDPopup.metadataOptions(options),
+      language,
       definitionBlurState: sampleBlurState(),
       showCompactDefinitionSummary: options.showCompactDefinitionSummary,
       compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
@@ -244,14 +305,17 @@
         renderSample();
         popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
       } };
-      const nativeSample = (dictionary) => ({ dictionary, onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用",
-        definitions: ["eat", "food"], stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }] });
+      const languageCharacter = language.code !== "ja" ? packSample?.character ?? null : null;
+      const nativeSample = (dictionary) => languageCharacter ? { ...languageCharacter, dictionary }
+        : { dictionary, onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用",
+          definitions: ["eat", "food"], stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }] };
       if (capability?.kind === "term" || capability?.kind === "group") {
         // A group compares its members: one card each, in group order, with a tab per member.
         const members = capability.kind === "group" ? capability.members : [capability];
         view.renderResults([{ matched: kanjiCharacter, deinflected: kanjiCharacter, trace: [], preprocessorSteps: 0, term: {
-          expression: kanjiCharacter, reading: "しょく", rules: "", score: 0, glossaries: members.map(member => member.kind === "kanji"
-            ? HDPopup.kanjiEntryResult(kanjiCharacter, nativeSample(member.title)).term.glossaries[0]
+          expression: kanjiCharacter, reading: language.code === "ja" ? "しょく" : kanjiCharacter, rules: "", score: 0,
+          glossaries: members.map(member => member.kind === "kanji"
+            ? HDPopup.characterEntryResult(kanjiCharacter, nativeSample(member.title), language).term.glossaries[0]
             : { dictionary: member.title, glossary: JSON.stringify(["food; eating — sample single-kanji entry"]),
               definitionTags: "", termTags: "" }), frequencies: [], pitches: [],
         } }], candidate, capability.kind === "group"
@@ -279,7 +343,40 @@
     definitionReveal.sync();
   }
 
-  window.HDDesignPreview = { update(nextOptions, nextState) {
+  // The pack's `host.sample` (entry, practice, character) for languages other
+  // than Japanese, which stays in its language.json (docs/languages.md 9.1).
+  function loadPackSample(code) {
+    packSamples.set(code, null);
+    void fetch(new URL(`vendor/languages/${code}/language.json`, document.baseURI))
+      .then(response => response.ok ? response.json() : null)
+      .then(pack => {
+        const loaded = pack?.host?.sample ?? null;
+        packSamples.set(code, loaded);
+        if (!loaded || language.code !== code || !lastUpdate) return;
+        packSample = loaded;
+        if (loaded.practice) setScene(loaded.practice, language);
+        updateKey = null;
+        window.HDDesignPreview.update(...lastUpdate);
+      })
+      .catch(error => console.debug("hachidori: preview language sample could not be read", error));
+  }
+
+  let lastUpdate = null;
+  // `profile` is the edited profile (`{ language, packSettings }`) once the
+  // records have profiles; without one the preview is today's Japanese one.
+  window.HDDesignPreview = { update(nextOptions, nextState, profile = null) {
+    lastUpdate = [nextOptions, nextState, profile];
+    const nextLanguageKey = JSON.stringify(profile ? [profile.language, profile.packSettings ?? {}, nextState.revision] : null);
+    if (nextLanguageKey !== languageKey) {
+      languageKey = nextLanguageKey;
+      language = profile ? HDThemeHost.createLanguage(globalThis.HDLanguages?.get?.(profile.language) ?? null,
+        { marked: true, packSettings: profile.packSettings ?? {}, dictionaries: nextState.dictionaries })
+        : HDThemeHost.createLanguage();
+      packSample = language.code === "ja" ? null : packSamples.get(language.code) ?? null;
+      setScene(packSample?.practice ?? JAPANESE_SCENE, language);
+      kanjiCharacter = null;
+      if (language.code !== "ja" && !packSamples.has(language.code)) loadPackSample(language.code);
+    }
     const themeChanged = HDReaderOptions.popupRenderer(options.popupTheme) !== HDReaderOptions.popupRenderer(nextOptions.popupTheme);
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
@@ -313,7 +410,8 @@
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.popupTheme,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
-      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision]);
+      nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision,
+      ...(languageKey === "null" ? [] : [languageKey, packSample !== null])]);
     if (key === updateKey) return;
     updateKey = key;
     state = nextState;
