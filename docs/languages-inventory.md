@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Appendix: language inventory
 
-Phase 0 of the multi-language design ([languages.md](languages.md)). Seven
+Phase 0 of the multi-language design ([languages.md](languages.md)), updated
+for revision 2 of the design. Seven
 readers went through the code at `main` b1964358 (hoshidicts 35e2dab) and
 recorded every setting, popup feature and theme hook with the language
 assumption it makes, citing file and line. This appendix condenses those
@@ -65,11 +66,11 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `definitionBlurReveal` (timed) | Reading → Definition blur | None | P |
 | `definitionBlurDelayMs` (5000) | Reading → Definition blur | None | P |
 | `wordHighlightEnabled` (false) | Reading → Word highlighting | Japanese segmentation (`hdw_segment`, 103 function words); hint "Mark the Japanese words" | P; requires `wordHighlighting`, neutral false |
-| `wordHighlightUnknown` (true) | Reading → Word highlighting | None | P |
-| `wordHighlightLearning` (true) | Reading → Word highlighting | None | P |
-| `wordHighlightKnown` (false) | Reading → Word highlighting | None | P |
-| `wordHighlightIgnored` (false) | Reading → Word highlighting | None | P |
-| `wordHighlightStyle` (underline) | Reading → Word highlighting | None | P |
+| `wordHighlightUnknown` (true) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral true |
+| `wordHighlightLearning` (true) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral true |
+| `wordHighlightKnown` (false) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral false |
+| `wordHighlightIgnored` (false) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral false |
+| `wordHighlightStyle` (underline) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral underline |
 | `showCompactDefinitionSummary` (false) | Design (Default) | Sanseido/Jitendex heuristics; letter class is Latin/kana/Han only (popup.js:163-164) | P; letter class extended with the pack's script |
 | `compactDefinitionSummaryCount` (3) | Design | None | P |
 | `compactDefinitionSummaryDictionary` ("") | Design | Title reference; first install picks Jitendex | P |
@@ -81,7 +82,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `compactFrequencyNumbers` (false) | Design | English k/m/b, ASCII digits | P |
 | `showPitchAccentFurigana` (true) | Design → Show pitch on the reading | Japanese mora pitch | P; requires `pitchAccent`, neutral false |
 | `pitchAccentFuriganaDictionary` ("") | Design → Pitch accent dictionary | Title reference | P; requires `pitchAccent`, neutral "" |
-| `pitchAccentFuriganaStyle` (contour) | Design → Reading pitch style | Mora contour/overline | P; requires `pitchAccent`, inert |
+| `pitchAccentFuriganaStyle` (contour) | Design → Reading pitch style | Mora contour/overline | P; requires `pitchAccent`, neutral contour |
 | `showPitchAccentBadge` (true) | Design | Pitch groups | P; requires `pitchAccent`, neutral false |
 | `showPitchAccentDictionaryNames` (true) | Design | Pitch groups (IPA rows always name their dictionary) | P; requires `pitchAccent`, neutral false |
 | `showPitchAccentText` (true) | Design | Downstep text over kana | P; requires `pitchAccent`, neutral false |
@@ -99,7 +100,8 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `dictionaryIndexStorage` (auto) | Advanced → Memory | None | G |
 | `showToolbarSearchButton` (true) | Reading → Search page | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
-| new `activeProfileId`, `profileAutoSwitch`, `profiles` | Languages section, toolbar | — | G structure (4.1) |
+| new `profiles` (not an option key) | Settings Language menu and dialog | — | structure of `options` (4.1) |
+| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Settings **Use for lookups**, Reading → Scanning | — | installation-local key (4.4) |
 
 Retired keys (`modifier`, `definitionBlurEnabled`, `hoverDelayMs`,
 `experimental.smallerAnkiCards`) keep their migrations and are read from the
@@ -112,18 +114,24 @@ top level of a single-profile record.
 | `options` record, one `revision` | background-core.js:46, 310-327 | One flat record | Gains profiles; flat projection (4.1, 5) |
 | `dictionaryState` schema 1: one ordered array, `enabled` per row, `groups` | background-core.js:44, 253-279 | One order, one enabled set | Schema 2 with per-profile lists and groups (4.2) |
 | Package `language` from `index.json` `sourceLanguage` | engine-service.js:976 | The only language datum; used by frequency direction and the custom-dictionary check | K; import hint (14) |
+| Package `targetLanguage` (not stored today) | importer keeps it in `index.json` | — | K, stored in schema-2 rows; glossary direction and `lang`, child-popup profile (4.2, 8.1, 10.2) |
 | Package `pitchCount` includes IPA rows | engine-service.js:980 | Pitch and IPA counted together | Unchanged; IPA shown in every language |
 | Package `kanjiCount`, library badge "Kanji" | engine-service.js:981, library-settings.js:562-566 | Character bank named kanji | Badge label from pack `characterView.name` |
 | `id = stableDictionaryId(title)`, unique titles | engine-service.js:967; backup-state.js:42-49 | One title namespace | Kept global (decision 0001) |
 | `customDictionarySource`, fixed id/title, `language === "ja"` check | custom-dictionary.js:10-21, 308-317 | Personal dictionary is Japanese | L; one per language (15) |
 | `lookupStats` rows `[term, reading]`, NFC | lookup-stats.js:5-33; lookup-stats-identity.js | No language key | L; non-Japanese rows add the code (4.3) |
 | `wordStatusOverrides` known/ignored headwords | word-status-overrides.js:17 | No language key | L (4.3) |
-| `ankiDuplicateIndex` keyed by first Template | anki-index-cache.js:4 | One Template list | One snapshot per source key (12) |
+| `ankiDuplicateIndex`: one `snapshot` and one `attempt`, for the first Template's source | anki-index-cache.js:28-57, 180, 226, 366-390 | One Template list | Today's record with one source; one snapshot per source key with several (4.3, 12) |
+| new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |
 | `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; non-Japanese first run records no catalogue outcome (16) |
 | `automaticBackups`, `sharing`, `sharingLocalState`, `sharingOptionsVersion`, session `backupDownloads`, IndexedDB debug log | backup-automatic.js, background-sharing.js, debug-log.js | None except redaction | G |
 | `OVERLAY_LOCAL_OPTION_KEYS` (includes `onlyScanJapaneseText`) | setup-state.js:46-51 | Partition precedent | Applied over the active profile's projection (17.4) |
 | `hd_options_write`, `hd_state_cas`, `hd_apply_state`, `hd_custom_*`, `hd_lookup_stats_*`, `hd_word_status_override` | background-requests.js | No profile dimension | Optional `profileId` (5.2) |
-| `hd_lookup`, `hd_lookup_dictionary`, `hd_segment`, `hd_kanji` | content.js termPayload; engine-service.js | Japanese pipeline | Optional `profileId` → language and dictionaries (9.3) |
+| `hd_lookup`, `hd_lookup_dictionary`, `hd_segment`, `hd_kanji` | content.js termPayload; engine-service.js; option-settings.js:270-272 (direction probe); startup.js:710-714 (practice probe) | Japanese pipeline | `profileId` → language and dictionaries (5.4, 9.3) |
+| `hd_audio_play`, `hd_audio_candidates` | background.js:292-311 | Reads the one `audioSources` | `profileId` (5.4) |
+| Every `hd_anki_*` request (status, view, preflight, batch preflight, submit, browse, fields, maturity, word status); Relay API card formats | anki-worker.js:79-92, 177-191, 442-461; background-anki.js:193-201; api-host.js:334-339 | First Template of the one list | `profileId`; Relay `profileIndex` 0 = Japanese (5.4, 12) |
+| `hd_lookup_stats_record`, `hd_lookup_stats_read`, `hd_word_status_override`, `hd_custom_read/cas/save/append`, `hd_import` | background-requests.js:92-167, 344-437; engine-service.js | No profile or language | `profileId` (5.4) |
+| Writers that rebuild `options` through `projectStoredOptions` | background-core.js:267, 321; background-requests.js:597-642; background-sharing.js:177-193, 354-364; background-backup.js:65; backup-state.js:26-36, 123-136 | Flat record | `applyOptionsPatch` on the unmasked record (5.2) |
 | Backup archive version 3, six snapshot keys | backup-archive.js:7; docs/backup-format.md | No profiles | Version 3 unchanged for single-profile installs; version 4 with profiles (17.1) |
 | Sharing `SHARED_STATE_KEYS`, `hello` capabilities, protocol 1 | background-sharing.js:33-56; sharing-protocol.js | One profile | Capability `language-profiles-v1`; projection for older clients (17.3) |
 | Debug-log redaction `[\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Han}]+ → [ja]` | debug-log.js:44, 84; settings.html:1475 | Only Japanese redacted | Adds non-Latin packs' patterns (8.5) |
@@ -167,9 +175,9 @@ top level of a single-profile record.
 | `glossaryToPlainText`: `[reading]` furigana brackets, `•`/`1.` markers, ASCII pill spacing | glossary.js:1967-2049 | Japanese typography | Unchanged for Japanese; pills spaced for any script in other packs |
 | `designSettings` declarations, `data-design-setting` tags, `applyDesignSettings` | index.json; settings.html; settings.js | Theme filter only | Theme filter ∧ capability (11.5) |
 | Plain: `text-align: left`, `sans-serif` | plain/theme.css | LTR | `text-align: start`; declares both directions |
-| Nazeka: `/\p{Script=Han}/u` links, `《》` readings, `aria-label "${expression}, ${reading}"`, `～` trail, Noto JP font, `float: right` | nazeka/theme.js:73-84; theme.css | Japanese | Pack pattern and labels (11.6) |
-| JL and Bee: `HAN = /\p{Script=Han}/u`, JMdict `WORD_CLASS` brackets, `～` trail with `→`, mora pitch marker, `On:`/`Kun:` with `、`, Meiryo, `text-spacing-trim` | jl/theme.js:7, 89-108; theme.css:100-117 | Japanese | Pack pattern and labels; `text-align: start` |
-| Crystal (Grey, Beige, Retro blue): `HAN`, `CIRCLED` senses, font warm-up `"食べる たべる Aa"`, `:lang(ja)` mincho, `～` trail, mora marker, `On`/`Kun`, small-caps letter-spacing, asymmetric plaque art | crystal/theme.js:7, 121-145; theme.css:123-141 | Japanese; letter-spacing breaks Arabic joins | Pack pattern and labels; plaque spacing dropped for RTL profiles |
+| Nazeka: `/\p{Script=Han}/u` links, `《》` readings, `aria-label "${expression}, ${reading}"`, `～` trail, Noto JP font, `float: right`, sentence excerpt cut by UTF-16 units next to Close/Back | nazeka/theme.js:64-84, 110-111; theme.css | Japanese | `isCharacterLink` (Japanese keeps `\p{Script=Han}`), pack labels, `readingFor`, `sliceText` (11.6) |
+| JL and Bee: `HAN = /\p{Script=Han}/u`, JMdict `WORD_CLASS` brackets, `～` trail with `→`, mora pitch marker drawn on the spelling when there is no reading (`paintPitch` overwrites the text), `On:`/`Kun:` with `、`, `; ` sense joins, `name: value` frequency runs, Meiryo, `text-spacing-trim` | jl/theme.js:7, 155-157, 304, 318, 333-341, 362-380, 514-529; theme.css:11, 70, 100-117 | Japanese | `isCharacterLink` (Japanese keeps `\p{Script=Han}`), pitch marker only with `pitchAccent`, pack labels, `nameAttributes`; `text-align: start` (11.6) |
+| Crystal (Grey, Beige, Retro blue): `HAN`, `CIRCLED` senses, module-level font warm-up `"食べる たべる Aa"`, `:lang(ja)` mincho, `～` trail, mora marker overwriting the spelling, `On`/`Kun` with `、`, small-caps letter-spacing on plaques, tabs (0.07em), frequency names (0.03em) and kanji labels (0.06em), asymmetric plaque art | crystal/theme.js:7, 23-31, 355, 374, 407-412, 558-568; theme.css:79-80, 218, 261-262, 290, 429, 473 | Japanese; letter-spacing opens gaps in joined Arabic in Chrome 128 | As JL; letter-spacing dropped for `joinedScript` languages; warm-up of the pack sample in `createView` (11.6) |
 | Icons (speaker, open, edit) not mirrored; Theme Store carousel `scrollLeft` | icons.css; theme-store.js | LTR interface | Unchanged: the interface stays LTR |
 | Tests: `theme-renderer.test.mjs`, `popup-theme.test.mjs`, `autumn-theme.test.mjs`, `chrome-theme-store.mjs`, `chrome-theme-contrast.mjs` | test/ | Japanese fixtures only; contrast suite skips renderer themes | Unchanged; new `theme-languages.test.mjs`, `chrome-languages.mjs` (11.7) |
 
@@ -204,7 +212,7 @@ top level of a single-profile record.
 | `rt`/`rp` opaque | content-scan.js `OPAQUE_TAGS` | Ruby | Unchanged |
 | Text-field and Google Docs imposters | content-scan.js; google-docs.js | Docs imposter has no direction | Docs gains direction; field clipping is a known limit |
 | `SENTENCE_SCAN_EXTENT = 200`, `TERMINATORS`, `PAIRS` | sentence.js:14-23 | Japanese and ASCII punctuation | Pack `text.sentence` |
-| Word highlighting: `isJapanese`, `textBlocks`, `SENTENCE_END`, `CLAUSE_END`, `readingCandidates` (kana surface borrows status), function words | word-highlights.js:39-40; content.js | Japanese segmentation | `wordHighlighting` capability; pack tables (8.5) |
+| Word highlighting: `isJapanese`, `textBlocks`, `SENTENCE_END` (`。．！？!?…‥`), `CLAUSE_END` (`、，,` space, ideographic space), `readingCandidates` (kana surface borrows status), function words | word-highlights.js:39-40; content.js | Japanese segmentation; chunk breaks differ from sentence.js's terminators | `wordHighlighting` capability; pack `text.highlightBreaks` with today's tables for Japanese (8.4) |
 | Search page: `lang="ja"`, leading punctuation and `～` skipped, no kana conversion | search.html; search.js | Japanese query | Profile `lang`/`dir`; punctuation rule kept |
 | Selection lookups, exact match | content.js | None | Unchanged |
 | Child popups over definitions | content-scan.js `resolveDefinitionCandidate` | Gloss text read as the profile language | Parent's profile; automatic switching may pick the gloss language (8.1) |

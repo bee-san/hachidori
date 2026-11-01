@@ -1,35 +1,43 @@
-# 0005: Theme fallbacks are a direction stylesheet and graceful omission, not a switch to Default
+# 0005: Fallbacks for undeclared themes act on the contract's content hooks only
 
-Status: proposed (multi-language design, Phase 1)
+Status: proposed (multi-language design, Phase 1, revision 2)
 
 ## Context
 
 Every theme must work in every language without per-theme work, including
 themes written before languages existed. Themes build their own DOM, so core
-cannot insert content into them after the fact.
+cannot insert content into them after the fact. Every theme already exposes
+`.gsm-hoshidicts-definitions` (which core marks for the click-only reveal),
+and every theme with a headword exposes `.gsm-hoshidicts-expression`.
 
 ## Decision
 
-Themes declare the directions and language features they render. When a
-profile's direction is not declared, the host adds `language-fallback.css`,
-which isolates and start-aligns the theme's text containers
-(`unicode-bidi: plaintext; text-align: start`). Language features a theme
-does not render (ruby, pitch, the character view, display settings) are
-omitted, as Nazeka omits pitch graphs today, and their settings are hidden
-while that theme is selected.
+A theme declares `{directions, presentation}`. For a profile whose direction a
+theme does not declare, core marks the content hooks after each render: the
+headword gets the language's attributes, a definitions container holding one
+dictionary gets that dictionary's direction, one holding several gets
+`unicode-bidi: plaintext` on itself and its block descendants. Outside the
+Japanese profile, core ignores character clicks from an undeclared theme and
+hides the clicked-character dictionary, because such a theme may test
+characters with Japanese rules. Display settings are hidden for a theme that
+does not declare `presentation`.
 
 ## Options rejected
 
+- **A stylesheet giving every popup element `unicode-bidi: plaintext` and
+  `text-align: start !important`.** Measured on the vendored themes: it splits
+  one definition into lines of alternating direction, turns deinflection
+  trails around, leaves list markers on the wrong side and overrides deliberate
+  centring.
 - **Render with Default when a theme lacks a feature.** The user's chosen
   theme would silently disappear for whole languages.
-- **Per-field fallback rendering injected by core.** Needs each theme to
-  expose slots, which is per-theme work and would not cover existing themes.
 - **Require every theme to support every language.** Impossible for themes
-  outside this repository and contrary to "without per-theme work".
+  outside this repository.
 
 ## Consequences
 
-- An old theme shows Arabic correctly aligned, possibly without the
-  refinements a theme that declares right-to-left support gives.
-- The five vendored themes declare support and implement it, so the
-  fallback is only for themes from elsewhere.
+- An undeclared theme shows right-to-left definitions and headwords in the
+  right order; the visual tests run every vendored theme with its declaration
+  removed and state what this gives, nothing more.
+- The five vendored themes declare support and implement it, so the fallback
+  is for themes from elsewhere.
