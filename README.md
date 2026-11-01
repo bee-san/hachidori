@@ -59,9 +59,6 @@ Do you keep on seeing a name pop up over & over again in a book, but it's not in
 
 With Hachidori, you can highlight the word and add it as a custom definition.
 
-Never add your own words? Turn off **Settings → Dictionaries → Personal dictionary →
-Use the personal dictionary** and highlighting text no longer opens a popup.
-
 <p align="center">
   <img src="docs/assets/custom-dictionary.gif" alt="Animated demonstration of adding and viewing a custom dictionary definition in Hachidori" width="720">
 </p>
@@ -77,10 +74,6 @@ It can even use anki.
 <p align="center">
   <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
 </p>
-
-# Search page
-
-Found a word on an Anki card or outside the browser? Press Alt+Insert, or click **Search** beside Settings in Hachidori's toolbar menu, then type or paste the word and press Enter. The results are the popup you know, in your theme, with Anki and pronunciation. Other shortcuts open the search page in the current tab or in its own popup window.
 
 # Sharing
 
