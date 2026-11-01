@@ -24,8 +24,8 @@ import {
   mdxImportNotes,
 } from "./dictionary-import.js";
 import {
-  element, numberFormat, recommendedInstallation, refreshStatus, send, setSectionStatus, sharingLinkedAddress,
-  syncNavigationStatus, WORKER_TARGET,
+  element, numberFormat, profileFields, recommendedInstallation, refreshStatus, send, setSectionStatus,
+  sharingLinkedAddress, syncNavigationStatus, WORKER_TARGET,
 } from "./settings.js";
 import { dictionaries, reloadDictionaries, setControlsDisabled } from "./library-settings.js";
 
@@ -186,6 +186,8 @@ function chooseDictionaryImport(identity, matches) {
 }
 
 async function importFile(file, index, total, request = {}, label = file.name) {
+  // The package joins the profile edited when the import starts (docs/languages.md 5.2).
+  const target = profileFields();
   updateImportResult(index, { text: "Reading dictionary metadata…", progress: { value: null } });
   let identity;
   try {
@@ -230,6 +232,7 @@ async function importFile(file, index, total, request = {}, label = file.name) {
       fileName: file.name,
       ...request,
       importDecision,
+      ...target,
     }), index, total, label);
   } finally {
     // The offscreen document has read the bytes by now; holding the URL any
@@ -488,12 +491,14 @@ function groupImportFiles(files) {
 
 async function importMdx(item, index, total) {
   const { file, resources } = item;
+  const target = profileFields();
   const urls = [file, ...resources].map((entry) => URL.createObjectURL(entry));
   try {
     return await importArchive(() => send("hd_import", {
       blobUrl: urls[0],
       fileName: file.name,
       resources: resources.map((resource, position) => ({ fileName: resource.name, blobUrl: urls[position + 1] })),
+      ...target,
     }), index, total, file.name);
   } finally {
     for (const url of urls) URL.revokeObjectURL(url);

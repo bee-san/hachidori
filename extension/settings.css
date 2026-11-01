@@ -326,6 +326,40 @@ button,
   font-size: var(--font-caption);
 }
 .settings-search { display: grid; gap: 6px; margin: 22px 10px 0; }
+/* The Language menu above the search field (docs/languages.md 16.3). */
+.settings-language { display: grid; gap: 6px; margin: 22px 10px 0; }
+.settings-language-picker { display: grid; gap: 6px; }
+.settings-language-picker select { width: 100%; min-width: 0; }
+.settings-language-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings-language-actions button { min-height: 0; padding: 4px 8px; font-size: var(--font-caption); }
+.settings-language-status { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
+.settings-language-status:empty { display: none; }
+.settings-language-status.is-error { color: var(--error); }
+.language-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-dialog);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+}
+.language-dialog::backdrop { background: rgb(0 0 0 / 48%); }
+.language-dialog form { display: grid; gap: 12px; padding: 24px; }
+.language-dialog h2, .language-dialog h3, .language-dialog p { margin: 0; }
+.language-dialog h3 { margin-top: 6px; font-size: var(--font-body); }
+.language-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.language-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; overflow-wrap: anywhere; }
+.language-native { color: var(--text-dim); }
+.language-remove { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-surface); background: var(--surface-sunken); }
+.language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.language-dialog-buttons button[hidden] { display: none; }
+/* Settings every language shares (section 16.4). */
+.scope-note { color: var(--text-dim); }
 .settings-search input { width: 100%; min-width: 0; }
 .settings-search-results h1 { margin-top: 0; }
 .settings-search-results ul { display: grid; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
@@ -2258,6 +2292,15 @@ textarea {
     grid-column: 2;
     grid-row: 1;
     gap: 5px;
+  }
+  /* The Language menu sits above the section picker. */
+  .settings-language {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+  .settings-sidebar:has(.settings-language) .settings-section-picker {
+    grid-row: 2;
   }
   .settings-nav {
     display: none;

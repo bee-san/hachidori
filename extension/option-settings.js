@@ -14,9 +14,9 @@ import {
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, DESIGN_OPTION_KEYS, element, FREQUENCY_ORDERS, frequencyModeOrder,
   hasCapability, languageName, METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS,
   options,
-  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
-  renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, savedOptions, send,
-  setSectionStatus,
+  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS, profileFields,
+  renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
+  savedOptions, send, setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
   updateKeybindSettings, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
 } from "./settings.js";
@@ -271,6 +271,7 @@ async function applyFrequencyDirection() {
         if (!owns()) throw new Error("The frequency dictionary choice changed.");
         const reply = await send("hd_lookup", {
           text, maxResults: 256, scanLength: [...text].length, options: { frequencyOrder: "disabled" },
+          ...profileFields(),
         });
         if (!reply.ok) throw new Error(reply.error || "The frequency lookup failed.");
         return reply;
@@ -497,6 +498,7 @@ function renderOptions() {
   renderWordHighlightControls();
   renderExperimentalSettings();
   renderLowMemoryMode();
+  void renderPackSettings();
   updateDesignPreview();
   updateAudioSettings();
   updateAnkiSettings();
@@ -798,14 +800,20 @@ async function flushOptions() {
   }
   let finishSave;
   optionsSaveCompletion = new Promise(resolve => { finishSave = resolve; });
-  const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision };
+  // Edits belong to the profile they were made for, which this page edits
+  // until they are saved (docs/languages.md 5.3).
+  const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision, fields: profileFields() };
   savingOptions = sent;
   pendingOptions = {};
   setOptionsStatus("Saving…");
   try {
+    // A pack's own settings travel beside the option keys (section 7.5).
+    const { packSettings, ...optionPatch } = sent.patch;
     const reply = await send("hd_options_write", {
       baseRevision: sent.baseRevision,
-      options: sent.patch,
+      options: optionPatch,
+      ...sent.fields,
+      ...(packSettings === undefined ? {} : { packSettings }),
     }, WORKER_TARGET);
     if (reply.options) adoptOptions(reply.options);
     if (!reply.ok) {
@@ -839,20 +847,37 @@ async function flushOptions() {
   }
 }
 
-async function flushOptionsUntilIdle() {
+// Saves every pending edit. False while a refused save waits for Save my
+// changes or Use saved settings.
+async function settlePendingOptions() {
   window.clearTimeout(optionsTimer);
   optionsTimer = null;
   for (;;) {
-    if (optionsSaveFailed) {
-      throw new Error("Save the pending settings before checking AnkiConnect.");
-    }
-    if (savingOptions === null && Object.keys(pendingOptions).length === 0) return;
+    if (optionsSaveFailed) return false;
+    if (savingOptions === null && Object.keys(pendingOptions).length === 0) return true;
     await flushOptions(); // NOSONAR: each pass saves what the previous save left queued
   }
 }
 
+async function flushOptionsUntilIdle() {
+  if (!await settlePendingOptions()) {
+    throw new Error("Save the pending settings before checking AnkiConnect.");
+  }
+}
+
+// The edited profile was removed elsewhere: its unsaved edits cannot be
+// saved anywhere (docs/languages.md 5.3).
+function discardPendingOptions() {
+  window.clearTimeout(optionsTimer);
+  optionsTimer = null;
+  pendingOptions = {};
+  optionsEditRevision = null;
+  optionsSaveFailed = false;
+}
+
 export {
-  attachOptionHandlers, flushOptionsUntilIdle, isAvailableFrequencyDictionary, normaliseKanjiClickOption,
-  optionsEditRevision, pendingOptions, renderOptions, renderThemeChoices, renderWordHighlightControls,
-  savingOptions, selectedFrequencyDictionary, setOptionsStatus, writeOptions
+  attachOptionHandlers, discardPendingOptions, flushOptionsUntilIdle, isAvailableFrequencyDictionary,
+  normaliseKanjiClickOption, optionsEditRevision, optionsSaveFailed, pendingOptions, renderOptions, renderThemeChoices,
+  renderWordHighlightControls, savingOptions, selectedFrequencyDictionary, setOptionsStatus, settlePendingOptions,
+  writeOptions
 };

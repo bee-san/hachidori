@@ -8,13 +8,14 @@ import { describeErrorOrJson } from "./error-text.js";
 import { renameWithBaseline } from "./dictionary-name-drafts.js";
 import { normaliseDictionaryGroups } from "./dictionary-groups.js";
 import {
-  CUSTOM_DICTIONARY_ID,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
+  personalDictionaryIdentity,
+  personalDictionaryLanguage,
 } from "./custom-dictionary.js";
 import {
-  backingUp, characterViewName, dictionaryGroupController, element, languageName, memorySettings, nameDrafts,
-  numberFormat,
+  backingUp, characterViewName, dictionaryGroupController, editedProfile, element, languageName, memorySettings,
+  nameDrafts, numberFormat, profileFields,
   refreshMemorySettings, refreshStatus, renderEngineStatus, scheduleStatusPoll, send, setSectionStatus,
   setStatus, sharingLinkedAddress, TARGET, WORKER_TARGET,
 } from "./settings.js";
@@ -29,7 +30,12 @@ import {
 } from "./custom-dictionary-settings.js";
 import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
+const { hasDictionaryProfiles, projectDictionaryState } = globalThis.HDReaderOptions;
+
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] }; // NOSONAR: shared with the other Settings modules
+// The state as stored: with profiles, the whole schema-2 record, of which
+// dictionaryState is the edited profile's view (docs/languages.md 5.1, 14).
+let storedDictionaryState = null; // NOSONAR: shared with the other Settings modules
 let dictionaries = dictionaryState.dictionaries; // NOSONAR: shared with the other Settings modules
 let removing = false; // NOSONAR: shared with the other Settings modules
 let committing = false; // NOSONAR: shared with the other Settings modules
@@ -129,11 +135,20 @@ function canonicalDictionary(entry) {
   return JSON.stringify(entry, Object.keys(entry).sort((a, b) => a.localeCompare(b)));
 }
 
+// The edited profile's schema-1 view of a stored state; a profile the state
+// does not list yet has an empty library.
+function editedView(value) {
+  if (!hasDictionaryProfiles(value)) return value;
+  return projectDictionaryState(value, editedProfile.id)
+    ?? { schemaVersion: 1, revision: value.revision, dictionaries: [], groups: [] };
+}
+
 function adoptDictionaryState(value) {
-  const next = normaliseDictionaryState(value);
+  const next = normaliseDictionaryState(editedView(value));
   if (next.revision <= dictionaryState.revision) {
     return false;
   }
+  storedDictionaryState = value;
   if (reorderReuseHint) {
     // Only the order may differ for a reuse: compare each package's fields
     // independent of key order, since the stored state and the page normalise
@@ -177,8 +192,10 @@ function dictionaryLabel(dictionary) {
   return dictionary.displayName || dictionary.title;
 }
 
+// Each language's personal package is managed: pinned first and enabled in
+// the profiles of its language (docs/languages.md 15).
 function isManagedCustomDictionary(dictionary) {
-  return dictionary?.id === CUSTOM_DICTIONARY_ID;
+  return personalDictionaryLanguage(dictionary) !== null;
 }
 
 function setControlsDisabled(disabled) {
@@ -785,6 +802,21 @@ function restoreManagementFocus(focus) {
   control?.focus();
 }
 
+// The edited profile changed: its view of the same stored state.
+function reprojectDictionaryState() {
+  if (storedDictionaryState === null || !hasDictionaryProfiles(storedDictionaryState)) return;
+  selectedDictionaryIds.clear();
+  dictionaryState = normaliseDictionaryState(editedView(storedDictionaryState));
+  dictionaries = dictionaryState.dictionaries;
+  renderDictionaryState();
+}
+
+// Resolves once every queued Library and group edit has been committed.
+async function settleDictionaryCommits() {
+  flushDictionaryOrder();
+  await dictionaryCommitTail;
+}
+
 function renderDictionaryState() {
   const focus = focusedManagementControl()
     ?? (document.activeElement === document.body ? pendingManagementFocus : null);
@@ -813,9 +845,12 @@ async function commitDictionaryStateChange(update, reloadEngine, baseState = dic
   try {
     const target = reloadEngine ? TARGET : WORKER_TARGET;
     const type = reloadEngine ? "hd_apply_state" : "hd_state_cas";
+    // A view of the edited profile, which the worker merges into the whole
+    // state (docs/languages.md 5.2).
     const fields = {
       baseRevision,
       dictionaries: next.dictionaries,
+      ...profileFields(),
     };
     if (!reloadEngine) {
       fields.groups = next.groups;
@@ -966,7 +1001,7 @@ async function removePackages(entries) {
   await dictionaryCommitTail;
   for (const { id, title } of entries) {
     try {
-      const reply = await send("hd_remove", { id, title }); // NOSONAR: packages are removed one at a time, in order
+      const reply = await send("hd_remove", { id, title, ...profileFields() }); // NOSONAR: packages are removed one at a time, in order
       if (!reply.ok) throw new Error(reply.error ?? "unknown error");
       selectedDictionaryIds.delete(id);
     } catch (error) {
@@ -988,7 +1023,8 @@ function setLibraryResetStatus(message, tone = "", completed = false, error = nu
 }
 
 function removeAllConfirmation(count, personal, erasePersonal) {
-  const entries = personal === null ? 0 : parseCustomDictionary(personal.text).entries.length;
+  const readingRequired = personalDictionaryIdentity(editedProfile.language)?.readingRequired ?? true;
+  const entries = personal === null ? 0 : parseCustomDictionary(personal.text, { readingRequired }).entries.length;
   const source = `the personal dictionary source and its ${countLabel(entries, "entry", "entries")}`;
   const packages = countLabel(count, "imported dictionary", "imported dictionaries");
   const parts = count === 0 ? [`Erase ${source}?`] : [
@@ -1004,7 +1040,7 @@ function removeAllConfirmation(count, personal, erasePersonal) {
 // the confirmation described, so a Note or save since then is refused.
 async function erasePersonalSource(confirmed) {
   try {
-    const reply = await send("hd_custom_save", { baseDocumentRevision: confirmed.revision, text: "" });
+    const reply = await send("hd_custom_save", { baseDocumentRevision: confirmed.revision, text: "", ...profileFields() });
     if (reply.document !== undefined) adoptCustomDictionaryDocument(reply.document);
     adoptCustomDictionaryState(reply.state);
     if (reply.ok) return { erased: true, message: "Erased the personal dictionary source." };
@@ -1026,7 +1062,7 @@ async function removeAllSnapshot(erasePersonal) {
   if (!await reloadDictionaries()) return null;
   const entries = dictionaries.filter(entry => !isManagedCustomDictionary(entry));
   if (!erasePersonal) return { entries, personal: null };
-  const reply = await send("hd_custom_read", {}, WORKER_TARGET);
+  const reply = await send("hd_custom_read", { ...profileFields() }, WORKER_TARGET);
   if (!reply.ok || reply.document === undefined) {
     throw new Error(reply.error || "the personal dictionary source could not be read");
   }
@@ -1198,6 +1234,6 @@ export {
   adoptDictionaryState, attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitDictionaries,
   commitGroups, committing, dictionaries, dictionaryLabel, dictionaryState, handleDictionaryStateChange,
   moveListItem, pendingDictionaryCommits, reloadDictionaries, removing, renderChangedDictionaryState,
-  renderDeferredAfterBlur, setControlsDisabled, setPendingManagementFocus, stringValue, updateDictionary,
-  updateItemById
+  renderDeferredAfterBlur, reprojectDictionaryState, setControlsDisabled, setPendingManagementFocus,
+  settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary, updateItemById
 };

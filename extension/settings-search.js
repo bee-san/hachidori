@@ -62,10 +62,11 @@ export function createSettingsSearch({ document, navigate }) {
     const candidates = section.querySelectorAll("h1, h2, h3, legend, summary, label, button[id]");
     for (const target of candidates) {
       // A control the selected theme hides is not offered: it is not there to reach.
-      // Nor is one the edited profile's language lacks (docs/languages.md 7.3);
-      // a section it lacks is gated as a whole, below.
+      // Nor is one the edited profile's language lacks (docs/languages.md 7.3),
+      // or a pack setting the theme does not render (section 11.5); a section
+      // the language lacks is gated as a whole, below.
       if (target.closest("template, [role=status], output, [data-design-setting][hidden], [data-design-group][hidden], "
-        + "[data-theme-variants][hidden], [data-requires][hidden]:not(section)")) continue;
+        + "[data-theme-variants][hidden], [data-requires][hidden]:not(section), [data-language-settings][hidden]")) continue;
       const label = text(target.querySelector(".field-label"))
         || text(target.querySelector("span")) || text(target);
       if (!label) continue;
