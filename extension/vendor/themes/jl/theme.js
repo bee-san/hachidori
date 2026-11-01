@@ -127,6 +127,9 @@ export function createView(options, enhanced = false) {
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
     tabs.replaceChildren(); nav.replaceChildren(); scroll.replaceChildren();
+    // JL shows each render from the top. Resetting here, before the new
+    // content exists, keeps the reset from laying that content out.
+    if (!enhanced) scroll.scrollTop = 0;
     entries = []; bindings = []; labels = []; frequencies = []; markers = []; selected = 0; tab = null; onTabSelected = null; activeSource = null;
     paintedFrequency = ""; frequencyDictionaries.clear(); pitchByTerm.clear();
     highlighter?.clear();
@@ -484,8 +487,8 @@ export function createView(options, enhanced = false) {
     for (const element of tabs.children) element.setAttribute("aria-pressed", String((element.dataset.dictionary ?? null) === dictionary));
     for (const entry of entries) entry.hidden = dictionary !== null && entry.dataset.dictionary !== dictionary;
     selected = Math.max(0, entries.findIndex(entry => !entry.hidden));
-    scroll.scrollTop = 0;
     if (!notify) return;
+    scroll.scrollTop = 0;
     onTabSelected?.(dictionary === null ? null : { dictionary });
     options.onResultsExpanded?.(shownBindings());
   }
