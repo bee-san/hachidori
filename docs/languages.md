@@ -1621,8 +1621,9 @@ personal dictionary holds in it.
   byte, and today's automatic snapshots.
 - With profiles, `readBackupPayload` returns the Japanese view as `snapshot`
   plus a field `profiles` with the complete records (`options`,
-  `dictionaryState` in schema 2) and, per other language, the personal
-  document, marks and lookup rows. The same object is used everywhere the
+  `dictionaryState` in schema 2) and, per other held language, the parts it
+  has: its personal document, its marks, and its lookup rows (an empty list
+  for a count entry without rows). The same object is used everywhere the
   payload goes:
   - **Archives** are version 4: the view is the manifest's `snapshot`, and
     `profiles` is a manifest field that older builds skip, as the archive
@@ -1640,9 +1641,12 @@ personal dictionary holds in it.
     profile through `applyOptionsPatch`, and leaving out every language this
     build has no pack for (section 17.6). It writes every language's personal
     document at its current revision plus one, as it does the top-level
-    records (a language that keeps a profile but whose document the restore
-    removes gets an emptied document), and `hd_backup_cas` checks those
-    revisions as it checks the top-level ones. The engine loads the
+    records: each document the backup carries, and an emptied document for a
+    language that keeps a profile but whose document the restore removes; the
+    document of a language the restore removes entirely goes with it.
+    `hd_backup_cas` checks those revisions as it checks the top-level ones,
+    and that no restored count generation equals a current one or another
+    restored one. The engine loads the
     packs of the restored profiles before the restore publishes (section
     9.2).
 - Versions 1-3 restore as one Japanese profile through the same projection.
@@ -1752,7 +1756,9 @@ with a submodule bump, the Chrome Web Store build lags the repository, and
 GameSentenceMiner ships its own copy. So:
 
 - **Restore.** For every language the backup holds whose pack this build
-  lacks, a version 4 restore leaves out its profile, its personal package,
+  lacks, a version 4 restore leaves out its profile, its personal package
+  (identified by the fixed id of section 15, computed from the code, so no
+  registry entry is needed),
   its document, counts and marks; its other packages stay in the library, in
   no profile. The preview names each such language ("Vietnamese needs a
   newer Hachidori and is not restored"), with the name from
@@ -1778,7 +1784,10 @@ GameSentenceMiner ships its own copy. So:
   a language the client lacks. When a commit would (an add, a restore), the
   connection is forced to reconnect (section 17.3, item 6), says hello again
   and is refused. A refused connection that a later commit makes acceptable
-  (an erase, a restore without that language) reconnects the same way.
+  (an erase, a restore without that language) reconnects the same way. The
+  host follows the languages the shared records hold from its storage
+  events, in commit order. The Relay API's client never opts in and is never
+  forced to reconnect.
 - **Adding a language through a link.** The opt-in reply lists the host's
   pack codes, and **Add a language** on a client offers the packs both
   installations have. The host refuses an `hd_profile_add` for a language it
