@@ -61,15 +61,22 @@ test("release validation rejects browser drift and a tag that does not match the
   );
 });
 
-test("CI checks Chrome's supported browser edges and packages every release candidate", () => {
+test("CI checks the supported Chrome and Firefox edges and packages every release candidate", () => {
   const runtime = read(".github/workflows/runtime-tests.yml");
   assert.match(runtime, /name: chrome-e2e \(Chrome minimum\)/u);
   assert.match(runtime, /config\.minimumChrome/u);
   assert.match(runtime, /node test\/run\.mjs chrome-e2e/u);
+  assert.match(runtime, /name: firefox-e2e \(Firefox \$\{\{ matrix\.firefox \}\}\)/u);
+  assert.match(runtime, /firefox: \[current, minimum\]/u);
+  assert.match(runtime, /config\.minimumFirefox/u);
+  assert.match(runtime, /node test\/run\.mjs firefox-e2e/u);
+  assert.match(runtime, /node test\/run\.mjs firefox-lint/u);
+  assert.match(runtime, /node test\/run\.mjs firefox-large/u);
   assert.match(runtime, /name: Release package/u);
   assert.match(runtime, /python3 scripts\/package-store\.py/u);
   assert.match(runtime, /sha256sum -c/u);
-  assert.doesNotMatch(runtime, /firefox|\.xpi/iu);
+  // The release's own Firefox ZIP passes addons.mozilla.org's linter.
+  assert.match(runtime, /\*-firefox\.zip[\s\S]*web-ext\.js lint/u);
 });
 
 test("bare-tag and manual release runs verify and publish the checksummed package pair", () => {
@@ -85,7 +92,8 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /--notes-file "\$GITHUB_WORKSPACE\/\.github\/release-notes-header\.md"/u);
   assert.match(workflow, /release_notes="\$GITHUB_WORKSPACE\/docs\/releases\/\$RELEASE_TAG\.md"/u);
   assert.match(workflow, /if \[\[ -f "\$release_notes" \]\]; then\n\s*notes=\( --notes-file "\$release_notes" \)/u);
-  assert.doesNotMatch(workflow, /firefox|\.xpi/iu);
+  // Every file the packager wrote, the Firefox ZIP included, becomes an asset.
+  assert.match(workflow, /gh release create "\$RELEASE_TAG" \.\/\*/u);
   assert.match(workflow, /outputs:[\s\S]*release_tag:[\s\S]*release_commit:/u);
   assert.match(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish/u);
   assert.match(workflow, /publish:[\s\S]*needs: package[\s\S]*permissions:\n      contents: write/u);
