@@ -377,6 +377,12 @@
           if (language.marked && language.code !== "ja" && undeclared()) return;
           return options.onKanjiClick(...args);
         } } : {}),
+        // Placing the popup reads its layout, so its content is labelled
+        // first rather than laid out again for the labels.
+        ...(typeof options.positionPopup === "function" ? { positionPopup: (...args) => {
+          labelPass();
+          return options.positionPopup(...args);
+        } } : {}),
         // Content shown without a new render (Show more, tabs) is labelled too.
         ...(typeof options.onResultsExpanded === "function" ? { onResultsExpanded: (...args) => {
           labelPass();
