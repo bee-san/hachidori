@@ -280,6 +280,15 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       const name = languageName(code);
       await settleEdits();
       setStatus(dialogStatus, `Adding ${name}…`, "working");
+      // Lookups stay in the active profile (docs/languages.md 6.3). Without a
+      // stored choice the active profile is the Japanese one (4.4), so adding
+      // Japanese to an installation that reads another language would move
+      // its lookups: the choice is stored first.
+      if (hasProfiles(readOptionsRecord()) && readSelection().activeProfileId === null) {
+        const kept = await send("hd_language_selection_write", { baseRevision: readSelection().revision,
+          activeProfileId: readActiveProfileId() }, "hoshidicts-worker");
+        if (!kept.ok && kept.conflict !== true) throw replyError(kept, `${name} could not be added`);
+      }
       const reply = await send("hd_profile_add", { language: code, copyFrom: readEditedProfile().id });
       if (!reply.ok) throw replyError(reply, `${name} could not be added`);
       await afterProfileChange();
