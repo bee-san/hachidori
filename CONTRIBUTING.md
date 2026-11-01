@@ -19,7 +19,7 @@ cd hachidori
 
 The committed `extension/vendor/hoshidicts.{mjs,wasm}` bundle is enough to load and test ordinary JavaScript changes. Rebuilding it requires Emscripten and CMake; see the [architecture guide](docs/architecture.md).
 
-To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`. [Its README](extension/README.md) maps what is in that folder.
+To run the extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `extension/`. [Its README](extension/README.md) maps what is in that folder. For Firefox, run `python3 scripts/build-firefox.py --output-dir /tmp/hachidori-firefox` and load its `manifest.json` from `about:debugging`; see [the Firefox guide](docs/firefox.md).
 
 ## Run the checks
 
@@ -41,11 +41,11 @@ npm --prefix test/tooling run test:chrome
 ```
 
 Sharing changes also need `npm --prefix test/tooling run test:sharing` and a
-usable non-loopback network address. The Runtime tests workflow runs ESLint, Node
-contracts, both WASM smoke variants, the extension smoke suite, and four real
-Chrome suites on pull requests. It separately runs the primary suite on the
-manifest-minimum Chrome build and builds and verifies the checksummed release
-pair. Test tooling stays under `test/tooling` and the browser under ignored
+usable non-loopback network address. The Runtime tests workflow runs ESLint and
+`web-ext lint`, Node contracts, both WASM smoke variants, the extension smoke
+suite, the real Chrome suites and the real Firefox suite on pull requests. It
+separately runs the primary suites on the manifest-minimum Chrome and Firefox
+builds and builds and verifies the checksummed release set. Test tooling stays under `test/tooling` and the browser under ignored
 `test/tmp/browsers`; neither ships in the extension.
 [The test harness guide](test/README.md) contains the exact CI commands, browser
 dependencies, external-tooling overrides, and what each suite proves.

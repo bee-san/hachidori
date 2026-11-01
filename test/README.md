@@ -29,6 +29,12 @@ npm --prefix test/tooling run test:fallback     # IDBFS path
 npm --prefix test/tooling run test:overlay      # GameSentenceMiner overlay mode
 HACHIDORI_CHROME_BUILD=128.0.6613.137 \
   node test/run.mjs chrome-e2e                   # manifest-minimum Chrome
+node test/run.mjs firefox-lint                   # web-ext lint on the Firefox build
+npm --prefix test/tooling run install:firefox    # Firefox 159.0
+npm --prefix test/tooling run test:firefox       # the real-Firefox suite
+HACHIDORI_FIREFOX_BUILD=stable_153.0 \
+  node test/run.mjs firefox-e2e                  # manifest-minimum Firefox
+HACHIDORI_BENCH_DATA=DIR node test/run.mjs firefox-large  # full Pixiv import in Firefox
 ```
 
 `test/tooling/package-lock.json` locks jsdom, Puppeteer, the browser installer,
@@ -52,12 +58,14 @@ For a Linux container that cannot run Chrome's sandbox, set
 `HACHIDORI_ALLOW_NO_SANDBOX=1` for the browser commands. Sharing needs a usable
 non-loopback network address for its other-computer checks.
 
-`.github/workflows/runtime-tests.yml` runs ESLint, the Node contracts, smoke
-tests and the five Chrome browser suites on every PR and push to `main`, or
+`.github/workflows/runtime-tests.yml` runs ESLint and `web-ext lint`, the Node
+contracts, smoke tests, the five Chrome browser suites and the Firefox suite on
+the current and the manifest-minimum Firefox on every PR and push to `main`, or
 manually. It also
 runs the primary Chrome suite on the exact Chrome 128 build recorded beside the
-current Chrome 152 pin, and creates and checksum-verifies the Chrome/source
-release pair. The release contract fails if the tested minimum drifts from the
+current Chrome 152 pin, imports the full Pixiv dictionary in Chrome and in
+Firefox, and creates and checksum-verifies the Chrome, Firefox and source
+release set, linting the packaged Firefox ZIP. The release contract fails if the tested minimum drifts from the
 manifest. The browser matrix runs independently so one failing suite cannot hide
 the others. Failing CI jobs upload `test/tmp/ci`, the available screenshots, and
 the browser profiles retained by failed suites, for seven days. The same commands
@@ -556,6 +564,50 @@ These run separately:
   `capture-resources.mjs` and `gif-structure.mjs` are shared helpers;
   `settings-modules.mjs` lists the Settings page's own modules, which the
   jsdom Settings tests and the smoke loader evaluate as one script.
+
+### Firefox suites
+
+The Firefox build (`scripts/build-firefox.py`, written to
+`test/tmp/firefox-extension` by the launcher) runs in a real Firefox through
+Puppeteer's WebDriver BiDi, installed as a temporary add-on.
+`HACHIDORI_FIREFOX` overrides the browser, `HACHIDORI_FIREFOX_BUILD` selects
+another `@puppeteer/browsers` Firefox build (`stable_153.0` is the manifest
+minimum), `HACHIDORI_FIREFOX_EXTENSION` tests another unpacked build, such as an
+extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
+
+- **`firefox-lint`** runs `web-ext lint`, addons.mozilla.org's validator, on the
+  Firefox build: no errors, and the five warnings
+  [docs/firefox.md](../docs/firefox.md#packaging-and-addonsmozillaorg) explains.
+- **`firefox-manifest.test.mjs`** (in `npm --prefix test/tooling test`) pins the
+  derived manifest, the background page, the keep-alive interval and
+  `build-firefox.py`.
+- **`firefox-e2e.mjs`** uses the Chrome suite's fixed-denominator harness:
+  `E2E_PLANNED` in `test/firefox-e2e/harness.mjs` names every check. Its steps,
+  one file each in `test/firefox-e2e/` and in this order, run in one profile:
+
+  | file | what it proves |
+  | --- | --- |
+  | `install.mjs` | Firefox installs the build under its gecko ID, runs `background.js` in `background.html` with the engine in its frame, on the single-thread IDBFS engine, and opens one startup page. |
+  | `first-run.mjs` | Start setup downloads the five recommended archives (intercepted), one failing once and installed by Retry; an unreachable Anki; practice looks up its word; Finish; Remove all imported dictionaries. |
+  | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
+  | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content and its image, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every popup theme, custom CSS and the toolbar switch. |
+  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript through the optional `userScripts` permission, Get debug info. |
+  | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
+  | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
+  | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
+  | `restart.mjs` | The engine keeps its dictionaries past Firefox's 30-second idle limit with every tab closed; a restart on the same profile keeps the library, settings and counts; removal; Access local files in `about:addons` and a `file:` lookup. |
+
+  WebDriver BiDi does not report the background page's own requests and will
+  not set files or activate a tab in an extension page. So the catalogue
+  archives are intercepted (the engine's worker requests are reported), the
+  update index comes from a local HTTPS server under a test domain Firefox
+  resolves to this computer, AnkiConnect is a path on the page server, files
+  reach inputs through a `DataTransfer`, and extension pages activate their own
+  tab. Values cross into Firefox's pages as JSON text.
+- **`firefox-large.mjs`** imports the archive `benchmark/pixiv-full.json` pins
+  from `HACHIDORI_BENCH_DATA` (SHA-256 checked) through Settings, runs the
+  benchmark's queries, hovers it, restarts Firefox and queries again, and writes
+  its timings to `test/tmp/ci/firefox-large.json`.
 
 ### The fixture
 

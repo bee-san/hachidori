@@ -179,7 +179,8 @@ AnkiConnect server with the note. Audio that no field maps is discarded, and
 turning the switch off frees the kept audio and keeps no more. Where no GIF can
 be made, a `{gif}` field gets the ordinary page screenshot instead. Still
 pictures are otherwise taken only by the ordinary page screenshot above. A
-browser linked to another Hachidori does not record Netflix lines.
+browser linked to another Hachidori does not record Netflix lines, and neither
+does Firefox, which lets extensions neither record a tab nor read the sound.
 
 ## Backups, retention and deletion
 

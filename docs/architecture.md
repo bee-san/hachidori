@@ -1,7 +1,9 @@
 # Architecture
 
 Hachidori uses a WebAssembly dictionary engine in a Chrome Manifest V3
-extension, with a service worker and offscreen document.
+extension, with a service worker and offscreen document. The Firefox build runs
+the same code in a background page that holds the offscreen document in a
+frame; [Firefox](firefox.md) describes what differs.
 
 The normal reader popup uses a closed shadow root so page extensions such as
 Dark Reader cannot rewrite its palette, dictionary styles or Custom CSS.

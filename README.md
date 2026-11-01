@@ -9,6 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-7c3aed" alt="GPL-3.0-or-later license"></a>
   <a href="#install-in-15-seconds"><img src="https://img.shields.io/badge/Chrome-128%2B-4285F4?logo=googlechrome&logoColor=white" alt="Chrome 128 or newer"></a>
+  <a href="docs/firefox.md"><img src="https://img.shields.io/badge/Firefox-153%2B-FF7139?logo=firefoxbrowser&logoColor=white" alt="Firefox 153 or newer"></a>
   <a href="docs/privacy.md"><img src="https://img.shields.io/badge/dictionary_engine-local-0f766e" alt="Dictionary engine runs locally"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=bee-san_hachidori"><img src="https://sonarcloud.io/api/project_badges/measure?project=bee-san_hachidori&metric=alert_status" alt="SonarQube Cloud quality gate"></a>
   <a href="https://github.com/bee-san/hachidori"><img src="https://img.shields.io/github/stars/bee-san/hachidori?style=flat&logo=github&color=f59e0b" alt="GitHub stars"></a>
@@ -18,6 +19,7 @@
   <a href="#install-in-15-seconds">Install</a> ·
   <a href="benchmark/README.md">Benchmarks</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/firefox.md">Firefox</a> ·
   <a href="extension/README.md">Extension</a> ·
   <a href="docs/asbplayer.md">asbplayer</a> ·
   <a href="docs/sharing.md">Sharing</a> ·
@@ -27,7 +29,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature rich and opinionated.
+Hachidori is a blazing fast Japanese Dictionary extension for Chrome and Firefox that is feature rich and opinionated.
 
 <img width="1701" height="1127" alt="image" src="https://github.com/user-attachments/assets/390c553a-a604-4fba-af7d-ddaa28b12f37" />
 
@@ -35,6 +37,8 @@ Hachidori is a blazing fast Japanese Dictionary Chrome Extension that is feature
 ## Install in 15 seconds
 
 Click <a href="https://chromewebstore.google.com/detail/hachidori/mikpaebfdmidjnopgffchicnmoahhcbe">here to install from Chrome store.</a> (note: this will always lag behind the repo and may have bugs fixed in the repo)
+
+For Firefox 153 or newer, download the `-firefox.zip` from the [latest release](https://github.com/bee-san/hachidori/releases) and follow the [Firefox guide](docs/firefox.md) to install it.
 
 <p align="center">
   <img src="docs/assets/install-in-60-seconds.gif" alt="Animated walkthrough of Hachidori's first-run setup, dictionary installation, Anki detection, and Japanese lookup" width="720">

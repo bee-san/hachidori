@@ -89,7 +89,7 @@ Settings → Advanced → Experimental features is the one place a feature that 
 
 ## Repository map
 
-- `extension/` contains the Chrome MV3 runtime, settings UI, content script, and popup renderer; `extension/README.md` maps its files.
+- `extension/` contains the MV3 runtime, settings UI, content script, and popup renderer for Chrome and Firefox; `extension/README.md` maps its files. `scripts/firefox_manifest.py` derives the Firefox manifest from `extension/manifest.json`; `docs/firefox.md` describes the Firefox build.
 - [hachidori-anki](https://github.com/bee-san/hachidori-anki) develops and releases the Hachidori Relay add-on for Anki. `extension/anki-addon.js` pins the release that Settings → Sharing downloads.
 - `wasm/bindings.cpp` is the JavaScript-facing boundary around the hoshidicts engine.
 - `third_party/hoshidicts` is a submodule and should move only as an intentional part of the change.
@@ -107,7 +107,8 @@ Run the narrowest existing checks that exercise the change:
 - Palette, theme, popup-styling or dictionary-image styling changes: also run `node test/chrome-theme-contrast.mjs` and attach its `test/tmp/ci/theme-contrast.png` filmstrip.
 - Relay source, packaging, socket and installed-Anki checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki). Run that repository's checks for relay changes.
 - Sharing protocol, host, client, Settings, startup-page or pinned add-on version changes: also run `node --test test/sharing-protocol.test.mjs test/sharing-settings.test.mjs test/anki-addon.test.mjs` and `node test/chrome-sharing.mjs`. The browser suite needs `python3`, a network address beyond loopback, and access to the pinned GitHub release; `HACHIDORI_ANKI_ADDON=/path/to/hachidori-relay.ankiaddon` supplies a local artifact for offline or coordinated changes.
-- Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`.
+- Manifest, service worker, offscreen lifecycle, IndexedDB persistence, content-script, or visible popup changes: also run `node test/chrome-e2e.mjs`, and `node test/run.mjs firefox-e2e` with `node test/run.mjs firefox-lint`.
+- Content scripts read their `HD*` namespaces and `chrome` through `globalThis`, never `window`: Firefox runs content scripts in a sandbox whose `window` is the page's.
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.
 
