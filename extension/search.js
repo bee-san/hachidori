@@ -71,8 +71,8 @@ input.addEventListener("keydown", (event) => {
 document.getElementById("search-clear").addEventListener("click", clear);
 // As on Yomitan's search page, Escape focuses the box and selects its text
 // (its focusSearchBox hotkey), a character typed elsewhere goes into it, and
-// Ctrl+U clears it. The reader has already taken any key it handles, such as
-// an Escape that closes a child popup.
+// Ctrl+U clears it, unless focus is in the popup. The reader has already
+// taken any key it handles, such as an Escape that closes a child popup.
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.isComposing) return;
   if (event.key === "Escape") {
@@ -80,7 +80,7 @@ document.addEventListener("keydown", (event) => {
     input.select();
     return;
   }
-  if (event.ctrlKey && event.key === "u") {
+  if (event.ctrlKey && event.key === "u" && !inReader(document.activeElement)) {
     event.preventDefault();
     clear();
     return;

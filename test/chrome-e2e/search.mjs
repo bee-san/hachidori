@@ -176,7 +176,8 @@ describe("search page", () => {
     await new Promise(resolveWait => setTimeout(resolveWait, 500));
     const afterClick = await popup.state();
     await searchTab.keyboard.press("Escape");
-    await new Promise(resolveWait => setTimeout(resolveWait, 300));
+    await searchTab.waitForFunction(() => document.activeElement === document.getElementById("search-input"),
+      { polling: 50, timeout: 5_000 }).catch(() => {});
     const afterEscape = await popup.state();
     const escaped = await pageState(searchTab);
     check("the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
@@ -245,21 +246,26 @@ describe("search page", () => {
       return Boolean(field) && shadow.activeElement === field;
     }, { timeout: 10_000 }).catch(() => false);
     await searchTab.keyboard.type("ab");
-    await root.evaluate(shadow => {
+    await searchTab.keyboard.down("Control");
+    await searchTab.keyboard.press("u");
+    await searchTab.keyboard.up("Control");
+    const pastedInNote = await root.evaluate(shadow => {
+      const field = shadow.activeElement;
+      if (field?.name !== "definition") return false;
       const data = new DataTransfer();
       data.setData("text/plain", "漢字");
-      shadow.activeElement.dispatchEvent(new ClipboardEvent("paste",
-        { clipboardData: data, bubbles: true, cancelable: true, composed: true }));
+      field.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true, composed: true }));
+      return shadow.activeElement === field;
     });
     const drafted = await popup.state();
     const beside = await pageState(searchTab);
     await searchTab.keyboard.press("Escape");
     const noteClosed = await popup.state();
-    check("keys typed and text pasted into the docked result's Note form stay in the form",
-      noteOpened && noteFocused && drafted?.noteOpen === true && drafted.noteDefinition === "ab"
+    check("keys typed, Ctrl+U and text pasted in the docked result's Note form stay in the form",
+      noteOpened && noteFocused && pastedInNote && drafted?.noteOpen === true && drafted.noteDefinition === "ab"
         && beside.value === "食べる" && beside.query === "食べる" && !beside.focused
         && popup.visible(noteClosed) && noteClosed.noteOpen === false,
-      JSON.stringify({ noteOpened, noteFocused, drafted: drafted && { noteOpen: drafted.noteOpen,
+      JSON.stringify({ noteOpened, noteFocused, pastedInNote, drafted: drafted && { noteOpen: drafted.noteOpen,
         noteDefinition: drafted.noteDefinition }, beside, noteClosed: noteClosed?.noteOpen }));
 
     if (SCREENSHOTS) {

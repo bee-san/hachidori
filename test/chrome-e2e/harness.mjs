@@ -399,7 +399,7 @@ const PLANNED = [
   "the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
   "a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
   "the search page and its results follow a popup theme change at once",
-  "keys typed and text pasted into the docked result's Note form stay in the form",
+  "keys typed, Ctrl+U and text pasted in the docked result's Note form stay in the form",
   "the settings page lists the dictionary again after a restart",
   "local-only libraries can install recommended dictionaries after a browser restart",
   "the dictionary survives a browser restart via OPFS",
