@@ -1172,9 +1172,14 @@ html[data-hoshidicts-theme="girlypop"],
     0 2px 8px rgba(0, 0, 0, 0.36);
   color: var(--text-color);
   color-scheme: var(--hoshidicts-palette-color-scheme);
-  font-family: "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+  /* The profile's pack may name its font and line breaking (docs/languages.md
+   * 10.1); the theme host sets these properties only once records have
+   * profiles, and leaves each unset where the pack does. */
+  font-family: var(--hd-language-font-family, "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif);
   font-size: 16px;
   line-height: 1.5;
+  word-break: var(--hd-language-word-break, normal);
+  line-break: var(--hd-language-line-break, auto);
   overscroll-behavior: contain;
   pointer-events: auto;
   user-select: text;
@@ -1592,7 +1597,7 @@ html[data-hoshidicts-theme="girlypop"],
   border-radius: 4px;
   background: var(--hoshidicts-card-background);
   color: var(--text-color);
-  font: 400 15px/1.45 "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  font: 400 15px/1.45 var(--hd-language-font-family, "Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic UI", "Hiragino Sans", sans-serif);
 }
 
 .gsm-hoshidicts-note-form textarea {
@@ -1758,6 +1763,15 @@ html[data-hoshidicts-theme="girlypop"],
   font-weight: 400;
   line-height: 1;
   user-select: none;
+}
+
+/* A language without ruby shows a reading that differs from the headword
+   beside it (docs/languages.md 10.5). */
+.gsm-hoshidicts-expression .gsm-hoshidicts-reading {
+  margin-inline-start: calc(1em / 3);
+  color: var(--text-color-light1);
+  font-size: 0.75em;
+  font-weight: 400;
 }
 
 /* The headword's pitch accent is drawn on its reading after the headword
@@ -2906,25 +2920,27 @@ html[data-hoshidicts-theme="girlypop"],
  * them. Hachidori's own adjustments are marked. */
 .definition-list {
   margin: 0;
-  padding: 0 0 0 var(--list-padding1);
+  padding: 0;
+  padding-inline-start: var(--list-padding1);
   list-style-type: decimal;
 }
 
 .definition-list[data-count="0"],
 .definition-list[data-count="1"] {
-  padding-left: 0;
+  padding-inline-start: 0;
   list-style-type: none;
 }
 
 .gloss-list {
   margin: 0;
-  padding: 0 0 0 var(--list-padding2);
+  padding: 0;
+  padding-inline-start: var(--list-padding2);
   list-style-type: circle;
 }
 
 .gloss-list[data-count="0"],
 .gloss-list[data-count="1"] {
-  padding-left: 0;
+  padding-inline-start: 0;
   list-style-type: none;
 }
 
@@ -3004,7 +3020,7 @@ html[data-hoshidicts-theme="girlypop"],
   vertical-align: middle;
   width: calc(16em / var(--font-size-no-units));
   height: calc(16em / var(--font-size-no-units));
-  margin-left: 0.25em;
+  margin-inline-start: 0.25em;
   position: relative;
 }
 
@@ -3039,18 +3055,18 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gloss-sc-ol,
 .gloss-sc-ul {
-  padding-left: var(--list-padding2);
+  padding-inline-start: var(--list-padding2);
 }
 
 .gloss-sc-details {
-  padding-left: var(--list-padding1);
+  padding-inline-start: var(--list-padding1);
 }
 
 .gloss-sc-details > .gloss-sc-table-container {
   /* Include the disclosure indent in the scrollport: dictionary-authored
      negative table margins (NHK-pitch) must not clip the first column. */
-  margin-left: calc(-1 * var(--list-padding1));
-  padding-left: var(--list-padding1);
+  margin-inline-start: calc(-1 * var(--list-padding1));
+  padding-inline-start: var(--list-padding1);
   max-width: none;
 }
 
@@ -3098,7 +3114,7 @@ html[data-hoshidicts-theme="girlypop"],
 :host([data-hoshidicts-glossary-layout="compact"]) .gloss-sc-ul[data-sc-content="glossary"] {
   display: inline;
   list-style: none;
-  padding-left: 0;
+  padding-inline-start: 0;
 }
 
 :host([data-hoshidicts-glossary-layout="compact"]) .gloss-item:not(:first-child)::before,
@@ -3488,7 +3504,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-meanings {
   margin: var(--hd-space-1) 0 var(--hd-space-3);
-  padding-left: 22px;
+  padding-inline-start: 22px;
 }
 
 .gsm-hoshidicts-kanji-stats > summary {
