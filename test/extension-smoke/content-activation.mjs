@@ -1414,42 +1414,65 @@ async function historyKeybindCase() {
   return result;
 }
 
-// After a dictionary change, Back replays a selection lookup that now matches
-// nothing and shows a no-result notice. A view reopened from there would have
-// no term view for its Back to return to, so Forward leaves the key alone.
-async function historyNoticeCase() {
+// After a dictionary change, Back replays the term request instead of
+// redrawing it. Forward still reopens the kanji view from the replayed view.
+// When the replay of a selection lookup matches nothing, a no-result notice
+// takes the view's place. A view reopened from there would have no term view
+// for its Back to return to, so Forward leaves the key alone.
+async function historyReplayCase() {
+  const result = {};
   const harness = await createHarness();
   try {
     const window = harness.popup.ownerDocument.defaultView;
+    const term = [{ ...harness.term("食べる"), matched: harness.candidate.query }];
+    const forward = () => {
+      const event = new window.KeyboardEvent("keydown",
+        { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true });
+      window.document.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    // Each kanji reply comes from a newer engine generation, so the Back after it replays.
+    const back = async generation => {
+      window.getSelection().removeAllRanges();
+      const backing = harness.render().context.onBack?.();
+      const replay = harness.take("hd_lookup");
+      if (replay) harness.reply(replay, { generation, dictionaryCount: 1, results: generation === 3 ? term : [] });
+      await backing;
+      window.getSelection().selectAllChildren(harness.anchor);
+      return replay !== null;
+    };
     harness.emitOptions({ lookupMode: "hover", kanjiClickDictionary: { title: "Generic", kind: "term" } });
     window.getSelection().selectAllChildren(harness.anchor);
     window.document.dispatchEvent(new window.Event("selectionchange"));
-    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1,
-      results: [{ ...harness.term("食べる"), matched: harness.candidate.query }] });
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: term });
     await harness.settle();
+    const selected = harness.driver.viewRequest();
     const clicked = harness.driver.showKanji("食");
     harness.reply(harness.take("hd_lookup_dictionary"), { generation: 3, results: [harness.term("食")] });
     await clicked;
-    window.getSelection().removeAllRanges();
-    const back = harness.render().context.onBack?.();
-    const replay = harness.take("hd_lookup");
-    if (replay) harness.reply(replay, { generation: 3, dictionaryCount: 1, results: [] });
-    await back;
-    window.getSelection().selectAllChildren(harness.anchor);
+    const kanji = harness.driver.viewRequest();
+    const replayed = await back(3);
+    const restored = harness.driver.viewRequest() === selected && harness.render().kind === "terms";
+    const prevented = forward();
+    const reopening = harness.take("hd_lookup_dictionary");
+    if (reopening) harness.reply(reopening, { generation: 4, results: [harness.term("食")] });
+    await harness.settle();
+    result["Forward reopens the kanji view after a Back that replays its term request for a dictionary change"] =
+      (replayed && restored && prevented && reopening !== null && harness.driver.viewRequest() === kanji)
+      || { replayed, restored, prevented, reopened: reopening !== null, view: harness.driver.viewRequest() === kanji };
+
+    const replayedAgain = await back(4);
     const notice = harness.render().kind;
-    const event = new window.KeyboardEvent("keydown",
-      { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true });
-    window.document.dispatchEvent(event);
+    const noticePrevented = forward();
     const reopened = harness.take("hd_lookup_dictionary");
     await harness.settle();
-    return { "Forward leaves the key alone on the no-result notice Back can leave after a dictionary change":
-      (replay !== null && notice === "notice" && !event.defaultPrevented && reopened === null
-        && harness.render().kind === "notice")
-      || { replayed: replay !== null, notice, prevented: event.defaultPrevented, reopened: reopened !== null,
-        render: harness.render().kind } };
+    result["Forward leaves the key alone on the no-result notice Back can leave after a dictionary change"] =
+      (replayedAgain && notice === "notice" && !noticePrevented && reopened === null && harness.render().kind === "notice")
+      || { replayedAgain, notice, prevented: noticePrevented, reopened: reopened !== null, render: harness.render().kind };
   } finally {
     harness.close();
   }
+  return result;
 }
 
 describe("content script: activation and keybinds", () => {
@@ -1467,7 +1490,7 @@ describe("content script: activation and keybinds", () => {
   test("keybinds", async () => {
     const noteContent = await contentNoteStage({
       keybinds: async () => ({ ...await keybindCase(), ...await keybindRepeatCase(), ...await wheelKeybindCase(),
-        ...await historyKeybindCase(), ...await historyNoticeCase() }),
+        ...await historyKeybindCase(), ...await historyReplayCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.keybinds ?? {})) {
       check(name, passed === true, JSON.stringify(passed));
