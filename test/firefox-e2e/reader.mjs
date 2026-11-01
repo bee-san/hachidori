@@ -217,7 +217,8 @@ describe("reader", () => {
 
   step("themes, custom CSS and the toolbar", async () => {
     const themes = {};
-    for (const theme of ["nazeka", "plain", "jl", "bee", "auto"]) {
+    const renderers = await page.evaluate(() => [...HDReaderOptions.POPUP_RENDERER_IDS]);
+    for (const theme of [...renderers, "auto"]) {
       await writeOptions(page, { popupTheme: theme });
       await sleep(200);
       const shown = await hoverForPopup(tab, "#verb");
@@ -225,7 +226,7 @@ describe("reader", () => {
       await dismissPopup(tab);
     }
     check("each bundled popup theme renders the lookup",
-      ["nazeka", "plain", "jl", "bee"].every(theme => themes[theme].renderer === theme && themes[theme].text)
+      renderers.length > 0 && renderers.every(theme => themes[theme].renderer === theme && themes[theme].text)
         && themes.auto.renderer === "default" && themes.auto.text,
       JSON.stringify(themes));
 
