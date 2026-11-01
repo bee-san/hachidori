@@ -2,8 +2,8 @@
 //
 // Firefox suspends an idle event page after 30 seconds, and with it the engine
 // and every dictionary it has loaded; Chrome keeps the offscreen document for
-// the browser session. Any extension API call this page makes restarts
-// Firefox's idle timer.
+// the browser session. An extension API call that Firefox answers in its
+// parent process, as it does getPlatformInfo(), restarts that idle timer.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 

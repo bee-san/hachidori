@@ -590,10 +590,11 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `install.mjs` | Firefox installs the build under its gecko ID, runs `background.js` in `background.html` with the engine in its frame, on the single-thread IDBFS engine, and opens one startup page. |
   | `first-run.mjs` | Start setup downloads the five recommended archives (intercepted), one failing once and installed by Retry; an unreachable Anki; practice looks up its word; Finish; Remove all imported dictionaries. |
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
-  | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content and its image, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every popup theme, custom CSS and the toolbar switch. |
-  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript through the optional `userScripts` permission, Get debug info. |
+  | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
+  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, Get debug info. |
+  | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box. |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
-  | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
+  | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
   | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
   | `restart.mjs` | The engine keeps its dictionaries past Firefox's 30-second idle limit with every tab closed; a restart on the same profile keeps the library, settings and counts; removal; Access local files in `about:addons` and a `file:` lookup. |
 
@@ -603,7 +604,17 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   update index comes from a local HTTPS server under a test domain Firefox
   resolves to this computer, AnkiConnect is a path on the page server, files
   reach inputs through a `DataTransfer`, and extension pages activate their own
-  tab. Values cross into Firefox's pages as JSON text.
+  tab. Values cross into Firefox's pages as JSON text. Headless Firefox cannot
+  show a Save dialog, so the suite registers a stand-in file picker in
+  Firefox's parent process that saves to the downloads directory and records
+  each request. Firefox's mock audio backend (`media.cubeb.force_mock_context`)
+  plays pronunciation audio on hosts with no audio device.
+- Not covered in real Firefox: automatic backups, scheduled update runs, the
+  Theme Store, frequency sorting, compact summaries, custom buttons, browser
+  speech and local audio, firing a browser command, Google Docs, MDict import,
+  Netflix, Sharing between Firefox and Chrome, and upgrading in place from the
+  unsigned 0.1.5 and 0.1.6 MV2 builds, which used the same add-on ID. Their
+  code is the code the Chrome suites run.
 - **`firefox-large.mjs`** imports the archive `benchmark/pixiv-full.json` pins
   from `HACHIDORI_BENCH_DATA` (SHA-256 checked) through Settings, runs the
   benchmark's queries, hovers it, restarts Firefox and queries again, and writes
