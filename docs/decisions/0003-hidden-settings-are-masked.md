@@ -1,6 +1,6 @@
 # 0003: Settings a language lacks are hidden, kept, and masked to a neutral value
 
-Status: proposed (multi-language design, Phase 1, revision 6)
+Status: proposed (multi-language design, Phase 1, revision 7)
 
 ## Context
 

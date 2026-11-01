@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Languages and profiles
 
-Status: design for review (Phase 1, revision 6). Nothing described here is
+Status: design for review (Phase 1, revision 7). Nothing described here is
 implemented yet.
 
 Hachidori is a Japanese dictionary today. This document describes how it
@@ -92,7 +92,8 @@ The user interface stays in English.
   to a profile: the personal dictionary, lookup counts, known and ignored
   words.
 - **Single-profile shape**: the stored records of an installation whose only
-  profile is Japanese: exactly today's records (section 4.5).
+  profile is Japanese and which holds no other language's personal source,
+  counts or marks: exactly today's records (section 4.5).
 
 ## 3. What belongs to a profile
 
@@ -180,9 +181,14 @@ is added.
   today's first row creates `generation`. Erasing Japanese's counts replaces
   the top-level generation, erasing another language's replaces its entry,
   one revision up, and a reset replaces the top-level generation and drops
-  `languages`. `hd_lookup_stats_cleanup` keeps the rows of the top-level
-  generation and of every `languages` entry. Rows of an erased or dropped
-  language therefore never share a live prefix, and today's cleanup and
+  `languages`. Every path that deletes rows outside the live generations
+  keeps the rows of the top-level generation and of every `languages` entry:
+  `hd_lookup_stats_cleanup` and the unlink cleanup in
+  `hd_sharing_client_unlink`, which share one helper in `lookup-stats.js`. A
+  restore gives every restored language a fresh entry, and `hd_backup_cas`
+  refuses an entry equal to a current one, as it does for the top-level
+  generation. Rows of an erased or dropped language therefore never share a
+  live prefix, and today's cleanup and
   backup reader stay correct after the records convert back to the
   single-profile shape, which drops `languages`. A reader re-reads the counts
   of the terms it shows in a language whose generation changed (an empty
@@ -211,8 +217,9 @@ single-profile shape, or a restore that yields it, removes the key.
 
 ### 4.5 The single-profile shape
 
-While an installation has exactly one profile and it is Japanese, every
-record keeps exactly today's shape: no `profiles`, `dictionaryState`
+While an installation has exactly one profile, it is Japanese, and no other
+language's personal source, counts or marks remain, every record keeps
+exactly today's shape: no `profiles`, `dictionaryState`
 `schemaVersion` 1, no `languages` maps, no `languageSelection`. The profile
 layer reads such records as one Japanese profile (section 5.1).
 
@@ -231,9 +238,10 @@ profile moves the record's profile keys into a profile with id `ja`, splits
 `anki`, and turns the dictionary array into the package list (same order)
 plus `profiles.ja` (same order, same `enabled` flags, same groups), keeping
 every value. Choosing another language at first run, before anything is
-installed, moves the profile keys the worker seeded at install into that
-language's profile instead and applies the pack's replacements of section
-6.3. The records convert back when profiles are removed until one Japanese
+installed (section 16.1), moves the stored profile keys, edits made before
+setup included, into that language's profile instead and applies the pack's
+replacements of section 6.3. The records convert back when profiles are
+removed until one Japanese
 profile remains and no other language's personal source, counts or marks
 remain (section 16.5).
 
@@ -393,7 +401,18 @@ anything. **Also erase…** (section 16.5) is the flag `erase` of
 emptied personal document, `dictionaryState` without its personal package,
 its marks removed and a new lookup-count generation for the language
 (section 4.3); the replaced generation's rows are then deleted as
-`hd_lookup_stats_cleanup` deletes unreachable rows.
+`hd_lookup_stats_cleanup` deletes unreachable rows. `hd_profile_cas` derives
+the new count entry and the marks inside the worker's storage queue, as
+`hd_lookup_stats_reset` does, and compares only `options`, `dictionaryState`
+and the personal document, so ordinary browsing in other tabs does not make
+it conflict; after a lost reply it checks those three exactly and the other
+two by effect (the language's entry differs from the replaced one, and the
+language has no marks).
+
+The messages are `hd_profile_add { language, copyFrom, firstRun? }`, where
+`copyFrom` is the profile whose settings the new one copies (section 6.3:
+Settings sends the edited profile, the startup page the active one), and
+`hd_profile_remove { profileId, erase? }`.
 `hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch? }`
 writes the installation-local `languageSelection` and is never forwarded to a
 sharing host.
@@ -745,9 +764,10 @@ writes two classic scripts that set `globalThis.HDLanguages` (section 5):
 Both hold every pattern and display-transform step with its class references
 expanded, by the expansion that hoshidicts' `tools/check-classes.mjs` uses
 (`tools/lib/classes.mjs`), which the engine's conformance test compares with
-the engine's own parser (engine contract, section 5). Samples and recommended
-dictionaries stay in the JSON files, which Settings and the startup page fetch
-when they need them. The copy is committed with each submodule bump, as the
+the engine's own parser (engine contract, section 5). Samples other than
+`sample.warmup`, and recommended dictionaries, stay in the JSON files, which
+Settings and the startup page fetch when they need them. The copy is
+committed with each submodule bump, as the
 WebAssembly bundles are; `test/language-packs.test.mjs` fails when a copied
 file or either script differs from what the submodule gives.
 
@@ -759,9 +779,10 @@ file or either script differs from what the submodule gives.
   and reload: once the records have profiles, the `hd_state_read` reply
   carries `languages`, the profiles' language codes, and `reconcile` loads
   every pack that is not loaded (`hdw_language_load`, with the two JSON files
-  fetched from the extension) before it publishes. `boot` queues every request
-  except status reads behind `reconcile`, so `hd_status` may say ready while
-  packs load, but no lookup runs before they are loaded. A new engine instance
+  fetched from the extension) before it publishes. `boot` runs through the
+  engine's queue, and every lookup (`hd_segment` one chunk per turn) waits
+  behind it, so `hd_status` may say ready while packs load, but no lookup
+  runs before they are loaded. A new engine instance
   (a Low memory recycle, the restart after a memory option changes, a browser
   start) therefore has its packs before its first lookup.
 - `hd_profile_add`, the first-run choice of another language (the same
@@ -770,8 +791,9 @@ file or either script differs from what the submodule gives.
   full reload keeps the packs.
 - A pack that fails to load is reported by `hd_status` in `failedLanguages`,
   as dictionaries are in `failedDictionaries`; the field appears only once the
-  records have profiles, and `offscreen.js` caches it with the other
-  `hd_status` fields it serves during a mutation. That profile's lookups fail
+  records have profiles, and `offscreen.js` copies it into the `hd_status`
+  cache it serves during a mutation only when the reply has it, so the
+  single-profile reply is unchanged. That profile's lookups fail
   with "{Language} could not be loaded." and other languages keep working.
 - The loaded dictionary set is every package enabled in any profile, plus the
   load verification of disabled packages that exists today. Loading one
@@ -874,19 +896,26 @@ leaves unfixed). Once the records have profiles:
   string on its own line) is labelled line by line: a line whose language
   differs from the inherited one moves into a `span` with that `lang`, and
   the other lines stay plain text, so each line is labelled like a glossary
-  string. Only text inside a dictionary's block is split, because themes
-  write it once per render; docs/themes/README.md says that core may wrap
-  lines of definition text in `span[lang]`. A line that mixes scripts
+  string. This applies to every such node the pass visits, inside a
+  dictionary's block or not (JL's and Bee's character view writes meanings,
+  readings and statistics into one element); text that themes update in
+  place (names, frequency values, pitch markers) is one line.
+  docs/themes/README.md says that core may wrap lines of text in
+  `span[lang]`. A line that mixes scripts
   (`See also 食う`,
   `[他動] to have (a meal)`, JL's `; `-joined rows) takes the language its
   characters give, a text-mode limit (section 11.2). The theme host runs the
   pass after every theme method that renders or updates content (`call()` in
   `theme-host.js`, so `renderKanji` and `renderNotice` too), after
-  `onResultsExpanded` and after `updateDictionaryPresentation`. It walks only
-  the subtrees added or changed since the last pass, which it takes from a
-  `MutationObserver` on the popup before each pass (and it discards the
-  records of its own writes), so a tab selection that adds nothing costs
-  nothing. It needs nothing from themes, covers undeclared ones, and leaves
+  `onResultsExpanded` and after `updateDictionaryPresentation`, each time
+  after a synchronous `takeRecords()`, so a render's first frame is labelled.
+  It also runs from the `MutationObserver`'s own callback, at the microtask
+  checkpoint after any task that changed the popup and before the next frame,
+  so content a theme adds later (Default's deferred glossary fills, its tab
+  re-renders, **Show more**, any theme's own timers) is labelled too. It walks
+  only the subtrees added or changed since the last pass and takes the
+  records of its own writes after writing, so a tab selection that adds
+  nothing costs nothing. It needs nothing from themes, covers undeclared ones, and leaves
   the English interface alone in Latin-script profiles. For
   32 Jitendex-sized results it visits 32 to 2,244 text nodes, depending on the
   theme, in at most 2 ms; the labels it adds cost more in layout, which
@@ -916,7 +945,15 @@ each result before rendering: the direction of the dictionary's
 `targetLanguage` when its index declares one, otherwise the direction of the
 majority of the letters in that dictionary's own gloss strings in the result
 (the glossary data, never a theme's composed text with its tags and numbers),
-by the rule below. A dictionary
+by the rule below. A target language with a pack in this build takes the
+pack's scripts and direction. One without (an English-Persian dictionary in a
+build with no `fa` pack) takes its script from
+`new Intl.Locale(tag).maximize().script` and its direction from that script:
+right to left for `Arab`, `Hebr`, `Syrc`, `Thaa`, `Nkoo`, `Adlm` and
+Unicode's other right-to-left scripts. When the platform knows no script for
+the tag, the dictionary's direction comes from the majority rule, as without
+`targetLanguage`, and it keeps its tag for section 10.3. Steps 4 and 5 of
+section 10.3 use the same scripts. A dictionary
 whose direction is right to left is marked on the element that holds its
 block, so numbers, bullets, chips and text turn together; left-to-right blocks
 stay unmarked, so Japanese and other left-to-right markup does not change:
@@ -977,8 +1014,9 @@ pins it). In other profiles each glossary string takes, in order:
 3. the pack's `bcp47` when the string contains characters of one of the pack's
    scripts other than Latin (taken from the pack's `text.pattern`), as today's
    detection labels Japanese strings: an Arabic example in an Arabic-English
-   dictionary is `ar`. Han characters count here only for a pack whose only
-   non-Latin script includes Han (Chinese), so a Korean pack that lists hanja
+   dictionary is `ar`. Han characters count here only when every non-Latin
+   script of the pack is a Han script (`Hani`, `Hans`, `Hant`, `Hanb`), as
+   for Chinese. `Kore` and `Jpan` also hold Hangul or kana, so a Korean pack
    leaves a Han-only gloss to the later steps;
 4. in a profile whose pack is written only in Latin, the profile's `bcp47`
    for a string that has letters, all of them Latin, when the dictionary's
@@ -1211,8 +1249,13 @@ separate change for the owner to decide.
   Arabic-English dictionary `en`), and one bilingual dictionary has a tag in
   the profile's script; a Han-only string in a Korean-English and in a
   Korean-Chinese dictionary; an English example sentence in the
-  English-to-Arabic dictionary. In text-mode themes the glossary-`lang` check
-  applies per line, with fixture glosses that take one line each. The suite
+  English-to-Arabic dictionary; an English-Persian dictionary with no `fa`
+  pack in the build (glosses `rtl`, the English example `en`); a CC-CEDICT
+  note that mixes Han and Latin (`CL:所[suo3]`, expected `zh-Hans`); a
+  bilingual dictionary without `targetLanguage`. The monolingual Arabic
+  entry's Latin etymology is expected `ar` (section 21). In text-mode themes
+  the glossary-`lang` check applies per line, with fixture glosses that take
+  one line each, and it covers JL's and Bee's character view. The suite
   also asserts that no text in the profile's
   non-Latin scripts matches `:lang(en)`, in the term view and the character
   view.
@@ -1231,7 +1274,9 @@ separate change for the owner to decide.
   to its own name; joined-script text has computed `letter-spacing: normal`;
   Close, Back and tab geometry are the same on both pages and match the
   Japanese run; the interface does not match the page's `:lang()`, and on a
-  Japanese page no Japanese text matches `:lang(en)`. It saves
+  Japanese page no Japanese text matches `:lang(en)`. A Default run selects
+  a tab group, goes Back from the character view and presses **Show more**,
+  then checks the labels and list padding again. It saves
   one screenshot per theme and language (Japanese, English, Arabic, Korean)
   under `test/tmp/languages/`.
 - **Fonts.** The language suites install `fonts-noto-core` (Arabic, Hebrew,
@@ -1385,17 +1430,23 @@ Japanese first and selected, when `HDLanguages` is present (section 5). It
 sits in its own element after `#setup-actions`, outside `#setup-body` and not
 among the action buttons, whose text and ids existing tests pin. The choice
 applies to **Start setup**, **Set up separately** and **Set up manually**. On
-an unlinked installation whose records are untouched (`setupState` at
-`welcome`, the single-profile shape, no packages, only the install seed),
-another language sends `hd_profile_add` with `firstRun: true`, which creates
-that profile as the only one (section 4.5) and loads its pack like any added
-profile (section 5.2). The worker refuses `firstRun` otherwise, with
-"Hachidori is already set up. Add {Language} in Settings.", and never
-forwards it. On a linked browser the choice selects that language locally
+an unlinked installation that is still at the start (`setupState` at
+`welcome`, the single-profile shape, no packages; option edits made before
+setup are allowed), another language sends `hd_profile_add` with
+`firstRun: true`, which creates that profile as the only one (section 4.5)
+and loads its pack like any added profile (section 5.2). `hd_profile_cas`
+judges "still at the start" on the snapshot it commits, so an import queued
+ahead of it is seen; otherwise it refuses with "Hachidori is already set up.
+Add {Language} in Settings.", and `firstRun` is never forwarded. A `firstRun`
+add whose language is already the only profile succeeds, so a retry after a
+lost reply does no harm. On a linked browser the choice selects that language locally
 when the host has a profile for it, or sends an ordinary `hd_profile_add` to
 the host and then selects it; **Use the Hachidori in {name}** links first and
-then follows the same rule. A link that does not carry profiles (sections
-17.4 and 17.6) leaves the browser on Japanese, and the welcome card says why.
+then follows the same rule. A link that does not carry profiles leaves the
+browser on Japanese, and the welcome card says why: a host whose `hello`
+lacks the capability (an older build, or one without a second language) gets
+"Add {Language} on {host} first; if its Settings have no Language section,
+update it.", and a host that lacks the language gets section 17.6's message.
 The request is sent before the stage advances,
 and a failure keeps the welcome card with the error. The
 dictionary stage then shows the pack's recommended links and an import area
@@ -1516,8 +1567,8 @@ personal dictionary holds in it.
   - **The Relay dictionary download** (`hd_api_dictionary_open`) uses the view.
   - **Restore** (`hd_backup_cas`) validates the view as today, validates
     `profiles` when present and restores from it, pruning selections per
-    profile through `applyOptionsPatch`, and leaving out profiles whose
-    language this build has no pack for (section 17.6). The engine loads the
+    profile through `applyOptionsPatch`, and leaving out every language this
+    build has no pack for (section 17.6). The engine loads the
     packs of the restored profiles before the restore publishes (section
     9.2).
 - Versions 1-3 restore as one Japanese profile through the same projection.
@@ -1530,7 +1581,9 @@ personal dictionary holds in it.
 ### 17.3 Sharing
 
 A host whose records have profiles speaks to each client according to that
-client:
+client. A linked client stores a different projection of the host's records
+(the Japanese view or the real records) only at newer revisions, because its
+pages adopt only newer revisions:
 
 1. **Hello.** The host adds `language-profiles-v1` to its `hello`
    capabilities; a single-profile host sends today's frame. The client's
@@ -1538,14 +1591,16 @@ client:
 2. **Opt-in.** A client that sees the capability sends
    `hd_language_profiles_opt_in` with its pack codes before it applies the
    hello's snapshot, and applies the opt-in reply's snapshot (the real
-   records) instead, so its pages never adopt the Japanese view first. A host
-   refuses the opt-in of a client that lacks one of its profiles' languages
-   (section 17.6). The host records the opt-in per
-   connection, reads the reply's snapshot after recording it, and queues that
+   records) instead, so its pages never adopt the Japanese view first. The
+   host answers in one turn of its storage queue: it reads the snapshot,
+   refuses a client that lacks a language the snapshot holds (section 17.6),
+   records the opt-in per connection when it accepts, and queues that
    client's change frames until the reply is sent; the client discards change
    frames that arrive between its request and the reply, none of which is
-   newer than the reply. Every other client, older ones included, gets the
-   Japanese view.
+   newer than the reply. A new link's probe connection opts in too, and the
+   link stores the opt-in reply's snapshot, or the refusal's, never the
+   probe's `hello` snapshot from a host with the capability. Every other
+   client, older ones included, gets the Japanese view.
 3. **Changes.** With profiles, the host sends each client its own storage
    change frame, projected to the Japanese view unless that client opted in;
    a single-profile host keeps its one broadcast.
@@ -1569,7 +1624,10 @@ client:
    every sharing connection once, so clients say hello again and see the
    capability. It does so after the reply to the request that converted the
    records has been sent and after the other requests in flight have
-   finished, so no client is told that a change may have completed.
+   finished, so no client is told that a change may have completed. From the
+   converting write until the close it sends no change frames, so every
+   client receives the new revisions in one projection, from its next
+   `hello` or opt-in reply.
 
 ### 17.4 Linked browsers running an older Hachidori
 
@@ -1595,28 +1653,39 @@ projection of whichever profile a lookup uses.
 
 ### 17.6 Builds with different packs
 
-A build holds only profiles whose language it has a pack for. Builds differ in
-packs: a language arrives with a submodule bump, the Chrome Web Store build
-lags the repository, and GameSentenceMiner ships its own copy. So:
+A build holds only languages it has a pack for. A language is held by an
+installation when it has a profile or any language-scoped data (a personal
+source or package, counts, marks). Builds differ in packs: a language arrives
+with a submodule bump, the Chrome Web Store build lags the repository, and
+GameSentenceMiner ships its own copy. So:
 
-- **Restore.** A version 4 restore leaves out the profiles whose language this
-  build has no pack for, with those languages' personal documents, counts and
-  marks; their other packages stay in the library, in no profile. The preview
-  names them ("Vietnamese needs a newer Hachidori and is not restored"). When
-  no profile other than Japanese remains, the restore uses the backup's
-  Japanese view, as an older build does, so the result is the single-profile
-  shape.
-- **Linked browsers.** A host whose profiles include a language that an
-  opting-in client lacks refuses the opt-in and names the languages. The
-  client then keeps the Japanese view and cannot add languages while linked,
-  as with an older host (section 17.4), and Settings → Sharing says "Update
-  Hachidori in this browser to use {Language} from {host}." When a host adds
-  a language that an opted-in client lacks, it closes that client's
+- **Restore.** For every language the backup holds whose pack this build
+  lacks, a version 4 restore leaves out its profile, its personal package,
+  its document, counts and marks; its other packages stay in the library, in
+  no profile. The preview names each such language ("Vietnamese needs a
+  newer Hachidori and is not restored"), with the name from
+  `Intl.DisplayNames(["en"], { type: "language" })`. The result is the
+  single-profile shape exactly when section 4.5's rule says so.
+- **Opt-in.** The host answers an opt-in in one turn of its storage queue: it
+  reads the snapshot, checks the client's pack codes against every language
+  that snapshot holds, and records the opt-in only when it accepts, so no add
+  lands between the check and the snapshot. A refusal names the languages the
+  client lacks and carries the Japanese view read at that moment, and the
+  host queues that client's change frames until the refusal is sent, as for
+  an acceptance. The refused client keeps the Japanese view and cannot add
+  languages while linked, as with an older host (section 17.4), and Settings →
+  Sharing says "Update Hachidori in this browser to use {Language} from
+  {host}."
+- **Later changes.** The host never sends an opted-in client records that hold
+  a language the client lacks. When a commit would (an add, a restore), that
+  client's change frame is the Japanese view at the commit's newer revisions,
+  the host treats the connection as not opted in, and it closes the
   connection after the reply, so the client says hello again and is refused.
 - **Adding a language through a link.** The opt-in reply lists the host's
-  pack codes, and **Add a language** offers only those. The host refuses an
-  `hd_profile_add` for a language it has no pack for: "The linked Hachidori
-  does not have {Language}. Update it and try again."
+  pack codes, and **Add a language** on a client offers the packs both
+  installations have. The host refuses an `hd_profile_add` for a language it
+  has no pack for: "The linked Hachidori does not have {Language}. Update it
+  and try again."
 - **Downgrading** to a build without one of the installation's packs is not
   supported (section 21).
 
@@ -1632,7 +1701,11 @@ lags the repository, and GameSentenceMiner ships its own copy. So:
   records, messages and frames, migration of every stored shape and backup
   version, version 4 backups read by the version 3 code path, a version 4
   backup with a profile whose pack is missing restoring the rest and naming
-  that profile, the first-run `firstRun` refusals);
+  that language, a backup with a Vietnamese personal dictionary and no
+  Vietnamese profile restored on a build without Vietnamese, a backup with
+  one Japanese profile and English data keeping the English data on a build
+  with English, a restore of the same installation's snapshot replacing its
+  English counts, the first-run `firstRun` rules);
   `language-packs.test.mjs` (vendored copy and both registry scripts equal
   what the submodule gives, class references expanded by hoshidicts'
   `tools/lib/classes.mjs`; `registry-reader.js` within 64 KB; every
@@ -1674,8 +1747,12 @@ lags the repository, and GameSentenceMiner ships its own copy. So:
   a Japanese and Chinese host finding only Japanese dictionaries for Han
   text, and its **Remove all imported dictionaries** refused for the Chinese
   packages; a client whose registry lacks one of the host's languages refused
-  at opt-in and working on the Japanese view, and an `hd_profile_add` for a
-  language the host lacks refused with its message. It saves screenshots of
+  at opt-in and working on the Japanese view, an opted-in client never
+  storing a profile it lacks when the host adds one, and an `hd_profile_add`
+  for a language the host lacks refused with its message; unlinking a browser
+  with its own English counts keeps them; an open tab and Settings on a
+  profile-aware client show the host's profiles right after a new link and
+  after the host gains profiles. It saves screenshots of
   the picker, the switcher and one lookup
   per script.
 - **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: one profile
@@ -1738,7 +1815,7 @@ in every theme.
 - Downgrading is not supported once a second language is added: older builds
   cannot read schema-2 records, and a profile-aware build cannot use a profile
   whose pack it lacks. Version 4 backups restore their Japanese view in older
-  builds and every profile they have a pack for in profile-aware builds
+  builds and every language they have a pack for in profile-aware builds
   (section 17.6).
 - Debug-log redaction does not cover Latin-script languages, whose text cannot
   be told apart from log messages.
@@ -1757,4 +1834,7 @@ in every theme.
   element to carry a direction.
 - Detection by characters cannot tell two Latin-script languages apart: an
   English example in an English-French dictionary takes the dictionary's
-  `fr` (section 10.3).
+  `fr` (section 10.3). Outside profiles written only in Latin, a Latin-script
+  string in a dictionary whose target language is written without Latin
+  takes that language: a Latin etymology in a monolingual Arabic dictionary
+  is `ar`.

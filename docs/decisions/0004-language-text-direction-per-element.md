@@ -1,6 +1,6 @@
 # 0004: Language text is marked per element and per dictionary; the popup itself stays left to right
 
-Status: proposed (multi-language design, Phase 1, revision 6)
+Status: proposed (multi-language design, Phase 1, revision 7)
 
 ## Context
 

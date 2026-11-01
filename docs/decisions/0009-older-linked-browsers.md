@@ -1,6 +1,6 @@
 # 0009: Older linked browsers see the host's Japanese profile as their only one
 
-Status: proposed (multi-language design, Phase 1, revision 6)
+Status: proposed (multi-language design, Phase 1, revision 7)
 
 ## Context
 
@@ -40,9 +40,10 @@ once, after the converting request's reply, so clients say hello again.
 
 ## Consequences
 
-- A profile-aware client that lacks one of the host's languages is refused at
-  opt-in and treated as an older client until it is updated (languages.md,
-  section 17.6).
+- A profile-aware client that lacks a language the host holds is refused at
+  opt-in and treated as an older client until it is updated; a linked client
+  changes projection only at newer revisions (languages.md, sections 17.3
+  and 17.6).
 - An older client keeps working on the Japanese profile; its target is always
   the Japanese data, so a stale base revision is still refused as today. It
   cannot delete a package that a profile other than Japanese uses, because it
