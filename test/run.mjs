@@ -96,7 +96,8 @@ try {
     await run("node-languages-fallback", ["test/node-smoke-languages.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", [...NODE_TEST, "test/extension-smoke.mjs"]);
-  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
+  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast",
+    "chrome-theme-languages"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
     if (suite === "chrome-e2e") await run("chrome-theme-store", ["test/chrome-theme-store.mjs"]);
     await run(suite, [...(suite === "chrome-e2e" ? NODE_TEST : []), `test/${suite}.mjs`], {
@@ -118,7 +119,7 @@ try {
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast, chrome-backup-release, install-chrome,"
+        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-backup-release, install-chrome,"
         + " firefox-lint, firefox-e2e, firefox-large or install-firefox.",
     );
   }
