@@ -108,6 +108,8 @@ try {
     }
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
+    // The released backup is also restored in the Firefox build.
+    await buildFirefox();
     await run(suite, [`test/${suite}.mjs`]);
   } else {
     throw new Error(

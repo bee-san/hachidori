@@ -11,8 +11,10 @@
  * profile; every item must equal the released build's, or differ only by a
  * rule the code documents, and work in a real popup. New backup: that profile
  * picks the newest Reveal choice its Settings offer, exports, and a second fresh
- * profile restores it exactly. Hachidori has no profiles to cover (AGENTS.md
- * keeps L1 profiles out of scope).
+ * profile restores it exactly. Firefox: a fresh profile with this checkout's
+ * Firefox build restores the released backup too, with the same record checks,
+ * and its engine answers lookups from the restored dictionaries. Hachidori has
+ * no profiles to cover (AGENTS.md keeps L1 profiles out of scope).
  *
  *   node test/run.mjs chrome-backup-release
  *
@@ -59,6 +61,11 @@ const puppeteer = puppeteerModule.default?.launch ? puppeteerModule.default : pu
 const { Browser, computeExecutablePath } = await import(require.resolve("@puppeteer/browsers"));
 const CHROME = process.env.HACHIDORI_CHROME
   || computeExecutablePath({ cacheDir: resolve(ROOT, "test/tmp/browsers"), browser: Browser.CHROME, buildId: config.chrome });
+// The released backup also restores in this checkout's Firefox build, which
+// test/run.mjs writes with scripts/build-firefox.py before this suite.
+const FIREFOX = process.env.HACHIDORI_FIREFOX
+  || computeExecutablePath({ cacheDir: resolve(ROOT, "test/tmp/browsers"), browser: Browser.FIREFOX, buildId: config.firefox });
+const FIREFOX_EXTENSION = process.env.HACHIDORI_FIREFOX_EXTENSION || resolve(ROOT, "test/tmp/firefox-extension");
 // The downloaded release stays cached; everything else is this run's own.
 const CACHE = resolve(ROOT, "test/tmp/releases", RELEASE_VERSION);
 const SCRATCH = resolve(ROOT, "test/tmp/backup-release", String(process.pid));
@@ -136,11 +143,18 @@ const NEW_BUILD = {
   settings: "this checkout saves its newest Reveal choice and frequency average settings before exporting",
   export: "this checkout exports a version 3 backup of its complete state through a real Chrome download",
 };
-const LEGS = { released: "released backup", current: "new backup" };
+const LEGS = { released: "released backup", current: "new backup", firefox: "released backup in Firefox" };
+// Firefox restores the released backup through the same Settings steps and
+// record checks. Its popup is test/firefox-e2e.mjs's, so here the restored
+// engine answers lookups from each restored dictionary instead.
+const FIREFOX_RESTORED = ["preview", "restore", "dictionaries", "options", "state", "settings"];
+const FIREFOX_LOOKUPS = "the restored engine finds the fixture's definitions, the frequency list's value, kanji and personal entries";
 const PLANNED = [
   ...Object.values(RELEASED),
-  ...Object.values(LEGS).flatMap(leg => Object.values(RESTORED).map(name => `${leg}: ${name}`)),
+  ...[LEGS.released, LEGS.current].flatMap(leg => Object.values(RESTORED).map(name => `${leg}: ${name}`)),
   ...Object.values(NEW_BUILD),
+  ...FIREFOX_RESTORED.map(key => `${LEGS.firefox}: ${RESTORED[key]}`),
+  `${LEGS.firefox}: ${FIREFOX_LOOKUPS}`,
 ];
 
 // The fixed denominator, as in test/chrome-e2e/harness.mjs: a planned check
@@ -366,13 +380,19 @@ const writeOptions = (page, patch) => page.evaluate(async changes => {
 }, patch);
 
 // The complete backup payload as the build reads it, with its own view of the
-// options and its defaults.
-const readBackup = page => page.evaluate(async () => {
+// options and its defaults. It crosses as JSON text: WebDriver BiDi drops an
+// object's repeated references, and the options view repeats some (the Anki
+// template's fields and tags, and defaults the view shares).
+const readBackup = async page => JSON.parse(await page.evaluate(async () => {
   const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_backup_read" });
   if (!reply.ok) throw new Error(reply.error);
-  return { snapshot: reply.snapshot, rows: reply.lookupStatsRows,
-    view: HDReaderOptions.normaliseOptions(reply.snapshot.options), defaults: HDReaderOptions.DEFAULT_OPTIONS };
-});
+  return JSON.stringify({ snapshot: reply.snapshot, rows: reply.lookupStatsRows,
+    view: HDReaderOptions.normaliseOptions(reply.snapshot.options), defaults: HDReaderOptions.DEFAULT_OPTIONS });
+}));
+
+// A runtime message from an extension page, its reply read as JSON text too.
+const sendRuntime = async (page, message) => JSON.parse(await page.evaluate(async json =>
+  JSON.stringify(await chrome.runtime.sendMessage(JSON.parse(json))), JSON.stringify(message)));
 
 const byTitle = (snapshot, title) => snapshot.state.dictionaries.find(dictionary => dictionary.title === title);
 const row = (rows, term) => rows.find(entry => entry.term === term);
@@ -716,7 +736,100 @@ const withoutPaths = state => ({ ...withoutRevision(state), dictionaries: state.
 const sortedRows = rows => [...rows].sort((left, right) =>
   `${left.term}\u0000${left.reading}`.localeCompare(`${right.term}\u0000${right.reading}`));
 
-async function restoreLeg(leg, { file, source, tabs }) {
+// Restores a backup through Settings in a fresh profile and checks every
+// record against the exporting build's. `driver` chooses the file and clicks
+// as each browser allows. Returns the restored payload.
+async function restoreAndCompare(name, settings, { file, source }, driver) {
+  const before = await readBackup(settings);
+  await showSection(settings, "backup");
+  await driver.choose("#backup-file", file);
+  await settings.waitForFunction(() => !document.getElementById("backup-preview").hidden
+    || document.getElementById("backup-status").classList.contains("is-error"), { timeout: 120_000, polling: 100 });
+  const preview = await settings.evaluate(() => ({
+    status: document.getElementById("backup-status").textContent,
+    shown: !document.getElementById("backup-preview").hidden,
+    restoreDisabled: document.getElementById("backup-restore").disabled,
+    count: document.getElementById("backup-count").textContent,
+    dictionaries: [...document.querySelectorAll("#backup-dictionaries li")].map(item => item.textContent),
+  }));
+  const listed = source.snapshot.state.dictionaries.map(({ title, enabled }) => `${title}${enabled ? "" : " (disabled)"}`);
+  check(name(RESTORED.preview), preview.shown && preview.restoreDisabled
+    && preview.status === "Backup checked. Nothing has been replaced."
+    && preview.count === `${listed.length} dictionaries · 2 personal entries`
+    && isDeepStrictEqual(preview.dictionaries, listed), JSON.stringify({ preview, listed }));
+  await driver.click("#backup-confirm");
+  await driver.click("#backup-restore");
+  await settings.waitForFunction(() => !document.getElementById("backup-export").disabled
+    && document.getElementById("backup-preview").hidden, { timeout: 120_000, polling: 100 });
+  const notice = await settings.$eval("#backup-status", output => output.textContent);
+  await settings.waitForFunction(count => document.getElementById("engine-status")?.textContent.includes("Ready")
+    && document.querySelectorAll("#dict-list .dict-row").length === count, { timeout: 90_000, polling: 100 }, listed.length);
+  const restored = await readBackup(settings);
+  const revisions = Object.fromEntries(Object.keys(restored.snapshot).map(key =>
+    [key, [before.snapshot[key]?.revision ?? 0, restored.snapshot[key].revision]]));
+  check(name(RESTORED.restore), notice === "Restored successfully."
+    && Object.values(revisions).every(([prior, now]) => now === prior + 1)
+    && restored.snapshot.state.dictionaries.every((dictionary, index) =>
+      dictionary.path !== source.snapshot.state.dictionaries[index].path),
+  JSON.stringify({ notice, revisions }));
+
+  // Everything but the fresh generation paths and the local revision.
+  const restoredState = restored.snapshot.state;
+  check(name(RESTORED.dictionaries), isDeepStrictEqual(withoutPaths(restoredState), withoutPaths(source.snapshot.state)),
+    JSON.stringify({ restored: withoutPaths(restoredState), source: withoutPaths(source.snapshot.state) }));
+
+  const options = compareOptions(source, restored);
+  check(name(RESTORED.options), options.unexplained.length === 0, JSON.stringify(options));
+  console.log(`     ${name("options rules")}: ${options.rules.length ? options.rules.join("; ") : "none needed"}`);
+
+  const restoredRows = sortedRows(restored.rows);
+  check(name(RESTORED.state), isDeepStrictEqual(withoutRevision(restored.snapshot.document), withoutRevision(source.snapshot.document))
+    && isDeepStrictEqual(withoutRevision(restored.snapshot.updates), withoutRevision(source.snapshot.updates))
+    && isDeepStrictEqual(withoutRevision(restored.snapshot.wordStatusOverrides), withoutRevision(source.snapshot.wordStatusOverrides))
+    && isDeepStrictEqual(restoredRows, sortedRows(source.rows))
+    && typeof restored.snapshot.lookupStats.generation === "string"
+    && restored.snapshot.lookupStats.generation !== source.snapshot.lookupStats.generation,
+  JSON.stringify({ document: restored.snapshot.document, updates: restored.snapshot.updates,
+    words: restored.snapshot.wordStatusOverrides, rows: restoredRows, lookupStats: restored.snapshot.lookupStats }));
+
+  const managed = byTitle(restored.snapshot, FREQUENCY_TITLE);
+  const due = Date.parse(managed.lastUpdateCheck.checkedAt) + 24 * 60 * 60_000;
+  // The Anki section renders its fields once it is opened.
+  await showSection(settings, "anki");
+  await settings.waitForFunction(url => document.getElementById("opt-anki-url").value === url,
+    { timeout: 15_000, polling: 100 }, ANKI_URL).catch(() => {});
+  const shown = await settings.evaluate(async id => {
+    const value = selector => document.querySelector(selector);
+    const alarm = async () => chrome.alarms.get("hachidori-managed-dictionary-updates");
+    let scheduled = await alarm();
+    for (let attempt = 0; attempt < 100 && !scheduled; attempt += 1) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 100));
+      scheduled = await alarm();
+    }
+    return {
+      reveal: value("#opt-blur-reveal").value, schedule: value("#update-schedule").value,
+      dictionarySchedule: value(`#dict-list .dict-row[data-dictionary-id="${id}"] .dict-update-schedule`).value,
+      smallerAnkiCards: value("#opt-smaller-anki-cards")?.checked ?? null,
+      ankiUrl: value("#opt-anki-url").value, ankiKey: value("#opt-anki-api-key").value,
+      backupDays: value("#opt-automatic-backup-days").value, wordHighlight: value("#opt-word-highlight").checked,
+      switches: Object.fromEntries([...document.querySelectorAll("#experimental-features input[type=checkbox]")]
+        .map(input => [input.id.replace("opt-experimental-", ""), input.checked])),
+      alarm: scheduled?.scheduledTime ?? null,
+    };
+  }, managed.id);
+  const view = restored.view;
+  check(name(RESTORED.settings), shown.reveal === view.definitionBlurReveal && shown.schedule === "weekly"
+    && shown.dictionarySchedule === "daily" && shown.smallerAnkiCards === view.smallerAnkiCards
+    && shown.ankiUrl === ANKI_URL && shown.ankiKey === ANKI_API_KEY && shown.backupDays === "7" && shown.wordHighlight
+    && isDeepStrictEqual(shown.switches, view.experimental)
+    && shown.alarm !== null && Math.abs(shown.alarm - due) < 1000,
+  JSON.stringify({ shown, due, view: { reveal: view.definitionBlurReveal, smallerAnkiCards: view.smallerAnkiCards,
+    experimental: view.experimental } }));
+
+  return restored;
+}
+
+async function restoreLeg(leg, released) {
   const name = check => `${leg}: ${check}`;
   const label = leg === LEGS.released ? "restored" : "rerestored";
   const { browser, settings } = await openBrowser(EXTENSION, profile(label), label);
@@ -724,94 +837,14 @@ async function restoreLeg(leg, { file, source, tabs }) {
   anki.media.clear();
   anki.unexpected.length = 0;
   try {
-    const before = await readBackup(settings);
-    await showSection(settings, "backup");
-    await settings.bringToFront();
-    await (await settings.$("#backup-file")).uploadFile(file);
-    await settings.waitForFunction(() => !document.getElementById("backup-preview").hidden
-      || document.getElementById("backup-status").classList.contains("is-error"), { timeout: 120_000, polling: 100 });
-    const preview = await settings.evaluate(() => ({
-      status: document.getElementById("backup-status").textContent,
-      shown: !document.getElementById("backup-preview").hidden,
-      restoreDisabled: document.getElementById("backup-restore").disabled,
-      count: document.getElementById("backup-count").textContent,
-      dictionaries: [...document.querySelectorAll("#backup-dictionaries li")].map(item => item.textContent),
-    }));
-    const listed = source.snapshot.state.dictionaries.map(({ title, enabled }) => `${title}${enabled ? "" : " (disabled)"}`);
-    check(name(RESTORED.preview), preview.shown && preview.restoreDisabled
-      && preview.status === "Backup checked. Nothing has been replaced."
-      && preview.count === `${listed.length} dictionaries · 2 personal entries`
-      && isDeepStrictEqual(preview.dictionaries, listed), JSON.stringify({ preview, listed }));
-    await settings.click("#backup-confirm");
-    await settings.click("#backup-restore");
-    await settings.waitForFunction(() => !document.getElementById("backup-export").disabled
-      && document.getElementById("backup-preview").hidden, { timeout: 120_000, polling: 100 });
-    const notice = await settings.$eval("#backup-status", output => output.textContent);
-    await settings.waitForFunction(count => document.getElementById("engine-status")?.textContent.includes("Ready")
-      && document.querySelectorAll("#dict-list .dict-row").length === count, { timeout: 90_000, polling: 100 }, listed.length);
-    const restored = await readBackup(settings);
-    const revisions = Object.fromEntries(Object.keys(restored.snapshot).map(key =>
-      [key, [before.snapshot[key]?.revision ?? 0, restored.snapshot[key].revision]]));
-    check(name(RESTORED.restore), notice === "Restored successfully."
-      && Object.values(revisions).every(([prior, now]) => now === prior + 1)
-      && restored.snapshot.state.dictionaries.every((dictionary, index) =>
-        dictionary.path !== source.snapshot.state.dictionaries[index].path),
-    JSON.stringify({ notice, revisions }));
-
-    // Everything but the fresh generation paths and the local revision.
-    const restoredState = restored.snapshot.state;
-    check(name(RESTORED.dictionaries), isDeepStrictEqual(withoutPaths(restoredState), withoutPaths(source.snapshot.state)),
-      JSON.stringify({ restored: withoutPaths(restoredState), source: withoutPaths(source.snapshot.state) }));
-
-    const options = compareOptions(source, restored);
-    check(name(RESTORED.options), options.unexplained.length === 0, JSON.stringify(options));
-    console.log(`     ${leg} options rules: ${options.rules.length ? options.rules.join("; ") : "none needed"}`);
-
-    const restoredRows = sortedRows(restored.rows);
-    check(name(RESTORED.state), isDeepStrictEqual(withoutRevision(restored.snapshot.document), withoutRevision(source.snapshot.document))
-      && isDeepStrictEqual(withoutRevision(restored.snapshot.updates), withoutRevision(source.snapshot.updates))
-      && isDeepStrictEqual(withoutRevision(restored.snapshot.wordStatusOverrides), withoutRevision(source.snapshot.wordStatusOverrides))
-      && isDeepStrictEqual(restoredRows, sortedRows(source.rows))
-      && typeof restored.snapshot.lookupStats.generation === "string"
-      && restored.snapshot.lookupStats.generation !== source.snapshot.lookupStats.generation,
-    JSON.stringify({ document: restored.snapshot.document, updates: restored.snapshot.updates,
-      words: restored.snapshot.wordStatusOverrides, rows: restoredRows, lookupStats: restored.snapshot.lookupStats }));
-
-    const managed = byTitle(restored.snapshot, FREQUENCY_TITLE);
-    const due = Date.parse(managed.lastUpdateCheck.checkedAt) + 24 * 60 * 60_000;
-    // The Anki section renders its fields once it is opened.
-    await showSection(settings, "anki");
-    await settings.waitForFunction(url => document.getElementById("opt-anki-url").value === url,
-      { timeout: 15_000, polling: 100 }, ANKI_URL).catch(() => {});
-    const shown = await settings.evaluate(async id => {
-      const value = selector => document.querySelector(selector);
-      const alarm = async () => chrome.alarms.get("hachidori-managed-dictionary-updates");
-      let scheduled = await alarm();
-      for (let attempt = 0; attempt < 100 && !scheduled; attempt += 1) {
-        await new Promise(resolveWait => setTimeout(resolveWait, 100));
-        scheduled = await alarm();
-      }
-      return {
-        reveal: value("#opt-blur-reveal").value, schedule: value("#update-schedule").value,
-        dictionarySchedule: value(`#dict-list .dict-row[data-dictionary-id="${id}"] .dict-update-schedule`).value,
-        smallerAnkiCards: value("#opt-smaller-anki-cards")?.checked ?? null,
-        ankiUrl: value("#opt-anki-url").value, ankiKey: value("#opt-anki-api-key").value,
-        backupDays: value("#opt-automatic-backup-days").value, wordHighlight: value("#opt-word-highlight").checked,
-        switches: Object.fromEntries([...document.querySelectorAll("#experimental-features input[type=checkbox]")]
-          .map(input => [input.id.replace("opt-experimental-", ""), input.checked])),
-        alarm: scheduled?.scheduledTime ?? null,
-      };
-    }, managed.id);
-    const view = restored.view;
-    check(name(RESTORED.settings), shown.reveal === view.definitionBlurReveal && shown.schedule === "weekly"
-      && shown.dictionarySchedule === "daily" && shown.smallerAnkiCards === view.smallerAnkiCards
-      && shown.ankiUrl === ANKI_URL && shown.ankiKey === ANKI_API_KEY && shown.backupDays === "7" && shown.wordHighlight
-      && isDeepStrictEqual(shown.switches, view.experimental)
-      && shown.alarm !== null && Math.abs(shown.alarm - due) < 1000,
-    JSON.stringify({ shown, due, view: { reveal: view.definitionBlurReveal, smallerAnkiCards: view.smallerAnkiCards,
-      experimental: view.experimental } }));
-
-    const observed = await popupChecks(name, browser, settings, source, restored, tabs);
+    const restored = await restoreAndCompare(name, settings, released, {
+      choose: async (selector, file) => {
+        await settings.bringToFront();
+        await (await settings.$(selector)).uploadFile(file);
+      },
+      click: selector => settings.click(selector),
+    });
+    const observed = await popupChecks(name, browser, settings, released.source, restored, released.tabs);
     return { browser, settings, tabs: observed };
   } catch (error) {
     await browser.close().catch(() => {});
@@ -972,6 +1005,89 @@ async function newExportLeg({ browser, settings, tabs }) {
   }
 }
 
+// ------------------------------------------------------------------- Firefox
+
+// A fresh Firefox profile with this checkout's Firefox build installed as a
+// temporary add-on, Settings open with the engine settled and sharing off.
+// Firefox opens the startup page on install, and Settings replaces it there.
+async function openFirefox(profileDirectory) {
+  rmSync(profileDirectory, { recursive: true, force: true });
+  mkdirSync(profileDirectory, { recursive: true });
+  const browser = await puppeteer.launch({ browser: "firefox", executablePath: FIREFOX, headless: true,
+    userDataDir: profileDirectory, protocolTimeout: 180_000,
+    // Lets WebDriver BiDi script the add-on's privileged pages.
+    env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" } });
+  try {
+    await browser.installExtension(FIREFOX_EXTENSION);
+    const href = page => page.evaluate(() => location.href).catch(() => "");
+    const settings = await until(async () => {
+      for (const page of await browser.pages()) {
+        if (/^moz-extension:\/\/[^/]+\/startup\.html/u.test(await href(page))) return page;
+      }
+      return null;
+    }, Boolean, 30_000);
+    if (!settings) throw new Error("Firefox opened no startup page");
+    settings.on("console", message => note(`[firefox settings] ${message.type()}: ${message.text()}`));
+    await settings.evaluate(() => location.replace("settings.html"));
+    // The page navigates itself, so its new document is polled for.
+    const loaded = await until(() => settings.evaluate(() => location.pathname === "/settings.html"
+      && document.readyState === "complete").catch(() => false), Boolean, 30_000);
+    if (!loaded) throw new Error("Firefox did not open Settings");
+    await settings.waitForFunction(() => /ready|no dictionaries/iu.test(document.getElementById("engine-status")?.textContent ?? ""),
+      { timeout: 90_000, polling: 100 });
+    const sharing = await sendRuntime(settings, { target: "hachidori-sharing",
+      type: "hd_sharing_host_disable", requestId: "backup-release-firefox-sharing-off" });
+    if (sharing?.ok !== true) throw new Error(`sharing could not be turned off in Firefox: ${sharing?.error}`);
+    return { browser, settings };
+  } catch (error) {
+    await browser.close().catch(() => {});
+    throw error;
+  }
+}
+
+// The released backup in this checkout's Firefox build. WebDriver BiDi sets no
+// files on a privileged page, so the file reaches the input as a picker or a
+// drop would hand it over, and Settings' buttons are clicked from page script.
+async function firefoxLeg(released) {
+  const name = check => `${LEGS.firefox}: ${check}`;
+  const { browser, settings } = await openFirefox(profile("firefox"));
+  try {
+    await restoreAndCompare(name, settings, released, {
+      choose: (selector, file) => settings.evaluate((input, fileName, base64) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([Uint8Array.from(atob(base64), character => character.charCodeAt(0))], fileName,
+          { type: "application/zip" }));
+        const control = document.querySelector(input);
+        control.files = transfer.files;
+        control.dispatchEvent(new Event("change", { bubbles: true }));
+      }, selector, basename(file), readFileSync(file).toString("base64")),
+      click: selector => settings.evaluate(control => document.querySelector(control).click(), selector),
+    });
+    const lookup = async text => (await sendRuntime(settings, { target: "hoshidicts-offscreen",
+      type: "hd_lookup", requestId: `backup-release-firefox-${text}`, text }))?.results ?? [];
+    const terms = (results, expression) => results.filter(result => result.term.expression === expression)
+      .map(result => result.term);
+    const glosses = (results, expression) => terms(results, expression).flatMap(term => term.glossaries);
+    const verb = await lookup("食べたかった");
+    const eat = glosses(verb, "食べる");
+    const frequency = terms(verb, "食べる").flatMap(term => term.frequencies)
+      .find(group => group.dictionary === FREQUENCY_TITLE)?.frequencies[0]?.value ?? null;
+    const personal = glosses(await lookup("往復"), "往復").map(entry => entry.glossary).join(" ");
+    const multibyte = glosses(await lookup("猫舌"), "猫舌").map(entry => entry.glossary).join(" ");
+    const native = await sendRuntime(settings, { target: "hoshidicts-offscreen",
+      type: "hd_kanji", requestId: "backup-release-firefox-kanji", character: "食" });
+    const kanji = JSON.stringify(native?.kanji?.entries ?? null);
+    check(name(FIREFOX_LOOKUPS), eat.some(entry => entry.dictionary === FIXTURE_TITLE && entry.glossary.includes("to eat"))
+      && !eat.some(entry => entry.dictionary === TRAINED_TITLE) && frequency === 1200
+      && personal.includes("a round trip") && multibyte.includes("sensitive to hot food") && multibyte.includes("いつも熱いものが苦手")
+      && native?.ok === true && kanji.includes("ショク") && kanji.includes("food"),
+    JSON.stringify({ eat: eat.map(({ dictionary, glossary }) => ({ dictionary, glossary: glossary.slice(0, 120) })),
+      frequency, personal, multibyte, kanji: kanji.slice(0, 300) }));
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 async function leg(label, body) {
   try {
     return await body();
@@ -989,6 +1105,7 @@ try {
   const restored = released && await leg(LEGS.released, () => restoreLeg(LEGS.released, released));
   const exported = restored && await leg("the new build's export", () => newExportLeg(restored));
   if (exported) await leg(LEGS.current, () => restoreLeg(LEGS.current, exported));
+  if (released) await leg(LEGS.firefox, () => firefoxLeg(released));
 } finally {
   server.close();
 }
@@ -1006,11 +1123,11 @@ if (failed) {
   console.log("\nfailures:");
   for (const name of PLANNED.filter(planned => !results.get(planned).ok)) console.log(`  - ${name}\n      ${results.get(name).detail}`);
   for (const failure of failures) console.log(`  - ${failure}`);
-  console.log(`\nprofiles kept for inspection: ${["released", "restored", "rerestored"].map(profile).filter(existsSync).join(", ")}`);
+  console.log(`\nprofiles kept for inspection: ${["released", "restored", "rerestored", "firefox"].map(profile).filter(existsSync).join(", ")}`);
   console.log("\nbrowser diagnostics (last 60):");
   for (const line of diagnostics.slice(-60)) console.log(`  ${line}`);
 } else {
   rmSync(SCRATCH, { recursive: true, force: true });
-  for (const label of ["released", "restored", "rerestored"]) rmSync(profile(label), { recursive: true, force: true });
+  for (const label of ["released", "restored", "rerestored", "firefox"]) rmSync(profile(label), { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);
