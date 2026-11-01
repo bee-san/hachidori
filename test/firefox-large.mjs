@@ -97,9 +97,10 @@ describe("large dictionaries", () => {
     setDownloads(relaunched.downloads);
     await installHachidori(relaunched.browser);
     setPage(await openPage(extensionUrl("settings.html"), relaunched.browser));
+    // The engine reports ready before it has loaded the stored dictionaries.
     const ready = await waitFor(async () => {
       const status = await engineStatus(page);
-      return status?.ready ? status : false;
+      return status?.ready && !status.loading ? status : false;
     }, { timeout: 300_000, interval: 250 });
     timings.restartToReadyMs = Math.round(performance.now() - started);
     const outcomes = await queryOutcomes(page);

@@ -85,9 +85,10 @@ describe("idle and restart", () => {
     const id = await installHachidori(relaunched.browser);
     const settings = await openPage(extensionUrl("settings.html"), relaunched.browser);
     setPage(settings);
+    // The engine reports ready before it has loaded the stored dictionaries.
     const ready = await waitFor(async () => {
       const status = await engineStatus(settings);
-      return status?.ready ? status : false;
+      return status?.ready && !status.loading ? status : false;
     }, { timeout: 120_000 });
     const after = {
       state: await dictionaryState(settings),
