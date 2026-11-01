@@ -335,3 +335,6 @@
     animation: none;
   }
 }
+/* The welcome card's language choice (docs/languages.md 16.1). */
+.setup-language { display: grid; gap: 6px; max-width: 320px; margin-top: 16px; }
+.setup-language select { width: 100%; }
