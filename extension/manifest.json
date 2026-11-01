@@ -115,6 +115,7 @@
       "run_at": "document_idle",
       "all_frames": true,
       "js": [
+        "vendor/languages/registry-reader.js",
         "reader-options.js",
         "dictionary-group-state.js",
         "lookup-stats-identity.js",
