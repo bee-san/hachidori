@@ -823,22 +823,21 @@ full browser restart without reloading the engine.
 `options.keybinds` copies yomitan-gsm's hotkey entries exactly: `action`,
 `argument`, `key` (a `KeyboardEvent.code`, `WheelUp`/`WheelDown` for a wheel
 step, or `null` for modifiers only), `modifiers`, `scopes` and `enabled`. Only
-actions that map onto an existing Hachidori control are offered. Close, entry
-and dictionary navigation, Back, Add note, View notes, Play audio, Play audio
-from source, Scan selected text, Scan text at selection and Toggle option are
-available, and Hachidori's own Toggle word highlights, in the page scope, which
+actions that map onto existing Hachidori behaviour are offered. Close, entry
+and dictionary navigation, Back and Forward, Add note, View notes, Play audio,
+Play audio from source, Scan selected text, Scan text at selection and Toggle
+option are available, and Hachidori's own Toggle word highlights, in the page scope, which
 shows or hides [word highlighting](#word-highlighting)'s marks in a frame, and
 Mark word as known and Ignore word, which [set the current entry's
 word](#mark-as-known-and-ignore) for those marks and have no default key. The
 defaults are Yomitan's keys for those actions: Escape,
 Alt+PageUp/PageDown (three entries), Alt+ArrowUp/ArrowDown, Alt+Home/End, Alt+B,
-Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
+Alt+F, Alt+E, Alt+P and Alt+V. Two rows follow them, Alt+WheelUp/WheelDown (one
 entry): Yomitan's popup moves one entry per Alt+wheel event outside its
 hotkeys, so here that gesture is an ordinary binding.
 
 Several Yomitan actions are omitted because Hachidori has no matching feature:
 
-- forward history
 - profiles
 - the search page and its box
 - card-format arguments
@@ -877,9 +876,15 @@ later entries through the existing Show more control. Entry navigation scrolls t
 target's own header just under the popup's header. Dictionary navigation moves
 from the most visible glossary card to the nearest card from another dictionary.
 Add note, View notes and Back click the current entry's existing buttons, so
-duplicate and disabled behavior is unchanged. Audio replays without
-the click toggle, or plays the first choice from the selected source. Toggle
-option writes one boolean through the revisioned options CAS.
+duplicate and disabled behavior is unchanged. Forward reopens the view the last
+Back left ([clicked-kanji navigation](#clicked-kanji-navigation-and-back)).
+Back without a Back control and Forward with nothing ahead leave the key to the
+page. Yomitan's popup takes Alt+B and Alt+F even then, because its history
+handlers return nothing, which its `HotkeyHandler` counts as handled. With the
+popup scope meaning an open popup, doing the same here would take Alt+F, which
+also opens Chrome's menu on Windows and Linux, whenever a popup shows. Audio
+replays without the click toggle, or plays the first choice from the selected
+source. Toggle option writes one boolean through the revisioned options CAS.
 
 The Default popup's header shows the result being read: the last result whose
 own header has scrolled above the definitions, or the first result (#488). In
@@ -910,8 +915,8 @@ Hachidori has:
 - Open Hachidori settings, unassigned.
 - One unassigned command for each popup keybind action that needs no chosen
   argument: Close, Add to Anki, View in Anki, Play audio, the entry and
-  dictionary moves, Back, the two selection scans, Toggle word highlights,
-  Mark word as known and Ignore word.
+  dictionary moves, Back, Forward, the two selection scans, Toggle word
+  highlights, Mark word as known and Ignore word.
 
 The worker toggles `hoverEnabled` inside its storage queue with the same
 revisioned options write as the toolbar switch. A popup-action command goes to
@@ -2340,6 +2345,17 @@ reading position. The existing highlight, toolbar positioning,
 exact clicked-kanji focus target and previous Back chain remain intact.
 Moving the toolbar to the other edge after a viewport resize preserves deliberate
 tab or Note focus, including the existing draft selection.
+
+Back also leaves the kanji request it closes ahead of the term request it
+restores, as Yomitan's `DisplayHistory` keeps the entry Back leaves as the next
+one (#609). Navigate forward in history (Alt+F by default, as in Yomitan)
+reopens that request as its click did: it asks the engine again and shows the
+view from its top with Back focused. It is the same request, so its tab and
+definition blur decision carry over and its lookup is not counted again. Back
+from it returns to the term view as Forward left it, scroll and expansion
+included. A new kanji click is what Forward reopens after the next Back. A new
+lookup has nothing ahead, and neither does a no-result notice or a failure that
+a replayed term request leaves in place of its view.
 
 This intentionally extends the pinned GSM PR #549 restoration: its saved term
 view does not retain expansion/scroll, and uses the current kanji tab. Issue #9

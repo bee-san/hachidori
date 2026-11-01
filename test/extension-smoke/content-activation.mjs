@@ -1336,6 +1336,145 @@ async function keybindRepeatCase() {
   }
 }
 
+// Yomitan's Navigate forward in history (#609), on its default Alt+F. Back
+// remembers the view it leaves and Forward reopens that same request, so the
+// lookup is not counted again and Back still steps back from it. A new kanji
+// click is what Forward reopens next. With nothing ahead, as on a new lookup,
+// the key is left to the page.
+async function historyKeybindCase() {
+  const result = {};
+  const harness = await createHarness();
+  try {
+    const window = harness.popup.ownerDocument.defaultView;
+    const view = () => harness.driver.viewRequest();
+    const counted = () => harness.sent.filter(request => request.type === "hd_lookup_stats_record").length;
+    const answerKanji = () => {
+      const lookup = harness.take("hd_lookup_dictionary");
+      if (lookup) harness.reply(lookup, { dictionaryCount: 1, results: [harness.term(lookup.request.text)] });
+      return lookup !== null;
+    };
+    const openKanji = async () => {
+      const opening = harness.driver.showKanji("食");
+      answerKanji();
+      await opening;
+      return view();
+    };
+    const back = async () => {
+      await harness.render().context.onBack?.();
+      return view();
+    };
+    const forward = async () => {
+      const event = new window.KeyboardEvent("keydown",
+        { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true });
+      window.document.dispatchEvent(event);
+      const looked = answerKanji();
+      await harness.settle();
+      return { prevented: event.defaultPrevented, looked, view: view() };
+    };
+    await harness.initialLookup();
+    const term = view();
+    const kanji = await openKanji();
+    const nested = await openKanji();
+    const backs = [await back(), await back()];
+    const recorded = counted();
+    // Scrolled since the click: Back from the reopened view returns to it as it is now.
+    harness.setTermViewport({ expandAll: true, restoreScrollTop: 80 });
+    const forwards = [await forward(), await forward(), await forward()];
+    const backsAgain = [await back(), await back()];
+    const restored = harness.render().context;
+    result["Alt+F reopens the exact request Back left without counting it again, and Back steps back from it"] =
+      (backs[0] === kanji && backs[1] === term
+        && forwards[0].prevented && forwards[0].looked && forwards[0].view === kanji
+        && forwards[1].prevented && forwards[1].looked && forwards[1].view === nested
+        && !forwards[2].prevented && !forwards[2].looked && forwards[2].view === nested
+        && backsAgain[0] === kanji && backsAgain[1] === term && counted() === recorded
+        && restored.expandAll === true && restored.restoreScrollTop === 80)
+      || { backs: backs.map(request => [kanji, term].indexOf(request)), recorded, counted: counted(),
+        forwards: forwards.map(({ view: request, ...rest }) => ({ ...rest, view: [term, kanji, nested].indexOf(request) })),
+        backsAgain: backsAgain.map(request => [kanji, term].indexOf(request)),
+        restored: { expandAll: restored.expandAll, restoreScrollTop: restored.restoreScrollTop } };
+
+    const clicked = await openKanji();
+    const backFromClicked = await back();
+    harness.runtimeMessage({ target: "hachidori-reader", type: "hd_reader_command", action: "historyForward" });
+    const commandLooked = answerKanji();
+    await harness.settle();
+    const commanded = view();
+    await harness.initialLookup();
+    const fresh = view();
+    const nothingAhead = await forward();
+    result["Forward reopens a new kanji click's view, also as a browser command, and leaves the key to the page with nothing ahead"] =
+      (clicked !== kanji && backFromClicked === term && commandLooked && commanded === clicked
+        && fresh !== term && !nothingAhead.prevented && !nothingAhead.looked && nothingAhead.view === fresh)
+      || { clicked: clicked !== kanji, backFromClicked: backFromClicked === term, commandLooked,
+        commanded: commanded === clicked, fresh: fresh !== term, nothingAhead: { ...nothingAhead, view: nothingAhead.view === fresh } };
+  } finally {
+    harness.close();
+  }
+  return result;
+}
+
+// After a dictionary change, Back replays the term request instead of
+// redrawing it. Forward still reopens the kanji view from the replayed view.
+// When the replay of a selection lookup matches nothing, a no-result notice
+// takes the view's place. A view reopened from there would have no term view
+// for its Back to return to, so Forward leaves the key alone.
+async function historyReplayCase() {
+  const result = {};
+  const harness = await createHarness();
+  try {
+    const window = harness.popup.ownerDocument.defaultView;
+    const term = [{ ...harness.term("食べる"), matched: harness.candidate.query }];
+    const forward = () => {
+      const event = new window.KeyboardEvent("keydown",
+        { key: "f", code: "KeyF", altKey: true, bubbles: true, cancelable: true });
+      window.document.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    // Each kanji reply comes from a newer engine generation, so the Back after it replays.
+    const back = async generation => {
+      window.getSelection().removeAllRanges();
+      const backing = harness.render().context.onBack?.();
+      const replay = harness.take("hd_lookup");
+      if (replay) harness.reply(replay, { generation, dictionaryCount: 1, results: generation === 3 ? term : [] });
+      await backing;
+      window.getSelection().selectAllChildren(harness.anchor);
+      return replay !== null;
+    };
+    harness.emitOptions({ lookupMode: "hover", kanjiClickDictionary: { title: "Generic", kind: "term" } });
+    window.getSelection().selectAllChildren(harness.anchor);
+    window.document.dispatchEvent(new window.Event("selectionchange"));
+    harness.reply(harness.take("hd_lookup"), { dictionaryCount: 1, results: term });
+    await harness.settle();
+    const selected = harness.driver.viewRequest();
+    const clicked = harness.driver.showKanji("食");
+    harness.reply(harness.take("hd_lookup_dictionary"), { generation: 3, results: [harness.term("食")] });
+    await clicked;
+    const kanji = harness.driver.viewRequest();
+    const replayed = await back(3);
+    const restored = harness.driver.viewRequest() === selected && harness.render().kind === "terms";
+    const prevented = forward();
+    const reopening = harness.take("hd_lookup_dictionary");
+    if (reopening) harness.reply(reopening, { generation: 4, results: [harness.term("食")] });
+    await harness.settle();
+    result["Forward reopens the kanji view after a Back that replays its term request for a dictionary change"] =
+      (replayed && restored && prevented && reopening !== null && harness.driver.viewRequest() === kanji)
+      || { replayed, restored, prevented, reopened: reopening !== null, view: harness.driver.viewRequest() === kanji };
+
+    const replayedAgain = await back(4);
+    const notice = harness.render().kind;
+    const noticePrevented = forward();
+    const reopened = harness.take("hd_lookup_dictionary");
+    await harness.settle();
+    result["Forward leaves the key alone on the no-result notice Back can leave after a dictionary change"] =
+      (replayedAgain && notice === "notice" && !noticePrevented && reopened === null && harness.render().kind === "notice")
+      || { replayedAgain, notice, prevented: noticePrevented, reopened: reopened !== null, render: harness.render().kind };
+  } finally {
+    harness.close();
+  }
+  return result;
+}
+
 describe("content script: activation and keybinds", () => {
   test("activation, scan delays and departures", async () => {
     const noteContent = await contentNoteStage({
@@ -1350,7 +1489,8 @@ describe("content script: activation and keybinds", () => {
 
   test("keybinds", async () => {
     const noteContent = await contentNoteStage({
-      keybinds: async () => ({ ...await keybindCase(), ...await keybindRepeatCase(), ...await wheelKeybindCase() }),
+      keybinds: async () => ({ ...await keybindCase(), ...await keybindRepeatCase(), ...await wheelKeybindCase(),
+        ...await historyKeybindCase(), ...await historyReplayCase() }),
     });
     for (const [name, passed] of Object.entries(noteContent?.keybinds ?? {})) {
       check(name, passed === true, JSON.stringify(passed));

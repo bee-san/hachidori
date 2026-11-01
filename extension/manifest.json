@@ -68,6 +68,9 @@
     "historyBackward": {
       "description": "Go back in the popup's history"
     },
+    "historyForward": {
+      "description": "Go forward in the popup's history"
+    },
     "scanSelectedText": {
       "description": "Look up the selected text"
     },
