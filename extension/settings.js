@@ -719,6 +719,14 @@ function showSettingsSection(focus = false) {
   else if (focus) element(activeSection).querySelector("h1").focus();
 }
 
+// The edited profile's speech language and Test word (docs/languages.md 13);
+// Japanese's are today's.
+function audioLanguage() {
+  const host = languageDescriptor(editedProfile.language)?.host;
+  return { code: editedProfile.language, name: languageName(), speech: host?.ttsLanguage ?? null,
+    warmup: host?.sample?.warmup ?? null };
+}
+
 function updateAudioSettings() {
   if (activeSection !== "audio") { audioController?.stop(); return; }
   audioController ??= createAudioSettingsController({
@@ -730,6 +738,7 @@ function updateAudioSettings() {
       writeOptions();
     },
     send: (type, fields) => send(type, { ...fields, ...profileFields() }, AUDIO_TARGET),
+    readLanguage: audioLanguage,
   });
   audioController.render();
   // Audio → Sources → Local Audio Server add-on: an added source joins the list above it.

@@ -324,14 +324,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+function validateAudioTerm(term) {
+  if (typeof term?.expression !== "string" || !term.expression
+      || typeof term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+}
+
 function validateAudioRequest(message) {
   if (message.type === "hd_audio_test") {
     globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
+    // A profile's Test plays its pack's sample entry (docs/languages.md 13).
+    if (message.term !== undefined) validateAudioTerm(message.term);
     return;
   }
   if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return;
-  if (typeof message.term?.expression !== "string" || !message.term.expression
-      || typeof message.term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+  validateAudioTerm(message.term);
   const choice = message.selection;
   if (choice !== undefined && (!choice || !Number.isInteger(choice.index) || choice.index < 0
       || !["sourceId", "sourceKey", "expression", "reading", "name"].every(key => typeof choice[key] === "string")
@@ -339,17 +345,24 @@ function validateAudioRequest(message) {
 }
 
 // The pronunciation sources of the profile a request names (docs/languages.md
-// 5.4), or today's for one that names none.
+// 5.4), or today's for one that names none, and that profile's language, whose
+// pack speaks and fills {language} (13).
 async function prepareAudioRequest(message) {
-  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return message;
+  const test = message.type === "hd_audio_test";
+  if (test ? message.profileId === undefined : message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") {
+    return message;
+  }
   const stored = await chrome.storage.local.get(OPTIONS_KEY);
   let options;
+  let language = {};
   if (message.profileId === undefined) options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
   else {
     requestProfileId(message, stored[OPTIONS_KEY]);
     options = globalThis.HDReaderOptions.projectOptions(stored[OPTIONS_KEY], message.profileId);
+    language = { language: globalThis.HDReaderOptions.profileDescriptor(stored[OPTIONS_KEY], message.profileId).language };
   }
-  return { ...message, sources: options.audioSources.filter(source => source.enabled) };
+  if (test) return { ...message, ...language };
+  return { ...message, sources: options.audioSources.filter(source => source.enabled), ...language };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
