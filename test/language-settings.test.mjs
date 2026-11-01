@@ -255,11 +255,14 @@ test("Remove asks first, can erase, and the last language cannot be removed", as
   assert.equal(el("settings-language-remove").hidden, false);
   assert.equal(el("settings-language-erase-label").textContent,
     "Also erase my Arabic personal dictionary, lookup counts and marked words");
+  await settle(50);
+  assert.equal(el("settings-language-erase-help").textContent, "Its personal dictionary has 0 entries.");
   el("settings-language-erase").checked = true;
   el("settings-language-remove-confirm").click();
   await settle(100);
   const [remove] = writesOf(settings, "hd_profile_remove");
-  assert.deepEqual([remove.profileId, remove.erase], ["ar", true]);
+  assert.deepEqual([remove.profileId, remove.erase, remove.baseDocumentRevision], ["ar", true, 0],
+    "an erase names the document revision the confirmation read");
   assert.equal(page.editedProfile().id, "ja", "Settings left Arabic before removing it");
   assert.doesNotMatch(el("settings-language-status").textContent, /another Hachidori page/u);
   assert.equal(el("settings-language-profiles").querySelector('[aria-label="Remove Japanese"]').disabled, true);
@@ -281,7 +284,7 @@ test("languages held without a profile are listed with Erase", async t => {
   document.querySelector('[aria-label="Erase Vietnamese"]').click();
   await settle(50);
   const [erase] = writesOf(settings, "hd_profile_remove");
-  assert.deepEqual([erase.language, erase.erase, erase.profileId], ["vi", true, undefined]);
+  assert.deepEqual([erase.language, erase.erase, erase.profileId, erase.baseDocumentRevision], ["vi", true, undefined, 2]);
 });
 
 test("a pack's display setting shows for a theme that renders presentation and is saved by id", async t => {

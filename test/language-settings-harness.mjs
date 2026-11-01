@@ -36,7 +36,8 @@ export function registryOf(languages) {
  * the page finds (null: none, as in a page without registry.js). `onMessage`
  * may answer a runtime message before the fake worker does.
  */
-export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null } = {}) {
+export function openSettings(t, { hash = "#dictionaries", stored = {}, languages = LANGUAGES, onMessage = null,
+  packs = {} } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -111,6 +112,21 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
       case "hd_state_cas":
       case "hd_apply_state":
         return commitView(message);
+      case "hd_remove": {
+        // The engine removes the package from every profile.
+        const state = structuredClone(records.dictionaryState);
+        state.dictionaries = state.dictionaries.filter(row => row.id !== message.id);
+        for (const profile of Object.values(state.profiles ?? {})) {
+          profile.dictionaries = profile.dictionaries.filter(entry => entry.id !== message.id);
+        }
+        state.revision += 1;
+        write({ dictionaryState: state });
+        return { ok: true, state };
+      }
+      case "hd_custom_save":
+        return { ok: true, state: records.dictionaryState,
+          document: { schemaVersion: 1, revision: message.baseDocumentRevision + 1,
+            semanticRevision: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945", text: message.text } };
       case "hd_options_write": {
         const current = records.options;
         const revision = Number.isInteger(current?.revision) ? current.revision : 0;
@@ -195,9 +211,21 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
   ]) {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }
+  // Import reads an archive's index.json; tests name the identity they want.
+  window.__archiveIdentities = new Map();
+  window.eval(`async function readDictionaryArchiveIdentity(file) {
+    return globalThis.__archiveIdentities.get(file.name) ?? { title: file.name, revision: "1", indexUrl: null, downloadUrl: null };
+  }`);
+  window.URL.createObjectURL ??= () => "blob:settings.example/archive";
+  window.URL.revokeObjectURL ??= () => {};
   // The theme catalogue the Theme Store and Design's filter read.
   const catalogue = JSON.parse(extension("vendor/themes/index.json"));
-  window.fetch = async () => ({ ok: true, json: async () => catalogue });
+  // ...and each pack's vendored language.json (docs/languages.md 9.1).
+  window.fetch = async url => {
+    const pack = String(url).match(/vendor\/languages\/([a-z]{2,3})\/language\.json$/u);
+    if (pack) return packs[pack[1]] ? { ok: true, json: async () => packs[pack[1]] } : { ok: false, status: 404 };
+    return { ok: true, json: async () => catalogue };
+  };
   // The modules Settings imports on demand (docs/languages.md 5, 7.5), which a
   // script evaluated in jsdom cannot import itself.
   for (const [file, exports] of [["profile-settings.js", ["createProfileSettings"]],
