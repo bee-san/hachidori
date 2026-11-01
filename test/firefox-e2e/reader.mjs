@@ -33,6 +33,8 @@ const highlighted = target => target.evaluate(() => [...(CSS.highlights.get("gsm
 // Waits out a hover that must not open a popup.
 async function hoverWithoutPopup(target, selector) {
   const point = await characterPoint(target, selector, 0);
+  // Shift scans the word under a resting pointer, so it goes down over this text.
+  await target.mouse.move(point.x, point.y);
   await target.keyboard.down("Shift");
   try {
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -129,6 +131,7 @@ describe("reader", () => {
     }`);
     let child = null;
     if (target) {
+      await tab.mouse.move(target.x, target.y);
       await tab.keyboard.down("Shift");
       for (let attempt = 0; attempt < 20 && child === null; attempt += 1) {
         await tab.mouse.move(target.x + (attempt % 2), target.y);
@@ -195,7 +198,12 @@ describe("reader", () => {
     await tab.evaluate(() => getSelection().removeAllRanges());
     await dismissPopup(tab);
 
-    const counted = await hoverForPopup(tab, "#verb");
+    await hoverForPopup(tab, "#verb");
+    // The count line is painted after the definitions.
+    const counted = await waitFor(async () => {
+      const shown = await readPopup(tab);
+      return /Looked up \d+ times?/u.test(shown?.text ?? "") ? shown : false;
+    }, { timeout: 10_000 });
     const stats = await sendRuntime(page, { target: "hoshidicts-worker", type: "hd_lookup_stats_read", requestId: "stats",
       term: "食べる", reading: "たべる" });
     check("lookup counts are recorded and shown in the popup",

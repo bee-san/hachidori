@@ -366,6 +366,9 @@ async function characterPoint(target, selector, index = 0) {
 async function hoverForPopup(target, selector, { index = 0, key = "Shift", depth = 0, timeout = 15_000 } = {}) {
   if (depth === 0) await dismissPopup(target);
   const point = await characterPoint(target, selector, index);
+  // Pressing the key scans the word under a resting pointer, so the pointer
+  // reaches this word before the key goes down.
+  await target.mouse.move(point.x, point.y);
   if (key) await target.keyboard.down(key);
   try {
     const deadline = Date.now() + timeout;
