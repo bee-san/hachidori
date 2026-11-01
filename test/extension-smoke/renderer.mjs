@@ -3067,7 +3067,7 @@ describe("renderer", () => {
         runInContext(readFileSync(resolve(EXTENSION, file), "utf8"), sandbox, { filename: file });
       }
       const presentation = state.dictionaries.map(({ title, frequencyMode }) => ({ title, frequencyMode }));
-      const averages = (reading, keep = false) => window.HDPopup.createFrequencyTags(window.document, results.get(reading),
+      const averages = (reading, keep = false) => sandbox.HDPopup.createFrequencyTags(window.document, results.get(reading),
         presentation, Infinity, true, false, true, keep)
         .map(tag => [tag.hidden, tag.dataset.frequencyAverage ?? tag.dataset.dictionary, tag.textContent]);
       const rank = numbers => Math.floor(numbers.length / numbers.reduce((sum, value) => sum + 1 / value, 0));

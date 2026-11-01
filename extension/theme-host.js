@@ -14,7 +14,7 @@
     const disabled = new Set();
     let current, shadow, sheet, fallbackStyle, pending;
     const selected = () => {
-      const name = window.HDReaderOptions.popupRenderer(getOptions().popupTheme);
+      const name = globalThis.HDReaderOptions.popupRenderer(getOptions().popupTheme);
       return disabled.has(name) ? "default" : name;
     };
     const asset = async path => {
@@ -33,7 +33,7 @@
         if (module && (module.default?.schema !== 2 || module.default.slug !== name
             || typeof module.default.createView !== "function")) throw new Error("Unsupported renderer contract");
         return { name, css: `${css}\n${icons}`, dictionaryStyles: ["default", "bee", "crystal"].includes(name),
-          createView: module?.default.createView ?? window.HDPopup.createPopupView };
+          createView: module?.default.createView ?? globalThis.HDPopup.createPopupView };
       })());
       return cache.get(name);
     }
@@ -87,15 +87,15 @@
       let view, lastRender;
       let destroyed = false;
       const settings = new Map();
-      const components = { createLookupActions: window.HDPopup.createLookupActions,
-        kanjiEntryResult: window.HDPopup.kanjiEntryResult,
-        createDictionaryTabs: window.HDPopup.createDictionaryTabs,
-        createFrequencyTags: window.HDPopup.createFrequencyTags,
-        glossaryToPlainText: window.HDGlossary.glossaryToPlainText,
-        buildPitchAccentMorae: window.HDGlossary.buildPitchAccentMorae, pitchAccentPositions: window.HDGlossary.pitchAccentPositions,
-        createAudioControl: window.HDPopup.createAudioControl, deinflectionSteps: window.HDPopup.deinflectionSteps,
-        createImagePreview: window.HDPopup.createImagePreview,
-        findDifferentDictionary: window.HDPopup.findDifferentDictionary, popupCoordinateScale: window.HDPopup.popupCoordinateScale };
+      const components = { createLookupActions: globalThis.HDPopup.createLookupActions,
+        kanjiEntryResult: globalThis.HDPopup.kanjiEntryResult,
+        createDictionaryTabs: globalThis.HDPopup.createDictionaryTabs,
+        createFrequencyTags: globalThis.HDPopup.createFrequencyTags,
+        glossaryToPlainText: globalThis.HDGlossary.glossaryToPlainText,
+        buildPitchAccentMorae: globalThis.HDGlossary.buildPitchAccentMorae, pitchAccentPositions: globalThis.HDGlossary.pitchAccentPositions,
+        createAudioControl: globalThis.HDPopup.createAudioControl, deinflectionSteps: globalThis.HDPopup.deinflectionSteps,
+        createImagePreview: globalThis.HDPopup.createImagePreview,
+        findDifferentDictionary: globalThis.HDPopup.findDifferentDictionary, popupCoordinateScale: globalThis.HDPopup.popupCoordinateScale };
       const record = { rebuild() {
         if (destroyed || !current) return;
         const viewport = view?.captureTermView?.();
@@ -147,5 +147,5 @@
       get renderer() { return current?.name ?? null; },
     };
   }
-  window.HDThemeHost = { createThemeHost };
+  globalThis.HDThemeHost = { createThemeHost };
 }());

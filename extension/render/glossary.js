@@ -22,7 +22,7 @@
   if (root) {
     root.HDGlossary = api;
   }
-}(typeof window !== "undefined" ? window : globalThis, function () {
+}(globalThis, function () {
   "use strict";
 
   const MAX_TEXT_LENGTH = 128 * 1024;

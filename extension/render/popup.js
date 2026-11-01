@@ -19,7 +19,7 @@
   if (root) {
     root.HDPopup = api;
   }
-}(typeof window !== "undefined" ? window : globalThis, function () {
+}(globalThis, function () {
   "use strict";
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
@@ -570,7 +570,7 @@
   // Yomitan's rank filter itself, so it is always the card's {frequency-harmonic-rank}.
   const FREQUENCY_AVERAGES = [
     { kind: "rank-based", accessible: "Rank average", display: "Avg rank",
-      includes: mode => window.HDGlossary.frequencyModeMatches(mode, "rank-based") },
+      includes: mode => globalThis.HDGlossary.frequencyModeMatches(mode, "rank-based") },
     { kind: "occurrence-based", accessible: "Occurrence average", display: "Avg count",
       includes: mode => mode === "occurrence-based" },
   ];
@@ -589,7 +589,7 @@
     if (averageFrequency) {
       const modes = new Map(dictionaryPresentation.map(({ title, frequencyMode }) => [title, frequencyMode]));
       for (const { kind, accessible, display, includes } of FREQUENCY_AVERAGES) {
-        const value = window.HDGlossary.frequencyMean(result.term.frequencies
+        const value = globalThis.HDGlossary.frequencyMean(result.term.frequencies
           .filter(group => includes(modes.get(group.dictionary))));
         if (value === null) continue;
         const frequency = { value, displayValue: null };
@@ -1600,7 +1600,7 @@
   // A native kanji entry as one structured-content glossary, so a clicked-kanji
   // group can lay it out beside its term dictionaries' cards.
   function kanjiEntryGlossary(entry) {
-    const tokens = (value) => Array.isArray(value) ? value : window.HDGlossary.parseTagList(value);
+    const tokens = (value) => Array.isArray(value) ? value : globalThis.HDGlossary.parseTagList(value);
     const tags = tokens(entry.tags);
     const readings = [["On", tokens(entry.onyomi)], ["Kun", tokens(entry.kunyomi)]]
       .filter(([, values]) => values.length > 0)
@@ -2263,7 +2263,7 @@
   }
 
   function createLookupActions(options) {
-    const documentRef = options.document, windowRef = options.window, popup = options.popup;
+    const documentRef = options.document, popup = options.popup;
     const positionPopup = options.positionPopup;
     const onAddCustomEntry = options.onAddCustomEntry ?? (() => {});
     const onNoteEditingChange = options.onNoteEditingChange ?? (() => {});
@@ -2431,7 +2431,7 @@
           if (!link || !custom.isConnected || popup.hidden || !popup.contains(actions)
               || renderContext.isCurrentRequest?.() === false) return;
           const prefill = readPrefill() || {};
-          const url = windowRef.HDExternalLinks.expandCustomLinkUrl(link.url, {
+          const url = globalThis.HDExternalLinks.expandCustomLinkUrl(link.url, {
             word: prefill.term, reading: prefill.reading, sentence: prefill.sentence,
           });
           if (url) options.onCustomLinkClick?.({ url,
