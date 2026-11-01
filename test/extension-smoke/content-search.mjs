@@ -79,11 +79,20 @@ async function dockedCase() {
     const punctuationOnly = driver.search(ellipsis.firstChild);
     const punctuationSearch = await answer(harness, []);
     await punctuationOnly;
-    outcomes["a search skips a line's opening brackets and spaces, and looks up punctuation alone as it is"] =
-      bracketedSearch?.text.startsWith("食べた") === true && punctuationSearch?.text === "…";
+    ellipsis.remove();
+    // Windows IMEs type the wave dash as a full-width tilde.
+    const tilde = window.document.createElement("p");
+    tilde.textContent = "～食べた";
+    window.document.body.append(tilde);
+    const tildeLed = driver.search(tilde.firstChild);
+    const tildeSearch = await answer(harness, []);
+    await tildeLed;
+    outcomes["a search skips a line's opening brackets, spaces and wave dashes, and looks up punctuation alone as it is"] =
+      bracketedSearch?.text.startsWith("食べた") === true && punctuationSearch?.text === "…"
+        && tildeSearch?.text.startsWith("食べた") === true;
     // A scan runs on into following text, so the anchor's lookups below must not see these.
     line.remove();
-    ellipsis.remove();
+    tilde.remove();
 
     const anchorSearch = driver.search(anchor.firstChild);
     await answer(harness, [harness.term(anchor.textContent)]);
@@ -153,10 +162,69 @@ async function dockedCase() {
     const afterDraft = await answer(harness, []);
     outcomes["an option change during a Note draft looks the docked result up again once the draft closes"] =
       heldDuringDraft && afterDraft?.maxResults === 11 && afterDraft.text === "eat" && !popup.hidden;
+
+    // A Note being saved holds it too, and the refresh then takes the options
+    // changed meanwhile.
+    const saving = harness.callbacks().onAddCustomEntry({ definition: "to eat", reading: "\u305f\u3079\u305f", term: "\u98df\u3079\u305f" });
+    const appendRequest = harness.take("hd_custom_append");
+    harness.emitOptions({ maxResults: 14 });
+    const heldDuringSave = appendRequest !== null && harness.take("hd_lookup") === null;
+    if (appendRequest) {
+      harness.reply(appendRequest, { document: { revision: 2, semanticRevision: "two", text: "" }, state: harness.state(5, "saved") });
+    }
+    await saving;
+    await harness.settle();
+    const afterSave = await answer(harness, []);
+    outcomes["an option change while a Note is saved looks the docked result up again with it once the save commits"] =
+      heldDuringSave && afterSave?.maxResults === 14 && harness.take("hd_lookup") === null;
+
+    // So does a child popup's Note draft: the refresh would remove the child.
+    const termsAgain = driver.search(anchor.firstChild);
+    await answer(harness, [harness.term(anchor.textContent)]);
+    await termsAgain;
+    const childOpened = harness.internalLink({ query: "\u8aad\u3080" });
+    await answer(harness, [harness.term("\u8aad\u3080")]);
+    await childOpened;
+    harness.edit(true, 1);
+    harness.emitOptions({ maxResults: 15 });
+    const heldDuringChildDraft = harness.take("hd_lookup") === null && Boolean(driver.popupAt(1)) && !driver.popupAt(1).hidden;
+    harness.edit(false, 1);
+    const afterChildDraft = await answer(harness, [harness.term(anchor.textContent)]);
+    outcomes["a child popup's Note draft holds the docked result's refresh until it closes"] =
+      heldDuringChildDraft && afterChildDraft?.maxResults === 15;
   } finally {
     harness.close();
   }
   return outcomes;
+}
+
+// A native kanji view whose late render step fails shows the failure card,
+// whose Try again looks the kanji up again.
+async function dockedKanjiCase() {
+  const harness = await createHarness({ title: "Generic", kind: "kanji" }, { dock: DOCK });
+  try {
+    const searching = harness.driver.search(harness.anchor.firstChild);
+    await answer(harness, [harness.term(harness.anchor.textContent)]);
+    await searching;
+    const viewing = harness.driver.showKanji("\u98df");
+    const kanjiRequest = harness.take("hd_kanji");
+    if (kanjiRequest === null) return { kanjiRequested: false };
+    harness.reply(kanjiRequest, { kanji: { character: "\u98df", entries: [{ dictionary: "Generic", meanings: ["eat"] }] } });
+    await viewing;
+    const shown = harness.render()?.kind === "kanji";
+    harness.render().context.onRenderError(new Error("a deferred kanji step failed"));
+    const card = harness.render();
+    let retried;
+    try {
+      void card.value.onAction?.();
+      retried = harness.take("hd_kanji") !== null;
+    } catch (error) {
+      retried = String(error);
+    }
+    return { shown, kind: card?.kind, title: card?.value?.title, retried };
+  } finally {
+    harness.close();
+  }
 }
 
 // The same steps without a dock: the popup over a page closes as before.
@@ -183,9 +251,13 @@ async function undockedCase() {
 
 describe("content search page", () => {
   test("docked search results", async () => {
-    const stage = await contentNoteStage({ docked: dockedCase, undocked: undockedCase });
+    const stage = await contentNoteStage({ docked: dockedCase, kanji: dockedKanjiCase, undocked: undockedCase });
     check("the content harness loaded", stage !== null, "jsdom is unavailable");
     for (const [name, passed] of Object.entries(stage?.docked ?? {})) check(name, passed === true, JSON.stringify(passed));
+    const kanji = stage?.kanji;
+    check("a docked kanji view that fails to render offers Try again, which looks the kanji up again",
+      kanji?.shown === true && kanji.kind === "failure" && kanji.title === "The lookup failed." && kanji.retried === true,
+      JSON.stringify(kanji));
     const undocked = stage?.undocked;
     check("without a dock the popup keeps its resize grip, Escape and an outside press close it, and search does nothing",
       undocked?.resizable && undocked.escaped && undocked.pressed && !undocked.searchedWithoutDock, JSON.stringify(undocked));

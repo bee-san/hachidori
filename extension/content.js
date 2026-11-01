@@ -1485,16 +1485,20 @@
     if (error?.code !== "dictionary-structured-content-limit") {
       console.debug("hachidori: lookup failed", error);
     }
-    // The search page always answers in its results area.
-    const state = lookupFailureState(error, request) ?? (level === rootLevel && dock
-      ? { kind: "lookup", title: "The lookup failed.", detail: "Try the search again." } : null);
+    // The search page always answers in its results area. A failure that
+    // names no request, such as a kanji view's late render step, repeats the
+    // view the result was showing.
+    const docked = level === rootLevel && dock !== null;
+    const state = lookupFailureState(error, request)
+      ?? (docked ? { kind: "lookup", title: "The lookup failed.", detail: "Try the search again." } : null);
     if (state === null) {
       if (!preserveView) hide(level);
       return false;
     }
+    const retry = request ?? (docked ? level.currentViewRequest : null);
     if (!preserveView) {
-      show(request?.candidate ?? level.activeCandidate, level);
-      level.currentViewRequest = request;
+      show(retry?.candidate ?? level.activeCandidate, level);
+      level.currentViewRequest = retry;
       level.activeHighlightText = "";
       level.activeTermRender = null;
       clearDefinitionBlurTimer(level);
@@ -1504,7 +1508,7 @@
       ...state,
       actionLabel: "Try again",
       onAction: () => executeViewRequest(
-        request,
+        retry,
         level,
         preserveView ? { preserveViewControls: true } : null,
       ),
@@ -3926,10 +3930,10 @@
 
   // Yomitan's search looks its query up from the first character, as a hover
   // there would, and shows the results in the page. A pasted line often opens
-  // with a bracket, an ellipsis or a space, which no word starts with, so the
-  // lookup starts after them. The reader typed the query, so Japanese text
+  // with a bracket, an ellipsis, a space or a wave dash (〜, or ～ from a
+  // Windows IME), which no word starts with, so the lookup starts after them. The reader typed the query, so Japanese text
   // only does not apply, nor does the lookup switch.
-  const LEADING_PUNCTUATION_PATTERN = /^[\p{P}\p{Z}\s]+/u;
+  const LEADING_PUNCTUATION_PATTERN = /^[\p{P}\p{Z}\s～]+/u;
   function search(node) {
     const text = node?.nodeValue ?? "";
     const skipped = text.match(LEADING_PUNCTUATION_PATTERN)?.[0].length ?? 0;

@@ -300,8 +300,9 @@ function startupSender(sender) {
 }
 
 // The extension pages that load the reader themselves: first-run setup's
-// practice and the search page (#610). tabs.sendMessage does not reach them,
-// and tabs hide their URLs.
+// practice and the search page (#610). Their messages may come without
+// sender.tab and tabs hide their URLs, so the worker finds their documents
+// through runtime.getContexts and answers them with runtime messages.
 function readerPageSender(sender) {
   return startupSender(sender) || extensionPageSender(sender, SEARCH_PAGE);
 }

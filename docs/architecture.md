@@ -970,15 +970,16 @@ so that Design's default popup fits in it.
 **Appearance.** The page follows the popup theme as Settings does:
 `settings-theme.js` applies the saved theme before the first paint and
 `applyPageTheme` follows later changes. Under a bundled renderer (Nazeka,
-Plain, JL or Bee) the page keeps Default's palette, as Settings does.
+Plain, JL, Bee or Crystal) the page keeps Default's palette, as Settings does.
 
 **Results.** The page loads the reader into itself with `reader-page.js`, as
 the startup page does, and the reader docks its root popup over the page's
 results area before its first lookup, with its host inside that area (the
 page's Results landmark). A search shows the box's text above the results, as
 Yomitan shows its query, and looks it up from its first character, as a hover
-there would, after any brackets, punctuation or spaces it opens with: a pasted
-line such as 「食べたかった」 looks up 食べたかった. Its other words can then be
+there would, after any brackets, punctuation, spaces or wave dash (〜 or ～) it
+opens with: a pasted line such as 「食べたかった」 looks up 食べたかった, and
+〜ている looks up ている rather than a dictionary's 〜ている pointer. Its other words can then be
 looked up like any page text. Mining takes the sentence around the word from
 that text, cut at its terminators as on a page, where Yomitan's search page
 takes the whole query. The docked popup is the reader's own, with its renderer,
@@ -1009,13 +1010,17 @@ searches again when its options change (`Display.searchLast`). It stays the
 same request, so its lookup count does not go up; a Note being written, or
 being saved, holds the refresh until it is done. The worker sends the search page's pronunciation
 progress and takes its mining screenshots as it does the startup page's
-(`readerPageSender`), because `tabs.sendMessage` does not reach extension pages.
+(`readerPageSender`): an extension page's messages may come without its tab,
+and tabs hide its URL.
 
 Not ported: Yomitan's clipboard monitor, which needs the `clipboardRead`
 permission; profiles; automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
-browser's history; the popup window's size, position and state settings; and
-Shift-, Ctrl- and middle-clicks on the menu's Search.
+browser's history; the popup window's size, position and state settings;
+Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
+after a search, which lets PageDown scroll them. Here focus stays on the page,
+so a typed character still goes into the box; Alt+ArrowUp and Alt+ArrowDown
+move between the result's entries and Tab reaches its controls.
 
 ![The search page with a real result, the toolbar menu and the popup window](assets/search-page.png)
 
