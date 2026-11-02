@@ -1,0 +1,74 @@
+2026-11-02T08:18:40.445Z seeded {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null}}
+2026-11-02T08:18:41.409Z relaunched {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0}}
+2026-11-02T08:18:41.409Z clicking on {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0}}
+2026-11-02T08:18:41.427Z clicked on {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0}}
+2026-11-02T08:18:41.434Z checked {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0}}
+2026-11-02T08:18:41.737Z switchedOn {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0},"switchedOn":{"on":true,"granted":tr
+2026-11-02T08:18:41.968Z searched {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0},"switchedOn":{"on":true,"granted":tr
+2026-11-02T08:18:43.511Z switchedOff {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0},"switchedOn":{"on":true,"granted":tr
+2026-11-02T08:18:43.837Z onAgain {"id":"bafdhgjodlcgmpjdaihjjckeoohlhfcl","before":{"active":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"granted":["alarms","downloads","storage","tabCapture","unlimitedStorage","scripting","offscreen","userScripts"],"runtimeGranted":null},"relaunched":{"on":false,"granted":false,"query":null,"reads":0},"switchedOn":{"on":true,"granted":tr
+{
+ "id": "bafdhgjodlcgmpjdaihjjckeoohlhfcl",
+ "before": {
+  "active": [
+   "alarms",
+   "downloads",
+   "storage",
+   "tabCapture",
+   "unlimitedStorage",
+   "scripting",
+   "offscreen",
+   "userScripts"
+  ],
+  "granted": [
+   "alarms",
+   "downloads",
+   "storage",
+   "tabCapture",
+   "unlimitedStorage",
+   "scripting",
+   "offscreen",
+   "userScripts"
+  ],
+  "runtimeGranted": null
+ },
+ "relaunched": {
+  "on": false,
+  "granted": false,
+  "query": null,
+  "reads": 0
+ },
+ "switchedOn": {
+  "on": true,
+  "granted": true,
+  "query": null,
+  "reads": 2
+ },
+ "searched": {
+  "on": true,
+  "granted": true,
+  "query": "読む",
+  "reads": 3
+ },
+ "switchedOff": {
+  "on": false,
+  "granted": false,
+  "query": "読む",
+  "reads": 3
+ },
+ "readsAfterOff": 0,
+ "readWithoutPermission": {
+  "type": "hd_clipboard_read_result",
+  "ok": true,
+  "error": null,
+  "text": ""
+ },
+ "onAgain": {
+  "on": true,
+  "granted": true,
+  "query": "食べる",
+  "reads": 6
+ },
+ "chrome": "Chrome/152.0.7977.75"
+}
+PASS

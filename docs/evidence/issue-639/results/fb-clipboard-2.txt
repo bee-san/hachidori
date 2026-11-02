@@ -1,0 +1,77 @@
+2026-11-02T08:10:00.134Z lookups, no search page
+2026-11-02T08:10:05.424Z lookups, search page polling
+2026-11-02T08:10:10.511Z copy to search, short lines
+2026-11-02T08:10:18.102Z reads 6 chars
+2026-11-02T08:10:18.682Z reads 1,000 chars
+2026-11-02T08:10:19.084Z reads 100,000 chars
+2026-11-02T08:10:19.814Z reads 1,000,000 chars
+2026-11-02T08:10:25.064Z lookups, no search page again
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "lookupMs": {
+    "noSearchPage": {
+      "n": 4697,
+      "median": 0.875,
+      "p95": 1.85,
+      "p99": 4.225,
+      "max": 18.135
+    },
+    "searchPagePolling": {
+      "n": 3784,
+      "median": 1.01,
+      "p95": 2.68,
+      "p99": 5.14,
+      "max": 14.23
+    },
+    "noSearchPageAgain": {
+      "n": 3204,
+      "median": 1.305,
+      "p95": 2.995,
+      "p99": 4.76,
+      "max": 29.125
+    }
+  },
+  "monitorReadsDuringPollingPhase": 20,
+  "copyToSearchMs": {
+    "n": 30,
+    "median": 212,
+    "p95": 220,
+    "p99": 229,
+    "max": 229
+  },
+  "largeCopyToQueryMs": {
+    "1,000 chars": 167,
+    "100,000 chars": 19,
+    "1,000,000 chars": 65
+  },
+  "clipboardReadMs": {
+    "6 chars": {
+      "n": 100,
+      "median": 2.645,
+      "p95": 4.85,
+      "p99": 6.395,
+      "max": 6.395
+    },
+    "1,000 chars": {
+      "n": 100,
+      "median": 1.6,
+      "p95": 2.72,
+      "p99": 9.175,
+      "max": 9.175
+    },
+    "100,000 chars": {
+      "n": 30,
+      "median": 12.805,
+      "p95": 20.32,
+      "p99": 21.86,
+      "max": 21.86
+    },
+    "1,000,000 chars": {
+      "n": 10,
+      "median": 166.88,
+      "p95": 228.76,
+      "p99": 228.76,
+      "max": 228.76
+    }
+  }
+}

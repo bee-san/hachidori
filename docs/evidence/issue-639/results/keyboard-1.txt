@@ -1,0 +1,27 @@
+{
+ "chrome": "Chrome/152.0.7977.75",
+ "start": "search-input",
+ "focused": {
+  "id": "search-clipboard",
+  "focusVisible": true,
+  "outline": "solid 2px",
+  "checked": false
+ },
+ "checkbox": {
+  "role": "checkbox",
+  "name": "Clipboard monitor",
+  "checked": false
+ },
+ "after": {
+  "requests": [
+   {
+    "permissions": [
+     "clipboardRead"
+    ]
+   }
+  ],
+  "checked": false,
+  "granted": false
+ }
+}
+PASS

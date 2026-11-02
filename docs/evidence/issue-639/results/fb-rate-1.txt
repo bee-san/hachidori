@@ -1,0 +1,15 @@
+{
+ "chrome": "Chrome/152.0.7977.75",
+ "readsIn10s": {
+  "visibleTab": 39,
+  "backgroundTab": {
+   "reads": 40,
+   "hidden": true
+  },
+  "unfocusedPopupWindow": {
+   "reads": 39,
+   "hidden": false,
+   "focused": true
+  }
+ }
+}
