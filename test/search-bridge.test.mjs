@@ -24,6 +24,19 @@ test("the search page forwards every request the reader sends, and the events an
   for (const target of READER_EVENTS) {
     assert.ok(contentScripts.some(source => source.includes(`"${target}"`)), `${target} names no reader listener`);
   }
+  // The keys of the reader's one storage read and of the changes it adopts,
+  // named or held in a reader-options.js constant, in content.js, the only
+  // content script that uses chrome.storage; a lookup count's row key comes
+  // from a function and has its own case below.
+  const users = manifest.content_scripts[0].js.filter((file, index) => /\bchrome\.storage\b/u.test(contentScripts[index]));
+  assert.deepEqual(users, ["content.js"]);
+  const named = name => globalThis.HDReaderOptions[name] ?? name;
+  const content = readFileSync(new URL("content.js", EXTENSION), "utf8");
+  const read = content.match(/chrome\.storage\.local\.get\(\{([^}]*)\}/u)[1];
+  const keys = new Set([...read.matchAll(/(?:\[(\w+)\]|(\w+))\s*:/gu)].map(([, constant, key]) => constant ? named(constant) : key));
+  for (const [, key, constant] of content.matchAll(/\bchanges(?:\.(\w+)|\[(\w+)\])/gu)) keys.add(key ?? named(constant));
+  assert.ok(keys.has("options") && keys.has("wordStatusOverrides"), [...keys].join());
+  assert.deepEqual([...keys].filter(key => !readerKey(key)), []);
   assert.deepEqual(["options", "dictionaryState", "lookupStats", "lookupStats:7:食べる", "wordStatusOverrides"].filter(readerKey).length, 5);
   assert.equal(readerKey("ankiIndex"), false);
 });
