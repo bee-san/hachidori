@@ -1,9 +1,13 @@
 # Issue #639 evidence: the search page's Clipboard monitor
 
 This branch is not for merging. It holds the screenshots, ad-hoc scripts and
-raw results behind the pull request for #639, taken on PR head `0401d0f1`
-(rebased on `main` at `63060a7a`) with Chrome for Testing 152.0.7977.75 and the
-suites' fixture dictionaries only.
+raw results behind the pull request for #639, with Chrome for Testing
+152.0.7977.75 and the suites' fixture dictionaries only. The screenshots are
+from PR head `9e7f0cc0` (on `main` at `3b7730f1`), whose screenshot runs wait
+for the switch's 120 ms colour transition after a theme change; the earlier
+set, from `0401d0f1`, caught it halfway in the themed pictures. The scripts and
+results ran on `0401d0f1` (on `main` at `63060a7a`), whose runtime code
+`9e7f0cc0` changes only in the search page's startup order and the 1,000-character cut.
 
 ## Screenshots
 
