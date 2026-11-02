@@ -12,7 +12,8 @@ copied here; `reporter-probe.mjs` reads them from `REPORTER_JS` and
 
 | file | what it shows |
 | --- | --- |
-| `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` (37bb0a86): all four rows, as in the issue's first screenshot. Right, this PR: NHK alone, as in the issue's "should look like this" |
+| `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` at 1afa347b (with #651): all four rows, as in the issue's first screenshot. Right, this PR at cdec3b79: NHK alone, as in the issue's "should look like this" |
+| `reporter-script-before-after-3b7730f1.png` | the same against `main` at 3b7730f1 and this PR at 08d68d7a, before #651 |
 | `reporter-script-main.png`, `reporter-script-this-pr.png` | the two halves at full size |
 | `parity-web-page.png`, `parity-search-page.png` | the same lookup (食べたかった, Default theme, a red Custom CSS outline) as a web page's popup and as the search page's docked result |
 | `palettes-this-pr.png` | the search page in this PR: Automatic under a light and a dark preference, Default, High contrast, Dracula, and Chrome's forced-colors mode |
@@ -39,7 +40,9 @@ with this PR.
 ```sh
 REPORTER_JS=reporter.js REPORTER_CSS=reporter.css HACHIDORI_CHROME=… \
   node scripts/reporter-probe.mjs "$REPO" out.png
-# main: {"groups":4,"visible":4}   this PR: {"groups":4,"visible":1}
+# main 3b7730f1: {"groups":4,"visible":4}   this PR: {"groups":4,"visible":1}
+# Since #651 closes the popup's root, main 1afa347b reads {"groups":0} (the probe cannot see
+# into the closed root; the picture shows all four rows), and this PR at cdec3b79 {"groups":4,"visible":1}.
 ```
 
 ## Parity audit: the popup against the search page
