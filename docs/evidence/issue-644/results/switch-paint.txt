@@ -3,8 +3,8 @@ run 0: switch=absent title=n box=n 46ms | switch=drawn title=Y box=n 12ms | swit
 run 1: switch=absent title=n box=n 44ms | switch=drawn title=Y box=Y 60ms | switch=final title=Y box=Y 431ms | switch=final title=Y box=n 500ms | switch=final title=Y box=Y 501ms | switch=final title=Y box=n 499ms
 run 2: switch=absent title=n box=n 38ms | switch=drawn title=Y box=n 14ms | switch=drawn title=Y box=Y 32ms | switch=final title=Y box=Y 467ms | switch=final title=Y box=n 500ms | switch=final title=Y box=Y 500ms
 run 3: switch=drawn title=Y box=n 14ms | switch=drawn title=Y box=Y 47ms | switch=final title=Y box=Y 446ms | switch=final title=Y box=n 500ms | switch=final title=Y box=Y 501ms | switch=final title=Y box=n 499ms
-this PR:
-run 0: switch=absent title=n box=n 74ms | switch=drawn title=Y box=Y 64ms | switch=final title=Y box=Y (end)
-run 1: switch=absent title=n box=n 61ms | switch=absent title=Y box=n 14ms | switch=drawn title=Y box=Y 50ms | switch=final title=Y box=Y (end)
-run 2: switch=absent title=n box=n 66ms | switch=drawn title=Y box=Y 48ms | switch=final title=Y box=Y (end)
-run 3: switch=absent title=n box=n 72ms | switch=absent title=Y box=n 14ms | switch=drawn title=Y box=Y 33ms | switch=final title=Y box=Y (end)
+this PR ad4bd2aa:
+run 0: switch=absent title=n box=n 85ms | switch=absent title=Y box=n 14ms | switch=drawn title=Y box=Y 66ms | switch=final title=Y box=Y (end)
+run 1: switch=absent title=n box=n 35ms | switch=absent title=Y box=n 15ms | switch=drawn title=Y box=Y 66ms | switch=final title=Y box=Y (end)
+run 2: switch=absent title=n box=n 80ms | switch=absent title=Y box=n 11ms | switch=drawn title=Y box=Y 49ms | switch=final title=Y box=Y (end)
+run 3: switch=absent title=n box=n 41ms | switch=absent title=Y box=n 14ms | switch=drawn title=Y box=Y 47ms | switch=final title=Y box=Y (end)

@@ -80,13 +80,18 @@ firefox 159:        after a click in the frame: "permissions.request may only be
 ```
 
 So the switch and the monitor are `search.html`'s, laid over the end of the
-frame's header. `scripts/layout-probe.mjs` (`results/layout.txt`) finds the
-header, title, switch, form and results at the same positions as on `main`, to
-1/64 px. `scripts/switch-paint-probe.mjs` with `switch-paint-analyse.py`
-(`results/switch-paint.txt`, every painted frame of four page opens, Default
-theme) shows the switch appearing with the frame's title (2 of 4 opens) or
-with its box one frame, 14 ms, later (2 of 4); `main` draws it with the
-title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
+frame's header; both documents lay out the whole header, each keeping
+invisible what the other shows. `scripts/layout-probe.mjs`
+(`results/layout.txt`, d1fed77b) and `scripts/layout-widths-probe.mjs`
+(`results/layout-widths.txt`, ad4bd2aa: 600, 400, 360, 320 and 280 px wide, and
+90, 125 and 150 % zoom) find the header, title, switch, form and results at the
+same positions as on `main`, to 1/64 px, including below about 380 px, where
+the title wraps; d1fed77b's one-line box left the switch over the title there.
+`scripts/switch-paint-probe.mjs` with `switch-paint-analyse.py`
+(`results/switch-paint.txt`, ad4bd2aa, every painted frame of four page opens,
+Default theme) shows the switch appearing with the box, one frame (11-15 ms)
+after the title, in 4 of 4 opens; `main` draws it with the title. An earlier
+version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
 shows a click on the switch or its label leaving focus on the switch, and
 Escape and Ctrl+U pressed there selecting and clearing the box, on `main` and
 here; Ctrl+U opens no source view.
@@ -102,13 +107,13 @@ user script could not already read.
 ## Flash on open (round-one audit, FIX 1)
 
 `scripts/flash-probe.mjs` is the first audit's probe, unchanged
-(`results/flash.json`, Chrome 152, d1fed77b, four page opens per case). A green
-page is shown first, so each painted frame is green (the previous page), WHITE
-or dark:
+(`results/flash.json`, Chrome 152, ad4bd2aa, four page opens per case;
+d1fed77b gave the same). A green page is shown first, so each painted frame is
+green (the previous page), WHITE or dark:
 
 | case | as is | without `reader-options.js`, `settings-theme.js`, `settings.css` in `search.html` |
 | --- | --- | --- |
-| dark theme, light preference | green, then dark, 4/4 | green, then WHITE for 32-36 ms, then dark, 4/4 |
+| dark theme, light preference | green, then dark, 4/4 | WHITE for 16-51 ms, then dark, 4/4 |
 | light theme, dark preference | green, then white (the light theme), 4/4; no dark frame | the same |
 
 The white frame on `cdec3b79` came from `search.html` loading `settings.css`

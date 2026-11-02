@@ -1,0 +1,12 @@
+Search page geometry (CSS px, to 1/64), main 568412b4 against this PR ad4bd2aa, Chrome 152, 640 px tall;
+scripts/layout-widths-probe.mjs. Zoom is Chrome's page zoom (tabs.setZoom). For this PR, header, title and switch
+are search.html's and frameHeader, frameH1 and frameSlot the frame's own (the invisible copy of the switch).
+
+ 600 px, zoom    1: main == PR True; search.html == frame True; header [12, 12, 576, 25.5] title [44, 12, 133.984375, 25.5] switch [552, 14.75, 36, 20] form y 47.5
+ 400 px, zoom    1: main == PR True; search.html == frame True; header [12, 12, 376, 25.5] title [44, 12, 133.984375, 25.5] switch [352, 14.75, 36, 20] form y 47.5
+ 360 px, zoom    1: main == PR True; search.html == frame True; header [12, 12, 336, 51] title [44, 12, 132.875, 51] switch [312, 27.5, 36, 20] form y 73
+ 320 px, zoom    1: main == PR True; search.html == frame True; header [12, 12, 296, 51] title [44, 12, 114.90625, 51] switch [272, 27.5, 36, 20] form y 73
+ 280 px, zoom    1: main == PR True; search.html == frame True; header [12, 12, 256, 51] title [44, 12, 96.953125, 51] switch [232, 27.5, 36, 20] form y 73
+ 600 px, zoom 1.25: main == PR True; search.html == frame True; header [12, 12, 456, 25.5] title [44, 12, 133.984375, 25.5] switch [432, 14.75, 36, 20] form y 47.5
+ 600 px, zoom  1.5: main == PR True; search.html == frame True; header [12, 12, 376, 25.5] title [44, 12, 133.984375, 25.5] switch [352, 14.75, 36, 20] form y 47.5
+ 600 px, zoom  0.9: main == PR True; search.html == frame True; header [12, 12, 642.671875, 25.484375] title [43.96875, 12, 133.8125, 25.484375] switch [618.6875, 14.71875, 35.984375, 20] form y 47.484375
