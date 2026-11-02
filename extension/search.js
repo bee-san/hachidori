@@ -131,8 +131,6 @@ clipboardSwitch.addEventListener("change", () => {
 });
 chrome.permissions.onAdded.addListener(() => { void showClipboardMonitor(); });
 chrome.permissions.onRemoved.addListener(() => { void showClipboardMonitor(); });
-// The switch shows its state at once; the monitor starts once the reader has.
-void showClipboardMonitor();
 // Text copied or cut on this page is not searched, as in Yomitan's _onCopy:
 // once it has reached the clipboard, the monitor starts over from it.
 for (const type of ["copy", "cut"]) {
@@ -160,12 +158,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
 input.focus();
 try {
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  // The switch shows its state while the reader loads; the monitor starts once it has.
+  await showClipboardMonitor();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
   clipboardSwitch.disabled = false;
-  void showClipboardMonitor();
+  await showClipboardMonitor();
 } catch (error) {
   status.textContent = `The search page could not start: ${describeErrorMessage(error)}`;
   recordUserError(window, "search-status", status.textContent, error);

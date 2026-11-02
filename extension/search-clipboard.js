@@ -17,11 +17,12 @@ export const CLIPBOARD_POLL_MS = 250;
 // 100,000 characters held the search page for about 30 seconds in Chrome 152.
 export const CLIPBOARD_SEARCH_LENGTH = 1000;
 
-// The start of `text` that is searched, cut between characters.
+// The start of `text` that is searched, cut between characters: a character
+// outside the BMP that the cut would split is left out whole.
 export function clipboardSearchText(text) {
   if (text.length <= CLIPBOARD_SEARCH_LENGTH) return text;
-  const last = text.charCodeAt(CLIPBOARD_SEARCH_LENGTH - 1);
-  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? CLIPBOARD_SEARCH_LENGTH - 1 : CLIPBOARD_SEARCH_LENGTH);
+  const split = text.codePointAt(CLIPBOARD_SEARCH_LENGTH - 1) > 0xffff;
+  return text.slice(0, split ? CLIPBOARD_SEARCH_LENGTH - 1 : CLIPBOARD_SEARCH_LENGTH);
 }
 
 // Reads the clipboard through `read` until stopped and calls `change` with
