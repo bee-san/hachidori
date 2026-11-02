@@ -190,19 +190,13 @@ function requireStrings(value, name) {
 // `resolveProfile(profileIndex)` names the profile a Yomitan profile index
 // selects, as { profileId } (undefined while the records have no profiles),
 // or null for an index that names none (docs/languages.md 12).
-// `readProfile(profileId)` is that profile's { language, packSettings }, null
-// while the records have no profiles.
+// `readProfile(profileId)` is that profile's { language, packSettings }, whose
+// language its notes and readings follow, null while the records have no profiles.
 export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version,
   resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null),
   readProfile = async () => null }) {
   // Engine requests made for a profile name it (docs/languages.md 9.3).
   const named = (profileId, fields) => (profileId === undefined ? fields : { ...fields, profileId });
-
-  // The language a profile's notes and readings follow (docs/languages.md 12).
-  async function profileLanguage(profileId) {
-    const profile = await readProfile(profileId);
-    return profile ? { language: profile.language, packSettings: profile.packSettings ?? {} } : null;
-  }
 
   async function whereabouts(profileId) {
     const dictionaries = await readDictionaries(profileId);
@@ -222,7 +216,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
 
   async function ankiTermFields(profileId, text, markers, maxEntries, includeMedia) {
     const where = await whereabouts(profileId);
-    const profile = await profileLanguage(profileId);
+    const profile = await readProfile(profileId);
     // Each dictionary's target language, which a profile's notes follow; the
     // note builder takes each direction from it or from the glosses.
     const targets = profile === null ? {} : { dictionaryTargetLanguages: Object.fromEntries(where.dictionaries
@@ -284,7 +278,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
 
   async function tokenize(profileId, text, index, scanLength) {
     // A language without ruby gives its words no reading (docs/languages.md 12).
-    const profile = await profileLanguage(profileId);
+    const profile = await readProfile(profileId);
     const ruby = profile === null
       || globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings);
     const lines = [];

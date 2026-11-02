@@ -257,7 +257,11 @@ function workerFixture({ profiles = true } = {}) {
     gateway: { discover: async config => ({ connected: true, model: config.model, models: [config.model], decks: ["Default"],
       fields: ["Front", "Back", "Sentence"], errors: [] }), invoke: async () => { throw new Error("no Anki writes here"); } },
     readOptions: async profileId => layer.projectOptions(STORED, profileId ?? "ja"),
-    ...(profiles ? { readProfile: async profileId => layer.profileDescriptor(STORED, profileId ?? "ja") } : {}),
+    // What the worker's readAnkiProfile gives: the profile's language and pack settings.
+    ...(profiles ? { readProfile: async profileId => {
+      const { language, packSettings } = layer.profileDescriptor(STORED, profileId ?? "ja");
+      return { language, packSettings };
+    } } : {}),
     readDictionaries: async () => [{ title: "Kaikki English", path: "/dicts/kaikki", enabled: true }],
     engine: async message => {
       engine.push(message);
@@ -340,7 +344,7 @@ test("the Relay API writes the notes and readings of the profile its index names
     readAudioSources: async () => [{ id: "url", type: "custom", enabled: true, url: "https://example.com/{language}/{term}", voice: "" }],
     readAnkiTemplates: async () => [],
     resolveProfile: async profileIndex => (profiles ? { profileId: profileIndex === 1 ? "ar" : "ja" } : { profileId: undefined }),
-    readProfile: async profileId => (profiles ? { id: profileId, language: profileId, packSettings: {} } : null),
+    readProfile: async profileId => (profiles ? { language: profileId, packSettings: {} } : null),
   });
   const host = apiHost();
   await host({ type: "hd_api_anki_fields", text: result.matched, markers: ["glossary", "audio"], entryType: "term",

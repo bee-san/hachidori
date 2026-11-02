@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiIndexSource, ankiWordKey } from "./anki-index.js";
-import { ankiLanguageFamilies } from "./anki-setup.js";
+import { ankiLanguageConfig } from "./anki-setup.js";
 
 export const ANKI_INDEX_KEY = "ankiDuplicateIndex";
 export const ANKI_INDEX_ALARM = "hachidori-anki-index";
@@ -82,20 +82,14 @@ function storedState(state, keys) {
   return { version: 1, configurationRevision, rowRevision, snapshot: only(state.snapshots), attempt: only(state.attempts) };
 }
 
-// A profile's first Template as the index reads it: with the note-type
-// families its language lists when that is not every family (docs/languages.md 12).
-function profileIndexConfig(options, profile) {
-  const { anki } = globalThis.HDReaderOptions.projectOptions(options, profile.id);
-  const families = ankiLanguageFamilies(profile.language);
-  return families === null ? anki : { ...anki, noteTypeFamilies: families };
-}
-
-// [profile id, its first Template's source or null] for every profile; an
+// [profile id, its first Template's source or null] for every profile, each
+// keyed with its language's note-type families (docs/languages.md 12); an
 // options record without profiles is the Japanese profile, as today.
 async function profileSources(options) {
   const layer = globalThis.HDReaderOptions;
   const list = layer.hasProfiles(options) ? layer.profiles(options) : [{ id: layer.JAPANESE_PROFILE_ID, language: "ja" }];
-  return Promise.all(list.map(async profile => [profile.id, await ankiIndexSource(profileIndexConfig(options, profile))]));
+  return Promise.all(list.map(async profile => [profile.id,
+    await ankiIndexSource(ankiLanguageConfig(layer.projectOptions(options, profile.id).anki, profile.language))]));
 }
 
 /**

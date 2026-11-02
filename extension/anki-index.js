@@ -51,8 +51,8 @@ export async function ankiIndexSource(config) {
     model: config.model,
     fields,
     ...(config.duplicateScope === "deck" ? { deck: config.deck } : {}),
-    // A language that lists fewer note-type families than Japanese recognises
-    // only those beside the configured note type (docs/languages.md 12).
+    // A language without note-type families recognises none beside the
+    // configured note type (docs/languages.md 12).
     ...(Array.isArray(config.noteTypeFamilies) && config.duplicateScope !== "model"
       ? { families: config.noteTypeFamilies } : {}),
   };

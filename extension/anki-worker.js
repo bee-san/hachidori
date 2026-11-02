@@ -3,7 +3,7 @@ import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
-import { ankiLanguageFamilies } from "./anki-setup.js";
+import { ankiLanguageConfig } from "./anki-setup.js";
 import {
   MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
   validateLinkedAnkiClientMedia,
@@ -58,8 +58,8 @@ function requestProfile(request) {
 export function createAnkiWorkerService({
   gateway,
   readOptions,
-  // `readProfile(profileId)` is `{ id, language, packSettings }` once the
-  // records have profiles, else null (docs/languages.md 12).
+  // `readProfile(profileId)` is the profile's `{ language, packSettings }` once
+  // the records have profiles, else null (docs/languages.md 12).
   readProfile = async () => null,
   readDictionaries,
   engine,
@@ -67,20 +67,10 @@ export function createAnkiWorkerService({
   duplicateIndex,
 }) {
   const linkedClientMedia = new WeakMap();
-
-  // The language of the profile a note is for, which decides how the note is
-  // written: null in the single-profile shape, whose notes are today's.
-  async function profileOf(profileId) {
-    const profile = await readProfile(profileId);
-    return profile ? { language: profile.language, packSettings: profile.packSettings ?? {} } : null;
-  }
-
-  // A Template's configuration as the duplicate index keys it: with the
-  // note-type families of its language when that lists fewer than Japanese.
-  function withFamilies(config, profile) {
-    const families = ankiLanguageFamilies(profile?.language);
-    return families === null ? config : { ...config, noteTypeFamilies: families };
-  }
+  // A Template's configuration in its profile's language, which decides how
+  // the note is written and what its duplicate index recognises; the
+  // single-profile shape's is today's.
+  const inLanguage = (config, profile) => ankiLanguageConfig(config, profile?.language);
   const linkedClientPreflights = new WeakSet();
   const ankiMediaStore = createAnkiMediaStore();
 
@@ -228,11 +218,11 @@ export function createAnkiWorkerService({
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
       const { profileId, templateId } = profileTemplateTarget(key);
-      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
+      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
       return {
-        ...withFamilies(template, profile),
+        ...inLanguage(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards
         // between a preflight and Add refuses the stale Add.
@@ -501,9 +491,9 @@ export function createAnkiWorkerService({
     screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
+      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
       return { mature: options.definitionBlurAnkiMature === true
-        && await duplicateIndex.has(withFamilies(options.anki, profile), request?.term?.expression) };
+        && await duplicateIndex.has(inLanguage(options.anki, profile), request?.term?.expression) };
     } catch {
       // Missing local evidence never prevents dictionary lookup.
       return { mature: false };
@@ -518,7 +508,7 @@ export function createAnkiWorkerService({
         throw new Error("Word status requires an array of headwords.");
       }
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), profileOf(profileId)]);
-      return duplicateIndex.statuses(withFamilies(options.anki, profile), headwords);
+      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      return duplicateIndex.statuses(inLanguage(options.anki, profile), headwords);
     } };
 }

@@ -23,27 +23,31 @@ export function ankiSetupFamily(modelName) {
 }
 
 /**
- * The note-type families a profile's language lists in its pack's
- * `host.anki.noteTypeFamilies` (docs/languages.md 12), or null for a language
- * that lists every family, as Japanese does, whose detection, presets and
- * duplicate sources are today's. A request that names no language means
- * Japanese.
+ * The note-type families a profile's language uses (docs/languages.md 12):
+ * null, every family as today, for a language whose pack lists them in
+ * `host.anki.noteTypeFamilies` (only Japanese does), and none otherwise. This
+ * is the `ankiNoteTypeFamilies` requirement that gates their Settings
+ * controls. A request that names no language means Japanese.
  * @param {string | null | undefined} language
  * @returns {string[] | null}
  */
 export function ankiLanguageFamilies(language) {
   if (language === undefined || language === null) return null;
-  const listed = globalThis.HDLanguages?.get?.(language)?.host?.anki?.noteTypeFamilies;
-  let families;
-  if (Array.isArray(listed)) families = ANKI_SETUP_FAMILIES.filter(family => listed.includes(family));
-  else families = language === "ja" ? ANKI_SETUP_FAMILIES : [];
-  return families.length === ANKI_SETUP_FAMILIES.length ? null : families;
+  return globalThis.HDReaderOptions.optionRequirementMet("ankiNoteTypeFamilies", language) ? null : [];
 }
 
 // A model's family when the language lists it (null: every family).
 export function ankiListedFamily(modelName, families) {
   const family = ankiSetupFamily(modelName);
   return family !== null && (families === null || families.includes(family)) ? family : null;
+}
+
+// A Template's configuration as mining and the duplicate index read it in a
+// profile's language: with no families for a language without them.
+// Japanese's is the configuration itself.
+export function ankiLanguageConfig(config, language) {
+  const families = ankiLanguageFamilies(language);
+  return families === null ? config : { ...config, noteTypeFamilies: families };
 }
 
 function positiveId(value) {
