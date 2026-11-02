@@ -1,4 +1,4 @@
-Search page, main 3b7730f1 against this PR (08d68d7a), Chrome for Testing 152.0.7977.75, 900 x 700,
+Search page, main 3b7730f1 against this PR (08d68d7a, then again on 4f023308), Chrome for Testing 152.0.7977.75, 900 x 700,
 食べる searched, lookup counts off, the box blurred. scripts/a11y-probe.mjs, scripts/hc-probe.mjs, scripts/a11y-tree.mjs.
 
 Palettes (differing pixels, largest channel difference):
@@ -6,7 +6,7 @@ Palettes (differing pixels, largest channel difference):
   Automatic under a dark preference   0
   Default                             0
   Dracula                             0
-  High contrast                       198 (4/255), only on antialiased edges: rounded-border corners, list bullets, one pitch mark.
+  High contrast                       198 (4/255) on 08d68d7a and 194 (4/255) on 4f023308, only on antialiased edges: rounded-border corners, list bullets, one pitch mark.
                                       main against main on two runs: 4 (1/255); this PR against itself: 0.
   Forced colors (--force-high-contrast, Chrome's own switch)  0
   (DevTools Emulation.setEmulatedMedia forced-colors reports the feature in the frame but does not repaint a frame
