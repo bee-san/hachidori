@@ -30,7 +30,10 @@
       openerOf: new Map(pairs.map(([opener, closer]) => [closer, opener])),
     };
   }
-  const DEFAULT_RULES = sentenceRules({ terminators: [...TERMINATORS], quotePairs: PAIRS });
+  // Built for the first sentence that needs them, not by every frame at
+  // injection (docs/languages.md 19).
+  let defaultRules = null;
+  const japaneseRules = () => defaultRules ??= sentenceRules({ terminators: [...TERMINATORS], quotePairs: PAIRS });
 
   function isWhitespace(character) {
     return character.trim().length === 0;
@@ -92,7 +95,7 @@
    * never enters the match itself, so a terminator inside the matched word
    * (U.S.A.) does not end its sentence.
    */
-  function extractSentence(text, matchOffset, matchLength, extent = SENTENCE_SCAN_EXTENT, rules = DEFAULT_RULES) {
+  function extractSentence(text, matchOffset, matchLength, extent = SENTENCE_SCAN_EXTENT, rules = japaneseRules()) {
     const matchStart = Math.max(0, Math.min(text.length, matchOffset));
     const matchEnd = Math.max(matchStart, Math.min(text.length, matchStart + matchLength));
     let windowStart = Math.max(0, matchStart - extent);
