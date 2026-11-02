@@ -357,17 +357,6 @@ describe("search page", () => {
         await extensions.close();
       }
     };
-    const registered = () => {
-      const worker = browser.targets().findLast(target => target.type() === "service_worker"
-        && target.url() === `chrome-extension://${extensionId}/background.js`);
-      return worker.worker().then(handle => handle.evaluate(async () => {
-        try {
-          return (await chrome.userScripts.getScripts({ ids: ["hachidori-custom-javascript"] })).length === 1;
-        } catch {
-          return false;
-        }
-      }));
-    };
     // A search for 食べる on a new search page, and the marks the script left.
     const searched = async () => {
       const tab = await browser.newPage();
@@ -391,29 +380,27 @@ describe("search page", () => {
         await tab.close();
       }
     };
-    // A reading page, where the worker's user script runs.
+    // A new reading page, where the worker's user script runs.
     const read = async () => {
       const tab = await browser.newPage();
       try {
         await tab.goto(pageUrl, { waitUntil: "load" });
         return await tab.waitForFunction(() => document.documentElement.dataset.customScript === "ran",
-          { polling: 50, timeout: 5_000 }).then(() => true, () => false);
+          { polling: 50, timeout: 1_000 }).then(() => true, () => false);
       } finally {
         await tab.close();
       }
     };
-    let blocked, allowed, onPage;
+    let blocked, allowed, onPage = false;
     try {
       await writeOptions({ customPopupJavascript: script });
       blocked = await searched();
       await allowUserScripts(true);
-      // The worker registers the saved script when the options next change.
+      // The worker registers the saved script when the options next change,
+      // for pages opened from then on.
       await writeOptions({ customPopupJavascript: `${script}\n` });
-      for (let attempt = 0; attempt < 50 && !await registered(); attempt += 1) {
-        await new Promise(resolveWait => setTimeout(resolveWait, 100));
-      }
+      for (let attempt = 0; attempt < 10 && !onPage; attempt += 1) onPage = await read();
       allowed = await searched();
-      onPage = await read();
     } finally {
       await writeOptions({ customPopupJavascript: originalOptions.customPopupJavascript });
       await allowUserScripts(false);
