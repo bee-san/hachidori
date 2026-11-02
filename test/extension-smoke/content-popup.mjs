@@ -422,14 +422,19 @@ async function externalLinksCase() {
 describe("content script: popup", () => {
   test("popup style isolation and custom JavaScript access", async () => {
     const result = await contentNoteStage({ isolation: async () => {
+      const cases = [
+        ["normal popups keep their styles in a closed shadow root and never ask for another", "", false],
+        ["saved Custom JavaScript reaches the popup through the closed root its bridge attached", "document.body.dataset.custom = 'yes';", true],
+        ["saved Custom JavaScript where user scripts do not run still gets a closed root", "document.body.dataset.custom = 'yes';", false],
+      ];
       const outcomes = {};
-      for (const customPopupJavascript of ["", "document.body.dataset.custom = 'yes';"]) {
-        const harness = await createHarness(null, { options: { customPopupJavascript } });
+      for (const [name, customPopupJavascript, userScripts] of cases) {
+        const harness = await createHarness(null, { options: { customPopupJavascript }, userScripts });
         try {
           const root = harness.popup.getRootNode();
-          const custom = customPopupJavascript !== "";
-          outcomes[custom ? "saved Custom JavaScript retains popup DOM access" : "normal popups keep their styles in a closed shadow root"] =
-            root.mode === (custom ? "open" : "closed") && root.host.shadowRoot === (custom ? root : null);
+          // With the bridge loaded, root.host.shadowRoot is what Custom JavaScript sees.
+          outcomes[name] = root.mode === "closed" && root.host.shadowRoot === (userScripts ? root : null)
+            && harness.rootRequests === (customPopupJavascript === "" ? 0 : 1);
         } finally { harness.close(); }
       }
       return outcomes;
