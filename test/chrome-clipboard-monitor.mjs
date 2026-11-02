@@ -255,13 +255,18 @@ try {
         baseRevision: options?.revision ?? 0, options: { popupTheme: theme } });
       if (!reply.ok) throw new Error(reply.error);
     }, popupTheme);
+    // The switch eases its colours for 120 ms after a theme change (settings.css): shoot once it has.
+    const switchSettled = () => search.evaluate(() => Promise.all(document.getElementById("search-clipboard")
+      .getAnimations().map(animation => animation.finished.catch(() => {}))));
     for (const theme of ["girlypop", "high-contrast", "default"]) {
       await writeTheme(theme);
       await search.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value,
         { polling: 100, timeout: 10_000 }, theme);
+      await switchSettled();
       await search.screenshot({ path: resolve(SCREENSHOTS, `search-clipboard-monitor-${theme}.png`) });
     }
     await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+    await switchSettled();
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-clipboard-monitor-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }

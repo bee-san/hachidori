@@ -43,6 +43,9 @@ async function screenshot(target, name, clip) {
   if (!SCREENSHOTS) return;
   mkdirSync(SCREENSHOTS, { recursive: true });
   await target.bringToFront();
+  // The Clipboard monitor switch eases its colours for 120 ms after a theme change (settings.css).
+  await target.evaluate(() => Promise.all(document.getElementById("search-clipboard")?.getAnimations()
+    .map(animation => animation.finished.catch(() => {})) ?? []));
   await target.screenshot({ path: resolve(SCREENSHOTS, `${name}.png`), ...(clip ? { clip } : {}) });
 }
 
