@@ -226,6 +226,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `recommended-dictionaries`, `recommended-install-client`, `setup-installer`, `setup-state` | The catalogue as the single description of the recommended set, the installer's runs, the revisioned setup record and mining capabilities. |
 | `release-compatibility` | The manifest, minimum Chrome, current Chrome and release tag share one contract. |
 | `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
+| `search-clipboard` | The search page's clipboard monitor (#639), Yomitan's polling: the first read is where it starts, each new text is reported once and trimmed, failures and blanks report nothing, and a read that ends after `stop()` is dropped. |
 | `search-window` | Opening the search page (#610) as Yomitan does: a new tab, the current tab or a popup window, bringing an open search page forward and reusing only a popup window for the popup window shortcut. |
 | `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
 | `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
@@ -359,8 +360,8 @@ the extension_pages CSP permits compiling the wasm in the offscreen document,
 that `chrome.offscreen` and `chrome.runtime.getContexts` behave as assumed, that
 OPFS survives a browser restart, and that a real `caretRangeFromPoint` hover
 produces a rendered popup. `test/run.mjs chrome-e2e` also runs
-`chrome-popup-scale.mjs` (fractional popup scale, real pointer hit testing) and
-`chrome-bulk-import.mjs` (below).
+`chrome-clipboard-monitor.mjs`, `chrome-popup-scale.mjs` (fractional popup scale,
+real pointer hit testing) and `chrome-bulk-import.mjs` (below).
 
 Its steps run in this order, in one profile:
 
@@ -380,7 +381,7 @@ Its steps run in this order, in one profile:
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
 | `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, a word that only frequency and pitch dictionaries have shown first without definitions only while Reading → Results asks for it (#620), popup audio; mining to a fake AnkiConnect. |
 | `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation, Back and Forward on Alt+B and Alt+F; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
-| `search.mjs` | The search page (#610): its shortcuts, the toolbar's Search and Reading's switch for it, the popup window, real results docked under the box through clicks and Escape, typing and pasting, a miss, and live theme changes. |
+| `search.mjs` | The search page (#610): its shortcuts, the toolbar's Search and Reading's switch for it, the popup window, its Clipboard monitor off by default with nothing read from the clipboard (#639), real results docked under the box through clicks and Escape, typing and pasting, a miss, and live theme changes. |
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |
 | `restart.mjs` | Backups and atomic replacement in Chrome, then `SIGKILL` and a relaunch on the same profile: settings, counts, setup, the library, OPFS and lookups survive; removal. |
 | `memory.mjs`, `media.mjs`, `file-access.mjs` | Low memory mode, the RAM default, entry and hash storage; lookup bounds, deep structured content and dictionary media; saved-page setup with Chrome's file access. |
@@ -485,6 +486,15 @@ These run separately:
   dictionaries; the Firefox popup itself is `firefox-e2e.mjs`'s. It downloads a
   GitHub release, so it is not in the pull-request CI matrix: run it before a
   release PR, and move its pinned release to each new one.
+- **`chrome-clipboard-monitor.mjs`** (run by `test/run.mjs chrome-e2e`, #639)
+  copies text in another tab of a copy of the extension that holds
+  `clipboardRead` from the start, since headless Chrome cannot answer the
+  permission prompt. The search page, without focus, must search Japanese text
+  with its real result through the worker and the offscreen document, and must
+  not search what was on the clipboard before, text without Japanese, its own
+  copies or a copy made while a Note is written; Settings must not be able to
+  read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four
+  palettes. The switch and its permission prompt are tested in Firefox.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at
@@ -600,7 +610,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
   | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
   | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
-  | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box. |
+  | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639). |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
   | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
