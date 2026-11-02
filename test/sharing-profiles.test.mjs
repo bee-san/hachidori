@@ -19,6 +19,7 @@ globalThis.HDLanguages = registry(["ja", "en", "ar"]);
 const profileState = await import("../extension/profile-state.js");
 const japaneseView = await import("../extension/japanese-view.js");
 const sharingLanguages = await import("../extension/sharing-languages.js");
+const languageNameModule = await import("../extension/language-names.js");
 const protocol = await import("../extension/sharing-protocol.js");
 const { createUploadHost } = await import("../extension/linked-import.js");
 const { CUSTOM_DICTIONARY_ID, customDictionarySemanticRevision } = await import("../extension/custom-dictionary.js");
@@ -155,7 +156,7 @@ function installation({ name, codes = ["ja", "en", "ar"], records = {}, overlayM
     fetch: async () => ({ ok: false, status: 404, json: async () => ({}), text: async () => "" }),
     HDLanguages: build,
     ...Object.fromEntries(Object.entries(profileState).filter(([, value]) => typeof value === "function")),
-    ...japaneseView, ...sharingLanguages,
+    ...japaneseView, ...sharingLanguages, ...languageNameModule,
     // This build's packs, as the worker's own registry gives them.
     packCodes: () => [...build.codes],
     hasLanguagePack: code => code === "ja" || build.get(code) !== null,

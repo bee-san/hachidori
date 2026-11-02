@@ -37,21 +37,6 @@ function plainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
-// The English name of a language, also of one this build has no pack for.
-export function languageName(code) {
-  const name = globalThis.HDLanguages?.get?.(code)?.name;
-  if (typeof name === "string" && name !== "") return name;
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
-export function languageNames(codes) {
-  return new Intl.ListFormat("en-GB", { type: "conjunction" }).format(codes.map(languageName));
-}
-
 // This build's pack codes; Japanese is built in.
 export function packCodes() {
   const codes = Array.isArray(globalThis.HDLanguages?.codes) ? globalThis.HDLanguages.codes : [];
@@ -133,25 +118,22 @@ export function withoutProfile(message) {
 
 /**
  * The languages a host follows to decide, at each commit, which connections
- * must reconnect (17.3 item 6): the shape of the records and the languages
- * each record holds, kept from the storage events in commit order after a
+ * must reconnect (17.3 item 6): the languages each shared record holds and the
+ * count descriptor, kept from the storage events in commit order after a
  * first read of the shared records.
  */
 export function createLanguageTracker() {
   let known = false;
-  let profiles = false;
   let descriptor = null;
   const held = new Map();
 
   function record(key, value) {
-    if (key === "options") profiles = globalThis.HDReaderOptions.hasProfiles(value);
     if (key === LOOKUP_STATS_KEY) descriptor = value ?? null;
     if (Object.hasOwn(HELD_SLOTS, key)) held.set(key, recordLanguages(key, value));
   }
 
   return {
     get known() { return known; },
-    get profiles() { return profiles; },
     get descriptor() { return descriptor; },
     // A read of the shared records, before any event that follows it.
     read(snapshot) {
@@ -159,22 +141,15 @@ export function createLanguageTracker() {
       known = true;
       for (const [key, value] of Object.entries(snapshot)) record(key, value);
     },
-    /**
-     * One storage event's changes, `{ key: { oldValue, newValue } }`. Returns
-     * whether the records left the single-profile shape and the languages the
-     * changed records hold.
-     */
+    // One storage event's changes, `{ key: { oldValue, newValue } }`: the
+    // languages the changed records hold.
     observe(changes) {
-      const options = changes.options;
-      const leftSingleProfile = options !== undefined && !globalThis.HDReaderOptions.hasProfiles(options.oldValue)
-        && globalThis.HDReaderOptions.hasProfiles(options.newValue);
       const carried = new Set();
       for (const [key, change] of Object.entries(changes)) {
         for (const code of recordLanguages(key, change.newValue)) carried.add(code);
         if (known) record(key, change.newValue ?? null);
-        else if (key === "options") profiles = globalThis.HDReaderOptions.hasProfiles(change.newValue);
       }
-      return { leftSingleProfile, carried };
+      return { carried };
     },
     held() {
       const all = new Set();

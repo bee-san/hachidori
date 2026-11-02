@@ -13,9 +13,10 @@ import {
 } from "./sharing-protocol.js";
 import {
   CHANGING_LANGUAGES, PROFILES_NOT_SHARED, PROFILE_REQUEST_TYPES, RECORD_REPLY_TYPES, createLanguageTracker,
-  hasLanguagePack, japaneseChanges, japaneseReply, japaneseView, languageName, languageNames, missingLanguages,
-  optInLanguages, packCodes, recordLanguages, snapshotLanguages, withoutProfile,
+  hasLanguagePack, japaneseChanges, japaneseReply, japaneseView, missingLanguages, optInLanguages, packCodes,
+  recordLanguages, snapshotLanguages, withoutProfile,
 } from "./sharing-languages.js";
+import { languageName, languageNames } from "./language-names.js";
 import { createUploadHost, uploadImportDecision } from "./linked-import.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, emptyLookupStats, unreachableLookupStatsKeys } from "./lookup-stats.js";
 import { CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages } from "./custom-dictionary.js";
@@ -428,18 +429,6 @@ function forwardToHost(message, capability = null) {
   }).catch(error => failureReply(message, error));
 }
 
-// The English name of a language for the messages below, also of one this
-// build has no pack for.
-function linkedLanguageName(code) {
-  const name = languageDescriptor(code)?.name;
-  if (typeof name === "string" && name !== "") return name;
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
 // A linked browser adds and removes languages on its host, once the host has
 // accepted its opt-in (docs/languages.md 16.1, 17.3 item 5, 17.6); a first-run
 // choice is never forwarded, and an add names a language both have a pack for.
@@ -454,13 +443,13 @@ async function forwardProfileRequest(message) {
       throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
     }
     if (language !== null && profiles === undefined) {
-      throw new Error(`Add ${linkedLanguageName(language)} on ${host} first; if its Settings have no Language section, update it.`);
+      throw new Error(`Add ${languageName(language)} on ${host} first; if its Settings have no Language section, update it.`);
     }
     throw new Error("Add and remove languages on the linked Hachidori.");
   }
   if (language !== null) {
     if (!profiles.hostLanguages.includes(language)) {
-      throw new Error(`The linked Hachidori does not have ${linkedLanguageName(language)}. Update it and try again.`);
+      throw new Error(`The linked Hachidori does not have ${languageName(language)}. Update it and try again.`);
     }
     if (languageDescriptor(language) === null) throw new Error(`This Hachidori has no pack for ${language}.`);
   }

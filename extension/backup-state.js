@@ -20,6 +20,7 @@ import {
   singleProfileShape,
 } from "./profile-state.js";
 import { japaneseView } from "./japanese-view.js";
+import { languageName, languageNames } from "./language-names.js";
 
 export function backupRevisions(snapshot) {
   return Object.fromEntries(["state", "options", "document", "updates", "lookupStats", "wordStatusOverrides"].map(key => {
@@ -193,21 +194,6 @@ function plainObject(value) {
 
 function invalidProfiles() {
   return new Error(INVALID_PROFILES);
-}
-
-// The English name of a language, also of one this build has no pack for.
-export function languageDisplayName(code) {
-  const name = globalThis.HDLanguages?.get?.(code)?.name;
-  if (typeof name === "string" && name !== "") return name;
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
-export function languageNameList(codes) {
-  return new Intl.ListFormat("en-GB", { type: "conjunction" }).format(codes.map(languageDisplayName));
 }
 
 // Japanese is built into the engine; another language needs its pack.
@@ -516,17 +502,17 @@ export function restorePreviewNotes(current, plan) {
     for (const [code, part] of Object.entries(plan.languages)) {
       if (holdsLanguage(part)) after.add(code);
     }
-    notes.push(`Restores ${languageNameList(restored)}.`);
-    for (const code of plan.missing) notes.push(`${languageDisplayName(code)} needs a newer Hachidori and is not restored.`);
+    notes.push(`Restores ${languageNames(restored)}.`);
+    for (const code of plan.missing) notes.push(`${languageName(code)} needs a newer Hachidori and is not restored.`);
     if (plan.fallback) {
-      notes.push(`The Japanese settings and dictionaries are restored in place of ${languageNameList(plan.leftOutProfiles)}.`);
+      notes.push(`The Japanese settings and dictionaries are restored in place of ${languageNames(plan.leftOutProfiles)}.`);
     }
   }
   const removed = [...heldLanguages(current)].filter(code => !after.has(code)).sort();
   if (removed.length === 1) {
-    notes.push(`Restoring removes ${languageNameList(removed)} and its settings, personal dictionary, lookup counts and marked words.`);
+    notes.push(`Restoring removes ${languageNames(removed)} and its settings, personal dictionary, lookup counts and marked words.`);
   } else if (removed.length > 1) {
-    notes.push(`Restoring removes ${languageNameList(removed)} and their settings, personal dictionaries, lookup counts and marked words.`);
+    notes.push(`Restoring removes ${languageNames(removed)} and their settings, personal dictionaries, lookup counts and marked words.`);
   }
   return notes;
 }

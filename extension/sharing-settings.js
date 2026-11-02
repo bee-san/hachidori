@@ -2,6 +2,7 @@
 // through Anki, or use another Hachidori instead of this one.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describeError } from "./error-text.js";
+import { languageNames } from "./language-names.js";
 import { API_CLIENT_ORIGIN, DEFAULT_SHARING_PORT, canDiscoverSharingHost } from "./sharing-protocol.js";
 
 const POLL_MS = 2000;
@@ -23,20 +24,6 @@ function hostSummary(host, display) {
   return `the Hachidori in ${host?.name || "another browser"} ${where} (${dictionaries(host?.dictionaryCount)})`;
 }
 
-// "Vietnamese", "Arabic and Vietnamese": English names, also of a language
-// this build has no pack for.
-function languageList(codes) {
-  const names = codes.map(code => {
-    const name = globalThis.HDLanguages?.get?.(code)?.name;
-    if (typeof name === "string" && name !== "") return name;
-    try {
-      return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
-    } catch {
-      return code;
-    }
-  });
-  return new Intl.ListFormat("en-GB", { type: "conjunction" }).format(names);
-}
 
 // "Chrome on this computer", "another browser at 100.75.152.76"
 function clientLabel(entry) {
@@ -76,7 +63,7 @@ export function createSharingSettingsController({
       const refused = link.languageProfiles?.optIn === "refused";
       if (link.connected && refused) {
         return [`Using ${hostSummary(link.host, link.display)}. Update Hachidori in this browser to use `
-          + `${languageList(link.languageProfiles.missingLanguages)} from ${link.host?.name || "the linked Hachidori"}.`, undefined];
+          + `${languageNames(link.languageProfiles.missingLanguages)} from ${link.host?.name || "the linked Hachidori"}.`, undefined];
       }
       if (link.connected) return [`Using ${hostSummary(link.host, link.display)}.`, "ready"];
       return [link.display === "this computer"

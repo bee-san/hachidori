@@ -127,7 +127,8 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   and `backup-settings.js` the manual and automatic restore controls.
   `japanese-view.js` builds the Japanese view of records with profiles
   (17.1), which backups, older linked browsers and the relay's dictionary
-  download read.
+  download read; `language-names.js` names languages in their messages, also
+  ones this build has no pack for.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
   worker; `sharing-languages.js` holds what a host with language profiles
