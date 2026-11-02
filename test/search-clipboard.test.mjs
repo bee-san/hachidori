@@ -3,7 +3,9 @@
 // polling, with the reads and the timer driven by the test.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CLIPBOARD_POLL_MS, createClipboardMonitor } from "../extension/search-clipboard.js";
+import {
+  CLIPBOARD_POLL_MS, CLIPBOARD_SEARCH_LENGTH, clipboardSearchText, createClipboardMonitor,
+} from "../extension/search-clipboard.js";
 
 // A timer the test fires itself, and reads that answer in the order given.
 function harness(answers) {
@@ -71,4 +73,16 @@ test("stop() ends polling and drops a read in flight; start() begins again from 
   assert.deepEqual(changes, [], "a restart takes the clipboard's text as where it starts");
   await tick();
   assert.deepEqual(changes, ["漢字"]);
+});
+
+test("a copy longer than Yomitan's 1,000 characters is searched from its start, without splitting a character", () => {
+  assert.equal(CLIPBOARD_SEARCH_LENGTH, 1000, "Yomitan's default clipboard.maximumSearchLength");
+  assert.equal(clipboardSearchText("食べたかった"), "食べたかった");
+  const exact = "あ".repeat(1000);
+  assert.equal(clipboardSearchText(exact), exact);
+  assert.equal(clipboardSearchText(`${"あ".repeat(1000)}い`), exact);
+  // 𠮷 is two UTF-16 code units; one at the edge is left out whole rather than halved.
+  const edge = `${"あ".repeat(999)}𠮷${"あ".repeat(10)}`;
+  assert.equal(clipboardSearchText(edge), "あ".repeat(999));
+  assert.equal(clipboardSearchText(`${"あ".repeat(998)}𠮷あ`), `${"あ".repeat(998)}𠮷`);
 });
