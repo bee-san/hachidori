@@ -348,31 +348,33 @@ function withDefinitionTags(reply) {
 // reads (#459), and each run of kanji read one kanji at a time (#605), where
 // KANJIDIC's readings read none by Jitendex kanwa's readings and compounds as
 // well (#641). Every other reply stays as the engine wrote it. The readings
-// tables are imported as the engine starts (startEngine), so the first lookup
-// need not wait for them, and kept for the worker's life; each kanji's
-// readings are derived as it is needed.
-let kanjiReadings = null;
-let kanwaReadings = null;
+// tables are imported and indexed as the engine starts (startEngine), so the
+// first lookup need not wait for them, and kept for the worker's life; each
+// kanji's readings are derived as it is needed.
+let readingTables = null;
 
 function importKanjiReadings() {
   return Promise.all([
     import("./vendor/kanjidic/kanji-readings.json", { with: { type: "json" } }),
     import("./vendor/kanwa/kanwa-readings.json", { with: { type: "json" } }),
-  ]);
+  ]).then(([{ default: kanjidic }, { default: kanwa }]) => {
+    if (readingTables === null) {
+      const { createKanjiReadings, createKanwaReadings } = globalThis.HDGlossary;
+      const kanjiReadings = createKanjiReadings(kanjidic.readings);
+      readingTables = { kanjiReadings, kanwa: createKanwaReadings(kanwa, kanjiReadings) };
+    }
+    return readingTables;
+  });
 }
 
 export async function withFurigana(reply) {
   if (reply.results.length === 0) return reply;
-  const { createKanjiReadings, createKanwaReadings, kanjiFurigana } = globalThis.HDGlossary;
-  if (kanjiReadings === null) {
-    const [{ default: kanjidic }, { default: kanwa }] = await importKanjiReadings();
-    kanjiReadings = createKanjiReadings(kanjidic.readings);
-    kanwaReadings = createKanwaReadings(kanwa, kanjiReadings);
-  }
+  const { kanjiReadings, kanwa } = readingTables ?? await importKanjiReadings();
+  const { kanjiFurigana } = globalThis.HDGlossary;
   let furiganaJsonLength = 0;
   for (const result of reply.results) {
     const term = result?.term;
-    const furigana = term ? kanjiFurigana(term.expression, term.reading, kanjiReadings, kanwaReadings) : null;
+    const furigana = term ? kanjiFurigana(term.expression, term.reading, kanjiReadings, kanwa) : null;
     if (furigana === null) continue;
     term.furigana = furigana;
     furiganaJsonLength += ',"furigana":'.length + JSON.stringify(furigana).length;
