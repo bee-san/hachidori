@@ -19,11 +19,12 @@
        switch (#639) lies over the end of its header: Firefox asks for a
        permission only from the document whose control the user clicked. -->
   <body class="search-shell">
-    <!-- The frame's icon and title stay invisible here, so the switch lands at
-         the end of the frame's header at any width. -->
+    <!-- The frame's icon and title are laid out here but invisible
+         (search.css), so the switch lands at the end of the frame's header at
+         any width; being invisible, they are not in the accessibility tree. -->
     <div class="search-header search-shell-header" hidden>
-      <img src="icons/hachidori-48.png" width="24" height="24" alt="" aria-hidden="true" />
-      <h1 aria-hidden="true">Hachidori Search</h1>
+      <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
+      <h1>Hachidori Search</h1>
       <label class="lookup-enable" title="Search Japanese text as soon as you copy it, in any tab or program">
         <span>Clipboard monitor</span>
         <input type="checkbox" id="search-clipboard" disabled />

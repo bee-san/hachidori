@@ -19,11 +19,12 @@
   </head>
   <body class="search-page">
     <!-- The Clipboard monitor switch is search.html's, over this header's end:
-         the label here only keeps its room, invisible. -->
+         the label here only keeps its room, invisible (search.css), so it is
+         neither in the accessibility tree nor reached by Tab. -->
     <header class="search-header">
       <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
       <h1>Hachidori Search</h1>
-      <label class="lookup-enable" aria-hidden="true">
+      <label class="lookup-enable">
         <span>Clipboard monitor</span>
         <input type="checkbox" />
       </label>
