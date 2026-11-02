@@ -306,6 +306,16 @@ HACHIDORI_BENCH_REPO=. node benchmark/profile-switch.mjs /tmp/profile-switch.jso
   [--words en=house,running] --sessions 3 --switches 20 --hovers 3
 ```
 
+`node-lookup.mjs` times another language's `hdw_lookup` in Node with
+`HACHIDORI_LOOKUP_LANGUAGE`: it loads that pack, takes a dictionary archive
+(imported in MEMFS) or an imported directory, and looks up every word of a file
+of sentences the way a hover on it would: from the word's first character
+through content.js's scan window, extended to the end of the last word.
+
+```sh
+HACHIDORI_LOOKUP_LANGUAGE=en node benchmark/node-lookup.mjs /path/to/kty-en-en.zip sentences-en.txt /tmp/en.json
+```
+
 ## Entry moves on Alt+ArrowDown/ArrowUp (#597)
 
 `entry-keybind.mjs` times Go to next and previous entry in the real extension:
