@@ -453,6 +453,8 @@ async function checkExternalLinks(browser, settings, tab, popup) {
 // 好き嫌い's kana allow two splits of すききらい (#459), and 二十四時間's one run of
 // kanji can be read one kanji at a time (#605). The engine worker reads their
 // kanji's KANJIDIC readings and sends the split that reads; the popup draws it.
+// KANJIDIC has no に for 日, so 日本 にほん is read by Jitendex kanwa's 日本
+// に|ほん (#641).
 async function checkKanjiReadingFurigana(settings, tab, popup) {
   const fixture = kanjiReadingFuriganaFixture();
   const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
@@ -470,7 +472,8 @@ async function checkKanjiReadingFurigana(settings, tab, popup) {
   let evidence;
   try {
     evidence = { ambiguous: await lookUp(fixture.query, "好すき嫌きらい"),
-      compound: await lookUp(fixture.compound, "二に十じゅう四よ時じ間かん") };
+      compound: await lookUp(fixture.compound, "二に十じゅう四よ時じ間かん"),
+      kanwa: await lookUp(fixture.kanwa, "日に本ほん") };
   } catch (error) {
     evidence = { error: error.message };
   } finally {
@@ -489,6 +492,9 @@ async function checkKanjiReadingFurigana(settings, tab, popup) {
     JSON.stringify(evidence.compound) === JSON.stringify({ furigana: [{ text: "二", reading: "に" },
       { text: "十", reading: "じゅう" }, { text: "四", reading: "よ" }, { text: "時", reading: "じ" },
       { text: "間", reading: "かん" }], rubies: 5, headword: true }), JSON.stringify(evidence));
+  check("a compound that KANJIDIC's readings cannot split is read one kanji at a time by Jitendex kanwa's readings in the engine worker and the popup",
+    JSON.stringify(evidence.kanwa) === JSON.stringify({ furigana: [{ text: "日", reading: "に" },
+      { text: "本", reading: "ほん" }], rubies: 2, headword: true }), JSON.stringify(evidence));
 }
 
 // Issue #430: a custom link's %s is the sentence Anki gets, read the same way

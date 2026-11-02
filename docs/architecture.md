@@ -1871,20 +1871,36 @@ kana leave more than one split, it is the one split that reads (#459). Then
 each run of two or more kanji is read one kanji at a time when exactly one split
 of its share reads (#605):
 二十四時間 is 二(に)十(じゅう)四(よ)時(じ)間(かん), where Yomitan puts にじゅうよじかん
-over the run. A run that no split reads, such as jukujikun (今日 きょう) or a run
-with a digit (２人 ふたり), keeps one ruby, as does a run that two splits read. A
+over the run. A run that no split reads by KANJIDIC, such as jukujikun (今日
+きょう), 日本 にほん (KANJIDIC has no に for 日) or a run with a digit (２人 ふたり),
+is read again with Jitendex's kanwa data (below); a run that two splits read
+keeps one ruby. A
 kanji reads as an on'yomi, or as a kun'yomi's stem, stem and okurigana,
 masu-stem (す.く: す, すく, すき), or stem with the start of its okurigana where a
 word leaves the rest unwritten (う.える: うえ in 植木 うえき), each also with
 rendaku (a voiced ち or つ also as じ or ず: 世界中 せかいじゅう) and with a final つ,
 ち, く, き or り as っ; 々 reads as the kanji before it, and a digit or letter never
-reads. Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
-holds the readings; the engine service imports it as a JSON module as it starts,
-off the first lookup's reply, and derives each kanji's forms when it is first
-needed.
-`scripts/kanji-readings.mjs` regenerates the table from the KANJIDIC archive
+reads by KANJIDIC. The second reading (#641) adds kanwa's character readings
+that KANJIDIC lacks, among them numerals and letters (２ ふた, so ２人 is
+２(ふた)人(り)), and its compound readings. A compound reads either one part per
+character, as 日本 に|ほん, which splits 日本 and 日本語 にほんご, or as a whole, as
+今日 きょう, which keeps one ruby inside its run: 今日中 きょうじゅう is
+今日(きょう)中(じゅう). Where several splits read, those that read the most
+characters by compounds count, as Jitendex reads a known compound before its
+characters, so 河原者 かわらもの is 河原(かわら)者(もの) although 河 か and 原 わら
+also read it; two that read as many keep one ruby, as does a run that kanwa
+cannot read either (景色 けしき). A run that KANJIDIC reads keeps that split, so
+印度 インド stays 印(イン)度(ド) though kanwa reads it as a whole, and 日本 にっぽん
+stays 日(にっ)本(ぽん). Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
+and `extension/vendor/kanwa/kanwa-readings.json` hold the readings; the engine
+service imports them as JSON modules and indexes kanwa's compounds as it
+starts, off the first lookup's reply, and derives each kanji's forms when it is
+first needed.
+`scripts/kanji-readings.mjs` regenerates the KANJIDIC table from the archive
 pinned in `source.json` beside it; point that pin at a newer jmdict-yomitan
-release to update it. The popup headword's ruby,
+release to update it. `scripts/kanwa-readings.mjs` regenerates the kanwa table
+from the jitendex-data commit pinned in its `source.json`, against the shipped
+KANJIDIC table, so it runs again after that table changes. The popup headword's ruby,
 `{furigana}`/`{furigana-plain}` and the API's scanning parser read the split
 through `termFurigana`, which falls back to the local split when a term carries
 none, as from an older sharing host, or one that does not spell its expression.

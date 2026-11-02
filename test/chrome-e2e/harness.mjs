@@ -364,6 +364,7 @@ const PLANNED = [
   "a custom link's %s is the hovered or selected word's sentence without ruby readings",
   "an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
   "a kanji compound's furigana is read one kanji at a time by its KANJIDIC readings in the engine worker and the popup",
+  "a compound that KANJIDIC's readings cannot split is read one kanji at a time by Jitendex kanwa's readings in the engine worker and the popup",
   "the popup renders the glossary",
   "the popup renders the frequency tag from term_meta_bank",
   "Pitch accent colours give a dictionary's i-adjective class to 高い but not to the na-adjective 自由",
