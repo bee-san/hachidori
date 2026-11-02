@@ -68,3 +68,29 @@ forced-colors mode are pixel-identical; High contrast differs only on
 antialiased edges, by at most 4/255. The Tab order is unchanged, and the tree
 holds the same landmarks and names, inside a frame titled "Hachidori Search".
 
+
+## Performance
+
+`scripts/bench-search.mjs` opens new search pages and searches five words in
+each, on one build, with the fixture dictionary and Chrome 152, on a shared
+host (load average about 37 on 64 cores). Three sessions per build ran
+alternately, five pages each: `results/bench-08d68d7a.jsonl` (`main` 3b7730f1
+against 08d68d7a) and `results/bench-4f023308-parallel-read-experiment.jsonl`
+(against 08d68d7a's successor with the user script read alongside the frame's
+load, an experiment that was reverted because it changed nothing).
+`scripts/startup-split.mjs` splits a page's start-up on one clock.
+
+| measure (median ms, n) | main | this PR |
+| --- | --- | --- |
+| a new search page until it takes a search | 111 (15), 104 (15) | 139 (15), 142 (15) |
+| a page's first search, Enter to the result in the popup's DOM | 18.7 (15), 20.6 (15) | 21.9 (15), 19.4 (15) |
+| later searches | 6.3 (60), 6.7 (60) | 7.6 (60), 7.5 (60) |
+
+The split (8 pages each): `main`'s page is ready at 95-97 ms. Here the frame's
+document starts 37-42 ms after `search.html` does, once `search.html` has
+parsed its own `reader-options.js`, `settings-theme.js` and `settings.css`,
+which paint its background in the saved theme until the frame shows; the frame
+is then ready about 85 ms later, the same as `main`'s whole page. A module
+marked `async` and the parallel script read changed nothing measurable.
+Without those three files the page was ready about 15 ms sooner, but its
+window would show the browser's colour before the frame paints (#296).
