@@ -7,14 +7,15 @@
   // A page that already loaded registry.js keeps its fuller copy.
   if (globalThis.HDLanguages !== undefined) return;
   const packs = [
-    {"code":"ja","iso639_3":"jpn","name":"Japanese","nativeName":"日本語","bcp47":"ja","scripts":["Jpan"],"direction":"ltr","text":{"pattern":"[\\u3005-\\u3007\\u303B\\u3040-\\u30FF\\u31F0-\\u31FF\\uFF66-\\uFF9F\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]","scanStart":"cursor","segmentation":"scan","wordCharacters":"[\\u3005-\\u3007\\u303B\\u3040-\\u30FF\\u31F0-\\u31FF\\uFF66-\\uFF9F\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]","wordInternal":null,"sentence":{"terminators":["。","．",".","！","!","？","?","…","︒","︕","︖","︙"],"quotePairs":[["「","」"],["『","』"],["（","）"],["(",")"],["［","］"],["[","]"],["｛","｝"],["{","}"],["〈","〉"],["《","》"],["【","】"],["〔","〕"],["〘","〙"],["〚","〛"],["“","”"],["‘","’"]]},"highlightBreaks":{"sentenceEnd":["。","．","！","？","!","?","…","‥"],"clauseEnd":["、","，",","," ","　"]},"lineJoiner":""},"capabilities":{"readings":"required","ruby":{"alignment":"kana"},"pitchAccent":true,"characterView":{"name":"Kanji","pattern":"[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]","readingLabels":{"onyomi":"On","kunyomi":"Kun"},"readingSeparator":"、"},"wordHighlighting":true},"presentation":{"typography":{"fontFamily":null,"wordBreak":null,"lineBreak":null,"joinedScript":false},"labels":{"reading":"Reading","traceMarker":"～","readingBrackets":["《","》"],"senseSeparator":"; ","listSeparator":"、"},"displayTransforms":{}},"settings":[],"host":{"sample":{"warmup":"食べました"}}},
+    "{\"code\":\"ja\",\"iso639_3\":\"jpn\",\"name\":\"Japanese\",\"nativeName\":\"日本語\",\"bcp47\":\"ja\",\"scripts\":[\"Jpan\"],\"direction\":\"ltr\",\"text\":{\"pattern\":\"[\\\\u3005-\\\\u3007\\\\u303B\\\\u3040-\\\\u30FF\\\\u31F0-\\\\u31FF\\\\uFF66-\\\\uFF9F\\\\u3400-\\\\u4DBF\\\\u4E00-\\\\u9FFF\\\\uF900-\\\\uFAFF\\\\u{20000}-\\\\u{2FA1F}]\",\"scanStart\":\"cursor\",\"segmentation\":\"scan\",\"wordCharacters\":\"[\\\\u3005-\\\\u3007\\\\u303B\\\\u3040-\\\\u30FF\\\\u31F0-\\\\u31FF\\\\uFF66-\\\\uFF9F\\\\u3400-\\\\u4DBF\\\\u4E00-\\\\u9FFF\\\\uF900-\\\\uFAFF\\\\u{20000}-\\\\u{2FA1F}]\",\"wordInternal\":null,\"sentence\":{\"terminators\":[\"。\",\"．\",\".\",\"！\",\"!\",\"？\",\"?\",\"…\",\"︒\",\"︕\",\"︖\",\"︙\"],\"quotePairs\":[[\"「\",\"」\"],[\"『\",\"』\"],[\"（\",\"）\"],[\"(\",\")\"],[\"［\",\"］\"],[\"[\",\"]\"],[\"｛\",\"｝\"],[\"{\",\"}\"],[\"〈\",\"〉\"],[\"《\",\"》\"],[\"【\",\"】\"],[\"〔\",\"〕\"],[\"〘\",\"〙\"],[\"〚\",\"〛\"],[\"“\",\"”\"],[\"‘\",\"’\"]]},\"highlightBreaks\":{\"sentenceEnd\":[\"。\",\"．\",\"！\",\"？\",\"!\",\"?\",\"…\",\"‥\"],\"clauseEnd\":[\"、\",\"，\",\",\",\" \",\"　\"]},\"lineJoiner\":\"\"},\"capabilities\":{\"readings\":\"required\",\"ruby\":{\"alignment\":\"kana\"},\"pitchAccent\":true,\"characterView\":{\"name\":\"Kanji\",\"pattern\":\"[\\\\u3400-\\\\u4DBF\\\\u4E00-\\\\u9FFF\\\\uF900-\\\\uFAFF\\\\u{20000}-\\\\u{2FA1F}]\",\"readingLabels\":{\"onyomi\":\"On\",\"kunyomi\":\"Kun\"},\"readingSeparator\":\"、\"},\"wordHighlighting\":true},\"presentation\":{\"typography\":{\"fontFamily\":null,\"wordBreak\":null,\"lineBreak\":null,\"joinedScript\":false},\"labels\":{\"reading\":\"Reading\",\"traceMarker\":\"～\",\"readingBrackets\":[\"《\",\"》\"],\"senseSeparator\":\"; \",\"listSeparator\":\"、\"},\"displayTransforms\":{}},\"settings\":[],\"host\":{\"sample\":{\"warmup\":\"食べました\"}}}",
   ];
-  const byCode = new Map(packs.map(pack => [pack.code, pack]));
+  let byCode = null;
+  const table = () => byCode ??= new Map(packs.map(text => JSON.parse(text)).map(pack => [pack.code, pack]));
   // Read-only descriptors (docs/languages.md 9.1): get(code) is null for a
   // language this build has no pack for.
   globalThis.HDLanguages = {
     version: 1,
-    codes: packs.map(pack => pack.code),
-    get: code => byCode.get(code) ?? null,
+    codes: ["ja"],
+    get: code => table().get(code) ?? null,
   };
 }());
