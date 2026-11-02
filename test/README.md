@@ -496,11 +496,13 @@ These run separately:
   copies and cuts or a copy made while a Note is written; a 300,000-character
   copy must be searched, and read, as its first 1,000 characters; Settings must
   not be able to read the clipboard. Only text the reader would search may reach
-  the search page's frame, where Custom JavaScript runs, and a click on the
-  switch must leave the reader's keybinds working (Alt+P plays the result) (#644). `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves
-  the page in four palettes. The switch's request for the permission and turning
-  it off are tested in Firefox, whose test profile grants optional permissions
-  without a prompt; no suite shows the prompt.
+  the search page's frame, where Custom JavaScript runs; a click on the switch
+  must leave the reader's keybinds working (Alt+P plays the result), and a click
+  on the focused switch must leave focus on it (#644).
+  `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four palettes. The
+  switch's request for the permission and turning it off are tested in Firefox,
+  whose test profile grants optional permissions without a prompt; no suite
+  shows the prompt.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at

@@ -317,11 +317,20 @@ try {
   await search.keyboard.press("KeyP");
   await search.keyboard.up("Alt");
   await search.waitForFunction(() => globalThis.audioPlays > 0, { polling: 50, timeout: 10_000 });
+  // A switch that already has focus keeps it, as after Space: Chrome focuses
+  // the switch before the pointer events of a screen reader's or voice
+  // control's click, which must not move focus off what the user toggled.
+  await search.focus("#search-clipboard");
+  await search.click("#search-clipboard");
+  await new Promise(resolveWait => setTimeout(resolveWait, 300));
+  assert.equal(await search.evaluate(() => document.activeElement?.id), "search-clipboard",
+    "a click on the focused switch leaves focus on it");
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
     + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard; only"
-    + " text it searches reaches the frame, and a click on its switch leaves the reader's keybinds working");
+    + " text it searches reaches the frame, and a click on its switch leaves the reader's keybinds working unless"
+    + " the switch had focus");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();

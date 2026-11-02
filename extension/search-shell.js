@@ -234,8 +234,8 @@ async function start() {
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
   let port = null;
-  const page = clipboardMonitor(document.getElementById("search-clipboard"),
-    (text) => { port?.postMessage({ kind: "clipboard", text }); });
+  const clipboardSwitch = document.getElementById("search-clipboard");
+  const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); });
   connectSearchFrame({ window, frame,
     serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page); },
     connection: sandboxed => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest(),
@@ -250,9 +250,14 @@ async function start() {
   });
   // A click on the switch then hands focus back to the frame, where the
   // reader's keybinds and activation key work, as they did beside the switch
-  // when it shared the page's document. The keyboard's Space leaves it there.
-  document.querySelector(".search-shell-header .lookup-enable").addEventListener("pointerup", () => {
-    setTimeout(() => { frame.focus(); }, 0);
+  // when it shared the page's document. A switch that already has focus keeps
+  // it: so do Space and a screen reader's or voice control's click, which
+  // Chrome sends as pointer events too, but only after focusing the switch.
+  const clipboardLabel = clipboardSwitch.closest("label");
+  let handBack = false;
+  clipboardLabel.addEventListener("pointerdown", () => { handBack = document.activeElement !== clipboardSwitch; });
+  clipboardLabel.addEventListener("pointerup", () => {
+    if (handBack) setTimeout(() => { frame.focus(); }, 0);
   });
   // The page's own keys work from the switch too, as they did when it shared
   // the page's document (search.js): Escape selects the box's text and Ctrl+U
