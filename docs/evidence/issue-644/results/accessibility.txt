@@ -1,0 +1,25 @@
+Search page, main 3b7730f1 against this PR (08d68d7a), Chrome for Testing 152.0.7977.75, 900 x 700,
+食べる searched, lookup counts off, the box blurred. scripts/a11y-probe.mjs, scripts/hc-probe.mjs, scripts/a11y-tree.mjs.
+
+Palettes (differing pixels, largest channel difference):
+  Automatic under a light preference  0
+  Automatic under a dark preference   0
+  Default                             0
+  Dracula                             0
+  High contrast                       198 (4/255), only on antialiased edges: rounded-border corners, list bullets, one pitch mark.
+                                      main against main on two runs: 4 (1/255); this PR against itself: 0.
+  Forced colors (--force-high-contrast, Chrome's own switch)  0
+  (DevTools Emulation.setEmulatedMedia forced-colors reports the feature in the frame but does not repaint a frame
+   document loaded after it was set, so the emulated picture is not what a contrast-theme user sees.)
+
+Keyboard, from the focused search box:
+  Tab x4      main: textarea#search-input, button#search-clear, button#search-submit, popup control, popup control
+              PR:   textarea#search-input, button#search-clear, button#search-submit, popup control, popup control
+  Shift+Tab   main: body   PR: body (inside the frame; the outer page's focus is on the frame)
+  On open     the box has focus, in a tab and in a popup window (scripts/focus-probe.mjs)
+
+Accessibility tree:
+  main  RootWebArea "Hachidori Search" > banner, heading "Hachidori Search", search, textbox "Word or text to look up",
+        button "Clear the search box", button "Search", main "Results", status
+  PR    RootWebArea "Hachidori Search" > Iframe "Hachidori Search" > RootWebArea "Hachidori Search" > the same banner,
+        heading, search, textbox, buttons, main "Results" and status

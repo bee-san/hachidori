@@ -15,6 +15,8 @@ copied here; `reporter-probe.mjs` reads them from `REPORTER_JS` and
 | `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` (37bb0a86): all four rows, as in the issue's first screenshot. Right, this PR: NHK alone, as in the issue's "should look like this" |
 | `reporter-script-main.png`, `reporter-script-this-pr.png` | the two halves at full size |
 | `parity-web-page.png`, `parity-search-page.png` | the same lookup (食べたかった, Default theme, a red Custom CSS outline) as a web page's popup and as the search page's docked result |
+| `palettes-this-pr.png` | the search page in this PR: Automatic under a light and a dark preference, Default, High contrast, Dracula, and Chrome's forced-colors mode |
+| `palettes/*-main.png`, `palettes/*-this-pr.png` | each palette on `main` and on this PR, for the pixel comparison in `results/accessibility.txt` |
 
 ## Reproducing #644 on `main`
 
@@ -56,3 +58,13 @@ with the same options, and compares them.
 | `chrome128-probe.mjs` | the manifest-minimum Chrome 128, where Developer mode gates user scripts | the search frame runs the script there too |
 
 The only gap found was Custom JavaScript itself.
+
+## Accessibility
+
+The search page now lives in a frame, so `results/accessibility.txt` compares
+it with `main`: every palette, the keyboard order from the box, focus on open
+and the accessibility tree. Light, dark, Default, Dracula and Chrome's own
+forced-colors mode are pixel-identical; High contrast differs only on
+antialiased edges, by at most 4/255. The Tab order is unchanged, and the tree
+holds the same landmarks and names, inside a frame titled "Hachidori Search".
+
