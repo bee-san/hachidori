@@ -1,25 +1,42 @@
-Search page, main 3b7730f1 against this PR (08d68d7a, then again on 4f023308), Chrome for Testing 152.0.7977.75, 900 x 700,
-食べる searched, lookup counts off, the box blurred. scripts/a11y-probe.mjs, scripts/hc-probe.mjs, scripts/a11y-tree.mjs.
+Search page, main 568412b4 (#652, the Clipboard monitor) against this PR (d1fed77b; 8bf17769 changes only how the
+frame's bridge dispatches its messages), Chrome for Testing 152.0.7977.75, 900 x 700, 食べる searched, lookup counts
+off, the box blurred. scripts/a11y-probe.mjs, scripts/hc-probe.mjs, scripts/a11y-tree.mjs, scripts/layout-probe.mjs,
+scripts/switch-focus-probe.mjs.
 
-Palettes (differing pixels, largest channel difference):
-  Automatic under a light preference  0
-  Automatic under a dark preference   0
-  Default                             0
-  Dracula                             0
-  High contrast                       198 (4/255) on 08d68d7a and 194 (4/255) on 4f023308, only on antialiased edges: rounded-border corners, list bullets, one pitch mark.
-                                      main against main on two runs: 4 (1/255); this PR against itself: 0.
-  Forced colors (--force-high-contrast, Chrome's own switch)  0
+The Clipboard monitor switch is search.html's: it lies over the end of the frame's header (see layout.txt for the
+geometry, identical to main's to 1/64 px).
+
+Palettes (differing pixels, largest channel difference, where):
+  Automatic under a light preference  98 (3/255), all on the switch (852-888 x 15-35)
+  Automatic under a dark preference   587 (1/255), the switch and its label (724-888 x 15-35)
+  Default                             66 (2/255), the switch
+  Dracula                             138 (1/255), the switch
+  High contrast                       221 (4/255): the switch, and antialiased edges as on earlier heads (rounded
+                                      corners, list bullets, one pitch mark); main against main on two runs: 4 (1/255)
+  Forced colors (--force-high-contrast, Chrome's own switch)  16 (1/255), the switch
   (DevTools Emulation.setEmulatedMedia forced-colors reports the feature in the frame but does not repaint a frame
-   document loaded after it was set, so the emulated picture is not what a contrast-theme user sees.)
+   document loaded after it was set, so the emulated picture, 627,223 differing pixels, is not what a contrast-theme
+   user sees; Chrome's own switch above is.)
+  The switch's pixels differ by at most 3/255 because it is composited above the frame rather than drawn in the
+  same document as the header.
+
+Clipboard monitor screenshots (test/chrome-clipboard-monitor.mjs, switch on, 960 x 760; clipboard-monitor/):
+  default 67 (1/255), girlypop 84 (2/255), forced colors (emulated, switch in search.html) 56 (8/255),
+  the first picture 84 (3/255): all on the switch. High contrast 11,647 (4/255): antialiased edges, as above.
 
 Keyboard, from the focused search box:
   Tab x4      main: textarea#search-input, button#search-clear, button#search-submit, popup control, popup control
-              PR:   textarea#search-input, button#search-clear, button#search-submit, popup control, popup control
-  Shift+Tab   main: body   PR: body (inside the frame; the outer page's focus is on the frame)
-  On open     the box has focus, in a tab and in a popup window (scripts/focus-probe.mjs)
+              PR:   the same
+  Shift+Tab   main: input#search-clipboard   PR: input#search-clipboard (search.html's; the frame has no focus)
+  A click on the switch or on its label text leaves focus on the switch, as on main (switch-focus-probe.mjs).
+  Escape and Ctrl+U pressed on the switch reach the box, as on main.
+  On open     the box has focus, in a tab and in a popup window (chrome-e2e "the search page opens with its box focused").
 
 Accessibility tree:
-  main  RootWebArea "Hachidori Search" > banner, heading "Hachidori Search", search, textbox "Word or text to look up",
-        button "Clear the search box", button "Search", main "Results", status
+  main  RootWebArea "Hachidori Search" > banner, search, main "Results", heading "Hachidori Search",
+        textbox "Word or text to look up", button "Clear the search box", button "Search", status
   PR    RootWebArea "Hachidori Search" > Iframe "Hachidori Search" > RootWebArea "Hachidori Search" > the same banner,
-        heading, search, textbox, buttons, main "Results" and status
+        search, main, heading, textbox, buttons and status.
+  The switch, checkbox "Clipboard monitor", is in both trees (a11y-tree-checkbox.txt, the same probe with checkboxes
+  listed). On main it is inside the banner; here it is in search.html, outside the frame's banner, which holds the
+  icon and the heading. Shift+Tab from the box reaches it, as on main.

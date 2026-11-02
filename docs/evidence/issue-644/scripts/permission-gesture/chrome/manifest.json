@@ -1,0 +1,5 @@
+{ "manifest_version": 3, "name": "protoP", "version": "1.0",
+  "background": { "service_worker": "bg.js" },
+  "optional_permissions": ["clipboardRead"],
+  "sandbox": { "pages": ["frame.html"] },
+  "content_security_policy": { "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self'; child-src 'self'" } }

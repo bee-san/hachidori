@@ -1,0 +1,3 @@
+chrome [{"why":"no click","active":false,"outcome":{"error":"This function must be called during a user gesture"}},{"why":"after a click in the frame","active":true,"outcome":{"pending":true}}]
+chrome [{"why":"no click","active":false,"outcome":{"error":"This function must be called during a user gesture"}},{"why":"after a click in the frame","active":true,"outcome":{"pending":true}}]
+firefox [{"asked":{"checked":true,"at":"change"},"activeBefore":true,"error":"permissions.request may only be called from a user input handler"}]

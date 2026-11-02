@@ -1,0 +1,119 @@
+{
+ "dark theme, light preference, as-is": [
+  {
+   "frames": 5,
+   "timed": [
+    "green/green 43ms",
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 6,
+   "timed": [
+    "green/green 24ms",
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 5,
+   "timed": [
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 4,
+   "timed": [
+    "dark/dark (end)"
+   ]
+  }
+ ],
+ "dark theme, light preference, without-theme-files": [
+  {
+   "frames": 5,
+   "timed": [
+    "green/green 26ms",
+    "WHITE/WHITE 33ms",
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 5,
+   "timed": [
+    "green/green 32ms",
+    "WHITE/WHITE 33ms",
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 4,
+   "timed": [
+    "WHITE/WHITE 36ms",
+    "dark/dark (end)"
+   ]
+  },
+  {
+   "frames": 4,
+   "timed": [
+    "green/green 35ms",
+    "WHITE/WHITE 32ms",
+    "dark/dark (end)"
+   ]
+  }
+ ],
+ "light theme, dark preference, as-is": [
+  {
+   "frames": 4,
+   "timed": [
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 4,
+   "timed": [
+    "green/green 34ms",
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 3,
+   "timed": [
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 6,
+   "timed": [
+    "green/green 29ms",
+    "WHITE/WHITE (end)"
+   ]
+  }
+ ],
+ "light theme, dark preference, without-theme-files": [
+  {
+   "frames": 6,
+   "timed": [
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 4,
+   "timed": [
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 5,
+   "timed": [
+    "green/green 29ms",
+    "WHITE/WHITE (end)"
+   ]
+  },
+  {
+   "frames": 5,
+   "timed": [
+    "green/green 31ms",
+    "WHITE/WHITE (end)"
+   ]
+  }
+ ]
+}

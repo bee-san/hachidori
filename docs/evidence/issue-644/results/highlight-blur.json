@@ -1,0 +1,28 @@
+{
+ "webHighlights": {
+  "hd-word-unknown": [
+   "食べたかった",
+   "漢字",
+   "読む"
+  ]
+ },
+ "webBlur": {
+  "second": "blurred",
+  "afterHover": "blurred",
+  "afterClick": "revealed"
+ },
+ "searchBlur": {
+  "second": "blurred",
+  "afterHover": "blurred",
+  "afterClick": "revealed"
+ },
+ "searchHighlights": {
+  "hd-word-unknown": [
+   "漢字",
+   "読む"
+  ],
+  "gsm-hoshidicts-match": [
+   "漢字"
+  ]
+ }
+}

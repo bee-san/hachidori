@@ -12,12 +12,13 @@ copied here; `reporter-probe.mjs` reads them from `REPORTER_JS` and
 
 | file | what it shows |
 | --- | --- |
-| `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` at 1afa347b (with #651): all four rows, as in the issue's first screenshot. Right, this PR at cdec3b79: NHK alone, as in the issue's "should look like this" |
+| `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` at 568412b4 (with #651 and #652): all four rows, as in the issue's first screenshot. Right, this PR at d1fed77b: NHK alone, as in the issue's "should look like this" |
 | `reporter-script-before-after-3b7730f1.png` | the same against `main` at 3b7730f1 and this PR at 08d68d7a, before #651 |
 | `reporter-script-main.png`, `reporter-script-this-pr.png` | the two halves at full size |
 | `parity-web-page.png`, `parity-search-page.png` | the same lookup (食べたかった, Default theme, a red Custom CSS outline) as a web page's popup and as the search page's docked result |
-| `palettes-this-pr.png` | the search page in this PR: Automatic under a light and a dark preference, Default, High contrast, Dracula, and Chrome's forced-colors mode |
-| `palettes/*-main.png`, `palettes/*-this-pr.png` | each palette on `main` and on this PR, for the pixel comparison in `results/accessibility.txt` |
+| `palettes-this-pr.png` | the search page in this PR (d1fed77b): Automatic under a light and a dark preference, Default, High contrast, Dracula, and emulated forced colors |
+| `palettes/*-main.png`, `palettes/*-this-pr.png` | each palette on `main` 568412b4 and on this PR, for the pixel comparison in `results/accessibility.txt`; `forced-colors-real-*` under Chrome's own `--force-high-contrast` |
+| `clipboard-monitor/*-main.png`, `*-this-pr.png` | `test/chrome-clipboard-monitor.mjs`'s pictures, switch on: Default, Girlypop, High contrast and forced colors, `main` 568412b4 against this PR |
 
 ## Reproducing #644 on `main`
 
@@ -41,8 +42,9 @@ with this PR.
 REPORTER_JS=reporter.js REPORTER_CSS=reporter.css HACHIDORI_CHROME=… \
   node scripts/reporter-probe.mjs "$REPO" out.png
 # main 3b7730f1: {"groups":4,"visible":4}   this PR: {"groups":4,"visible":1}
-# Since #651 closes the popup's root, main 1afa347b reads {"groups":0} (the probe cannot see
-# into the closed root; the picture shows all four rows), and this PR at cdec3b79 {"groups":4,"visible":1}.
+# Since #651 closes the popup's root, main 1afa347b and 568412b4 read {"groups":0} (the probe cannot see
+# into the closed root; the picture shows all four rows), and this PR at cdec3b79 and d1fed77b
+# {"groups":4,"visible":1}.
 ```
 
 ## Parity audit: the popup against the search page
@@ -53,8 +55,9 @@ with the same options, and compares them.
 | probe | what it compares | result on this PR |
 | --- | --- | --- |
 | `audit-probe.mjs` | the popup's DOM, computed style, theme and renderer in 15 scenarios: defaults; scale 150 % and opacity 70 %; toolbar at the bottom; two columns; Dracula; JL; Nazeka; Plain; Bee; Crystal Retro blue; compact glossary with the summary and grammar tags hidden; overline furigana pitch with graph and colours, no badge, names or text; average frequency with tags, names and compact numbers; no audio button and no lookup counts; a custom link button | identical HTML in all 15 apart from the resize grip, which a docked result does not have, and the lookup count, which each lookup raises (`results/parity-rendering-diff.txt`); Custom JavaScript ran on both and reached both popups |
-| `audit-probe2.mjs` | Alt+ArrowDown/ArrowUp entry moves, the kanji view from the headword, Alt+B and Alt+F history, Back, a browser shortcut delivered with `tabs.sendMessage`, word highlighting and click-to-reveal blur | the same on both; the search page's entry moves scroll further only because its result is taller |
-| `anki-probe.mjs` | recorded audio from a URL source, and Add to Anki with `{screenshot}` against a fake AnkiConnect | the same on both: audio plays and ends, and both notes arrive with a screenshot |
+| `audit-probe2.mjs` | Alt+ArrowDown/ArrowUp entry moves, the kanji view from the headword, Alt+B and Alt+F history, Back, and a browser shortcut delivered with `tabs.sendMessage` | the same on both; the search page's entry moves scroll further only because its result is taller |
+| `highlight-blur-probe.mjs` | word highlighting of unknown words (`wordHighlightEnabled`, `wordHighlightUnknown`; a fake AnkiConnect with no notes leaves every word unknown) and definition blur revealed on click only (`definitionBlurCountEnabled`, at least 1 earlier lookup, `definitionBlurReveal: "click"`): the second lookup's state, after a hover, after a click | `results/highlight-blur.json` on d1fed77b (cdec3b79 gave the same): the web page marks 食べたかった, 漢字 and 読む unknown, the search page's echoed query 漢字 and 読む, the only words it shows; both blur the second lookup, stay blurred on hover and reveal on click |
+| `anki-probe.mjs` | recorded audio from a URL source, and Add to Anki with `{screenshot}` against a fake AnkiConnect | the same on both: audio plays and ends, and both notes arrive with a screenshot. Text-to-speech was not checked: headless Chrome has no voices (`hd_audio_voices` returns none); it goes through the same `hd_audio_play` request |
 | `nested-probe.mjs` | a child popup from a word in the definitions, an internal link, dictionary images and the dictionary's `styles.css` | the same on both |
 | `focus-probe.mjs` | the box has focus when the page opens, in a tab and in a popup window | focused in both |
 | `scripts/sandbox-prototype-run.mjs`, `scripts/firefox-sandbox-prototype-*` | what a sandboxed frame may load and do in Chrome 152 and Firefox 159 | Chrome serves it every extension file; Firefox only web-accessible stylesheets and modules (classic scripts and images load either way), which is why the Firefox manifest adds one entry |
@@ -62,13 +65,66 @@ with the same options, and compares them.
 
 The only gap found was Custom JavaScript itself.
 
+## The Clipboard monitor (#652) and the frame
+
+#652 merged while this PR was open. Its switch asks for the optional
+`clipboardRead` permission. `scripts/permission-gesture/` (a tiny extension
+per browser: a sandboxed frame holding a switch, and its parent page, which
+calls `permissions.request` when the frame says it was clicked) shows
+(`results/permission-gesture.txt`):
+
+```text
+chrome 152 and 128: no click: "This function must be called during a user gesture";
+                    after a click in the frame: the request is pending (Chrome's prompt)
+firefox 159:        after a click in the frame: "permissions.request may only be called from a user input handler"
+```
+
+So the switch and the monitor are `search.html`'s, laid over the end of the
+frame's header. `scripts/layout-probe.mjs` (`results/layout.txt`) finds the
+header, title, switch, form and results at the same positions as on `main`, to
+1/64 px. `scripts/switch-paint-probe.mjs` with `switch-paint-analyse.py`
+(`results/switch-paint.txt`, every painted frame of four page opens, Default
+theme) shows the switch appearing with the frame's title and box, after its
+first paint, as on `main`: an earlier version drew the switch 33-48 ms
+before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
+shows a click on the switch or its label leaving focus on the switch, and
+Escape and Ctrl+U pressed there selecting and clearing the box, on `main` and
+here; Ctrl+U opens no source view.
+
+The frame now receives the text the monitor reads, and the user's Custom
+JavaScript runs in that frame. `scripts/userscript-clipboard-probe.mjs` and its
+control (`results/userscript-clipboard.txt`, Chrome 152): while Hachidori holds
+`clipboardRead`, a user script on any web page already reads the clipboard
+(`execCommand("paste")` and `navigator.clipboard.readText()` both return the
+copied text); without the grant neither does. So the frame learns nothing a
+user script could not already read.
+
+## Flash on open (round-one audit, FIX 1)
+
+`scripts/flash-probe.mjs` is the first audit's probe, unchanged
+(`results/flash.json`, Chrome 152, d1fed77b, four page opens per case). A green
+page is shown first, so each painted frame is green (the previous page), WHITE
+or dark:
+
+| case | as is | without `reader-options.js`, `settings-theme.js`, `settings.css` in `search.html` |
+| --- | --- | --- |
+| dark theme, light preference | green, then dark, 4/4 | green, then WHITE for 32-36 ms, then dark, 4/4 |
+| light theme, dark preference | green, then white (the light theme), 4/4; no dark frame | the same |
+
+The white frame on `cdec3b79` came from `search.html` loading `settings.css`
+without `render/reader.css`, which defines the palette `settings.css` reads, so
+its body was transparent. The dark frame came from the iframe's default colour
+scheme differing from the frame root's `light dark`.
+
 ## Accessibility
 
 The search page now lives in a frame, so `results/accessibility.txt` compares
-it with `main`: every palette, the keyboard order from the box, focus on open
-and the accessibility tree. Light, dark, Default, Dracula and Chrome's own
-forced-colors mode are pixel-identical; High contrast differs only on
-antialiased edges, by at most 4/255. The Tab order is unchanged, and the tree
+it with `main` 568412b4: every palette, the keyboard order from the box, focus
+and the accessibility tree. Each palette differs only on the Clipboard monitor
+switch, by at most 3/255 (it is composited over the frame), and High contrast
+also on antialiased edges, by at most 4/255; Chrome's own forced-colors mode
+differs on 16 pixels of the switch, by 1/255. The Tab order is unchanged,
+Shift+Tab from the box reaches the switch as on `main`, and the frame's tree
 holds the same landmarks and names, inside a frame titled "Hachidori Search".
 
 
@@ -76,24 +132,23 @@ holds the same landmarks and names, inside a frame titled "Hachidori Search".
 
 `scripts/bench-search.mjs` opens new search pages and searches five words in
 each, on one build, with the fixture dictionary and Chrome 152, on a shared
-host (load average about 37 on 64 cores). Three sessions per build ran
-alternately, five pages each: `results/bench-08d68d7a.jsonl` (`main` 3b7730f1
-against 08d68d7a) and `results/bench-4f023308-parallel-read-experiment.jsonl`
-(against 08d68d7a's successor with the user script read alongside the frame's
-load, an experiment that was reverted because it changed nothing).
-`scripts/startup-split.mjs` splits a page's start-up on one clock.
+host (load average about 28-46 on 64 cores). Since #651 `main`'s popup root is
+closed, so `main`'s searches were timed on a copy whose `content.js` attaches an
+open root (one line; readiness does not depend on it). Three sessions per build
+ran interleaved, five pages each (`results/bench-d1fed77b.jsonl`):
 
-| measure (median ms, n) | main | this PR |
-| --- | --- | --- |
-| a new search page until it takes a search | 111 (15), 104 (15) | 139 (15), 142 (15) |
-| a page's first search, Enter to the result in the popup's DOM | 18.7 (15), 20.6 (15) | 21.9 (15), 19.4 (15) |
-| later searches | 6.3 (60), 6.7 (60) | 7.6 (60), 7.5 (60) |
+| measure (median ms, n) | `main` 568412b4 | `cdec3b79` | this PR d1fed77b |
+| --- | --- | --- | --- |
+| a new search page until it takes a search | 99 (15) | 123 (15) | 123 (15) |
+| a page's first search, Enter to the result in the popup's DOM | 19.4 (15) | 18.5 (15) | 17.1 (15) |
+| later searches | 5.8 (60) | 6.1 (60) | 6.0 (60) |
 
-The split (8 pages each): `main`'s page is ready at 95-97 ms. Here the frame's
-document starts 37-42 ms after `search.html` does, once `search.html` has
-parsed its own `reader-options.js`, `settings-theme.js` and `settings.css`,
-which paint its background in the saved theme until the frame shows; the frame
-is then ready about 85 ms later, the same as `main`'s whole page. A module
-marked `async` and the parallel script read changed nothing measurable.
-Without those three files the page was ready about 15 ms sooner, but its
-window would show the browser's colour before the frame paints (#296).
+Session medians for readiness ranged 88-102 ms on `main` and 109-135 ms on
+each branch build; an earlier batch on the unmodified `main`
+(`results/bench-d1fed77b-ready-only.jsonl`) gave 97 against 140. The shell's
+Clipboard monitor costs nothing measurable over `cdec3b79`.
+`scripts/startup-split.mjs` (`results/startup-split-d1fed77b.txt`, 8 pages
+each) puts `main`'s page at ready in 88 ms; here `search.html` has parsed its
+theme files at 35 ms, the frame's document starts then, and the frame is ready
+at 111 ms (`cdec3b79`: 107). Earlier rounds: `results/bench-08d68d7a.jsonl` and
+`results/bench-4f023308-parallel-read-experiment.jsonl`.

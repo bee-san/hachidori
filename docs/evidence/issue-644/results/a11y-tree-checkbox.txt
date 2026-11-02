@@ -1,0 +1,2 @@
+{"top":["RootWebArea:Hachidori Search","banner:","search:","main:Results","heading:Hachidori Search","textbox:Word or text to look up","button:Clear the search box","button:Search","status:","checkbox:Clipboard monitor"],"frame":[]}
+{"top":["RootWebArea:Hachidori Search","Iframe:Hachidori Search","checkbox:Clipboard monitor"],"frame":["RootWebArea:Hachidori Search","banner:","search:","main:Results","heading:Hachidori Search","textbox:Word or text to look up","button:Clear the search box","button:Search","status:"]}

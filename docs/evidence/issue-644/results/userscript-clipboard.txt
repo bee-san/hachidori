@@ -1,0 +1,9 @@
+granted (clipboardRead held), main 568412b4's extension:
+copied: true
+user script on a web page: {"execCommand":true,"pasted":"copied secret 12345","readText":"copied secret 12345"}
+the extension's own read: {"type":"hd_clipboard_read_result","requestId":null,"ok":false,"error":"Unknown clipboard request.","generation":0}
+
+control (clipboardRead optional, not granted):
+copied: true
+user script on a web page: {"execCommand":false,"pasted":null,"readText":"ERR NotAllowedError"}
+the extension's own read: {"type":"hd_clipboard_read_result","requestId":null,"ok":false,"error":"Unknown clipboard request.","generation":0}
