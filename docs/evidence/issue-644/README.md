@@ -92,7 +92,7 @@ the title wraps; d1fed77b's one-line box left the switch over the title there.
 Default theme) shows the switch never painting before the title: here with
 the box, one frame (11-15 ms) after the title, in 4 of 4 opens (the second
 audit saw 3 of 4, and title and box together in the fourth); `main` draws it
-with the title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`, 818dba12)
+with the title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`, db16c57c)
 shows a click on the switch or its label handing focus to the frame, where on
 `main` it stays on the switch in the reader's own document. (After its first
 click, which asks for the permission and leaves headless Chrome's prompt
@@ -101,7 +101,10 @@ focused element is the switch on `main` and the frame here; after the second
 click the page has focus again.) So the reader's
 keybinds and activation key work after the click on both
 (`test/chrome-clipboard-monitor.mjs` plays the result with Alt+P after the
-click). Escape and Ctrl+U pressed on a focused switch select and clear the box,
+click). Since db16c57c a switch that already has focus keeps it after a click: the
+third audit found that Chrome sends a screen reader's or voice control's
+activation as pointer events after focusing the switch, which the hand-back
+otherwise followed. Escape and Ctrl+U pressed on a focused switch select and clear the box,
 on `main` and here, and Ctrl+U opens no source view. `scripts/click-detail-probe.mjs`
 shows why the hand-back follows the label's `pointerup` rather than the click's
 `detail`: Chrome 128 reports a click on the label text with `detail` 0, as
