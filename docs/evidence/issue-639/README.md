@@ -9,6 +9,12 @@ set, from `0401d0f1`, caught it halfway in the themed pictures. The scripts and
 results ran on `0401d0f1` (on `main` at `63060a7a`), whose runtime code
 `9e7f0cc0` changes only in the search page's startup order and the 1,000-character cut.
 
+After audit-hachi-issue-639 (NOT_OK on `9e7f0cc0`), `ee5ab8a7`..`c4c20ba7` on
+`3b7730f1`, rebased unchanged onto `main` at `f5c48e82` as `a9e8ac88`..`59abf2c5`,
+send only the searched 1,000 characters from the offscreen document. The
+`fix1-*` results and the mutations of `59abf2c5` in `results/mutants.md` are
+from those heads.
+
 ## Screenshots
 
 ```sh
@@ -47,6 +53,8 @@ answer the permission prompt.
 | `scripts/keyboard-check.mjs <repo> <png>` | with the extension as shipped: Shift+Tab from the box reaches the switch, which shows its focus ring and is named "Clipboard monitor"; Space asks for `clipboardRead`; a refusal leaves it off | `results/keyboard-1.txt` |
 | `scripts/grant-check.mjs <repo>` | with the extension as shipped and `clipboardRead` already in Chrome's runtime-granted set (so the click is granted without a prompt): switching on reads and searches a copy from another tab, switching off removes the permission and stops reading, and switching on again searches again | `results/grant-3.txt` |
 | `scripts/contrast-check.mjs <repo>` | WCAG contrast of the switch's label, off border, off knob, on track and on knob in every palette of Design → Popup theme, beside the same switch in Settings, with transitions disabled | `results/contrast.md` |
-| `scripts/diag-clipboard.mjs <repo>` | one Chrome clipboard read inside the offscreen document by clipboard size (`DIAG_LENGTHS` picks the sizes), timed with the reader of the tree it is given | `results/diag-before-4d4d32d2.txt` (the first reader, which read the text area's value, as Yomitan does), `results/diag-0401d0f1.txt` |
+| `scripts/diag-clipboard.mjs <repo>` | one Chrome clipboard read inside the offscreen document by clipboard size (`DIAG_LENGTHS` picks the sizes), timed with the reader of the tree it is given | `results/diag-before-4d4d32d2.txt` and `results/diag-before-early.txt` (the first reader, which read the text area's value, as Yomitan does; the early run, at 07:06Z before that reader was committed, also timed variants of the text area), `results/diag-0401d0f1.txt` |
+| `scripts/bench-lookup-tail.mjs <repo> [--main]` (audit-hachi-issue-639's variant of `bench-lookup.mjs`) | `hd_lookup` latency and its tail with `BENCH_CLIP_LEN` characters on the clipboard: no search page, then one polling | `results/fix1-table.md` and `results/fix1-<revision>-<size>-<run>.txt`: `main` `3b7730f1`, `9e7f0cc0` (before the fix) and `c4c20ba7` (after) |
+| `scripts/bench-clipboard-cut.mjs <repo>` | `bench-clipboard.mjs` for heads whose reads return at most 1,000 characters; a lookup reply that never comes is counted, not timed | `results/fix1-clipboard-2.txt`, `results/fix1-clipboard-4.txt` (`c4c20ba7`) |
 
 Mutations of the head and the suite that catches each: `results/mutants.md`.

@@ -1,0 +1,126 @@
+{"length":1000,"offscreenMs":{"production":[8.3,1000],"productionAgain":[3,1000],"noWrap":[2.6,1000],"hiddenContent":[1.2,0],"fixedTiny":[2.2,1000]}}
+{"length":10000,"offscreenMs":{"production":[19.1,10000],"productionAgain":[20.7,10000],"noWrap":[9.8,10000],"hiddenContent":[1.1,0],"fixedTiny":[10.4,10000]}}
+{"length":100000,"offscreenMs":{"production":[1296.6,100000],"productionAgain":[1225.3,100000],"noWrap":[153.4,100000],"hiddenContent":[1.1,0],"fixedTiny":[127,100000]}}
+{"length":300000,"offscreenMs":{"production":[31661.4,300000],"productionAgain":[34022.2,300000],"noWrap":[352.3,300000],"hiddenContent":[1.2,0],"fixedTiny":[379.8,300000]}}
+paste 1000 {"dispatchMs":3,"toNextFrameMs":16.7}
+paste 100000 {"dispatchMs":1.6,"toNextFrameMs":32233.9}
+paste 300000 {"dispatchMs":2.6,"toNextFrameMs":15301.2}
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "offscreen": [
+    {
+      "length": 1000,
+      "offscreenMs": {
+        "production": [
+          8.3,
+          1000
+        ],
+        "productionAgain": [
+          3,
+          1000
+        ],
+        "noWrap": [
+          2.6,
+          1000
+        ],
+        "hiddenContent": [
+          1.2,
+          0
+        ],
+        "fixedTiny": [
+          2.2,
+          1000
+        ]
+      }
+    },
+    {
+      "length": 10000,
+      "offscreenMs": {
+        "production": [
+          19.1,
+          10000
+        ],
+        "productionAgain": [
+          20.7,
+          10000
+        ],
+        "noWrap": [
+          9.8,
+          10000
+        ],
+        "hiddenContent": [
+          1.1,
+          0
+        ],
+        "fixedTiny": [
+          10.4,
+          10000
+        ]
+      }
+    },
+    {
+      "length": 100000,
+      "offscreenMs": {
+        "production": [
+          1296.6,
+          100000
+        ],
+        "productionAgain": [
+          1225.3,
+          100000
+        ],
+        "noWrap": [
+          153.4,
+          100000
+        ],
+        "hiddenContent": [
+          1.1,
+          0
+        ],
+        "fixedTiny": [
+          127,
+          100000
+        ]
+      }
+    },
+    {
+      "length": 300000,
+      "offscreenMs": {
+        "production": [
+          31661.4,
+          300000
+        ],
+        "productionAgain": [
+          34022.2,
+          300000
+        ],
+        "noWrap": [
+          352.3,
+          300000
+        ],
+        "hiddenContent": [
+          1.2,
+          0
+        ],
+        "fixedTiny": [
+          379.8,
+          300000
+        ]
+      }
+    }
+  ],
+  "searchPagePaste": {
+    "1000": {
+      "dispatchMs": 3,
+      "toNextFrameMs": 16.7
+    },
+    "100000": {
+      "dispatchMs": 1.6,
+      "toNextFrameMs": 32233.9
+    },
+    "300000": {
+      "dispatchMs": 2.6,
+      "toNextFrameMs": 15301.2
+    }
+  }
+}

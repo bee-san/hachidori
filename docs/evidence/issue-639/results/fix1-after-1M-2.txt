@@ -1,0 +1,91 @@
+2026-11-02T10:09:47.528Z {"none":{"n":5689,"median":0.775,"p95":1.235,"p99":2.695,"p999":8.91,"max":17.95,"over10":3,"over50":0,"over100":0,"sum":4990.9},"polling":{"n":4605,"median":0.875,"p95":1.6,"p99":4.685,"p999":21.005,"max":29.045,"over10":27,"over50":0,"over100":0,"sum":4992.4}}
+[settings] odd replies in round 1 none [{"index":4265,"at":17202,"reply":"undefined"}] 1
+[settings] odd replies in round 1 polling [{"index":2569,"at":21506,"reply":"undefined"}] 1
+2026-11-02T10:09:57.846Z {"none":{"n":5298,"median":0.795,"p95":1.64,"p99":2.93,"p999":9.58,"max":24.115,"over10":5,"over50":0,"over100":0,"sum":4987.7},"polling":{"n":4341,"median":0.905,"p95":1.83,"p99":4.705,"p999":22.105,"max":24.265,"over10":25,"over50":0,"over100":0,"sum":4988.7}}
+[settings] odd replies in round 2 none [{"index":3951,"at":27504,"reply":"undefined"}] 1
+[settings] odd replies in round 2 polling [{"index":3404,"at":33006,"reply":"undefined"}] 1
+2026-11-02T10:10:08.158Z {"none":{"n":5147,"median":0.8,"p95":1.72,"p99":3.315,"p999":9.91,"max":43.33,"over10":5,"over50":0,"over100":0,"sum":4986.6},"polling":{"n":4100,"median":0.925,"p95":2.07,"p99":6.055,"p999":20.265,"max":28.745,"over10":29,"over50":0,"over100":0,"sum":4989.6}}
+{
+ "chrome": "Chrome/152.0.7977.75",
+ "oddReplies": 4,
+ "rounds": [
+  {
+   "none": {
+    "n": 5689,
+    "median": 0.775,
+    "p95": 1.235,
+    "p99": 2.695,
+    "p999": 8.91,
+    "max": 17.95,
+    "over10": 3,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4990.9
+   },
+   "polling": {
+    "n": 4605,
+    "median": 0.875,
+    "p95": 1.6,
+    "p99": 4.685,
+    "p999": 21.005,
+    "max": 29.045,
+    "over10": 27,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4992.4
+   }
+  },
+  {
+   "none": {
+    "n": 5298,
+    "median": 0.795,
+    "p95": 1.64,
+    "p99": 2.93,
+    "p999": 9.58,
+    "max": 24.115,
+    "over10": 5,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4987.7
+   },
+   "polling": {
+    "n": 4341,
+    "median": 0.905,
+    "p95": 1.83,
+    "p99": 4.705,
+    "p999": 22.105,
+    "max": 24.265,
+    "over10": 25,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4988.7
+   }
+  },
+  {
+   "none": {
+    "n": 5147,
+    "median": 0.8,
+    "p95": 1.72,
+    "p99": 3.315,
+    "p999": 9.91,
+    "max": 43.33,
+    "over10": 5,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4986.6
+   },
+   "polling": {
+    "n": 4100,
+    "median": 0.925,
+    "p95": 2.07,
+    "p99": 6.055,
+    "p999": 20.265,
+    "max": 28.745,
+    "over10": 29,
+    "over50": 0,
+    "over100": 0,
+    "sum": 4989.6
+   }
+  }
+ ]
+}
