@@ -68,6 +68,9 @@
   // The final kana a sokuon can replace (一 いち, いっ).
   const SOKUON_KANA = "つちくきり";
   const NO_KANJI_READINGS = new Set();
+  const NO_KANJI_COMPOUNDS = [];
+  // readKanwaRun's shares where more than one split reads.
+  const AMBIGUOUS_SPLIT = Symbol("ambiguous split");
   const PITCH_SMALL_KANA = new Set(Array.from(
     "ゃゅょぁぃぅぇぉゎャュョァィゥェォヮ"
   ));
@@ -671,18 +674,60 @@
     return forms;
   }
 
-  // Each kanji's reading forms over a table of KANJIDIC readings
-  // ({ "好": "こう この.む す.く よ.い い.い", … }), for distributeFurigana. A
+  // Each kanji's reading forms over a table of readings in KANJIDIC's notation
+  // ({ "好": "こう この.む す.く よ.い い.い", … }), for distributeFurigana. With
+  // `base` (another createKanjiReadings), a kanji's forms are base's and those
+  // of its readings in `table`, and a kanji that `table` lacks has base's. A
   // kanji's forms are derived the first time it is asked for.
-  function createKanjiReadings(table) {
+  function createKanjiReadings(table, base = null) {
     const cache = new Map();
     return (character) => {
       let forms = cache.get(character);
       if (forms === undefined) {
-        forms = Object.hasOwn(table, character) ? kanjiReadingForms(table[character]) : NO_KANJI_READINGS;
+        if (!Object.hasOwn(table, character)) forms = base === null ? NO_KANJI_READINGS : base(character);
+        else if (base === null) forms = kanjiReadingForms(table[character]);
+        else forms = new Set([...base(character), ...kanjiReadingForms(table[character])]);
         cache.set(character, forms);
       }
       return forms;
+    };
+  }
+
+  // The compounds that start each place in a run of characters, over a table
+  // of compound readings ({ "日本": "に|ほん やまと", "今日": "きょう", … }), for
+  // readKanwaRun. A reading is one part over the whole compound (今日 きょう) or
+  // one part per character, "|" between them (日本 に|ほん); each reading keeps
+  // where each character's share starts in it, null for a character after the
+  // first of a compound read as a whole.
+  function createKanjiCompounds(table) {
+    const byFirst = new Map();
+    for (const [compound, readings] of Object.entries(table)) {
+      const characters = Array.from(compound);
+      if (!byFirst.has(characters[0])) byFirst.set(characters[0], []);
+      byFirst.get(characters[0]).push({ characters, readings: readings.split(" ").map((reading) => {
+        const parts = reading.split("|");
+        let start = 0;
+        const shares = parts.length === 1
+          ? characters.map((_, index) => (index === 0 ? 0 : null))
+          : parts.map((part) => (start += part.length) - part.length);
+        return { reading: parts.join(""), shares };
+      }) });
+    }
+    return (characters, start) => byFirst.get(characters[start])?.filter((compound) =>
+      compound.characters.every((character, index) => characters[start + index] === character)) ?? NO_KANJI_COMPOUNDS;
+  }
+
+  // What Jitendex's kanwa data adds to `kanjiReadings` (createKanjiReadings),
+  // for readKanwaRun (#641), over a table in kanwa-readings.json's shape:
+  // `readings`, the character readings that KANJIDIC lacks (２ ふた, not 日 にち),
+  // and `compounds` (createKanjiCompounds). `adds` tells whether kanwa gives a
+  // character such a reading or names a compound that starts with it.
+  function createKanwaReadings({ readings, compounds }, kanjiReadings) {
+    const adding = new Set([...Object.keys(readings), ...Object.keys(compounds).map((compound) => Array.from(compound)[0])]);
+    return {
+      kanjiReadings: createKanjiReadings(readings, kanjiReadings),
+      compounds: createKanjiCompounds(compounds),
+      adds: (character) => adding.has(character),
     };
   }
 
@@ -717,6 +762,67 @@
     bounds[steps.length] = reading.length;
     for (let index = steps.length - 1; index >= 0; index -= 1) bounds[index] = steps[index].get(bounds[index + 1]);
     return bounds;
+  }
+
+  // How a run of kanji reads as `reading` by `kanwa` (createKanwaReadings), for
+  // a run that no split reads by KANJIDIC (#641): each character by one of its
+  // forms, as in readKanjiRun, or a known compound by one of its readings, one
+  // part per character (日本 に|ほん) or one over them all (今日 きょう). Of the
+  // splits that read, those that read the most characters by compounds count,
+  // as Jitendex reads a known compound before its characters. readKanjiRun's
+  // result, with null for a character after the first of a compound read as a
+  // whole; null too where kanwa adds no reading or compound to the run.
+  function readKanwaRun(characters, reading, kanwa) {
+    // A run without a character that kanwa adds to reads as it did by KANJIDIC.
+    if (!characters.some(kanwa.adds)) return null;
+    const starting = characters.map((_, index) => kanwa.compounds(characters, index));
+    let forms = NO_KANJI_READINGS;
+    const characterForms = characters.map((character) => {
+      if (character !== "々") forms = kanwa.kanjiReadings(character);
+      return forms;
+    });
+    // The best splits of the characters from `index` over the reading from
+    // `end`: how many characters they read by compounds, and where each
+    // character's share starts in the one such split, or AMBIGUOUS_SPLIT where
+    // they differ. null where none reads.
+    const best = new Map();
+    const read = (index, end) => {
+      if (index === characters.length) return end === reading.length ? { count: 0, shares: [] } : null;
+      const key = index * (reading.length + 1) + end;
+      if (best.has(key)) return best.get(key);
+      let found = null;
+      for (const { characters: { length }, readings } of starting[index]) {
+        for (const { reading: whole, shares } of readings) {
+          if (!reading.startsWith(whole, end)) continue;
+          found = betterSplit(found, length, shares.map((share) => (share === null ? null : end + share)),
+            read(index + length, end + whole.length));
+        }
+      }
+      for (const form of characterForms[index]) {
+        if (reading.startsWith(form, end)) found = betterSplit(found, 0, [end], read(index + 1, end + form.length));
+      }
+      best.set(key, found);
+      return found;
+    };
+    const split = read(0, 0);
+    if (split === null) return null;
+    return split.shares === AMBIGUOUS_SPLIT ? [] : [...split.shares, reading.length];
+  }
+
+  // readKanwaRun's best split so far, `found`, against the one that starts with
+  // `shares` over `count` characters read by compounds and goes on as `rest`.
+  function betterSplit(found, count, shares, rest) {
+    if (rest === null) return found;
+    const split = { count: count + rest.count,
+      shares: rest.shares === AMBIGUOUS_SPLIT ? AMBIGUOUS_SPLIT : [...shares, ...rest.shares] };
+    if (found === null || split.count > found.count) return split;
+    if (split.count < found.count || sameSplit(split.shares, found.shares)) return found;
+    return { count: found.count, shares: AMBIGUOUS_SPLIT };
+  }
+
+  function sameSplit(left, right) {
+    return left !== AMBIGUOUS_SPLIT && right !== AMBIGUOUS_SPLIT && left.length === right.length
+      && left.every((share, index) => share === right[index]);
   }
 
   // With kanjiReadings, a non-kana group takes only a share of the reading
@@ -822,19 +928,31 @@
 
   // A split with each run of two or more kanji read one kanji at a time where
   // exactly one split of the run's reading reads (readKanjiRun): 二十四時間
-  // にじゅうよじかん is 二(に)十(じゅう)四(よ)時(じ)間(かん). A run that no split reads,
-  // such as jukujikun (今日 きょう) or a run with a digit (２人 ふたり), or that
-  // more than one does, keeps one ruby. `segments` itself where no run splits.
-  function splitKanjiRuns(segments, kanjiReadings) {
+  // にじゅうよじかん is 二(に)十(じゅう)四(よ)時(じ)間(かん). With `kanwa`
+  // (createKanwaReadings), a run that no split reads by `kanjiReadings` is read
+  // again with kanwa's readings and compounds (#641): 日本 にほん is 日(に)本(ほん),
+  // ２人 ふたり is ２(ふた)人(り), and a compound read as a whole keeps one ruby
+  // inside its run (今日中 きょうじゅう is 今日(きょう)中(じゅう)). A run that no split
+  // reads, such as jukujikun that kanwa does not list (景色 けしき), or that more
+  // than one does, keeps one ruby. `segments` itself where no run splits.
+  function splitKanjiRuns(segments, kanjiReadings, kanwa = null) {
     const split = segments.flatMap((segment) => {
       const characters = Array.from(segment.text);
-      const bounds = characters.length > 1 && segment.reading
-        ? readKanjiRun(characters, toHiragana(segment.reading), kanjiReadings)
-        : null;
-      return bounds?.length > 0
-        ? characters.map((character, index) =>
-          createFuriganaSegment(character, segment.reading.slice(bounds[index], bounds[index + 1])))
-        : [segment];
+      if (characters.length < 2 || !segment.reading) return [segment];
+      const reading = toHiragana(segment.reading);
+      const bounds = readKanjiRun(characters, reading, kanjiReadings)
+        ?? (kanwa === null ? null : readKanwaRun(characters, reading, kanwa));
+      if (!(bounds?.length > 0)) return [segment];
+      // A segment from each share's start to the next; a compound read as a
+      // whole has no share of its own after its first character.
+      const parts = [];
+      for (let start = 0, end = 1; end <= characters.length; end += 1) {
+        if (bounds[end] === null) continue;
+        parts.push(createFuriganaSegment(end - start === 1 ? characters[start] : characters.slice(start, end).join(""),
+          segment.reading.slice(bounds[start], bounds[end])));
+        start = end;
+      }
+      return parts;
     });
     return split.length === segments.length ? segments : split;
   }
@@ -842,12 +960,13 @@
   // The split a headword's kanji readings (createKanjiReadings) give it, or
   // null where that is its local split (segmentFurigana): where the kana alone
   // leave more than one split, the one that reads (#459), and each run of
-  // kanji read one kanji at a time (#605).
-  function kanjiFurigana(expression, reading, kanjiReadings) {
+  // kanji read one kanji at a time (#605), by `kanwa` (createKanwaReadings) as
+  // well where KANJIDIC's readings read none (#641).
+  function kanjiFurigana(expression, reading, kanjiReadings, kanwa = null) {
     const local = distributeFurigana(expression, reading);
     const segments = local ?? distributeFurigana(expression, reading, kanjiReadings);
     if (segments === null) return null;
-    const furigana = splitKanjiRuns(segments, kanjiReadings);
+    const furigana = splitKanjiRuns(segments, kanjiReadings, kanwa);
     return furigana === local ? null : furigana;
   }
 
@@ -2049,6 +2168,7 @@
     buildPitchAccentMorae,
     createFuriganaSegment,
     createKanjiReadings,
+    createKanwaReadings,
     createPronunciationDownstepPosition,
     createPronunciationGraph,
     createPronunciationPitchAccent,
