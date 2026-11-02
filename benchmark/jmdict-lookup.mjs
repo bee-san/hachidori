@@ -21,7 +21,7 @@ import { runYomitanSample } from "./yomitan.mjs";
 const REPO = resolve(import.meta.dirname, "..");
 const SCAN_LENGTH = 16; // Hachidori's and Yomitan's default scan length
 const MAX_RESULTS = 32; // and default result limit
-const ATTEMPTS = 4;
+const ATTEMPTS = 6;
 
 // Public-domain prose (Natsume Sōseki, Akutagawa, Dazai) and everyday sentences. A lookup
 // starts at every character, as a hover would, and scans the next 16 characters.

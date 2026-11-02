@@ -755,7 +755,7 @@ hover would. Every sample imports the archive into a fresh profile through
 Settings, then times five passes after one excluded warmup pass. Defaults are
 one excluded warmup install and five measured installs per reader
 (`--warmups`, `--samples`, `--passes`). A failed attempt is recorded in
-`failures.jsonl` and repeated in a fresh profile, up to four attempts. The run
+`failures.jsonl` and repeated in a fresh profile, up to six attempts. The run
 resumes from `raw.jsonl` and ends with `summary.json` and `summary.md`;
 `--summarize-only` rewrites them. `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`
 choose the browser and Puppeteer as for the other suites. The
