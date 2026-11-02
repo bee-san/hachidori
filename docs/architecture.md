@@ -1052,6 +1052,8 @@ prompt once the permission is granted, and Firefox, whose paste command
 sometimes fails, uses `navigator.clipboard.readText()` in the background
 page's engine frame.
 
+![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
+
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
 maximum clipboard search length, as a paste has no limit either; profiles;
