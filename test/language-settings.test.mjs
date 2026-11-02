@@ -320,4 +320,3 @@ test("a theme without presentation hides the pack's display settings", async t =
   assert.equal(settings.el("language-display-settings").hidden, true);
   assert.deepEqual(settings.search("vowel marks"), []);
 });
-

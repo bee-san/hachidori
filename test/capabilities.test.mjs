@@ -207,4 +207,3 @@ test("the keybind editor offers only Toggle options the edited language has and 
     "English text only");
   assert.deepEqual(plain(page.options().keybinds), keybinds, "nothing is rewritten");
 });
-
