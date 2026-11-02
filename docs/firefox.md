@@ -81,6 +81,10 @@ Two runtime rules keep one source for both browsers:
 - **Custom JavaScript.** Settings → Design → Custom JavaScript has an **Allow
   user scripts** button; Firefox asks once, and the saved script runs from then
   on.
+- **Clipboard monitor.** Firefox asks for `clipboardRead` each time the search
+  page's switch is turned on, because turning it off gives the permission back
+  and Firefox prompts for any optional permission the add-on does not hold.
+  Chrome asks only the first time.
 - **Browser shortcuts.** **Change in Firefox** opens Firefox's add-on shortcut
   manager.
 - **Sharing.** Needs Hachidori Relay 0.0.6 or newer, the first to accept

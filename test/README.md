@@ -226,7 +226,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `recommended-dictionaries`, `recommended-install-client`, `setup-installer`, `setup-state` | The catalogue as the single description of the recommended set, the installer's runs, the revisioned setup record and mining capabilities. |
 | `release-compatibility` | The manifest, minimum Chrome, current Chrome and release tag share one contract. |
 | `scan-delay-settings`, `sentence` | Scan delay controls; Yomitan's sentence boundaries. |
-| `search-clipboard` | The search page's clipboard monitor (#639), Yomitan's polling: the first read is where it starts, each new text is reported once and trimmed, failures and blanks report nothing, and a read that ends after `stop()` is dropped. |
+| `search-clipboard` | The search page's clipboard monitor (#639), Yomitan's polling: the first read is where it starts, each new text is reported once and trimmed, failures and blanks report nothing, a read that ends after `stop()` is dropped, and a long copy is searched from its first 1,000 characters after its leading spaces. |
 | `search-window` | Opening the search page (#610) as Yomitan does: a new tab, the current tab or a popup window, bringing an open search page forward and reusing only a popup window for the popup window shortcut. |
 | `settings-dom`, `settings-labels`, `settings-search` | Settings live regions, unique visible labels and keybind label polarity, global search. |
 | `sharing-protocol`, `sharing-client`, `sharing-host`, `sharing-settings` | The sharing wire contract, link generations, retired relay clients and Settings → Sharing. The relay's own checks live in [hachidori-anki](https://github.com/bee-san/hachidori-anki#develop-and-test). |
@@ -492,9 +492,12 @@ These run separately:
   permission prompt. The search page, without focus, must search Japanese text
   with its real result through the worker and the offscreen document, and must
   not search what was on the clipboard before, text without Japanese, its own
-  copies or a copy made while a Note is written; Settings must not be able to
-  read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four
-  palettes. The switch and its permission prompt are tested in Firefox.
+  copies and cuts or a copy made while a Note is written; a 300,000-character
+  copy must be searched, and read, as its first 1,000 characters; Settings must
+  not be able to read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four
+  palettes. The switch's request for the permission and turning it off are
+  tested in Firefox, whose test profile grants optional permissions without a
+  prompt; no suite shows the prompt.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at

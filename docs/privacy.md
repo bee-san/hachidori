@@ -19,7 +19,9 @@ asks the browser to let Hachidori read the clipboard. While it is on and a
 search page is open, Hachidori reads the clipboard four times a second and
 searches text you copy that contains Japanese, as if you had pasted it into the
 search page. Other clipboard text is read and discarded. Switching the monitor
-off gives the permission back.
+off gives the permission back. A copy it searches is a search like any other:
+it adds to your lookup counts, and a browser linked to another Hachidori looks
+it up there (see **Sharing between browsers** below).
 
 Your browser profile stores imported dictionaries and their indexes, personal
 dictionary entries, preferences, dictionary update settings, local lookup
