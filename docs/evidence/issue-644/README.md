@@ -89,20 +89,34 @@ same positions as on `main`, to 1/64 px, including below about 380 px, where
 the title wraps; d1fed77b's one-line box left the switch over the title there.
 `scripts/switch-paint-probe.mjs` with `switch-paint-analyse.py`
 (`results/switch-paint.txt`, ad4bd2aa, every painted frame of four page opens,
-Default theme) shows the switch appearing with the box, one frame (11-15 ms)
-after the title, in 4 of 4 opens; `main` draws it with the title. An earlier
-version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
-shows a click on the switch or its label leaving focus on the switch, and
-Escape and Ctrl+U pressed there selecting and clearing the box, on `main` and
-here; Ctrl+U opens no source view.
+Default theme) shows the switch never painting before the title: here with
+the box, one frame (11-15 ms) after the title, in 4 of 4 opens (the second
+audit saw 3 of 4, and title and box together in the fourth); `main` draws it
+with the title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`, 818dba12)
+shows a click on the switch or its label handing focus to the frame, where on
+`main` it stays on the switch in the reader's own document, so the reader's
+keybinds and activation key work after the click on both
+(`test/chrome-clipboard-monitor.mjs` plays the result with Alt+P after the
+click). Escape and Ctrl+U pressed on a focused switch select and clear the box,
+on `main` and here, and Ctrl+U opens no source view. `scripts/click-detail-probe.mjs`
+shows why the hand-back follows the label's `pointerup` rather than the click's
+`detail`: Chrome 128 reports a click on the label text with `detail` 0, as
+Space.
 
-The frame now receives the text the monitor reads, and the user's Custom
-JavaScript runs in that frame. `scripts/userscript-clipboard-probe.mjs` and its
-control (`results/userscript-clipboard.txt`, Chrome 152): while Hachidori holds
-`clipboardRead`, a user script on any web page already reads the clipboard
-(`execCommand("paste")` and `navigator.clipboard.readText()` both return the
-copied text); without the grant neither does. So the frame learns nothing a
-user script could not already read.
+The user's Custom JavaScript runs in the frame, so `search.html` passes on only
+the text the reader would search: text with a Japanese character, the reader's
+`isLookupWorthy` test, with `content-scan.js`'s character set. The second audit
+found that before that, in Firefox 159, a script registering with
+`HDSearchBridge.onClipboard` got every text the monitor read, where a user
+script on a web page reads nothing without the user's help;
+`test/chrome-clipboard-monitor.mjs` now listens in the frame and fails if a
+copied "hello world" reaches it. Text copied while a Note is open still
+reaches the frame, which then does not search it.
+`scripts/userscript-clipboard-probe.mjs` and its control
+(`results/userscript-clipboard.txt`) are Chrome 152 only: there, while
+Hachidori holds `clipboardRead`, a user script on any web page reads the
+clipboard itself (`execCommand("paste")` and `navigator.clipboard.readText()`
+both return the copied text); without the grant neither does.
 
 ## Flash on open (round-one audit, FIX 1)
 
