@@ -1032,36 +1032,35 @@ is Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
 `ext/js/comm/clipboard-monitor.js`, `clipboard-reader.js` and
 `ext/js/display/search-display-controller.js`). It is off by default. While it
 is on, `search-clipboard.js` reads the clipboard every 250 ms, and text copied
-in any tab or program goes into the box and is searched as a paste is, once
-for each new text, trimmed. A longer copy is searched from its first 1,000
+in any tab or program goes into the box and is searched as a paste is, once for
+each new text, trimmed. A longer copy is searched from its first 1,000
 characters, Yomitan's default maximum clipboard search length: echoing a
 100,000-character query held the page for about 30 seconds in Chrome 152. The
 offscreen document sends only those characters, counted from the end of the
 copy's leading spaces: it and the worker carry every lookup, and sending a
-1,000,000-character copy through them four times a second held lookups for up
-to 270 ms. A paste is still searched whole. What was on the clipboard when the monitor started
-is not searched, nor is text without a Japanese character (the reader's
-`isLookupWorthy`, the characters of its Japanese text only gate; Yomitan's
-`isTextLookupWorthy` also counts CJK punctuation and fullwidth Latin letters
-and digits). Text copied or cut on the
-page itself is not searched either: the monitor starts over from it, as
-Yomitan's `_onCopy` ignores the search page's own copies. A Note being written
-or saved in the result holds the monitor off (`holdsNote`), so copying a
-meaning from another tab cannot discard the draft; that text is not searched.
-The switch is the optional `clipboardRead` permission itself: turning it on
-asks the browser for it, turning it off gives it back (Chrome then grants it
-again without asking; Firefox asks each time), and every open search
-page follows a change through `permissions.onAdded` and `onRemoved`, so it
-needs no stored option. Only the search page reads the clipboard: it sends
-`hd_clipboard_read` to the worker, which accepts it from that page alone and
-relays it to the offscreen document, never to a linked browser's host, and the
-offscreen document answers only the worker. As Yomitan's `ClipboardReader`
-does, Chrome pastes into a text area there, which needs neither focus nor a
-prompt once the permission is granted; the text comes from the paste event,
-which is cancelled, because laying out 300,000 pasted characters took 16 to 34
-seconds where the event takes 5 ms. Firefox, whose paste command sometimes
-fails, uses `navigator.clipboard.readText()` in the background page's engine
-frame.
+1,000,000-character copy through them four times a second held lookups for up to
+270 ms. A paste is still searched whole. What was on the clipboard when the
+monitor started is not searched, nor is text without a Japanese character (the
+reader's `isLookupWorthy`, the characters of its Japanese text only gate;
+Yomitan's `isTextLookupWorthy` also counts CJK punctuation and fullwidth Latin
+letters and digits). Text copied or cut on the page itself is not searched
+either: the monitor starts over from it, as Yomitan's `_onCopy` ignores the
+search page's own copies. A Note being written or saved in the result holds the
+monitor off (`holdsNote`), so copying a meaning from another tab cannot discard
+the draft; that text is not searched. The switch is the optional `clipboardRead`
+permission itself: turning it on asks the browser for it, turning it off gives
+it back (Chrome then grants it again without asking; Firefox asks each time),
+and every open search page follows a change through `permissions.onAdded` and
+`onRemoved`, so it needs no stored option. Only the search page reads the
+clipboard: it sends `hd_clipboard_read` to the worker, which accepts it from
+that page alone and relays it to the offscreen document, never to a linked
+browser's host, and the offscreen document answers only the worker. As Yomitan's
+`ClipboardReader` does, Chrome pastes into a text area there, which needs
+neither focus nor a prompt once the permission is granted; the text comes from
+the paste event, which is cancelled, because laying out 300,000 pasted
+characters took 16 to 34 seconds where the event takes 5 ms. Firefox, whose
+paste command sometimes fails, uses `navigator.clipboard.readText()` in the
+background page's engine frame.
 
 ![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
 
@@ -3893,7 +3892,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_status` | Report readiness, loading state, registered-kind count (`dictionaryCount` and `registeredKindCount`), unique `packageCount`, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) and its entry storage policy (`dictionaryEntryStorage`) and whether every package's entries are read from disk (`pagedDictionaries`), requested hash policy (`dictionaryIndexStorage`), the normal-mode RAM default (`useLessRamByDefault`), actual policy (`hashIndexStorage`) and resident hash budget; while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report WASM capacity (`heapBytes`), live/free allocator bytes, combined cache (`pageCacheBytes`) with `entries`/`indexes` activity, requested/actual hash policy, `useLessRamByDefault` and budget, package/kind counts, and each package's hash, other-resident and resident-entry bytes plus actual hash residency; see [memory.md](memory.md) |
 | `hd_memory_total` | Answered by the offscreen document itself, outside the engine queue: `performance.measureUserAgentSpecificMemory()` over the document and its workers, with the engine heap (`heapBytes`, from `hd_memory`) counted once rather than once per engine thread; `bytes` is `null` where the API is unavailable; see [memory.md](memory.md) |
-| `hd_clipboard_read` | The search page's clipboard monitor (#639): from that page only, the worker relays it to the offscreen document, which returns the clipboard's text; never forwarded to a linked browser's host |
+| `hd_clipboard_read` | The search page's clipboard monitor (#639): from that page only, the worker relays it to the offscreen document, which returns the clipboard's text, at most its first 1,000 characters after any leading spaces; never forwarded to a linked browser's host |
 | `hd_engine_config` | Read `options.lowMemoryMode`, `options.dictionaryEntryStorage`, `options.dictionaryIndexStorage` and `options.useLessRamByDefault` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when a stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |

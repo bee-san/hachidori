@@ -494,10 +494,10 @@ These run separately:
   not search what was on the clipboard before, text without Japanese, its own
   copies and cuts or a copy made while a Note is written; a 300,000-character
   copy must be searched, and read, as its first 1,000 characters; Settings must
-  not be able to read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four
-  palettes. The switch's request for the permission and turning it off are
-  tested in Firefox, whose test profile grants optional permissions without a
-  prompt; no suite shows the prompt.
+  not be able to read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves
+  the page in four palettes. The switch's request for the permission and turning
+  it off are tested in Firefox, whose test profile grants optional permissions
+  without a prompt; no suite shows the prompt.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at
