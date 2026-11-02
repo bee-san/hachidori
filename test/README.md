@@ -497,8 +497,9 @@ These run separately:
   copy must be searched, and read, as its first 1,000 characters; Settings must
   not be able to read the clipboard. Only text the reader would search may reach
   the search page's frame, where Custom JavaScript runs; a click on the switch
-  must leave the reader's keybinds working (Alt+P plays the result), and a click
-  on the focused switch must leave focus on it (#644).
+  must leave the reader's keybinds working (Alt+P plays the result), a click on
+  the focused switch must leave focus on it, and a 120 ms touch tap must hand
+  focus back like a click (#644).
   `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves the page in four palettes. The
   switch's request for the permission and turning it off are tested in Firefox,
   whose test profile grants optional permissions without a prompt; no suite

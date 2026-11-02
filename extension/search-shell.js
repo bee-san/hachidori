@@ -248,16 +248,20 @@ async function start() {
   window.addEventListener("focus", () => {
     setTimeout(() => { if (document.activeElement === document.body) frame.focus(); }, 0);
   });
-  // A click on the switch then hands focus back to the frame, where the
-  // reader's keybinds and activation key work, as they did beside the switch
-  // when it shared the page's document. A switch that already has focus keeps
-  // it: so do Space and a screen reader's or voice control's click, which
-  // Chrome sends as pointer events too, but only after focusing the switch.
+  // A mouse or touch click on the switch then hands focus back to the frame,
+  // where the reader's keybinds and activation key work, as they did beside
+  // the switch when it shared the page's document. It waits for the click: a
+  // tap focuses the switch after its pointerup. A switch that already has
+  // focus as the pointer goes down keeps it, and so does Space, whose click
+  // has no pointerType: Chrome sends a screen reader's or voice control's
+  // click as pointer events, but only after focusing the switch.
   const clipboardLabel = clipboardSwitch.closest("label");
   let handBack = false;
   clipboardLabel.addEventListener("pointerdown", () => { handBack = document.activeElement !== clipboardSwitch; });
-  clipboardLabel.addEventListener("pointerup", () => {
-    if (handBack) setTimeout(() => { frame.focus(); }, 0);
+  clipboardLabel.addEventListener("click", (event) => {
+    if (!handBack || !event.pointerType) return;
+    handBack = false;
+    setTimeout(() => { frame.focus(); }, 0);
   });
   // The page's own keys work from the switch too, as they did when it shared
   // the page's document (search.js): Escape selects the box's text and Ctrl+U

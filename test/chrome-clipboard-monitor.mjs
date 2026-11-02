@@ -325,12 +325,34 @@ try {
   await new Promise(resolveWait => setTimeout(resolveWait, 300));
   assert.equal(await search.evaluate(() => document.activeElement?.id), "search-clipboard",
     "a click on the focused switch leaves focus on it");
+  // A finger's tap hands focus back too, though Chrome focuses the switch only
+  // after the tap's pointerup: a press held as long as a finger rests.
+  await frame.focus("#search-input");
+  await search.evaluate(() => {
+    globalThis.switchClicks = 0;
+    document.getElementById("search-clipboard").addEventListener("click", () => { globalThis.switchClicks += 1; });
+  });
+  const touch = await search.createCDPSession();
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  const [x, y] = await search.$eval("#search-clipboard", (element) => {
+    const box = element.getBoundingClientRect();
+    return [box.x + box.width / 2, box.y + box.height / 2];
+  });
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  await new Promise(resolveWait => setTimeout(resolveWait, 120));
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await search.waitForFunction(() => globalThis.switchClicks > 0, { polling: 50, timeout: 5_000 });
+  await new Promise(resolveWait => setTimeout(resolveWait, 300));
+  const tapped = { shell: await search.evaluate(() => document.activeElement?.localName),
+    frame: await frame.evaluate(() => document.hasFocus()) };
+  assert.deepEqual(tapped, { shell: "iframe", frame: true }, `a tap on the switch hands focus back: ${JSON.stringify(tapped)}`);
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
     + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard; only"
-    + " text it searches reaches the frame, and a click on its switch leaves the reader's keybinds working unless"
-    + " the switch had focus");
+    + " text it searches reaches the frame, and a click or tap on its switch leaves the reader's keybinds working"
+    + " unless the switch had focus");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();

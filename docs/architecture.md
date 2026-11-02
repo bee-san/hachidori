@@ -1106,8 +1106,9 @@ frame's themed page. Only text with a Japanese character, the reader's own
 `search.html` when its reader is ready and when text is copied there. The
 monitor hands the user's script no other text. In Chrome, while Hachidori
 holds `clipboardRead`, a user script can still read the clipboard itself, on
-the search page as on any web page; in Firefox it cannot. A click on the
-switch, if the switch does not have focus, hands focus back to the frame,
+the search page as on any web page; in Firefox it cannot. A mouse click or a
+tap on the switch, if the switch does not have focus, hands focus back to the
+frame once the click is done (a tap focuses the switch after its `pointerup`),
 where the reader's keybinds and activation key work. A focused switch keeps
 focus: after Space, and after a screen reader's or voice control's click,
 which Chrome sends as pointer events once it has focused the switch. There
