@@ -21,7 +21,7 @@ import { createThemeStore } from "./theme-store.js";
 import { createMemorySettings } from "./memory-settings.js";
 import { downloadBlob } from "./blob-download.js";
 import { collectDebugInfo, debugInfoBlob, debugInfoFilename } from "./debug-info.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { createSharingSettingsController } from "./sharing-settings.js";
 import { ANKI_ADDON_FILE_NAME, fetchAnkiAddon } from "./anki-addon.js";
@@ -94,6 +94,7 @@ const {
   activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
   normaliseOptions, JAPANESE_PROFILE_ID, OPTION_REQUIREMENTS, languageDescriptor, optionRequirementMet,
   hasProfiles, projectOptions, profileDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
+  profiles: recordProfiles,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -1261,6 +1262,11 @@ function adoptOptions(value) {
   const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
   if (revision <= optionsRevision) return false;
   optionsRevision = revision;
+  // This page's debug log redacts the profiles' languages too (docs/languages.md
+  // 8.5); records without profiles leave it as it is.
+  if (hasProfiles(value) || hasProfiles(storedOptionsRecord)) {
+    setDebugLogLanguages(recordProfiles(value).map(profile => profile.language));
+  }
   storedOptionsRecord = value;
   if (followEditedProfile()) {
     renderEditedProfile();

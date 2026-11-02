@@ -4,7 +4,7 @@ import { encodeBase64 } from "./base64.js";
 // projections; the engine reads them only once the records have profiles.
 import "./vendor/languages/registry.js";
 import "./reader-options.js";
-import { readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { readDebugLog, recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessageOrJson } from "./error-text.js";
 import {
   httpsUrl,
@@ -1116,10 +1116,13 @@ async function requestDictionaryStorage() {
     }
     profileRecords = true;
     recordLanguages = reply.languages.filter(code => typeof code === "string");
+    // This engine's debug log redacts the records' languages too (docs/languages.md 8.5).
+    setDebugLogLanguages(recordLanguages);
     return { state: engineState(reply.state), legacyDictionaries: null };
   }
   profileRecords = false;
   recordLanguages = [];
+  setDebugLogLanguages(recordLanguages);
   if (reply.state !== null && (
     reply.state?.schemaVersion !== 1
     || !Number.isInteger(reply.state?.revision)
@@ -2158,6 +2161,7 @@ async function addProfile(message) {
     if (reply.ok === true) {
       profileRecords = reply.converted !== true;
       recordLanguages = Array.isArray(reply.languages) ? reply.languages : [];
+      setDebugLogLanguages(recordLanguages);
       if (entering) publishLoadedDictionaries(loadedCount);
       reloadError = null;
       return { state: publicState(reply.state), languages: recordLanguages };
@@ -2227,6 +2231,7 @@ async function removeProfile(message) {
     if (reply.ok === true) {
       profileRecords = reply.converted !== true;
       recordLanguages = Array.isArray(reply.languages) ? reply.languages : [];
+      setDebugLogLanguages(recordLanguages);
       const committed = engineState(reply.state);
       try {
         const loadedCount = loadDictionaries(committed.dictionaries, { committed: committed.dictionaries });
@@ -3709,6 +3714,7 @@ async function adoptRestoredLanguages(options) {
   const { hasProfiles, profiles } = globalThis.HDReaderOptions;
   profileRecords = hasProfiles(options);
   recordLanguages = profileRecords ? [...new Set(profiles(options).map(profile => profile.language))] : [];
+  setDebugLogLanguages(recordLanguages);
   if (profileRecords) await loadLanguagePacks(recordLanguages, { all: true });
   else languageFailures = [];
 }

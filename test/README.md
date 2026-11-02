@@ -198,7 +198,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
 | `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
 | `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option. |
-| `debug-info`, `debug-log` | The debug report's contents without reader content; the log's capture, redaction, named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
+| `debug-info`, `debug-log`, `debug-log-languages` | The debug report's contents without reader content; the log's capture, redaction (with profiles, also of the other languages' text, docs/languages.md 8.5), named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
 | `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
 | `definition-tag-colors` | Definition tags take Yomitan's colour for their category, each at 4.5:1 for its label in light and dark palettes and 7:1 in High contrast (#604). |
 | `dictionary-import`, `dictionary-import-errors` | Revision comparison, MDX loss-count notes, and mmap/writeback failures that cleanup cannot hide. |

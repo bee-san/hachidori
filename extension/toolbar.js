@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { openSearchPage } from "./search-window.js";
 
 // Settings → Advanced → Get debug info includes what failed here.
@@ -28,6 +28,9 @@ function adoptOptions(stored) {
   // it again and re-renders.
   if (nextRevision < revision) return;
   revision = nextRevision;
+  // This page's debug log redacts the profiles' languages too (docs/languages.md
+  // 8.5); records without profiles leave it as it is.
+  if (hasProfiles(stored) || hasProfiles(storedOptions)) setDebugLogLanguages(profiles(stored).map(profile => profile.language));
   storedOptions = stored ?? null;
   options = normaliseOptions(stored);
   render();

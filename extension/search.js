@@ -8,7 +8,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
 import { applyPageTheme } from "./settings-dom.js";
@@ -18,7 +18,7 @@ captureDocumentActions(document, captureDebugLog(window, {
   context: "search", store: openDebugLogStore(window.indexedDB),
 }));
 
-const { normaliseOptions, hasProfiles, profileDescriptor, activeProfileId, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
+const { normaliseOptions, hasProfiles, profiles, profileDescriptor, activeProfileId, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
 const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
@@ -117,8 +117,11 @@ function applyLanguage() {
     }
     input.placeholder = JAPANESE_PLACEHOLDER;
     delete input.dataset.language;
+    setDebugLogLanguages([]);
     return;
   }
+  // This page's debug log redacts the profiles' languages too (8.5).
+  setDebugLogLanguages(profiles(storedOptions).map(profile => profile.language));
   const language = profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja";
   const descriptor = globalThis.HDLanguages?.get?.(language);
   for (const node of [input, query]) {

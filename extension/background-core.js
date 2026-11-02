@@ -2,7 +2,7 @@
 // offscreen relay, the storage queue with the dictionary-state and options rules it writes, and reply shapes.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
-import { recordDebugFailure } from "./debug-log.js";
+import { recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { ensureChromeOffscreen } from "./chrome-offscreen.js";
 // The language packs' descriptors (docs/languages.md 9.1), read only once the
@@ -512,6 +512,8 @@ let lookupRecords = { [OPTIONS_KEY]: undefined, [DICTIONARY_STATE_KEY]: undefine
 function updateLookupProfiles(changes) {
   lookupRecords = { ...lookupRecords, ...changes };
   setLookupProfiles(lookupRecords[OPTIONS_KEY], lookupRecords[DICTIONARY_STATE_KEY]);
+  // The worker's debug log redacts the profiles' languages too (docs/languages.md 8.5).
+  setDebugLogLanguages(lookupProfiles === null ? [] : [...lookupProfiles.values()].map(profile => profile.language));
 }
 
 // The worker sets these keys on every lookup, replacing any a forwarded

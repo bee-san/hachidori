@@ -13,7 +13,7 @@ import { extensionApi as chrome, expectedBackgroundUrl } from "./browser-api.js"
 import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
-import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeError } from "./error-text.js";
 
 // Settings → Advanced → Get debug info reads this document's warnings, errors
@@ -326,7 +326,13 @@ function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionary
     const data = event.data;
     if (data?.channel === "host-request") {
       Promise.resolve(chrome.runtime.sendMessage(data.message)).then(
-        (response) => worker.postMessage({ channel: "host-response", id: data.id, ok: true, response }),
+        (response) => {
+          // The records' languages, which this document's debug log redacts
+          // too (docs/languages.md 8.5). A local engine, run in this
+          // document, sets them from the same reply itself.
+          if (data.message?.type === "hd_state_read" && response?.ok === true) setDebugLogLanguages(response.languages ?? []);
+          worker.postMessage({ channel: "host-response", id: data.id, ok: true, response });
+        },
         (error) => worker.postMessage({ channel: "host-response", id: data.id, ok: false, error: describeError(error) }),
       );
       return;

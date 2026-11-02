@@ -182,7 +182,7 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
   for (const [file, exports] of [
     ["recommended-install-client.js", ["createRecommendedInstallClient"]],
     ["debug-log.js", ["DEBUG_LOG", "captureDebugLog", "captureDocumentActions", "formatDebugErrorReport",
-      "openDebugLogStore", "recordUserError"]],
+      "openDebugLogStore", "recordUserError", "setDebugLogLanguages"]],
     ["settings-dom.js", ["applyPageTheme", "setStatusOutput", "showErrorCopy", "reorderSettingsRows"]],
     ["settings-search.js", ["createSettingsSearch"]],
     ["experimental-settings.js", ["createExperimentalSettings"]],

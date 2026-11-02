@@ -21,7 +21,7 @@ import {
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { applyPageTheme, showErrorCopy } from "./settings-dom.js";
 import { describeErrorMessage } from "./error-text.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { findLocalAudioSource } from "./local-audio-source.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
@@ -181,6 +181,11 @@ function adoptOptions(value) {
   const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
   if (revision <= optionsRevision) return false;
   optionsRevision = revision;
+  // This page's debug log redacts the profiles' languages too (docs/languages.md
+  // 8.5); records without profiles leave it as it is.
+  if (hasProfiles(value) || hasProfiles(storedOptionsRecord)) {
+    setDebugLogLanguages(optionProfiles(value).map(profile => profile.language));
+  }
   storedOptionsRecord = value;
   projectReaderOptions();
   projectDictionaries();

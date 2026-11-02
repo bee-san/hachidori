@@ -21,7 +21,8 @@
 // entries on request. Every entry is redacted before it is kept
 // (redactDebugText): credentials, the sign-in, query and fragment of web
 // addresses, data: URL payloads, and any Japanese text, which is how
-// looked-up text and dictionary content would appear in a message.
+// looked-up text and dictionary content would appear in a message, as well
+// as text in the other profiles' languages (setDebugLogLanguages).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const DEBUG_LOG = Symbol.for("hachidori.debugLog");
@@ -42,6 +43,26 @@ const DATA_URL = /\bdata:([^,\s"'<>`]*),[^\s"'<>`)]*/giu;
 // Percent-encoded non-ASCII text in an address path.
 const ENCODED_TEXT = /(?:%[89a-f][\da-f])+/giu;
 const JAPANESE_TEXT = /[\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Han}]+/gu;
+
+// Text in the languages of the installation's other profiles (docs/languages.md
+// 8.5): each pack's expanded text.pattern, less the Latin letters the log's own
+// English is written in, replaced by "[code]" after the Japanese pattern. Packs
+// written only in Latin add nothing.
+let debugLanguageCodes = "";
+let debugLanguageText = [];
+
+// The languages of the profiles in the options record this context adopted.
+// An empty list, or Japanese alone, keeps today's redaction.
+export function setDebugLogLanguages(codes) {
+  const others = [...new Set(codes)].filter(code => code !== "ja");
+  if (others.join() === debugLanguageCodes) return;
+  debugLanguageCodes = others.join();
+  debugLanguageText = others.flatMap(code => {
+    const pack = globalThis.HDLanguages?.get?.(code);
+    if (typeof pack?.text?.pattern !== "string" || !pack.scripts?.some(script => script !== "Latn")) return [];
+    return [[new RegExp(`(?:(?!\\p{Script=Latin})${pack.text.pattern})+`, "gu"), `[${code}]`]];
+  });
+}
 
 // Replace every non-empty string under a credential-like key, at any depth.
 // An empty value stays empty so the report still shows it was never set.
@@ -78,12 +99,13 @@ function redactSecretField(_match, name, value) {
 }
 
 export function redactDebugText(value) {
-  const text = String(value).slice(0, 2 * DEBUG_LOG_MESSAGE_LIMIT)
+  let text = String(value).slice(0, 2 * DEBUG_LOG_MESSAGE_LIMIT)
     .replace(DATA_URL, (_match, type) => `data:${type},${REDACTED}`)
     .replace(WEB_ADDRESS, redactWebAddress)
     .replace(AUTHORIZATION, `$1 ${REDACTED}`)
     .replace(SECRET_FIELD, redactSecretField)
     .replace(JAPANESE_TEXT, REDACTED_JAPANESE);
+  for (const [pattern, label] of debugLanguageText) text = text.replace(pattern, label);
   return text.length > DEBUG_LOG_MESSAGE_LIMIT ? `${text.slice(0, DEBUG_LOG_MESSAGE_LIMIT)}…` : text;
 }
 
