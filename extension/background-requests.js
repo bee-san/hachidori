@@ -621,6 +621,21 @@ const WORKER_HANDLERS = {
     await chrome.tabs.create({ url, active, ...(sender.tab ? { windowId: sender.tab.windowId } : {}) });
     return { opened: true };
   },
+  // The popup's Anki button for a Template that names no deck opens Settings →
+  // Anki on the profile the popup acted in (docs/languages.md 6.3), in the
+  // sender's window and without the storage queue, as an external link does.
+  async hd_open_settings(message, sender) {
+    if (sender.id !== chrome.runtime.id) throw new Error("the Settings request came from another extension");
+    if (message.section !== "anki") throw new TypeError("the Settings section is invalid");
+    const { profileId } = message;
+    if (profileId !== undefined && (typeof profileId !== "string" || profileId === "")) {
+      throw new TypeError("the Settings request named an invalid profile");
+    }
+    const query = profileId === undefined ? "" : `?profile=${encodeURIComponent(profileId)}`;
+    await chrome.tabs.create({ url: chrome.runtime.getURL(`settings.html${query}#anki`),
+      ...(sender.tab ? { windowId: sender.tab.windowId } : {}) });
+    return { opened: true };
+  },
 
   // Once the records have profiles, the reply also carries their language
   // codes, which the engine loads the packs of (docs/languages.md 9.2).
@@ -1098,6 +1113,9 @@ async function handleWorkerRequest(message, sender) { // NOSONAR: moved verbatim
       "Custom toolbar links open only from lookup popups in this overlay; the Settings preview cannot launch them.",
     ));
   }
+  if (type === "hd_open_settings" && HOST_CAPABILITIES.externalLinkHost) {
+    return failureReply(message, new Error("This overlay opens Settings from its host, not from a popup."));
+  }
   await sharingReady;
   if (["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)) await sharingTransitionTail;
   if (sharingLinked && ["hd_anki_discover", "hd_anki_setup"].includes(type)) {
@@ -1131,7 +1149,7 @@ async function handleWorkerRequest(message, sender) { // NOSONAR: moved verbatim
   }
   // Navigation and read-only Anki discovery must not hold up storage commits.
   const run = () => [
-    "hd_open_external", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
+    "hd_open_external", "hd_open_settings", "hd_anki_discover", "hd_anki_setup", "hd_setup_anki", "hd_backup_download",
     "hd_lookup_stats_record", "hd_lookup_stats_read", "hd_engine_config", "hd_debug_log",
   ].includes(type) ? invoke() : serialiseStorage(invoke);
   const operation = ["hd_anki_discover", "hd_anki_setup", "hd_setup_anki"].includes(type)

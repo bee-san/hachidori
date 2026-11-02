@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
+import { ANKI_DECK_UNSET, ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
@@ -269,7 +269,10 @@ export function createAnkiMiningService({
 
   async function status(templateId) {
     const current = await configuration(templateId);
-    return { available: current.errors.length === 0, configKey: current.configKey, error: current.errors.join("\n") };
+    return { available: current.errors.length === 0, configKey: current.configKey, error: current.errors.join("\n"),
+      // Only a deck is missing: the popup's Anki button then opens Settings →
+      // Anki (docs/languages.md 6.3).
+      ...(current.errors.length === 1 && current.errors[0] === ANKI_DECK_UNSET ? { emptyDeck: true } : {}) };
   }
 
   async function view(request) {

@@ -2150,6 +2150,13 @@
       conceal: concealReader,
       recordNetflixLine: (cue, templateId, options) => globalThis.HDNetflix.record(cue, {
         send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId, ...options }),
+      // A Template that names no deck opens Settings → Anki on the profile in
+      // effect (docs/languages.md 6.3); an overlay's host opens Settings itself.
+      openSettings: overlayMode ? null : () => {
+        // A lost reply may follow a successful open, so never retry it.
+        void sendRequest("hd_open_settings", { section: "anki", ...profileFields(controlsProfile()) }, WORKER_TARGET)
+          .catch(error => console.debug("hachidori: Settings could not be opened", error));
+      },
     });
     mining.update(controlsOptions(), optionsStorageRevision >= 0);
     audio ??= globalThis.HDAudio.createAudioController({ window, popupRect,

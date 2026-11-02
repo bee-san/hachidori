@@ -461,7 +461,9 @@ sharing host.
 ### 5.3 Settings edits one profile
 
 A Settings page has its own edited-profile id, chosen in its Language menu
-and initialised from the active profile. It changes because of a storage event
+and initialised from the profile its address names
+(`settings.html?profile=ar#anki`, which the popup's Anki button opens, section
+6.3), else from the active profile. It changes because of a storage event
 only when the edited profile is removed elsewhere: the page then switches to
 the active profile and says so. Its saved, saving, pending and conflict states are keyed by that id,
 and every write it sends names it, so a profile switch from the toolbar or the
@@ -555,8 +557,10 @@ success line offers **Use for lookups**.
   clicked character, compact summary, pitch, blur frequency, image source):
   unset;
 - Anki: the Templates with new ids, their note types and field mappings, and
-  an empty deck. Until the user chooses a deck, the Anki button says so and
-  links to Settings → Anki;
+  an empty deck. Until the user chooses a deck, the Anki button says so
+  ("Choose an available deck.") and a click opens Settings → Anki for the
+  profile in effect; a Template with another problem as well keeps today's
+  button;
 - audio: one browser speech source in the pack's language (`text-to-speech`
   for packs without readings, `text-to-speech-reading` otherwise);
 - custom buttons: none, since they usually link to a language's websites;

@@ -485,15 +485,21 @@ function describedProfile(id) {
     : (id === JAPANESE_PROFILE_ID ? { ...JAPANESE_EDITED_PROFILE } : null);
 }
 
+// The profile this page's address names: `settings.html?profile=ar#anki` from
+// the popup's Anki button (docs/languages.md 6.3), else null.
+function addressedProfile() {
+  return new URLSearchParams(window.location.search).get("profile");
+}
+
 // The edited profile as the stored record describes it now. It starts as the
-// active profile and changes because of a storage event only when it is
-// removed elsewhere: the page then shows the active profile, discards the
-// drafts kept for the removed one and says so (section 5.3). True when it
-// changed.
+// profile the address names, else the active profile, and changes because of
+// a storage event only when it is removed elsewhere: the page then shows the
+// active profile, discards the drafts kept for the removed one and says so
+// (section 5.3). True when it changed.
 function followEditedProfile() {
   if (!editedProfileChosen) {
     editedProfileChosen = true;
-    const initial = describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
+    const initial = describedProfile(addressedProfile()) ?? describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
     const changed = initial.id !== editedProfile.id;
     editedProfile = initial;
     return changed;

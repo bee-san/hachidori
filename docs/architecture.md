@@ -2961,7 +2961,13 @@ keyboard, it keeps the popup open and gets focus back once it is enabled
 again, unless focus has moved elsewhere, so Enter can then open the note it
 added. A mouse press takes no focus back.
 Missing Template IDs remain visible as disabled errors and send no Anki
-request.
+request. A Template whose only problem is that it names no deck, as a new
+language profile's Templates do, has the readiness `emptyDeck`: its button
+stays visible and enabled with the title "Choose an available deck.", and a
+press asks the worker (`hd_open_settings`) to open Settings → Anki in the
+sender's window, at `settings.html?profile=<id>#anki` for the profile the popup
+acted in. An overlay, whose host opens Settings itself, keeps today's
+button.
 The content controller preflights each Template's rendered candidates in one
 batch per binding pass (the popup renders its first result before the rest, so
 those usually arrive in a second batch), applies each reply only to a control
