@@ -656,11 +656,24 @@ lookup texts, one per line, is looked up `--passes` times (default 2),
 recording each pass's distribution, an FNV-1a hash of every reply's results
 (identical across variants when lookups are unchanged), the page cache and the
 heap after the last. RSS needs Linux `/proc` and reads 0 elsewhere. Peak import
-RSS is not sampled; the standard runner above does that.
+RSS is not sampled; the standard runner above does that. Beside the summed
+process-tree RSS, each row keeps the extension renderers' own RSS, PSS and USS
+(`extensionAfterImport`, `restart.extension`; the offscreen document with its
+engine worker lives in one of them) and the engine's live allocated bytes
+(`hdw_memory_stats`), which, unlike the heap, show what loading needs without
+the heap's growth steps.
+
+`--profile-archive en=/path/to/kty-en-en.zip` measures a library with another
+language (docs/languages.md 19): after the archives above, the sample adds an
+English profile (`hd_profile_add`, copying the Japanese settings) and imports
+that archive into it through Settings opened for the profile, so the heap and
+RSS hold every profile's dictionaries and the loaded packs. The lookups stay in
+the Japanese profile. Each row's `profileImports` has the import times.
 
 ```sh
 node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip \
   [--archive /path/to/pixiv.zip ...] [--words hovers.txt --passes 5] \
+  [--profile-archive en=/path/to/kty-en-en.zip ...] \
   [--variants resident,auto,paged,low] \
   --samples 3 --output benchmark/results/low-memory-mode.json
 ```

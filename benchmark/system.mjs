@@ -406,11 +406,12 @@ export function cpuDelta(before, after) {
   return delta;
 }
 
-// RSS, PSS and USS of the page renderers in a chromeProcesses() reading.
-export function pageRendererMemory(processes) {
+// RSS, PSS and USS of the page renderers (or the processes of another kind,
+// such as `extension`) in a chromeProcesses() reading.
+export function pageRendererMemory(processes, kind = "page") {
   const total = { processes: 0, rssKiB: 0, pssKiB: 0, ussKiB: 0 };
   for (const [pid, row] of processes) {
-    if (row.kind !== "page") continue;
+    if (row.kind !== kind) continue;
     try {
       const rollup = readFileSync(`/proc/${pid}/smaps_rollup`, "utf8");
       const field = (name) => Number(rollup.match(new RegExp(`^${name}:\\s+(\\d+) kB$`, "m"))?.[1] ?? 0);

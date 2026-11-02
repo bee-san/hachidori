@@ -8,7 +8,7 @@
 // hd_lookup latency. See docs/memory.md and benchmark/README.md.
 //
 //   node benchmark/low-memory-mode.mjs --archive /path/to/jitendex.zip \
-//     [--archive /path/to/another.zip ...] [--words words.txt] \
+//     [--archive /path/to/another.zip ...] [--profile-archive en=/path/to/kty-en-en.zip ...] [--words words.txt] \
 //     --samples 3 --output benchmark/results/low-memory-mode.json
 //
 // Variants: resident (entries mapped, normal imports), auto (the default:
@@ -32,7 +32,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
-import { processTreeSample } from "./system.mjs";
+import { chromeProcesses, pageRendererMemory, processTreeSample } from "./system.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -65,6 +65,10 @@ function argumentList(name) {
 
 const ARCHIVES = (argumentList("archive").length > 0
   ? argumentList("archive") : [resolve(REPO, "test/fixtures/hachidori-fixture.zip")]).map((path) => resolve(path));
+// --profile-archive en=/path.zip: after the archives above, a profile for that
+// language (hd_profile_add) and the archive imported into it.
+const PROFILE_ARCHIVES = argumentList("profile-archive")
+  .map((entry) => [entry.slice(0, entry.indexOf("=")), resolve(entry.slice(entry.indexOf("=") + 1))]);
 const SAMPLES = Number(argument("samples", "3"));
 const OUTPUT = resolve(argument("output", resolve(REPO, "benchmark/results/low-memory-mode.json")));
 const LOOKUPS = Number(argument("lookups", "200"));
@@ -94,6 +98,12 @@ function sumRss(pid) {
   return processTreeSample(pid).rssBytes;
 }
 
+// The extension renderers (the offscreen document with its engine worker, the
+// service worker, Settings): RSS, PSS and USS in KiB.
+function extensionMemory(pid) {
+  return pageRendererMemory(chromeProcesses(pid), "extension");
+}
+
 async function sample(puppeteer, variant, index) {
   const { lowMemoryMode, dictionaryEntryStorage } = VARIANT_OPTIONS[variant];
   const profile = `/tmp/hachidori-low-memory-bench-${process.pid}-${index}`;
@@ -101,6 +111,7 @@ async function sample(puppeteer, variant, index) {
   mkdirSync(profile, { recursive: true });
   let browser = null;
   let page = null;
+  let extensionId = null;
   // One Chrome process on the retained profile, with Settings open.
   async function launch() {
     browser = await puppeteer.launch({
@@ -111,7 +122,7 @@ async function sample(puppeteer, variant, index) {
         `--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
     });
     const target = await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().startsWith("chrome-extension://"), { timeout: 30_000 });
-    const extensionId = new URL(target.url()).host;
+    extensionId = new URL(target.url()).host;
     // The first-run startup page opens itself; close it so its installer does not compete.
     for (const open of await browser.pages()) {
       if (open.url().includes("startup.html")) await open.close();
@@ -145,15 +156,29 @@ async function sample(puppeteer, variant, index) {
     // Straight from disk: a library's worth of archives is too large to pass
     // through one evaluate.
     await input.uploadFile(...ARCHIVES);
-    const imported = await page.waitForFunction(async (count) => {
+    const settled = (count) => page.waitForFunction(async (count) => {
       const { dictionaryState } = await chrome.storage.local.get("dictionaryState");
       const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
       return dictionaryState?.dictionaries?.length === count && status?.ok && status.ready && !status.loading
         && status.dictionaryCount > 0 ? status : false;
-    }, { timeout: 600_000, polling: 100 }, ARCHIVES.length).then((handle) => handle.jsonValue());
+    }, { timeout: 600_000, polling: 100 }, count).then((handle) => handle.jsonValue());
+    let imported = await settled(ARCHIVES.length);
     const importMs = performance.now() - importStarted;
+    const profileImports = [];
+    for (const [language, archive] of PROFILE_ARCHIVES) {
+      const added = await engine("hd_profile_add", { language, copyFrom: "ja" });
+      if (!added?.ok) throw new Error(`hd_profile_add ${language}: ${JSON.stringify(added)}`);
+      // Settings edits the profile its address names, and its import joins it.
+      await page.goto(`chrome-extension://${extensionId}/settings.html?profile=${language}#advanced`, { waitUntil: "domcontentloaded" });
+      await waitReady(lowMemoryMode, dictionaryEntryStorage);
+      const started = performance.now();
+      await (await page.$("#import-file")).uploadFile(archive);
+      imported = await settled(ARCHIVES.length + profileImports.length + 1);
+      profileImports.push({ language, archive, importMs: performance.now() - started });
+    }
     const afterImport = await engine("hd_memory");
     const rssAfterImport = sumRss(browser.process().pid);
+    const extensionAfterImport = extensionMemory(browser.process().pid);
     const importedFiles = await page.evaluate(async () => {
       // Logical sizes of each imported package's files in direct OPFS.
       const sizes = {};
@@ -176,7 +201,8 @@ async function sample(puppeteer, variant, index) {
         return status?.ok && status.ready && !status.loading && status.generation < previous ? status : false;
       }, { timeout: 60_000, polling: 100 }, imported.generation).then((handle) => handle.jsonValue());
       const memory = await engine("hd_memory");
-      recycle = { recycleMs: performance.now() - recycleStarted, heapBytes: memory.heapBytes, rssBytes: sumRss(browser.process().pid),
+      recycle = { recycleMs: performance.now() - recycleStarted, heapBytes: memory.heapBytes, liveBytes: memory.liveAllocatedBytes ?? null,
+        rssBytes: sumRss(browser.process().pid),
         dictionaryCount: recycled.dictionaryCount };
     }
     // Restart Chrome on the retained profile: lookups and memory below are the
@@ -187,7 +213,9 @@ async function sample(puppeteer, variant, index) {
     const restored = await waitReady(lowMemoryMode, dictionaryEntryStorage, imported.dictionaryCount);
     const restartMs = performance.now() - restartStarted;
     const afterRestart = await engine("hd_memory");
-    const restart = { restartMs, heapBytes: afterRestart.heapBytes, rssBytes: sumRss(browser.process().pid),
+    const restart = { restartMs, heapBytes: afterRestart.heapBytes, liveBytes: afterRestart.liveAllocatedBytes ?? null,
+      rssBytes: sumRss(browser.process().pid),
+      extension: extensionMemory(browser.process().pid),
       pagedDictionaries: restored.pagedDictionaries ?? null,
       residentBytes: afterRestart.dictionaries.reduce((sum, entry) => sum + entry.bytes, 0),
       dictionaries: afterRestart.dictionaries.map(({ title, bytes, paged }) => ({ title, bytes, paged })) };
@@ -226,9 +254,10 @@ async function sample(puppeteer, variant, index) {
     }
     return {
       variant, lowMemoryMode, dictionaryEntryStorage, threaded: imported.threaded, storageBackend: imported.storageBackend,
-      importedFiles,
+      importedFiles, profileImports,
       pagedDictionaries: imported.pagedDictionaries ?? null,
-      heapBeforeImport: beforeImport.heapBytes, importMs, heapAfterImport: afterImport.heapBytes, rssAfterImport,
+      heapBeforeImport: beforeImport.heapBytes, importMs, heapAfterImport: afterImport.heapBytes,
+      liveAfterImport: afterImport.liveAllocatedBytes ?? null, rssAfterImport, extensionAfterImport,
       residentBytes: afterImport.dictionaries.reduce((sum, entry) => sum + entry.bytes, 0),
       recycle, restart, lookups,
     };
@@ -266,6 +295,7 @@ async function main() {
   }
   const result = { revision, chromeVersion, node: process.version,
     archives: ARCHIVES.map((path) => ({ path, bytes: readFileSync(path).byteLength })),
+    profileArchives: PROFILE_ARCHIVES.map(([language, path]) => ({ language, path, bytes: readFileSync(path).byteLength })),
     variants: VARIANTS, samples: SAMPLES, lookups: LOOKUPS, text: TEXT, words: WORDS_FILE, recordedAt: new Date().toISOString(), rows };
   mkdirSync(dirname(OUTPUT), { recursive: true });
   writeFileSync(OUTPUT, `${JSON.stringify(result, null, 2)}\n`);
