@@ -85,4 +85,7 @@ test("a copy longer than Yomitan's 1,000 characters is searched from its start, 
   const edge = `${"あ".repeat(999)}𠮷${"あ".repeat(10)}`;
   assert.equal(clipboardSearchText(edge), "あ".repeat(999));
   assert.equal(clipboardSearchText(`${"あ".repeat(998)}𠮷あ`), `${"あ".repeat(998)}𠮷`);
+  // The 1,000 characters start after the copy's leading spaces, as Yomitan cuts the trimmed text.
+  assert.equal(clipboardSearchText(`${" \n\u3000".repeat(700)}読む`), "読む");
+  assert.equal(clipboardSearchText(`\u3000${"あ".repeat(1200)}`), "あ".repeat(1000));
 });

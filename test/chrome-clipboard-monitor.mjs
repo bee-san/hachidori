@@ -2,16 +2,18 @@
  * The search page's clipboard monitor (#639) in a real Chrome: text copied in
  * another tab is read through the worker and the offscreen document while the
  * search page has no focus, and searched there with a real dictionary result.
- * What was on the clipboard before, text without Japanese, text copied on the
- * search page itself and a copy made while a Note is being written are not
- * searched, a long copy is searched from its first 1,000 characters without
- * holding the page, and no other extension page can read the clipboard.
+ * What was on the clipboard before, text without Japanese, text copied or cut
+ * on the search page itself and a copy made while a Note is being written are
+ * not searched, a long copy is searched from its first 1,000 characters, which
+ * are all the offscreen document sends, without holding the page, and no other
+ * extension page can read the clipboard.
  *
  * Chrome shows its permission prompt in a window, which headless Chrome cannot
  * answer, so this copy of the extension holds clipboardRead from the start, as
- * turning the switch on and accepting the prompt leaves it. The switch itself,
- * its prompt and turning it off run in the Firefox suite, whose optional
- * permissions are granted without a prompt.
+ * turning the switch on and accepting the prompt leaves it. The switch's
+ * request for the permission and turning it off run in the Firefox suite,
+ * whose profile grants optional permissions without showing a prompt; no suite
+ * shows the prompt itself.
  *
  * test/run.mjs chrome-e2e runs it after the main scenario; on its own:
  *   node test/chrome-clipboard-monitor.mjs
@@ -189,6 +191,19 @@ try {
   assert.equal(ownCopy.query, "読む", `text copied on the search page is not searched: ${JSON.stringify(ownCopy)}`);
   assert.equal(ownCopy.value, "漢字");
   assert.ok((await popup.state()).plain.includes("読む"));
+  // And text cut there, which the clipboard did not hold before.
+  await search.bringToFront();
+  await search.focus("#search-input");
+  await search.$eval("#search-input", box => { box.value = "聞く"; box.select(); });
+  await forget();
+  await search.keyboard.down("Control");
+  await search.keyboard.press("KeyX", { commands: ["Cut"] });
+  await search.keyboard.up("Control");
+  await web.bringToFront();
+  await readTwice("聞く");
+  const ownCut = await page();
+  assert.equal(ownCut.query, "読む", `text cut on the search page is not searched: ${JSON.stringify(ownCut)}`);
+  assert.equal(ownCut.value, "", "the cut took the text out of the box");
 
   // A Note being written holds the monitor off, and it searches again once the Note is closed.
   await search.bringToFront();
@@ -227,7 +242,8 @@ try {
   assert.equal(typeof others.offscreen?.text, "undefined", `the offscreen document gave Settings no text: ${JSON.stringify(others)}`);
 
   // A long copy is searched from its start, and reading it does not lay it out:
-  // pasting 300,000 characters into a text area took about 30 seconds.
+  // pasting 300,000 characters into a text area took 16-34 seconds. Only the
+  // first 1,000 characters cross runtime messaging, which carries lookups too.
   const long = "昨日は友達と一緒に駅前の喫茶店へ行った。".repeat(15_000);
   assert.equal(long.length, 300_000);
   await copyInWeb(long);
@@ -236,10 +252,10 @@ try {
   const longRead = await search.evaluate(async () => {
     const start = performance.now();
     const reply = await chrome.runtime.sendMessage({ target: "hachidori-clipboard", type: "hd_clipboard_read" });
-    return { ms: performance.now() - start, length: reply?.text?.length };
+    return { ms: performance.now() - start, text: reply?.text };
   });
-  assert.equal(longRead.length, 300_000, JSON.stringify(longRead));
-  assert.ok(longRead.ms < 2000, `one read of 300,000 characters took ${longRead.ms} ms`);
+  assert.equal(longRead.text, long.slice(0, 1000), "a read of a 300,000-character clipboard returns its first 1,000 characters");
+  assert.ok(longRead.ms < 2000, `one read of a 300,000-character clipboard took ${longRead.ms} ms`);
   assert.equal((await page()).value.length, 1000, "the box holds the first 1,000 characters");
   // A short copy again, for the screenshots.
   await copyInWeb("漢字");
