@@ -947,7 +947,11 @@ across passes and browser samples; their `n` is not the independent process
 sample count shown for import/restoration. The report records load averages and
 Linux CPU, memory, and I/O pressure at both ends so noisy runs remain auditable.
 Process RSS/CPU sampling is every 50 ms, so a descendant that both starts and
-exits between samples can be missed. CPU is reported in Linux clock ticks and
+exits between samples can be missed. A sample reads `/proc/<pid>/stat` only for
+processes listed since the previous sample and reads RSS only for the tree's
+members, so on a host with many processes it stays well under the interval
+instead of stalling the harness's own event loop (and every timing it drives).
+CPU is reported in Linux clock ticks and
 `run-definition.json` records ticks per second.
 
 The hard lifecycle invariant is independent of speed:
