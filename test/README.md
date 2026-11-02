@@ -38,7 +38,7 @@ HACHIDORI_BENCH_DATA=DIR node test/run.mjs firefox-large  # full Pixiv import in
 ```
 
 `test/tooling/package-lock.json` locks jsdom, Puppeteer, the browser installer,
-ESLint **10.13.0** and `globals` **17.13.0**, plus their transitive
+ESLint **10.12.0** and `globals` **17.13.0**, plus their transitive
 dependencies. The small `test/run.mjs` launcher
 supplies the existing environment overrides, generates fixtures, runs each
 existing suite in a separate Node process, and propagates every nonzero exit or
