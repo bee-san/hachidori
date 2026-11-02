@@ -1,6 +1,6 @@
 # Hachidori privacy policy
 
-Last updated: 14 October 2026.
+Last updated: 2 November 2026.
 
 Hachidori helps you read Japanese with local dictionaries and save selected
 study material to Anki. It is maintained by Autumn (Bee). For privacy questions
@@ -13,6 +13,13 @@ Surrounding text, the page title and the page address can be used in a note you
 choose to create.
 Dictionary lookup runs inside your browser. There is no Hachidori analytics,
 advertising or remote lookup service.
+
+The search page's **Clipboard monitor** is off until you switch it on, which
+asks the browser to let Hachidori read the clipboard. While it is on and a
+search page is open, Hachidori reads the clipboard four times a second and
+searches text you copy that contains Japanese, as if you had pasted it into the
+search page. Other clipboard text is read and discarded. Switching the monitor
+off gives the permission back.
 
 Your browser profile stores imported dictionaries and their indexes, personal
 dictionary entries, preferences, dictionary update settings, local lookup

@@ -39,7 +39,7 @@ anything else differs.
 | `background.service_worker` | `background.page: background.html` | Firefox has no extension service workers. `background.html` runs `background.js` as a module, as Chrome's worker does |
 | `offscreen` permission | none | Firefox has no offscreen documents; `background.html` holds `offscreen.html` in a frame |
 | `tabCapture` permission | none | Firefox has no tab capture for extensions |
-| `userScripts` permission | `optional_permissions: ["userScripts"]` | Firefox grants it only on request |
+| `userScripts` permission | `optional_permissions: ["clipboardRead", "userScripts"]`, after the Chrome manifest's own optional `clipboardRead` | Firefox grants it only on request |
 | `minimum_chrome_version`, `cross_origin_*_policy` | `browser_specific_settings.gecko`: ID `hachidori@bee-san`, `strict_min_version` 153.0, `data_collection_permissions` | Firefox cannot isolate extension pages; the ID keys Firefox's storage for the add-on; the data types are explained under [Packaging](#packaging-and-addonsmozillaorg) |
 
 `background.html` also loads `event-page.js`, which calls
