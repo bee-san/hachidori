@@ -112,13 +112,19 @@ describe("search page", () => {
       Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
       return "copied";
     })(${JSON.stringify(text)})`);
+    // The switch and the monitor are search.html's, the box and the reader its frame's (#644).
     const search = await openExtensionPage("search.html");
-    const state = () => evaluateJson(search, async () => JSON.stringify({
-      ready: !document.getElementById("search-submit").disabled && !document.getElementById("search-clipboard").disabled,
-      on: document.getElementById("search-clipboard").checked,
-      granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
-      query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
-    }));
+    const frame = await searchFrame(search);
+    const state = async () => {
+      const box = await frame.evaluate(() => ({ ready: !document.getElementById("search-submit").disabled,
+        query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent }));
+      const monitor = await evaluateJson(search, async () => JSON.stringify({
+        enabled: !document.getElementById("search-clipboard").disabled,
+        on: document.getElementById("search-clipboard").checked,
+        granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
+      }));
+      return { ready: box.ready && monitor.enabled, on: monitor.on, granted: monitor.granted, query: box.query };
+    };
     const settled = predicate => waitFor(async () => {
       const current = await state();
       return predicate(current) ? current : false;
@@ -152,7 +158,7 @@ describe("search page", () => {
 
     await copy("読む");
     const shown = await waitFor(async () => {
-      const popup = await readPopup(search);
+      const popup = await readPopup(frame);
       return popup?.headword === "読む" ? popup : false;
     }, { timeout: 20_000 });
     const searched = await state();

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import { READER_EVENTS, READER_REQUESTS, readerKey, serveSearchFrame } from "../extension/search-shell.js";
+import { connectSearchFrame, READER_EVENTS, READER_REQUESTS, readerKey, serveSearchFrame } from "../extension/search-shell.js";
 
 const EXTENSION = new URL("../extension/", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", EXTENSION), "utf8"));
@@ -35,6 +35,13 @@ test("the search page forwards every request the reader sends, and the events an
   const read = content.match(/chrome\.storage\.local\.get\(\{([^}]*)\}/u)[1];
   const keys = new Set([...read.matchAll(/(?:\[(\w+)\]|(\w+))\s*:/gu)].map(([, constant, key]) => constant ? named(constant) : key));
   for (const [, key, constant] of content.matchAll(/\bchanges(?:\.(\w+)|\[(\w+)\])/gu)) keys.add(key ?? named(constant));
+  // The frame's own scripts read their keys by name, and send only what the reader does.
+  for (const page of ["search.js", "settings-theme.js"]) {
+    const source = readFileSync(new URL(page, EXTENSION), "utf8");
+    for (const [, key] of source.matchAll(/storage\.local\.get\("(\w+)"\)/gu)) keys.add(key);
+    for (const [, key] of source.matchAll(/\bchanges\.(\w+)/gu)) keys.add(key);
+    assert.deepEqual([...source.matchAll(/["'](hd_[a-z_]+)["']/gu)].filter(([, type]) => !forwarded.includes(type)), [], page);
+  }
   assert.ok(keys.has("options") && keys.has("wordStatusOverrides"), [...keys].join());
   assert.deepEqual([...keys].filter(key => !readerKey(key)), []);
   assert.deepEqual(["options", "dictionaryState", "lookupStats", "lookupStats:7:食べる", "wordStatusOverrides"].filter(readerKey).length, 5);
@@ -67,10 +74,11 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   const written = [];
   let nextKey = 0;
   const { port1, port2 } = new MessageChannel();
+  const heard = [];
   const close = serveSearchFrame(api, port1, { async write(ops) {
     written.push(ops);
     return ops.map(({ key }) => key ?? (nextKey += 1));
-  } });
+  } }, { shown: () => heard.push("shown"), ready: () => heard.push("ready"), copied: () => heard.push("copied") });
   const replies = [];
   port2.onmessage = ({ data }) => replies.push(data);
   port2.postMessage({ kind: "send", id: 1, message: { target: "hoshidicts-offscreen", type: "hd_lookup", requestId: "a" } });
@@ -95,7 +103,12 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   write(10, { anki: { url: "http://example.test" } });
   write(11, { hoverEnabled: false, audioAutoplay: true });
   write(12, { scanLength: 4 });
+  // A boolean, but not one a Toggle option keybind may change.
+  write(15, { wordHighlightEnabled: true });
+  // The frame's word to the Clipboard monitor, which search.html runs.
+  for (const kind of ["shown", "ready", "copied", "clipboard", "toString"]) port2.postMessage({ kind });
   await settle();
+  assert.deepEqual(heard, ["shown", "ready", "copied"]);
   const reply = id => replies.find(data => data.kind === "reply" && data.id === id);
   assert.deepEqual(reply(1).value, { type: "hd_lookup_result", requestId: "a", ok: true });
   assert.match(reply(2).error, /cannot send hd_remove/u);
@@ -103,7 +116,7 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   assert.equal(reply(4).error, "Could not establish connection. Receiving end does not exist.");
   assert.deepEqual(api.sent.map(message => message.type), ["hd_lookup", "hd_page_zoom", "hd_options_write"]);
   assert.deepEqual(api.sent[2].options, { hoverEnabled: false });
-  for (const id of [10, 11, 12]) assert.match(reply(id).error, /cannot send hd_options_write/u);
+  for (const id of [10, 11, 12, 15]) assert.match(reply(id).error, /cannot send hd_options_write/u);
   // Storage is asked for the reader's keys alone; defaults fill in as Chrome's do.
   assert.deepEqual(api.read, [["options", "dictionaryState"], ["lookupStats"], ["options"], []]);
   assert.deepEqual(reply(5).value, { options: { revision: 3, anki: { url: "u", apiKey: "" } }, dictionaryState: null });
@@ -138,10 +151,54 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   assert.equal(api.listeners.message.size + api.listeners.changed.size, 0);
 });
 
+// search.html takes the port its own frame offers, once, and starts again when
+// the frame's code loads another document. Only a sandboxed frame, whose origin
+// is opaque, is given the user's script.
+function frameHost() {
+  const listeners = {};
+  const window = { location: { origin: "chrome-extension://hachidori" },
+    addEventListener: (type, listener) => { listeners[type] = listener; } };
+  const frame = { contentWindow: {}, focused: 0, focus() { frame.focused += 1; },
+    addEventListener: (type, listener) => { listeners[`frame ${type}`] = listener; } };
+  const served = [], connected = [];
+  let reloads = 0;
+  connectSearchFrame({ window, frame, reload: () => { reloads += 1; },
+    serve: (port) => { served.push(port.name); return () => { port.closed = true; }; },
+    connection: sandboxed => ({ id: "hachidori", customJavaScript: sandboxed ? "code" : "" }) });
+  const port = name => ({ name, postMessage: data => connected.push([name, data]) });
+  const offer = (source, origin, ports, type = "hachidori-search-bridge") => listeners.message({ source, origin, data: { type }, ports });
+  return { listeners, frame, served, connected, port, offer, reloads: () => reloads };
+}
+
+test("search.html connects its frame's first offer only, and reloads when the frame navigates", () => {
+  const { listeners, frame, served, connected, port, offer, reloads } = frameHost();
+  offer({}, "null", [port("another window")]);
+  offer(frame.contentWindow, "chrome-extension://other", [port("another extension")]);
+  offer(frame.contentWindow, "https://example.test", [port("a web page")]);
+  offer(frame.contentWindow, "null", [port("another type")], "something-else");
+  offer(frame.contentWindow, "null", []);
+  const first = port("first");
+  offer(frame.contentWindow, "null", [first]);
+  offer(frame.contentWindow, "null", [port("second")]);
+  assert.deepEqual(served, ["first"]);
+  assert.deepEqual(connected, [["first", { kind: "connect", id: "hachidori", customJavaScript: "code" }]]);
+  assert.equal(frame.focused, 1);
+  listeners["frame load"]();
+  assert.equal(reloads(), 0);
+  listeners["frame load"]();
+  assert.equal(reloads(), 1);
+  assert.equal(first.closed, true);
+
+  // Firefox before 154: the frame is not sandboxed, has this page's origin and no Custom JavaScript.
+  const unsandboxed = frameHost();
+  unsandboxed.offer(unsandboxed.frame.contentWindow, "chrome-extension://hachidori", [unsandboxed.port("153")]);
+  assert.deepEqual(unsandboxed.connected, [["153", { kind: "connect", id: "hachidori", customJavaScript: "" }]]);
+});
+
 // search-bridge.js in a sandboxed document: `chrome` is absent until it runs.
-function frameContext() {
+function frameContext(globals = {}) {
   const offers = [];
-  const context = vm.createContext({ URL, Promise, Error, Set, Map, Object, String, MessageChannel,
+  const context = vm.createContext({ URL, Promise, Error, Set, Map, Object, String, MessageChannel, ...globals,
     location: { href: "chrome-extension://abcdef/search-frame.html", origin: "chrome-extension://abcdef" } });
   context.window = { parent: { postMessage: (data, origin, transfer) => offers.push({ data, origin, transfer }) } };
   vm.runInContext(readFileSync(new URL("search-bridge.js", EXTENSION), "utf8"), context);
@@ -194,6 +251,28 @@ test("the frame offers search.html one port, to the extension's origin, and its 
   await settle();
   assert.deepEqual(messages, ["hd_reader_command"]);
   assert.deepEqual(JSON.parse(JSON.stringify(changes)), [[["options"], "local"]]);
-  assert.ok(requests.every(data => ["get", "send"].includes(data.kind)));
+
+  // What search.html's Clipboard monitor read, and the page's word back.
+  const clipboard = [];
+  context.HDSearchBridge.onClipboard(text => clipboard.push(text));
+  port.postMessage({ kind: "clipboard", text: "読む" });
+  context.HDSearchBridge.notify("ready");
+  context.HDSearchBridge.notify("copied");
+  await settle();
+  assert.deepEqual(clipboard, ["読む"]);
+  assert.deepEqual(requests.slice(-2).map(data => data.kind), ["ready", "copied"]);
+  assert.ok(requests.every(data => ["get", "send", "ready", "copied"].includes(data.kind)));
   port.close();
+});
+
+// Firefox before 154 does not sandbox the frame: it keeps its own API, and the
+// channel carries only the debug log and the Clipboard monitor's text.
+test("an unsandboxed frame keeps its own chrome and still offers search.html its port", () => {
+  const native = { runtime: { id: "hachidori" } };
+  const { context, offers } = frameContext({ chrome: native });
+  assert.equal(context.chrome, native);
+  assert.deepEqual(offers.map(({ data, origin, transfer }) => [data.type, origin, transfer.length]),
+    [["hachidori-search-bridge", "chrome-extension://abcdef", 1]]);
+  assert.equal(typeof context.HDSearchBridge.onClipboard, "function");
+  offers[0].transfer[0].close();
 });

@@ -5,24 +5,20 @@
 // docks its popup over the results area. The page follows the popup theme as
 // Settings does, and the popup is the reader's own, with its theme, Anki,
 // pronunciation, tabs and child popups. This page is search-frame.html, the
-// sandboxed frame search.html holds so that Custom JavaScript runs here too
-// (#644); search-bridge.js lends it the extension APIs.
+// sandboxed frame search.html holds under its header so that Custom JavaScript
+// runs here too (#644); search-bridge.js lends it the extension APIs.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, recordUserError } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
-import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { applyPageTheme } from "./settings-dom.js";
 
-// Firefox before 154 has no sandboxed pages, and so no bridge: the frame is an
-// ordinary extension page there.
-const bridge = globalThis.HDSearchBridge ?? null;
+const bridge = globalThis.HDSearchBridge;
 // Settings → Advanced → Get debug info includes what failed here.
 captureDocumentActions(document, captureDebugLog(window, {
-  context: "search", store: bridge?.debugLogStore ?? openDebugLogStore(window.indexedDB),
-  version: bridge ? async () => (await bridge.ready).manifest.version : undefined,
+  context: "search", store: bridge.debugLogStore, version: async () => (await bridge.ready).manifest.version,
 }));
 
 const { normaliseOptions } = globalThis.HDReaderOptions;
@@ -30,7 +26,6 @@ const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
 const status = document.getElementById("search-status");
-const clipboardSwitch = document.getElementById("search-clipboard");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where
@@ -100,53 +95,26 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
-// ext/js/display/search-display-controller.js): text with Japanese in it,
+// What search.html's Clipboard monitor (#639) reads: text with Japanese in it,
 // copied in any tab or program, goes into the box and is searched, as a paste
-// is, up to Yomitan's 1,000 characters, which is all the offscreen document
-// sends. A Note being written or saved in the result holds it off: the text is
-// not searched. The switch is the browser's clipboardRead permission, which
-// turning it on asks for and turning it off gives back.
-const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
-const monitor = createClipboardMonitor({
-  async read() {
-    const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
-    return reply?.ok === true ? reply.text : null;
-  },
-  change(text) {
-    if (!reader.isLookupWorthy(text) || reader.holdsNote()) return;
-    input.value = text;
-    search();
-  },
+// is. A Note being written or saved in the result holds it off: the text is
+// not searched.
+bridge.onClipboard((text) => {
+  if (!reader.isLookupWorthy(text) || reader.holdsNote()) return;
+  input.value = text;
+  search();
 });
-
-async function showClipboardMonitor() {
-  const on = await chrome.permissions.contains(CLIPBOARD_PERMISSION).catch(() => false);
-  clipboardSwitch.checked = on;
-  if (!on || !reader) monitor.stop();
-  else if (!monitor.running) monitor.start();
-}
-
-clipboardSwitch.addEventListener("change", () => {
-  if (!clipboardSwitch.checked) monitor.stop();
-  // The browser asks only for a request made while it handles the click.
-  const asked = clipboardSwitch.checked ? chrome.permissions.request(CLIPBOARD_PERMISSION)
-    : chrome.permissions.remove(CLIPBOARD_PERMISSION);
-  void asked.catch(() => false).then(showClipboardMonitor);
-});
-chrome.permissions.onAdded.addListener(() => { void showClipboardMonitor(); });
-chrome.permissions.onRemoved.addListener(() => { void showClipboardMonitor(); });
 // Text copied or cut on this page is not searched, as in Yomitan's _onCopy:
 // once it has reached the clipboard, the monitor starts over from it.
-for (const type of ["copy", "cut"]) {
-  window.addEventListener(type, () => {
-    if (!monitor.running) return;
-    monitor.stop();
-    setTimeout(() => { void showClipboardMonitor(); }, 0);
-  });
-}
-// The switch shows its state while the reader loads; the monitor starts once it has.
-await showClipboardMonitor();
+for (const type of ["copy", "cut"]) window.addEventListener(type, () => { bridge.notify("copied"); });
+
+// The same keys, pressed in search.html's header, where the Clipboard monitor
+// switch is.
+bridge.onKey((key) => {
+  if (key !== "Escape") return clear();
+  input.focus();
+  input.select();
+});
 
 // Text pasted anywhere but a text field or the popup is searched at once.
 window.addEventListener("paste", (event) => {
@@ -176,19 +144,20 @@ function runCustomJavaScript(code) {
 }
 
 try {
-  const connection = await bridge?.ready;
+  const connection = await bridge.ready;
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  bridge.notify("shown");
   // The page opens ready to type into, as Yomitan's focuses its box. It is
   // hidden, and its box cannot take focus, until settings-theme.js has the
   // saved theme, which in search.html's frame waits for the bridge.
   input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
-  if (connection?.customJavaScript) runCustomJavaScript(connection.customJavaScript);
+  if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
-  clipboardSwitch.disabled = false;
-  await showClipboardMonitor();
+  // The Clipboard monitor starts.
+  bridge.notify("ready");
 } catch (error) {
   status.textContent = `The search page could not start: ${describeErrorMessage(error)}`;
   recordUserError(window, "search-status", status.textContent, error);

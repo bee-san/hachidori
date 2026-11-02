@@ -5,18 +5,22 @@
 // has no extension APIs. This gives it the part of `chrome` the reader and
 // search.js use, through the page holding the frame (search-shell.js): runtime
 // messages, the stored keys the reader reads, and the events sent to the
-// reader. It loads first, so every later script finds `chrome` in place.
+// reader. It loads first, so every later script finds `chrome` in place. The
+// same channel brings search.js what the Clipboard monitor, whose switch is
+// search.html's, reads.
 // SPDX-License-Identifier: GPL-3.0-or-later
 (function () {
   "use strict";
   // Firefox before 154 loads the frame as an ordinary extension page, with its
-  // own API; Custom JavaScript cannot run there.
-  if (globalThis.chrome?.runtime?.id) return;
-
+  // own API: Custom JavaScript cannot run there, and only the Clipboard monitor
+  // uses the channel.
+  const sandboxed = !globalThis.chrome?.runtime?.id;
   const base = new URL(".", location.href);
   const pending = new Map();
   const messageListeners = new Set();
   const storageListeners = new Set();
+  const clipboardListeners = new Set();
+  const keyListeners = new Set();
   let connection = null;
   let nextId = 0;
   let resolveReady;
@@ -39,6 +43,10 @@
       for (const listener of messageListeners) listener(data.message, data.sender, () => {});
     } else if (data.kind === "changed") {
       for (const listener of storageListeners) listener(data.changes, data.area);
+    } else if (data.kind === "clipboard") {
+      for (const listener of clipboardListeners) listener(data.text);
+    } else if (data.kind === "key") {
+      for (const listener of keyListeners) listener(data.key);
     }
   };
   window.parent.postMessage({ type: "hachidori-search-bridge" }, location.origin, [port2]);
@@ -79,17 +87,24 @@
     sendMessage: (message, callback) => settle(call("send", { message }), callback),
     onMessage: event(messageListeners),
   };
-  globalThis.chrome = {
-    runtime,
-    storage: {
-      local: { get: (keys, callback) => settle(call("get", { keys }), callback) },
-      onChanged: event(storageListeners),
-    },
-  };
+  if (sandboxed) {
+    globalThis.chrome = {
+      runtime,
+      storage: {
+        local: { get: (keys, callback) => settle(call("get", { keys }), callback) },
+        onChanged: event(storageListeners),
+      },
+    };
+  }
   // search.js waits for the connection and keeps its debug log in the
-  // extension's store through it.
+  // extension's store through it. It searches what the Clipboard monitor reads,
+  // takes the page's keys pressed in search.html's header, and tells
+  // search.html when its reader is ready and when text is copied here.
   globalThis.HDSearchBridge = Object.freeze({
     ready,
     debugLogStore: Object.freeze({ write: ops => call("log", { ops }) }),
+    onClipboard: (listener) => { clipboardListeners.add(listener); },
+    onKey: (listener) => { keyListeners.add(listener); },
+    notify: (kind) => { port.postMessage({ kind }); },
   });
 }());

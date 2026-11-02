@@ -15,8 +15,16 @@
     <link rel="stylesheet" href="search.css" />
   </head>
   <!-- search-shell.js adds the search page itself, the sandboxed
-       search-frame.html (#644), over the whole window. -->
+       search-frame.html (#644), over the whole window. The Clipboard monitor
+       switch (#639) lies over the end of its header: Firefox asks for a
+       permission only from the document whose control the user clicked. -->
   <body class="search-shell">
+    <div class="search-header search-shell-header" hidden>
+      <label class="lookup-enable" title="Search Japanese text as soon as you copy it, in any tab or program">
+        <span>Clipboard monitor</span>
+        <input type="checkbox" id="search-clipboard" disabled />
+      </label>
+    </div>
     <script type="module" src="search-shell.js"></script>
   </body>
 </html>

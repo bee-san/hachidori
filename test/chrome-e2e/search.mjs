@@ -187,22 +187,23 @@ describe("search page", () => {
     const opened = await pageState(searchTab);
     const shellScripts = await searchTab.evaluate(() => document.querySelectorAll("script[data-search-reader]").length);
     // The Clipboard monitor (#639) is off: Hachidori holds no clipboardRead
-    // permission, so the offscreen document's paste reads nothing that was copied.
-    const clipboard = await searchTab.evaluate(async () => {
+    // permission, so the offscreen document's paste reads nothing that was
+    // copied. Its switch and its reads are search.html's (#644).
+    const copied = await frame.evaluate(() => {
       const box = document.getElementById("search-input");
       box.value = "食べたかった";
       box.select();
-      const copied = document.execCommand("copy");
+      const done = document.execCommand("copy");
       box.value = "";
-      return {
-        copied,
-        on: document.getElementById("search-clipboard").checked,
-        enabled: !document.getElementById("search-clipboard").disabled,
-        optional: chrome.runtime.getManifest().optional_permissions,
-        granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
-        read: await chrome.runtime.sendMessage({ target: "hachidori-clipboard", type: "hd_clipboard_read" }),
-      };
+      return done;
     });
+    const clipboard = { copied, ...await searchTab.evaluate(async () => ({
+      on: document.getElementById("search-clipboard").checked,
+      enabled: !document.getElementById("search-clipboard").disabled,
+      optional: chrome.runtime.getManifest().optional_permissions,
+      granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
+      read: await chrome.runtime.sendMessage({ target: "hachidori-clipboard", type: "hd_clipboard_read" }),
+    })) };
     check("the search page's Clipboard monitor is off by default and Hachidori reads nothing from the clipboard until it is switched on",
       clipboard.copied && !clipboard.on && clipboard.enabled && JSON.stringify(clipboard.optional) === '["clipboardRead"]'
         && !clipboard.granted && clipboard.read?.ok === true && clipboard.read.text === "",

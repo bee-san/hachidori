@@ -15,6 +15,9 @@
  * whose profile grants optional permissions without showing a prompt; no suite
  * shows the prompt itself.
  *
+ * The switch and the monitor are search.html's; the box, the query and the
+ * reader are in the frame it holds, search-frame.html (#644).
+ *
  * test/run.mjs chrome-e2e runs it after the main scenario; on its own:
  *   node test/chrome-clipboard-monitor.mjs
  * HACHIDORI_SEARCH_SCREENSHOTS=DIR also saves the search page in the default,
@@ -125,15 +128,19 @@ try {
   const search = watch(await browser.newPage(), "search");
   await search.setViewport({ width: 960, height: 760 });
   await search.goto(`chrome-extension://${extensionId}/search.html`, { waitUntil: "domcontentloaded" });
-  await search.waitForFunction(() => !document.getElementById("search-submit").disabled
-    && !document.getElementById("search-clipboard").disabled, { polling: 100, timeout: 30_000 });
-  const popup = await popupReader(search);
-  const page = () => search.evaluate(() => ({
-    switchOn: document.getElementById("search-clipboard").checked,
-    value: document.getElementById("search-input").value,
-    query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
-    focused: document.hasFocus(),
-  }));
+  const frameUrl = `chrome-extension://${extensionId}/search-frame.html`;
+  await search.waitForFrame(frameUrl, { timeout: 30_000 });
+  const frame = search.frames().find(candidate => candidate.url() === frameUrl);
+  await frame.waitForFunction(() => !document.getElementById("search-submit").disabled, { polling: 100, timeout: 30_000 });
+  await search.waitForFunction(() => !document.getElementById("search-clipboard").disabled, { polling: 100, timeout: 30_000 });
+  const popup = await popupReader(search, 0, frameUrl);
+  const page = async () => ({
+    ...await frame.evaluate(() => ({
+      value: document.getElementById("search-input").value,
+      query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
+    })),
+    ...await search.evaluate(() => ({ switchOn: document.getElementById("search-clipboard").checked, focused: document.hasFocus() })),
+  });
   // The texts the page's monitor reads, as its own requests return them.
   await search.evaluate(() => {
     const send = chrome.runtime.sendMessage;
@@ -179,8 +186,8 @@ try {
 
   // Text copied on the search page itself.
   await search.bringToFront();
-  await search.focus("#search-input");
-  await search.$eval("#search-input", box => { box.value = "漢字"; box.select(); });
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", box => { box.value = "漢字"; box.select(); });
   await forget();
   await search.keyboard.down("Control");
   await search.keyboard.press("KeyC", { commands: ["Copy"] });
@@ -193,8 +200,8 @@ try {
   assert.ok((await popup.state()).plain.includes("読む"));
   // And text cut there, which the clipboard did not hold before.
   await search.bringToFront();
-  await search.focus("#search-input");
-  await search.$eval("#search-input", box => { box.value = "聞く"; box.select(); });
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", box => { box.value = "聞く"; box.select(); });
   await forget();
   await search.keyboard.down("Control");
   await search.keyboard.press("KeyX", { commands: ["Cut"] });
@@ -208,7 +215,7 @@ try {
   // A Note being written holds the monitor off, and it searches again once the Note is closed.
   await search.bringToFront();
   assert.equal(await popup.click(".gsm-hoshidicts-note-button"), true, "the Note button opens the form");
-  const noteFocused = await popupRoot(search).waitFor(shadow => {
+  const noteFocused = await popupRoot(search, frameUrl).waitFor(shadow => {
     const field = shadow.querySelector('.gsm-hoshidicts-note-form:not([hidden]) [name="definition"]');
     field?.focus();
     return Boolean(field) && shadow.activeElement === field;
@@ -247,7 +254,7 @@ try {
   const long = "昨日は友達と一緒に駅前の喫茶店へ行った。".repeat(15_000);
   assert.equal(long.length, 300_000);
   await copyInWeb(long);
-  await search.waitForFunction(start => document.getElementById("search-query").textContent === start,
+  await frame.waitForFunction(start => document.getElementById("search-query").textContent === start,
     { polling: 100, timeout: 15_000 }, long.slice(0, 1000));
   const longRead = await search.evaluate(async () => {
     const start = performance.now();
@@ -259,7 +266,7 @@ try {
   assert.equal((await page()).value.length, 1000, "the box holds the first 1,000 characters");
   // A short copy again, for the screenshots.
   await copyInWeb("漢字");
-  await search.waitForFunction(() => document.getElementById("search-query").textContent === "漢字",
+  await frame.waitForFunction(() => document.getElementById("search-query").textContent === "漢字",
     { polling: 100, timeout: 15_000 });
 
   if (SCREENSHOTS) {
@@ -276,8 +283,10 @@ try {
       .getAnimations().map(animation => animation.finished.catch(() => {}))));
     for (const theme of ["girlypop", "high-contrast", "default"]) {
       await writeTheme(theme);
-      await search.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value,
-        { polling: 100, timeout: 10_000 }, theme);
+      for (const target of [search, frame]) {
+        await target.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value,
+          { polling: 100, timeout: 10_000 }, theme);
+      }
       await switchSettled();
       await search.screenshot({ path: resolve(SCREENSHOTS, `search-clipboard-monitor-${theme}.png`) });
     }

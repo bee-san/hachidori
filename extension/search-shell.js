@@ -8,13 +8,17 @@
 // reader, the script can use too, where on a web page it has no extension
 // messaging at all. The frame therefore gets what the reader needs and no
 // more: the requests a content script's reader sends, the stored keys it
-// reads and the events sent to it.
+// reads and the events sent to it. This page keeps the header, whose
+// Clipboard monitor switch asks for a permission: Firefox grants one only to
+// the document that handles the click.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
 import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import "./reader-options.js";
+import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
+import { applyPageTheme } from "./settings-dom.js";
 
 // The requests the reader sends, by target. test/search-bridge.test.mjs keeps
 // these equal to the ones the content scripts name.
@@ -60,8 +64,14 @@ function readerOptionsWrite(options) {
     && globalThis.HDReaderOptions.KEYBIND_TOGGLE_OPTIONS.includes(entries[0][0]);
 }
 
-// Answers the frame on `port` until the returned function closes it.
-export function serveSearchFrame(api, port, store) {
+function readerRequest({ target, type, options } = {}) {
+  return READER_REQUESTS.get(target)?.has(type) && (type !== "hd_options_write" || readerOptionsWrite(options));
+}
+
+// Answers the frame on `port` until the returned function closes it. `page`
+// hears when the frame shows its themed page, when its reader is ready and
+// when text is copied there.
+export function serveSearchFrame(api, port, store, page) {
   // The ring's keys of the records this frame wrote, the only ones it may update.
   const written = new Set();
   const answer = (id, request) => {
@@ -71,9 +81,8 @@ export function serveSearchFrame(api, port, store) {
   port.onmessage = ({ data }) => {
     if (data?.kind === "send") {
       answer(data.id, () => {
-        const { target, type, options } = data.message ?? {};
-        if (!READER_REQUESTS.get(target)?.has(type) || (type === "hd_options_write" && !readerOptionsWrite(options))) {
-          throw new Error(`The search page cannot send ${type} to ${target}.`);
+        if (!readerRequest(data.message)) {
+          throw new Error(`The search page cannot send ${data.message?.type} to ${data.message?.target}.`);
         }
         return api.runtime.sendMessage(data.message);
       });
@@ -86,6 +95,8 @@ export function serveSearchFrame(api, port, store) {
         for (const key of keys) written.add(key);
         return keys;
       });
+    } else if (["shown", "ready", "copied"].includes(data?.kind)) {
+      page[data.kind]();
     }
   };
   const onMessage = (message, sender) => {
@@ -106,6 +117,32 @@ export function serveSearchFrame(api, port, store) {
   };
 }
 
+// Connects `frame` once, through the port its document offers this page as it
+// parses (search-bridge.js). A sandboxed frame's origin is opaque, so the offer
+// is known by its window; Firefox before 154 does not sandbox it, and there
+// it has this page's origin. Only the frame's own code can navigate it,
+// perhaps to another site, so a later document is never connected: the page
+// starts again instead, through `reload`.
+export function connectSearchFrame({ window, frame, serve, connection, reload }) {
+  let close = null;
+  window.addEventListener("message", (event) => {
+    if (close || event.source !== frame.contentWindow || !["null", window.location.origin].includes(event.origin)
+        || event.data?.type !== "hachidori-search-bridge" || !event.ports?.[0]) return;
+    const [port] = event.ports;
+    close = serve(port);
+    // Focused first, so the frame can focus its box once it is connected.
+    frame.focus();
+    port.postMessage({ kind: "connect", ...connection(event.origin === "null") });
+  });
+  let loads = 0;
+  frame.addEventListener("load", () => {
+    loads += 1;
+    if (loads === 1) return;
+    close?.();
+    reload();
+  });
+}
+
 // The user's script, where it runs on web pages: once the worker has
 // registered it (custom-javascript.js), which Chrome's Allow User Scripts or
 // Firefox's userScripts permission allows.
@@ -118,39 +155,98 @@ async function userScript(api) {
   }
 }
 
+// Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
+// ext/js/display/search-display-controller.js): text with Japanese in it,
+// copied in any tab or program, is searched in the frame, as a paste is, up
+// to Yomitan's 1,000 characters, which is all the offscreen document sends.
+// The switch is the browser's clipboardRead permission, which turning it on
+// asks for and turning it off gives back. The monitor starts once the frame's
+// reader is ready.
+const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
+
+function clipboardMonitor(clipboardSwitch, search) {
+  let ready = false;
+  const monitor = createClipboardMonitor({
+    async read() {
+      const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
+      return reply?.ok === true ? reply.text : null;
+    },
+    change: search,
+  });
+  async function show() {
+    const on = await chrome.permissions.contains(CLIPBOARD_PERMISSION).catch(() => false);
+    clipboardSwitch.checked = on;
+    if (!on || !ready) monitor.stop();
+    else if (!monitor.running) monitor.start();
+  }
+  clipboardSwitch.addEventListener("change", () => {
+    if (!clipboardSwitch.checked) monitor.stop();
+    // The browser asks only for a request made while it handles the click.
+    const asked = clipboardSwitch.checked ? chrome.permissions.request(CLIPBOARD_PERMISSION)
+      : chrome.permissions.remove(CLIPBOARD_PERMISSION);
+    void asked.catch(() => false).then(show);
+  });
+  chrome.permissions.onAdded.addListener(() => { void show(); });
+  chrome.permissions.onRemoved.addListener(() => { void show(); });
+  // Text copied or cut on the page is not searched, as in Yomitan's _onCopy:
+  // once it has reached the clipboard, the monitor starts over from it.
+  const copied = () => {
+    if (!monitor.running) return;
+    monitor.stop();
+    setTimeout(() => { void show(); }, 0);
+  };
+  for (const type of ["copy", "cut"]) window.addEventListener(type, copied);
+  // The switch shows its state while the reader loads.
+  void show();
+  return {
+    // The switch appears with the frame's header, as it did when the header held it.
+    shown() { clipboardSwitch.closest("[hidden]")?.removeAttribute("hidden"); },
+    ready() {
+      ready = true;
+      clipboardSwitch.disabled = false;
+      void show();
+    },
+    copied,
+  };
+}
+
 async function start() {
   const store = openDebugLogStore(window.indexedDB);
   captureDebugLog(window, { context: "search", store });
+  const { normaliseOptions } = globalThis.HDReaderOptions;
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
+  });
   const customJavaScript = await userScript(chrome);
   const frame = document.createElement("iframe");
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
-  let close = null;
-  // The frame offers its end of a channel to this page's origin as it parses
-  // (search-bridge.js). Being sandboxed, its own origin is opaque, so it is
-  // known by its window.
-  window.addEventListener("message", (event) => {
-    if (close || event.source !== frame.contentWindow || event.origin !== "null"
-        || event.data?.type !== "hachidori-search-bridge" || !event.ports[0]) return;
-    const [port] = event.ports;
-    close = serveSearchFrame(chrome, port, store);
-    // Focused first, so the frame can focus its box once it is connected.
-    frame.focus();
-    port.postMessage({ kind: "connect", id: chrome.runtime.id, manifest: chrome.runtime.getManifest(), customJavaScript });
-  });
-  // Only the frame's own code can navigate it, perhaps to another site, so
-  // a later document is not connected: the page starts again instead.
-  let loads = 0;
-  frame.addEventListener("load", () => {
-    loads += 1;
-    if (loads === 1) return;
-    close?.();
-    location.reload();
-  });
+  let port = null;
+  const page = clipboardMonitor(document.getElementById("search-clipboard"),
+    (text) => { port?.postMessage({ kind: "clipboard", text }); });
+  connectSearchFrame({ window, frame,
+    serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page); },
+    connection: sandboxed => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest(),
+      customJavaScript: sandboxed ? customJavaScript : "" }),
+    reload: () => location.reload() });
   frame.src = "search-frame.html";
   document.body.append(frame);
-  // The shortcuts bring the page forward with focus in this document.
-  window.addEventListener("focus", () => { frame.focus(); });
+  // The shortcuts bring the page forward with focus in this document, and a
+  // click on the header leaves it there: the box takes it, unless the switch has.
+  window.addEventListener("focus", () => {
+    setTimeout(() => { if (document.activeElement === document.body) frame.focus(); }, 0);
+  });
+  // The page's own keys work from the switch too, as they did when it shared
+  // the page's document (search.js): Escape selects the box's text and Ctrl+U
+  // clears it, rather than showing this page's source.
+  window.addEventListener("keydown", (event) => {
+    const clear = event.ctrlKey && event.key === "u";
+    if (event.isComposing || (event.key !== "Escape" && !clear)) return;
+    if (clear) event.preventDefault();
+    frame.focus();
+    port?.postMessage({ kind: "key", key: event.key });
+  });
+  applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
 }
 
 if (globalThis.document) await start();
