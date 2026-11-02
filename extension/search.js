@@ -139,6 +139,8 @@ for (const type of ["copy", "cut"]) {
     setTimeout(() => { void showClipboardMonitor(); }, 0);
   });
 }
+// The switch shows its state while the reader loads; the monitor starts once it has.
+await showClipboardMonitor();
 
 // Text pasted anywhere but a text field or the popup is searched at once.
 window.addEventListener("paste", (event) => {
@@ -157,8 +159,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
 input.focus();
 try {
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
-  // The switch shows its state while the reader loads; the monitor starts once it has.
-  await showClipboardMonitor();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
   status.textContent = "Type or paste a word above, then press Enter.";
