@@ -43,3 +43,6 @@ answer the permission prompt.
 | `scripts/keyboard-check.mjs <repo> <png>` | with the extension as shipped: Shift+Tab from the box reaches the switch, which shows its focus ring and is named "Clipboard monitor"; Space asks for `clipboardRead`; a refusal leaves it off | `results/keyboard-1.txt` |
 | `scripts/grant-check.mjs <repo>` | with the extension as shipped and `clipboardRead` already in Chrome's runtime-granted set (so the click is granted without a prompt): switching on reads and searches a copy from another tab, switching off removes the permission and stops reading, and switching on again searches again | `results/grant-3.txt` |
 | `scripts/contrast-check.mjs <repo>` | WCAG contrast of the switch's label, off border, off knob, on track and on knob in every palette of Design → Popup theme, beside the same switch in Settings, with transitions disabled | `results/contrast.md` |
+| `scripts/diag-clipboard.mjs <repo>` | one Chrome clipboard read inside the offscreen document by clipboard size (`DIAG_LENGTHS` picks the sizes), timed with the reader of the tree it is given | `results/diag-before-4d4d32d2.txt` (the first reader, which read the text area's value, as Yomitan does), `results/diag-0401d0f1.txt` |
+
+Mutations of the head and the suite that catches each: `results/mutants.md`.

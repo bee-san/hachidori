@@ -1,0 +1,75 @@
+{"length":1000,"offscreenMs":{"production":[2.4,1000],"productionAgain":[1.2,1000]}}
+{"length":10000,"offscreenMs":{"production":[0.9,10000],"productionAgain":[0.6,10000]}}
+{"length":100000,"offscreenMs":{"production":[2.7,100000],"productionAgain":[1.7,100000]}}
+{"length":300000,"offscreenMs":{"production":[5.3,300000],"productionAgain":[4.9,300000]}}
+{"length":1000000,"offscreenMs":{"production":[17.2,1000000],"productionAgain":[17.1,1000000]}}
+{
+  "chrome": "Chrome/152.0.7977.75",
+  "offscreen": [
+    {
+      "length": 1000,
+      "offscreenMs": {
+        "production": [
+          2.4,
+          1000
+        ],
+        "productionAgain": [
+          1.2,
+          1000
+        ]
+      }
+    },
+    {
+      "length": 10000,
+      "offscreenMs": {
+        "production": [
+          0.9,
+          10000
+        ],
+        "productionAgain": [
+          0.6,
+          10000
+        ]
+      }
+    },
+    {
+      "length": 100000,
+      "offscreenMs": {
+        "production": [
+          2.7,
+          100000
+        ],
+        "productionAgain": [
+          1.7,
+          100000
+        ]
+      }
+    },
+    {
+      "length": 300000,
+      "offscreenMs": {
+        "production": [
+          5.3,
+          300000
+        ],
+        "productionAgain": [
+          4.9,
+          300000
+        ]
+      }
+    },
+    {
+      "length": 1000000,
+      "offscreenMs": {
+        "production": [
+          17.2,
+          1000000
+        ],
+        "productionAgain": [
+          17.1,
+          1000000
+        ]
+      }
+    }
+  ]
+}
