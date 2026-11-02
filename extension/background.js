@@ -5,6 +5,7 @@
 import {
   DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
+  CLIPBOARD_TARGET, searchPageSender,
   ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
   serialiseStorage, workerReply, failureReply,
 } from "./background-core.js";
@@ -26,7 +27,7 @@ import {
 import {
   NETFLIX_TARGET, NETFLIX_RECORDER_PORT, NETFLIX_WATCH_URL, adoptNetflixRecorder, handleNetflixRequest,
 } from "./background-netflix.js";
-import { extensionApi as chrome, isExactExtensionSender } from "./browser-api.js";
+import { extensionApi as chrome } from "./browser-api.js";
 import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import "./reader-options.js";
@@ -47,8 +48,7 @@ import {
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyNetflixFlag } from "./netflix.js";
-import { CLIPBOARD_TARGET } from "./search-clipboard.js";
-import { SEARCH_PAGE, openSearchPage } from "./search-window.js";
+import { openSearchPage } from "./search-window.js";
 
 /*
  * Service worker for Hachidori.
@@ -254,7 +254,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // computer's.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CLIPBOARD_TARGET || message.relayed === true) return false;
-  if (message.type !== "hd_clipboard_read" || !isExactExtensionSender(sender, SEARCH_PAGE, chrome)) {
+  if (message.type !== "hd_clipboard_read" || !searchPageSender(sender)) {
     sendResponse(failureReply(message, new Error("Unknown clipboard request.")));
     return false;
   }

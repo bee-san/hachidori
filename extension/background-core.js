@@ -32,6 +32,8 @@ const UPDATE_TARGET = "hachidori-updates";
 const AUDIO_TARGET = "hachidori-audio";
 const SETUP_TARGET = "hachidori-setup";
 const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
+// The search page's clipboard monitor (#639), as search-clipboard.js names it.
+const CLIPBOARD_TARGET = "hachidori-clipboard";
 const BACKUP_LIFECYCLE_PORT = "hachidori-backup-settings";
 
 // Requests the worker answers itself. A second target is what keeps them out of
@@ -307,6 +309,11 @@ function readerPageSender(sender) {
   return startupSender(sender) || extensionPageSender(sender, SEARCH_PAGE);
 }
 
+// Only the search page's clipboard monitor may have the clipboard read (#639).
+function searchPageSender(sender) {
+  return extensionPageSender(sender, SEARCH_PAGE);
+}
+
 function optionsWriteConflict(message, options) {
   return checkedOptionsResult(message, { ok: false, conflict: true,
     error: "Settings changed in another page. Review your changes before saving again.", options });
@@ -372,6 +379,7 @@ export {
   validateOptionsPatch, normaliseExternalUrl, pruneGroupMemberships, WORD_STATUS_OVERRIDES_KEY,
   normaliseWordStatusOverrides, withWordStatusOverride, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
+  CLIPBOARD_TARGET, searchPageSender,
   UPDATE_SETTINGS_KEY, engineSender, ankiSettingsSender, writeLocalState, sleep, ensureOffscreen, relay,
   readDictionaryStorage, normaliseDictionarySelections, assertDictionaryState, assertOrdinaryCustomTransition,
   assertCustomDictionaryCasRequest, dictionaryCommit, optionsRevision, removeLegacyDictionaryRows, startupSender,

@@ -5,7 +5,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // The runtime message target the search page asks the worker, and the worker
-// asks the offscreen document, to read the clipboard with.
+// asks the offscreen document, to read the clipboard with. The worker declares
+// its own in background-core.js, beside its other targets.
 export const CLIPBOARD_TARGET = "hachidori-clipboard";
 
 // Yomitan's interval: the next read starts this long after the last one ended.
