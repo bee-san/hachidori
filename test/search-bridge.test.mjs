@@ -35,11 +35,14 @@ test("the search page forwards every request the reader sends, and the events an
   const read = content.match(/chrome\.storage\.local\.get\(\{([^}]*)\}/u)[1];
   const keys = new Set([...read.matchAll(/(?:\[(\w+)\]|(\w+))\s*:/gu)].map(([, constant, key]) => constant ? named(constant) : key));
   for (const [, key, constant] of content.matchAll(/\bchanges(?:\.(\w+)|\[(\w+)\])/gu)) keys.add(key ?? named(constant));
-  // The frame's own scripts read their keys by name, and send only what the reader does.
+  // The frame's own scripts: the keys they read, by name or reader-options.js
+  // constant, and the changes they adopt; and they send only what the reader does.
   for (const page of ["search.js", "settings-theme.js"]) {
     const source = readFileSync(new URL(page, EXTENSION), "utf8");
-    for (const [, key] of source.matchAll(/storage\.local\.get\("(\w+)"\)/gu)) keys.add(key);
-    for (const [, key] of source.matchAll(/\bchanges\.(\w+)/gu)) keys.add(key);
+    for (const [, read] of source.matchAll(/storage\.local\.get\(([^)]*)\)/gu)) {
+      for (const [, key, constant] of read.matchAll(/"(\w+)"|\b([A-Z][A-Z_]+)\b/gu)) keys.add(key ?? named(constant));
+    }
+    for (const [, key, constant] of source.matchAll(/\bchanges(?:\.(\w+)|\[(\w+)\])/gu)) keys.add(key ?? named(constant));
     assert.deepEqual([...source.matchAll(/["'](hd_[a-z_]+)["']/gu)].filter(([, type]) => !forwarded.includes(type)), [], page);
   }
   assert.ok(keys.has("options") && keys.has("wordStatusOverrides"), [...keys].join());
