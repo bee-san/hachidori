@@ -559,7 +559,9 @@ async function engineInstallation() {
   const engineChrome = makeChrome("backup-profiles-offscreen", bus, storage, alarms);
   const pageChrome = makeChrome("backup-profiles-page", bus, storage, alarms);
   const engineService = await import(`file://${resolve(EXTENSION, "engine-service.js").replace(/\\/gu, "/")}?${tag}`);
-  // The engine's own registry holds Japanese alone; the tests' build has more.
+  // The engine imports the build's registry when it first needs it, which
+  // would replace this realm's; importing it here first keeps the tests' build.
+  await import(`file://${resolve(EXTENSION, "vendor", "languages", "registry.js").replace(/\\/gu, "/")}`);
   globalThis.HDLanguages = BUILD;
   const { default: createHoshidicts } = await import(`file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?${tag}`);
   let engine = null;

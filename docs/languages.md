@@ -296,12 +296,15 @@ classic scripts that set `globalThis.HDLanguages`:
 - the service worker imports `registry.js` statically (an MV3 service worker
   cannot import on demand). The engine worker imports `registry.js`,
   `reader-options.js` and `profile-state.js` with dynamic `import()` the first
-  time a `hd_state_read` reply has profiles or a profile request arrives, and
-  checks single-profile records inline, so a Japanese-only engine start loads
-  no profile code (the bench helper measured 4.5 ms of module loading in every
-  Japanese-only start otherwise). The worker harness strips every import,
-  which is harmless because the worker reads the registry only when records
-  have profiles or a profile is being added;
+  time a `hd_state_read` or `hd_custom_read` reply has profiles, and before it
+  runs a profile request, a request made for a profile or a language (section
+  5.4), an import or a removal (both check every pack's personal dictionary,
+  section 15) or a backup request. It checks single-profile records inline, so
+  a Japanese-only engine start loads no profile code (the bench helper
+  measured 4.5 ms of module loading in every Japanese-only start otherwise).
+  The service worker's harness strips every import, which is harmless because
+  the service worker reads the registry only when records have profiles or a
+  profile is being added;
 - the Design preview (`design-preview.html`) loads `registry.js` with a
   `<script>` tag;
 - `reader-page.js` injects the manifest's content scripts into the startup and

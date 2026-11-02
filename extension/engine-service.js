@@ -1,9 +1,5 @@
 import { actualIndexPolicy, planIndexStorage, residentHashBudgetBytes } from "./dictionary-index-storage.js";
 import { encodeBase64 } from "./base64.js";
-// The language packs' descriptors (docs/languages.md 9.1) and the profile
-// projections; the engine reads them only once the records have profiles.
-import "./vendor/languages/registry.js";
-import "./reader-options.js";
 import { readDebugLog, recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessageOrJson } from "./error-text.js";
 import {
@@ -28,9 +24,6 @@ import {
   personalDictionaryIdentity,
   personalDictionaryLanguage,
 } from "./custom-dictionary.js";
-import {
-  dictionaryStateWithProfiles, dictionaryStateWithoutProfiles, mergeDictionaryView, mergeEngineDictionaries,
-} from "./profile-state.js";
 import { sameJsonValue } from "./json-value.js";
 import {
   boundResponseFailure,
@@ -1090,8 +1083,50 @@ const JAPANESE_PROFILE_ID = "ja";
 let profileRecords = false;
 let recordLanguages = [];
 
+// The profile code (docs/languages.md 5): the packs' descriptors
+// (registry.js), the profile projections (reader-options.js) and the
+// schema-2 merges (profile-state.js). A Japanese-only start uses none of it,
+// so the engine imports it the first time the records it reads have profiles,
+// and before it runs a request that reads it in either shape
+// (readsProfileCode). Every use runs after one of those.
+let profileState = null;
+let profileCode = null;
+
+function loadProfileCode() {
+  profileCode ??= Promise.all([
+    import("./vendor/languages/registry.js"),
+    import("./reader-options.js"),
+    import("./profile-state.js"),
+  ]).then(([, , module]) => {
+    profileState = module;
+  });
+  return profileCode;
+}
+
+// The requests that read the profile code whatever the records' shape: the
+// profile requests, every request made for a profile or a language (section
+// 5.4), an import (every pack's personal title is reserved), a removal (no
+// pack's personal package can be removed) and the backups (backup-state.js
+// reads the registry).
+const PROFILE_CODE_TYPES = new Set(["hd_profile_add", "hd_profile_remove", "hd_import", "hd_remove",
+  "hd_backup_export", "hd_backup_prepare", "hd_backup_auto_prepare", "hd_backup_restore", "hd_api_dictionary_open"]);
+
+function readsProfileCode(type, message) {
+  return PROFILE_CODE_TYPES.has(type) || message.profileId !== undefined || message.language !== undefined;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// reader-options.js's hasDictionaryProfiles, without loading it: schema 2
+// with a profiles object. Any other state has the single-profile shape.
+function hasDictionaryProfiles(state) {
+  return isObject(state) && state.schemaVersion === 2 && isObject(state.profiles);
+}
+
 function engineState(state) {
-  if (!globalThis.HDReaderOptions.hasDictionaryProfiles(state)) return state;
+  if (!hasDictionaryProfiles(state)) return state;
   return { schemaVersion: 1, revision: state.revision, dictionaries: globalThis.HDReaderOptions.allPackages(state),
     groups: [], stored: state };
 }
@@ -1102,7 +1137,7 @@ function publicState(state) {
 
 function validProfileState(state) {
   return Number.isInteger(state?.revision) && state.revision >= 0 && Array.isArray(state.dictionaries)
-    && state.profiles !== null && typeof state.profiles === "object" && !Array.isArray(state.profiles);
+    && isObject(state.profiles);
 }
 
 async function requestDictionaryStorage() {
@@ -1110,10 +1145,11 @@ async function requestDictionaryStorage() {
   if (reply.ok !== true) {
     throw new Error(reply.error || "the service worker could not read dictionary state");
   }
-  if (reply.state !== null && globalThis.HDReaderOptions.hasDictionaryProfiles(reply.state)) {
+  if (hasDictionaryProfiles(reply.state)) {
     if (!validProfileState(reply.state) || !Array.isArray(reply.languages)) {
       throw new Error("the service worker returned invalid dictionary state");
     }
+    await loadProfileCode();
     profileRecords = true;
     recordLanguages = reply.languages.filter(code => typeof code === "string");
     // This engine's debug log redacts the records' languages too (docs/languages.md 8.5).
@@ -1151,8 +1187,9 @@ async function readCustomStorage(language = null) {
   if (reply.ok !== true) {
     throw new Error(reply.error || "the service worker could not read the custom dictionary");
   }
-  if (reply.state !== null && globalThis.HDReaderOptions.hasDictionaryProfiles(reply.state)) {
+  if (hasDictionaryProfiles(reply.state)) {
     if (!validProfileState(reply.state)) throw new Error("the service worker returned invalid custom dictionary state");
+    await loadProfileCode();
     profileRecords = true;
     return { document: normaliseCustomDictionaryDocument(reply.document), state: engineState(reply.state) };
   }
@@ -1221,7 +1258,7 @@ function withPublicState(reply) {
 async function commitProfileCustomStorage(snapshot, source, semanticRevision, dictionaries, custom) {
   const document = expectedCustomDocument(snapshot.document, source, semanticRevision);
   const { stored } = snapshot.state;
-  const next = dictionaries === undefined ? null : mergeEngineDictionaries(stored, dictionaries);
+  const next = dictionaries === undefined ? null : profileState.mergeEngineDictionaries(stored, dictionaries);
   const changesState = next !== null
     && !(sameJsonValue(next.dictionaries, stored.dictionaries) && sameJsonValue(next.profiles, stored.profiles));
   const language = custom.language ?? JAPANESE_PROFILE_ID;
@@ -1370,8 +1407,8 @@ async function commitProfileDictionaryState(baseRevision, next) {
 // package joins.
 async function commitDictionaryState(baseRevision, dictionaries, context = null) {
   if (context?.stored) {
-    return commitProfileDictionaryState(baseRevision,
-      mergeEngineDictionaries(context.stored, dictionaries, { profileId: context.profileId ?? JAPANESE_PROFILE_ID }));
+    return commitProfileDictionaryState(baseRevision, profileState.mergeEngineDictionaries(context.stored, dictionaries,
+      { profileId: context.profileId ?? JAPANESE_PROFILE_ID }));
   }
   try {
     return await ask("hd_state_cas", { baseRevision, dictionaries });
@@ -2030,8 +2067,8 @@ async function applyProfileState(message) {
       ? profileRequestError(profileMessages().noJapaneseProfile, "no-japanese-profile")
       : profileRequestError(profileMessages().profileRemoved, "profile-missing");
   }
-  const next = mergeDictionaryView(stored, profileId, { dictionaries: message.dictionaries, groups: message.groups },
-    { legacy: message.profileId === undefined });
+  const next = profileState.mergeDictionaryView(stored, profileId,
+    { dictionaries: message.dictionaries, groups: message.groups }, { legacy: message.profileId === undefined });
   const union = globalThis.HDReaderOptions.allPackages(next);
   let restorationAttempted = false;
   try {
@@ -2092,10 +2129,10 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
   const committed = publicState(snapshot.state);
   const expected = { ...next, revision: baseRevision + 1 };
   const matches = committed?.revision === baseRevision + 1
-    && (globalThis.HDReaderOptions.hasDictionaryProfiles(committed)
+    && (hasDictionaryProfiles(committed)
       ? sameJsonValue(committed.dictionaries, expected.dictionaries) && sameJsonValue(committed.profiles, expected.profiles)
         && wantsLanguages(recordLanguages)
-      : sameJsonValue(committed, dictionaryStateWithoutProfiles(expected)))
+      : sameJsonValue(committed, profileState.dictionaryStateWithoutProfiles(expected)))
     && (erased === null || (document.text === "" && document.revision === erased.documentRevision + 1));
   if (matches) {
     return { ok: true, state: committed, converted: !profileRecords, ...(profileRecords ? { languages: recordLanguages } : {}) };
@@ -2123,7 +2160,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const stored = snapshot.state?.stored ?? dictionaryStateWithProfiles(snapshot.state);
+    const stored = snapshot.state?.stored ?? profileState.dictionaryStateWithProfiles(snapshot.state);
     const personal = personalDictionaryIdentity(language);
     const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
       ? [{ id: personal.id, enabled: true }] : [];
@@ -4617,9 +4654,12 @@ export async function handleEngineMessage(message) {
       }
     }
     const handler = HANDLERS[type];
-    const run = UNQUEUED.has(type)
-      ? Promise.resolve().then(() => handler(message))
-      : serialise(() => handler(message));
+    // The import runs in the request's own turn, so the queue keeps the
+    // order requests arrive in.
+    const job = readsProfileCode(type, message)
+      ? () => loadProfileCode().then(() => handler(message))
+      : () => handler(message);
+    const run = UNQUEUED.has(type) ? Promise.resolve().then(job) : serialise(job);
     const result = await run;
     const { ok = true, error = null, nativeJsonLength = 0, ...payload } = result ?? {};
     const reply = { type: `${type}_result`, requestId, ok, error, generation, ...payload };
