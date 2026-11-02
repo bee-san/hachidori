@@ -119,6 +119,8 @@ try {
     // pinned add-on (or HACHIDORI_ANKI_ADDON / HACHIDORI_RELAY_SERVER).
     await run("chrome-languages-backup", ["test/chrome-languages/backup.mjs"]);
     await run("chrome-languages-sharing", ["test/chrome-languages/sharing.mjs"]);
+    // An Arabic note through a fake AnkiConnect, in left-to-right and right-to-left card templates.
+    await run("chrome-languages-anki", ["test/chrome-languages/anki.mjs"]);
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
     // The released backup is also restored in the Firefox build.

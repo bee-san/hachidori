@@ -4,12 +4,9 @@
  * one dictionary imported per language; hovers on inflected words on pages
  * with spaces, CJK and right-to-left text; switching from the toolbar, by
  * the shortcut and automatically by `lang`; one profile edited in Settings
- * while another is active; settings hidden per profile; an Arabic note added
- * through a fake AnkiConnect, from a monolingual Arabic and an Arabic-English
- * dictionary, whose fields draw every list number inside the field and every
- * paragraph in its own order in a left-to-right and a right-to-left card
- * template. It saves screenshots of the picker, the switcher, one lookup per
- * script and the two cards under test/tmp/languages/.
+ * while another is active; settings hidden per profile. It saves screenshots
+ * of the picker, the switcher and one lookup per script under
+ * test/tmp/languages/.
  *
  * The extension under test is a copy whose language registry holds the
  * Japanese pack and the English and Arabic fixture packs of
@@ -28,7 +25,6 @@ import { fileURLToPath } from "node:url";
 import { languageFiles } from "../scripts/sync-languages.mjs";
 import { ARABIC, ENGLISH, buildLanguageFixtureZip } from "./make-language-fixtures.mjs";
 import { buildFixtureZip } from "./make-fixture.mjs";
-import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { hoverForPopup, popupReader } from "./chrome-e2e/popup-reader.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,9 +53,6 @@ const PLANNED = [
   "the popup names a profile in effect that is not the active one",
   "Settings edits English while Japanese is active, and only English changes",
   "pitch accent, the clicked-kanji dictionary and Anki's note-type setup hide for English and show for Japanese",
-  "an Arabic note is added through the fake AnkiConnect with its glossary written by section 12's rules",
-  "the Arabic note in a left-to-right card template draws every list number inside the field and every paragraph in its own order",
-  "the Arabic note in a right-to-left card template draws every list number inside the field and every paragraph in its own order",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -119,54 +112,7 @@ async function prepareExtension() {
   writeFileSync(archives.ja, buildFixtureZip());
   writeFileSync(archives.en, buildLanguageFixtureZip(ENGLISH));
   writeFileSync(archives.ar, buildLanguageFixtureZip(ARABIC));
-  for (const fixture of ANKI_DICTIONARIES) {
-    archives[fixture.title] = join(FILES, `${fixture.title}.zip`);
-    writeFileSync(archives[fixture.title], buildLanguageFixtureZip(fixture));
-  }
   return archives;
-}
-
-// The Anki cases' dictionaries for كتاب (docs/languages.md 18): a monolingual
-// Arabic entry with a numbered list and a Latin etymology, and an
-// Arabic-English entry with an Arabic example and a list of both directions.
-// Every paragraph ends with a period, which shows its order on its line.
-const sc = content => ({ type: "structured-content", content });
-const ANKI_DICTIONARIES = [
-  { title: "hachidori-arabic-monolingual", sourceLanguage: "ar", targetLanguage: "ar", terms: [
-    ["\u0643\u062A\u0627\u0628", "", "", "n", 0, [sc([
-      { tag: "ol", content: [{ tag: "li", content: "صحائف مجموعة مكتوبة." }, { tag: "li", content: "الرسالة المكتوبة إلى شخص." }] },
-      { tag: "div", content: "From Aramaic ktāḇā (writing)." }])], 1, ""]] },
-  { title: "hachidori-arabic-english-examples", sourceLanguage: "ar", targetLanguage: "en", terms: [
-    ["\u0643\u062A\u0627\u0628", "", "", "n", 0, [sc([
-      { tag: "div", content: "a book; a written work." },
-      { tag: "div", data: { content: "example-sentence" }, content: [
-        { tag: "div", content: "قرأتُ الكتابَ كلَّه في ليلةٍ واحدةٍ." }, { tag: "div", content: "I read the whole book in one night." }] },
-      { tag: "ul", content: [{ tag: "li", content: "كتب مقدسة." }, { tag: "li", content: "holy books." }] }])], 1, ""]] },
-];
-
-// A fake AnkiConnect with one note type, Basic, whose notes the cases read.
-const ankiNotes = [];
-function serveAnki() {
-  const server = createServer(async (request, response) => {
-    let body = "";
-    for await (const chunk of request) body += chunk;
-    const reply = await answerAnkiConnect(JSON.parse(body), (action, params) => {
-      if (action === "version") return 6;
-      if (action === "deckNames") return ["Default"];
-      if (action === "modelNames") return ["Basic"];
-      if (action === "modelNamesAndIds") return { Basic: 1 };
-      if (action === "modelFieldNames") return ["Front", "Back", "Sentence"];
-      if (["findNotes", "findCards"].includes(action)) return [];
-      if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
-      if (action === "addNote") { ankiNotes.push(params.note); return ankiNotes.length; }
-      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
-        fields: Object.fromEntries(Object.entries(ankiNotes[noteId - 1].fields).map(([field, value]) => [field, { value }])) }));
-      throw new Error(`Unexpected Anki action: ${action}`);
-    });
-    response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify(reply));
-  });
-  return new Promise(resolveServer => server.listen(0, "127.0.0.1", () => resolveServer(server)));
 }
 
 const PAGES = {
@@ -179,12 +125,6 @@ const PAGES = {
   "/mixed.html": `<!doctype html><html><head><meta charset="utf-8"><title>Mixed</title></head>
     <body style="font: 32px sans-serif; padding: 40px">
     <p id="japanese" lang="ja">食べたかった</p><p id="english" lang="en-GB">She was running late.</p></body></html>`,
-  // Two cards with the styling of Anki's Basic note type: a left-to-right card
-  // template and a right-to-left one, {{Front}}<hr id=answer>{{Back}} and the sentence.
-  "/cards.html": `<!doctype html><html><head><meta charset="utf-8"><title>Cards</title><style>
-    body { margin: 0; display: flex; gap: 40px; padding: 20px; }
-    .card { font-family: arial; font-size: 20px; text-align: center; color: black; background-color: white; width: 560px; }
-    </style></head><body><div class="card" id="card-ltr"></div><div class="card" id="card-rtl"><div dir="rtl"></div></div></body></html>`,
 };
 
 function serve() {
@@ -229,7 +169,6 @@ async function characterPoint(page, selector, index) {
 const archives = await prepareExtension();
 const server = await serve();
 const origin = `http://127.0.0.1:${server.address().port}`;
-const ankiServer = await serveAnki();
 const browser = await puppeteer.launch({ executablePath: CHROME, enableExtensions: true, userDataDir: PROFILE, headless: true,
   protocolTimeout: 60_000,
   args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`, "--disable-gpu",
@@ -536,130 +475,9 @@ try {
       && !japanese.pitch && !japanese.kanji && !japanese.anki && japanese.japaneseOnly === "Japanese text only",
     JSON.stringify({ english, japanese }));
   });
-  await step(PLANNED[17], async () => {
-    // Both dictionaries join the Arabic profile, beside its first one.
-    await settings.select("#settings-language-select", "ar");
-    await until(async () => (await editedId()) === "ar");
-    await settings.evaluate(() => { location.hash = "#add-dictionaries"; });
-    for (const fixture of ANKI_DICTIONARIES) await importInto(archives[fixture.title], fixture.title);
-    // The Arabic profile's first Template adds Basic notes; the connection is every language's.
-    const stored = await storage(["options"]);
-    const anki = await messenger.evaluate(url => {
-      const template = value => ({ value, overwriteMode: "coalesce" });
-      return globalThis.HDReaderOptions.normaliseAnki({ url, apiKey: "", templates: [{
-        ...globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE, id: "arabic-words", name: "Arabic words", model: "Basic",
-        deck: "Default", captureScreenshot: false,
-        fieldTemplates: { Front: template("{expression}"), Back: template("{glossary}"), Sentence: template("{sentence}") } }] });
-    }, `http://127.0.0.1:${ankiServer.address().port}`);
-    const written = await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision,
-      profileId: "ar", options: { anki } });
-    if (!written.ok) throw new Error(written.error);
-    await chooseInToolbar("ar");
-    const state = await hoverAt("/arabic.html", "#sample", 3, current => current.plain.includes("a written work"));
-    const ready = await until(async () => (await popup.anki())?.controls[0]?.state === "ready", { timeout: 30_000 });
-    if (!ready) throw new Error(`the Anki button never became ready: ${JSON.stringify(await popup.anki())}`);
-    await popup.click(".gsm-hoshidicts-mine-button");
-    const added = await until(async () => (await popup.anki())?.controls[0]?.state === "success" && ankiNotes.length === 1,
-      { timeout: 30_000 });
-    const fields = ankiNotes[0]?.fields ?? {};
-    const shape = await reading.evaluate(html => {
-      const holder = document.createElement("div");
-      holder.innerHTML = html;
-      const root = holder.querySelector(".yomitan-glossary");
-      return { dir: root?.getAttribute("dir"), align: root?.style.textAlign, padding: root?.querySelector(":scope > ol")?.style.paddingInline,
-        items: [...(root?.querySelectorAll(":scope > ol > li") ?? [])].map(item => [item.dataset.dictionary, item.getAttribute("dir")]),
-        footer: root?.querySelector(".yomitan-glossary-details")?.getAttribute("dir") };
-    }, fields.Back ?? "");
-    check(PLANNED[17], Boolean(state) && added && fields.Front === "\u0643\u062A\u0627\u0628" && shape.dir === "rtl"
-      && shape.align === "start" && shape.padding === "40px" && shape.footer === "ltr"
-      && JSON.stringify(shape.items) === JSON.stringify([[ARABIC.title, "ltr"], ["hachidori-arabic-monolingual", "rtl"],
-        ["hachidori-arabic-english-examples", "ltr"]])
-      && /^<span dir="auto">.*<b>.+<\/b>.*<\/span>$/u.test(fields.Sentence ?? ""),
-    JSON.stringify({ popup: state?.plain, added, shape, fields }));
-  });
-
-  // Every list number inside the field (each ::marker box inside its card) and
-  // every paragraph in its own order (its final period at the end its own
-  // letters read from), for one card.
-  const measureCard = async (cdp, id) => {
-    const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
-    const markers = [];
-    const walk = (node, inside) => {
-      const attributes = node.attributes ?? [];
-      const named = attributes.findIndex((value, index) => index % 2 === 0 && value === "id");
-      const here = inside || (named >= 0 && attributes[named + 1] === id);
-      if (here) for (const pseudo of node.pseudoElements ?? []) if (pseudo.pseudoType === "marker") markers.push(pseudo.nodeId);
-      for (const child of node.children ?? []) walk(child, here);
-    };
-    walk(root, false);
-    const boxes = [];
-    for (const nodeId of markers) {
-      const quad = (await cdp.send("DOM.getBoxModel", { nodeId })).model.border;
-      boxes.push({ left: Math.min(quad[0], quad[6]), right: Math.max(quad[2], quad[4]) });
-    }
-    return reading.evaluate((cardId, markerBoxes) => {
-      const card = document.getElementById(cardId).getBoundingClientRect();
-      const visible = rects => [...rects].filter(item => item.width > 0 && item.height > 0);
-      const range = (node, start, end) => {
-        const value = document.createRange();
-        value.setStart(node, start);
-        value.setEnd(node, end);
-        return value;
-      };
-      const paragraphs = [];
-      const walker = document.createTreeWalker(document.getElementById(cardId), NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const text = node.data.trimEnd();
-        const letters = text.match(/\p{L}/gu)?.length ?? 0;
-        if (!text.endsWith(".") || letters === 0) continue;
-        const own = (text.match(/\p{Script=Arabic}/gu)?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
-        const period = visible(range(node, text.length - 1, text.length).getClientRects()).at(-1);
-        let block = node.parentElement;
-        while (getComputedStyle(block).display.startsWith("inline")) block = block.parentElement;
-        const line = [];
-        const blockWalker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-        for (let other = blockWalker.nextNode(); other; other = blockWalker.nextNode()) {
-          for (const item of visible(range(other, 0, other.data.length).getClientRects())) {
-            if (Math.abs(item.top - period.top) < 2 && /\S/u.test(other.data)) line.push(item);
-          }
-        }
-        const left = Math.min(...line.map(item => item.left)), right = Math.max(...line.map(item => item.right));
-        paragraphs.push({ text, own, ok: own === "rtl" ? period.left <= left + 1 : period.right >= right - 1 });
-      }
-      const outside = markerBoxes.filter(box => box.left < card.left - 0.5 || box.right > card.right + 0.5);
-      return { markers: markerBoxes.length, outside, card: { left: card.left, right: card.right },
-        paragraphs, wrong: paragraphs.filter(paragraph => !paragraph.ok).map(paragraph => paragraph.text) };
-    }, id, boxes);
-  };
-
-  await step(PLANNED[18], async () => {
-    const fields = ankiNotes[0]?.fields;
-    if (!fields) throw new Error("no Arabic note was added");
-    await reading.setViewport({ width: 1280, height: 1100 });
-    await reading.bringToFront();
-    await reading.goto(`${origin}/cards.html`, { waitUntil: "load" });
-    await reading.evaluate(note => {
-      const card = `${note.Front}<hr id=answer>${note.Back}<div>${note.Sentence}</div>`;
-      document.getElementById("card-ltr").innerHTML = card;
-      document.querySelector("#card-rtl > div").innerHTML = card;
-      // Lay the cards out, which creates the ::marker boxes DOM.getDocument reports.
-      document.body.getBoundingClientRect();
-    }, fields);
-    const cdp = await reading.createCDPSession();
-    await cdp.send("DOM.enable");
-    const ltr = await measureCard(cdp, "card-ltr");
-    const rtl = await measureCard(cdp, "card-rtl");
-    await screenshot(reading, "anki-note-ltr-card", "#card-ltr");
-    await screenshot(reading, "anki-note-rtl-card", "#card-rtl");
-    // Seven numbers and bullets, nine paragraphs: none may be missed.
-    const passes = card => card.markers === 7 && card.outside.length === 0 && card.paragraphs.length === 9 && card.wrong.length === 0;
-    check(PLANNED[18], passes(ltr), JSON.stringify(ltr));
-    check(PLANNED[19], passes(rtl), JSON.stringify(rtl));
-  });
 } finally {
   await browser.close().catch(() => {});
   server.close();
-  ankiServer.close();
   rmSync(scratch, { recursive: true, force: true });
 }
 
