@@ -80,6 +80,8 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   port2.postMessage({ kind: "send", id: 4, message: { target: "hachidori-page-zoom", type: "hd_page_zoom" } });
   port2.postMessage({ kind: "get", id: 5, keys: { options: null, dictionaryState: null, ankiIndex: null } });
   port2.postMessage({ kind: "get", id: 6, keys: ["lookupStats", "sharing"] });
+  port2.postMessage({ kind: "get", id: 13, keys: "options" });
+  port2.postMessage({ kind: "get", id: 14, keys: "sharing" });
   // A record of the frame's own, with a size it claims, then its update and
   // one aimed at a record the frame never wrote.
   port2.postMessage({ kind: "log", id: 7, ops: [{ record: { message: "GET https://a.test/x?q=1", context: "settings",
@@ -102,8 +104,12 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   assert.deepEqual(api.sent.map(message => message.type), ["hd_lookup", "hd_page_zoom", "hd_options_write"]);
   assert.deepEqual(api.sent[2].options, { hoverEnabled: false });
   for (const id of [10, 11, 12]) assert.match(reply(id).error, /cannot send hd_options_write/u);
-  assert.deepEqual(api.read, [{ options: null, dictionaryState: null }, ["lookupStats"]]);
-  assert.deepEqual(reply(5).value, { options: { revision: 3, anki: { url: "u", apiKey: "" } } });
+  // Storage is asked for the reader's keys alone; defaults fill in as Chrome's do.
+  assert.deepEqual(api.read, [["options", "dictionaryState"], ["lookupStats"], ["options"], []]);
+  assert.deepEqual(reply(5).value, { options: { revision: 3, anki: { url: "u", apiKey: "" } }, dictionaryState: null });
+  assert.deepEqual(reply(6).value, {});
+  assert.deepEqual(reply(13).value, { options: { revision: 3, anki: { url: "u", apiKey: "" } } });
+  assert.deepEqual(reply(14).value, {});
   assert.deepEqual(reply(7).value, [1]);
   const [[first], [again, stranger]] = written;
   assert.equal(first.key, undefined);
@@ -134,36 +140,37 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
 
 // search-bridge.js in a sandboxed document: `chrome` is absent until it runs.
 function frameContext() {
-  const parent = {};
-  let onWindowMessage = null;
-  const context = vm.createContext({ URL, Promise, Error, Set, Map, Object, String,
-    location: { href: "chrome-extension://abcdef/search-frame.html" } });
-  context.window = { parent, addEventListener: (type, listener) => { if (type === "message") onWindowMessage = listener; } };
+  const offers = [];
+  const context = vm.createContext({ URL, Promise, Error, Set, Map, Object, String, MessageChannel,
+    location: { href: "chrome-extension://abcdef/search-frame.html", origin: "chrome-extension://abcdef" } });
+  context.window = { parent: { postMessage: (data, origin, transfer) => offers.push({ data, origin, transfer }) } };
   vm.runInContext(readFileSync(new URL("search-bridge.js", EXTENSION), "utf8"), context);
-  return { context, parent, deliver: event => onWindowMessage(event) };
+  return { context, offers };
 }
 
-test("the frame's chrome waits for search.html's one port and behaves as Chrome's callbacks do", async () => {
-  const { context, parent, deliver } = frameContext();
+test("the frame offers search.html one port, to the extension's origin, and its chrome behaves as Chrome's callbacks do", async () => {
+  const { context, offers } = frameContext();
   const chrome = context.chrome;
+  // One port, to the extension's own origin, never to any window ("*").
+  assert.deepEqual(offers.map(({ data, origin, transfer }) => [data.type, origin, transfer.length]),
+    [["hachidori-search-bridge", "chrome-extension://abcdef", 1]]);
   assert.equal(chrome.runtime.getURL("/render/reader.css"), "chrome-extension://abcdef/render/reader.css");
   assert.equal(chrome.runtime.id, undefined);
   const early = chrome.storage.local.get("options");
 
-  const stranger = new MessageChannel();
-  deliver({ source: {}, data: { type: "hachidori-search-bridge", id: "evil" }, ports: [stranger.port2] });
-  const { port1, port2 } = new MessageChannel();
+  const [port] = offers[0].transfer;
   const requests = [];
-  port1.onmessage = ({ data }) => {
+  port.onmessage = ({ data }) => {
     requests.push(data);
-    if (data.kind === "get") port1.postMessage({ kind: "reply", id: data.id, value: { options: { revision: 1 } } });
-    if (data.kind === "send" && data.message.type === "hd_lookup") port1.postMessage({ kind: "reply", id: data.id, value: { ok: true } });
-    if (data.kind === "send" && data.message.type === "hd_kanji") port1.postMessage({ kind: "reply", id: data.id, error: "Extension context invalidated." });
+    if (data.kind === "get") port.postMessage({ kind: "reply", id: data.id, value: { options: { revision: 1 } } });
+    if (data.kind === "send" && data.message.type === "hd_lookup") port.postMessage({ kind: "reply", id: data.id, value: { ok: true } });
+    if (data.kind === "send" && data.message.type === "hd_kanji") port.postMessage({ kind: "reply", id: data.id, error: "Extension context invalidated." });
   };
-  deliver({ source: parent, data: { type: "hachidori-search-bridge", id: "hachidori", manifest: { version: "1" } }, ports: [port2] });
-  const later = new MessageChannel();
-  deliver({ source: parent, data: { type: "hachidori-search-bridge", id: "second" }, ports: [later.port2] });
-  assert.deepEqual(await context.HDSearchBridge.ready.then(connection => connection.id), "hachidori");
+  port.postMessage({ kind: "connect", id: "hachidori", manifest: { version: "1" }, customJavaScript: "code" });
+  // A second connect changes nothing.
+  port.postMessage({ kind: "connect", id: "second", manifest: { version: "2" } });
+  assert.equal(await context.HDSearchBridge.ready.then(connection => connection.id), "hachidori");
+  await settle();
   assert.equal(chrome.runtime.id, "hachidori");
   assert.deepEqual(chrome.runtime.getManifest(), { version: "1" });
   assert.deepEqual(await early, { options: { revision: 1 } });
@@ -182,11 +189,11 @@ test("the frame's chrome waits for search.html's one port and behaves as Chrome'
   const messages = [], changes = [];
   chrome.runtime.onMessage.addListener(message => { messages.push(message.type); });
   chrome.storage.onChanged.addListener((changed, area) => { changes.push([Object.keys(changed), area]); });
-  port1.postMessage({ kind: "message", message: { type: "hd_reader_command" }, sender: { id: "hachidori" } });
-  port1.postMessage({ kind: "changed", changes: { options: {} }, area: "local" });
+  port.postMessage({ kind: "message", message: { type: "hd_reader_command" }, sender: { id: "hachidori" } });
+  port.postMessage({ kind: "changed", changes: { options: {} }, area: "local" });
   await settle();
   assert.deepEqual(messages, ["hd_reader_command"]);
   assert.deepEqual(JSON.parse(JSON.stringify(changes)), [[["options"], "local"]]);
   assert.ok(requests.every(data => ["get", "send"].includes(data.kind)));
-  for (const port of [port1, stranger.port1, later.port1]) port.close();
+  port.close();
 });

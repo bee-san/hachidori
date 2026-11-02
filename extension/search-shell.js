@@ -2,8 +2,8 @@
 // and Firefox run no user script in an extension page, so the search box, its
 // results and the reader live in a sandboxed frame, search-frame.html, where
 // Design → Custom JavaScript runs as it does on a web page. The frame has no
-// extension APIs: this page answers for it over one MessagePort, of which
-// search-bridge.js is the other end. The user's script shares the frame's
+// extension APIs: this page answers for it over one MessagePort, which
+// search-bridge.js offers it. The user's script shares the frame's
 // document and globals with the reader, so whatever this page serves the
 // reader, the script can use too, where on a web page it has no extension
 // messaging at all. The frame therefore gets what the reader needs and no
@@ -36,10 +36,17 @@ export const READER_EVENTS = new Set(["hachidori-reader", "hachidori-audio-conte
 export const readerKey = key => ["options", "dictionaryState", "lookupStats", "wordStatusOverrides"].includes(key)
   || key.startsWith("lookupStats:");
 
-function readerKeys(keys) {
-  if (typeof keys === "string") return readerKey(keys) ? keys : [];
-  if (Array.isArray(keys)) return keys.filter(key => typeof key === "string" && readerKey(key));
-  return Object.fromEntries(Object.entries(keys ?? {}).filter(([key]) => readerKey(key)));
+// What storage.local.get answers for `keys` (a key, a list or an object of
+// defaults), restricted to the reader's keys: Chrome's callers may ask in
+// any of those shapes.
+async function readerGet(api, keys) {
+  let defaults = keys ?? {};
+  if (typeof keys === "string") defaults = { [keys]: undefined };
+  else if (Array.isArray(keys)) defaults = Object.fromEntries(keys.map(key => [key, undefined]));
+  const wanted = Object.keys(defaults).filter(readerKey);
+  const stored = await api.storage.local.get(wanted);
+  return Object.fromEntries(wanted.map(key => [key, readerValue(key, Object.hasOwn(stored, key) ? stored[key] : defaults[key])])
+    .filter(([, value]) => value !== undefined));
 }
 
 // The reader never uses the AnkiConnect key.
@@ -71,8 +78,7 @@ export function serveSearchFrame(api, port, store) {
         return api.runtime.sendMessage(data.message);
       });
     } else if (data?.kind === "get") {
-      answer(data.id, async () => Object.fromEntries(Object.entries(await api.storage.local.get(readerKeys(data.keys)))
-        .map(([key, value]) => [key, readerValue(key, value)])));
+      answer(data.id, () => readerGet(api, data.keys));
     } else if (data?.kind === "log") {
       answer(data.id, async () => {
         const keys = await store.write(data.ops.map(({ key, record }) => ({ key: written.has(key) ? key : undefined,
@@ -120,24 +126,26 @@ async function start() {
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
   let close = null;
-  frame.addEventListener("load", () => {
-    // Only the frame's own code can navigate it, perhaps to another site, so
-    // a later document gets no port: the page starts again instead.
-    if (close) {
-      close();
-      location.reload();
-      return;
-    }
+  // The frame offers its end of a channel to this page's origin as it parses
+  // (search-bridge.js). Being sandboxed, its own origin is opaque, so it is
+  // known by its window.
+  window.addEventListener("message", (event) => {
+    if (close || event.source !== frame.contentWindow || event.origin !== "null"
+        || event.data?.type !== "hachidori-search-bridge" || !event.ports[0]) return;
+    const [port] = event.ports;
+    close = serveSearchFrame(chrome, port, store);
     // Focused first, so the frame can focus its box once it is connected.
     frame.focus();
-    // Firefox before 154 ignores the sandbox, and the frame is then an
-    // ordinary extension page with the extension's API of its own.
-    if (frame.contentDocument) return;
-    const channel = new MessageChannel();
-    close = serveSearchFrame(chrome, channel.port1, store);
-    // A sandboxed frame's origin is opaque, so no target origin can name it.
-    frame.contentWindow.postMessage({ type: "hachidori-search-bridge", id: chrome.runtime.id,
-      manifest: chrome.runtime.getManifest(), customJavaScript }, "*", [channel.port2]);
+    port.postMessage({ kind: "connect", id: chrome.runtime.id, manifest: chrome.runtime.getManifest(), customJavaScript });
+  });
+  // Only the frame's own code can navigate it, perhaps to another site, so
+  // a later document is not connected: the page starts again instead.
+  let loads = 0;
+  frame.addEventListener("load", () => {
+    loads += 1;
+    if (loads === 1) return;
+    close?.();
+    location.reload();
   });
   frame.src = "search-frame.html";
   document.body.append(frame);

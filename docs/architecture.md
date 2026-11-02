@@ -1080,8 +1080,9 @@ where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
 reader and reaches the docked result through its open root, as on a web page;
 unlike a user script in its own world, it also shares the reader's JavaScript
 globals. A sandboxed frame has no extension APIs, so `search-shell.js` in
-`search.html` answers for it over one `MessagePort`, whose other end is
-`search-bridge.js`. Whatever the frame is served, the script can use too,
+`search.html` answers for it over one `MessagePort`: `search-bridge.js` makes
+the channel and offers its port to the extension's origin, which the frame's
+location keeps, so only `search.html` can take it. Whatever the frame is served, the script can use too,
 where on a web page it has no extension messaging at all, so the frame gets
 what the reader needs and no more: the requests a content script's reader
 sends, and of option writes only the reader's own, one **Toggle option**

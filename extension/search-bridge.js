@@ -17,31 +17,31 @@
   const pending = new Map();
   const messageListeners = new Set();
   const storageListeners = new Set();
-  let port = null;
   let connection = null;
   let nextId = 0;
   let resolveReady;
   const ready = new Promise((resolve) => { resolveReady = resolve; });
 
-  // The page holding the frame hands over one port, once.
-  window.addEventListener("message", (event) => {
-    if (port || event.source !== window.parent || event.data?.type !== "hachidori-search-bridge" || !event.ports[0]) return;
-    connection = event.data;
-    port = event.ports[0];
-    port.onmessage = ({ data }) => {
-      if (data.kind === "reply") {
-        const call = pending.get(data.id);
-        pending.delete(data.id);
-        if (data.error === undefined) call?.resolve(data.value);
-        else call?.reject(new Error(data.error));
-      } else if (data.kind === "message") {
-        for (const listener of [...messageListeners]) listener(data.message, data.sender, () => {});
-      } else if (data.kind === "changed") {
-        for (const listener of [...storageListeners]) listener(data.changes, data.area);
-      }
-    };
-    resolveReady(connection);
-  });
+  // The frame makes the channel and offers its port to the extension's own
+  // origin, which this sandboxed document's location keeps: only search.html
+  // can take it. search.html connects by sending its first message.
+  const { port1: port, port2 } = new MessageChannel();
+  port.onmessage = ({ data }) => {
+    if (data.kind === "connect") {
+      connection ??= data;
+      resolveReady(connection);
+    } else if (data.kind === "reply") {
+      const call = pending.get(data.id);
+      pending.delete(data.id);
+      if (data.error === undefined) call?.resolve(data.value);
+      else call?.reject(new Error(data.error));
+    } else if (data.kind === "message") {
+      for (const listener of messageListeners) listener(data.message, data.sender, () => {});
+    } else if (data.kind === "changed") {
+      for (const listener of storageListeners) listener(data.changes, data.area);
+    }
+  };
+  window.parent.postMessage({ type: "hachidori-search-bridge" }, location.origin, [port2]);
 
   function call(kind, fields) {
     return ready.then(() => new Promise((resolve, reject) => {
