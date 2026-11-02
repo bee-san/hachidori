@@ -289,6 +289,23 @@ The launch-to-lookup time includes Chrome's start; the worker's record does
 not. Low memory mode's recycle and a memory option change start a worker the
 same way, without the browser launch.
 
+`profile-switch.mjs` imports a Japanese and an English dictionary into their
+own profiles, then switches between them from `toolbar.html` and hovers a word
+of the new language with `hover-popup-probe.js` in the content script. Each
+switch records the click (toolbar clock), when the reading page's content
+script saw `languageSelection` change, input to the first and complete
+popup, the `hd_lookup` round trip and the theme's synchronous render time of
+the first hover, and of `--hovers` more in the same profile. Every hover starts with the popup hidden (Escape), so
+the first hover after a switch compares with the others on equal terms. The
+click-to-popup time also holds the harness's own wait for the change and its
+pointer move; the hover-popup harness's settings apply.
+
+```sh
+HACHIDORI_BENCH_REPO=. node benchmark/profile-switch.mjs /tmp/profile-switch.json \
+  --archive ja=/path/to/jitendex.zip --archive en=/path/to/kty-en-en.zip \
+  [--words en=house,running] --sessions 3 --switches 20 --hovers 3
+```
+
 ## Entry moves on Alt+ArrowDown/ArrowUp (#597)
 
 `entry-keybind.mjs` times Go to next and previous entry in the real extension:
