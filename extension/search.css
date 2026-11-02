@@ -28,6 +28,13 @@ body.search-page {
   font-size: var(--font-large);
   letter-spacing: -0.025em;
 }
+/* The Clipboard monitor switch (#639): Settings' switch, at the header's end. */
+.search-header .lookup-enable {
+  gap: 8px;
+  margin-left: auto;
+  padding: 0;
+  border-top: 0;
+}
 .search-form {
   --search-control-height: 42px;
   display: flex;
