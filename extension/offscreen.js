@@ -15,7 +15,7 @@ import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
 import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure } from "./debug-log.js";
 import { describeError } from "./error-text.js";
-import { CLIPBOARD_TARGET, readClipboardText } from "./search-clipboard.js";
+import { CLIPBOARD_TARGET, clipboardSearchText, readClipboardText } from "./search-clipboard.js";
 
 // Settings → Advanced → Get debug info reads this document's warnings, errors
 // and failed replies, and the engine worker's, from the extension's debug log
@@ -433,12 +433,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // The search page's clipboard monitor (#639): the worker relays its reads here,
-// where the clipboard can be read while no extension page has focus.
+// where the clipboard can be read while no extension page has focus. Only the
+// start the page searches is sent: this document and the worker carry every
+// lookup too, and sending a 1,000,000-character copy through them four times a
+// second held lookups for up to 270 ms.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== CLIPBOARD_TARGET || message.relayed !== true
       || sender.id !== chrome.runtime.id || sender.url !== expectedBackgroundUrl(chrome)) return false;
   readClipboardText({ document, navigator, firefox: isFirefox(chrome) }).then(
-    text => sendResponse({ type: `${message.type}_result`, ok: true, error: null, text }),
+    text => sendResponse({ type: `${message.type}_result`, ok: true, error: null, text: clipboardSearchText(text) }),
     error => sendResponse(failedResponse(message, describeError(error))),
   );
   return true;

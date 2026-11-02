@@ -17,12 +17,15 @@ export const CLIPBOARD_POLL_MS = 250;
 // 100,000 characters held the search page for about 30 seconds in Chrome 152.
 export const CLIPBOARD_SEARCH_LENGTH = 1000;
 
-// The start of `text` that is searched, cut between characters: a character
-// outside the BMP that the cut would split is left out whole.
+// The start of `text` that is searched: after its leading spaces, at most
+// CLIPBOARD_SEARCH_LENGTH characters, cut between characters, so a character
+// outside the BMP that the cut would split is left out whole. The offscreen
+// document sends only this to the search page.
 export function clipboardSearchText(text) {
-  if (text.length <= CLIPBOARD_SEARCH_LENGTH) return text;
-  const split = text.codePointAt(CLIPBOARD_SEARCH_LENGTH - 1) > 0xffff;
-  return text.slice(0, split ? CLIPBOARD_SEARCH_LENGTH - 1 : CLIPBOARD_SEARCH_LENGTH);
+  const start = text.trimStart();
+  if (start.length <= CLIPBOARD_SEARCH_LENGTH) return start;
+  const split = start.codePointAt(CLIPBOARD_SEARCH_LENGTH - 1) > 0xffff;
+  return start.slice(0, split ? CLIPBOARD_SEARCH_LENGTH - 1 : CLIPBOARD_SEARCH_LENGTH);
 }
 
 // Reads the clipboard through `read` until stopped and calls `change` with
@@ -73,7 +76,7 @@ export function createClipboardMonitor({ read, change, interval = CLIPBOARD_POLL
 // of this document, which needs neither focus nor a prompt once Hachidori has
 // the clipboardRead permission, where navigator.clipboard.readText() needs
 // both. The text comes from the paste event, which is cancelled so the text
-// area stays empty: laying out 300,000 pasted characters took 30 seconds.
+// area stays empty: laying out 300,000 pasted characters took 16-34 seconds.
 // Firefox's paste command sometimes fails (Mozilla bug 1603985), so it reads
 // with navigator.clipboard.readText().
 export async function readClipboardText({ document, navigator, firefox }) {
