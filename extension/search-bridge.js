@@ -30,25 +30,24 @@
   // origin, which this sandboxed document's location keeps: only search.html
   // can take it. search.html connects by sending its first message.
   const { port1: port, port2 } = new MessageChannel();
-  port.onmessage = ({ data }) => {
-    if (data.kind === "connect") {
+  const dispatch = (listeners, ...args) => { for (const listener of listeners) listener(...args); };
+  const received = new Map(Object.entries({
+    connect(data) {
       connection ??= data;
       resolveReady(connection);
-    } else if (data.kind === "reply") {
+    },
+    reply(data) {
       const call = pending.get(data.id);
       pending.delete(data.id);
       if (data.error === undefined) call?.resolve(data.value);
       else call?.reject(new Error(data.error));
-    } else if (data.kind === "message") {
-      for (const listener of messageListeners) listener(data.message, data.sender, () => {});
-    } else if (data.kind === "changed") {
-      for (const listener of storageListeners) listener(data.changes, data.area);
-    } else if (data.kind === "clipboard") {
-      for (const listener of clipboardListeners) listener(data.text);
-    } else if (data.kind === "key") {
-      for (const listener of keyListeners) listener(data.key);
-    }
-  };
+    },
+    message: data => dispatch(messageListeners, data.message, data.sender, () => {}),
+    changed: data => dispatch(storageListeners, data.changes, data.area),
+    clipboard: data => dispatch(clipboardListeners, data.text),
+    key: data => dispatch(keyListeners, data.key),
+  }));
+  port.onmessage = ({ data }) => { received.get(data.kind)?.(data); };
   window.parent.postMessage({ type: "hachidori-search-bridge" }, location.origin, [port2]);
 
   function call(kind, fields) {

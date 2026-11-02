@@ -256,13 +256,17 @@ test("the frame offers search.html one port, to the extension's origin, and its 
   assert.deepEqual(JSON.parse(JSON.stringify(changes)), [[["options"], "local"]]);
 
   // What search.html's Clipboard monitor read, and the page's word back.
-  const clipboard = [];
+  const clipboard = [], keys = [];
   context.HDSearchBridge.onClipboard(text => clipboard.push(text));
+  context.HDSearchBridge.onKey(key => keys.push(key));
   port.postMessage({ kind: "clipboard", text: "読む" });
+  port.postMessage({ kind: "key", key: "Escape" });
+  port.postMessage({ kind: "toString" });
   context.HDSearchBridge.notify("ready");
   context.HDSearchBridge.notify("copied");
   await settle();
   assert.deepEqual(clipboard, ["読む"]);
+  assert.deepEqual(keys, ["Escape"]);
   assert.deepEqual(requests.slice(-2).map(data => data.kind), ["ready", "copied"]);
   assert.ok(requests.every(data => ["get", "send", "ready", "copied"].includes(data.kind)));
   port.close();
