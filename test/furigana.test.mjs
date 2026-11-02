@@ -157,7 +157,8 @@ test("the shipped kanwa table matches its source record, adds only readings KANJ
   const [kanjidic, table] = [read("kanjidic/kanji-readings.json"), read("kanwa/kanwa-readings.json")];
   const { files } = JSON.parse(read("kanwa/source.json"));
   // scripts/kanwa-readings.mjs made the table against the shipped KANJIDIC table.
-  assert.deepEqual(files["kanwa-readings.json"], { sha256: sha256(table), kanjidic: sha256(kanjidic) });
+  assert.deepEqual(files["kanwa-readings.json"], { sha256: sha256(table), kanjidic: sha256(kanjidic) },
+    "run node scripts/kanwa-readings.mjs after the KANJIDIC table changes");
   const kanjiTable = JSON.parse(kanjidic).readings;
   const kanwaTable = JSON.parse(table);
   for (const [character, readings] of Object.entries(kanwaTable.readings)) {
@@ -166,7 +167,15 @@ test("the shipped kanwa table matches its source record, adds only readings KANJ
   }
   const kanjiReadings = createKanjiReadings(kanjiTable);
   const kanwa = createKanwaReadings(kanwaTable, kanjiReadings);
-  for (const [expression, reading, expected] of BY_KANWA.slice(0, 4)) {
+  for (const [expression, reading, expected] of [...BY_KANWA.slice(0, 4),
+    // 回 keeps KANJIDIC's かい beside kanwa's めぐ.る.
+    ["１回", "いっかい", [["１", "いっ"], ["回", "かい"]]],
+    // 輪回 starts like the compound 輪廻 りん|ね but is not it.
+    ["輪回", "りんね", null],
+    // 々 repeats a character that kanwa gives a reading (予 かね.て).
+    ["予々", "かねがね", [["予", "かね"], ["々", "がね"]]],
+    // The second Ｐ reads at another place in the reading than the first.
+    ["ＰＩＰ", "ピーアイピー", [["Ｐ", "ピー"], ["Ｉ", "アイ"], ["Ｐ", "ピー"]]]]) {
     assert.deepEqual(pairs(kanjiFurigana(expression, reading, kanjiReadings, kanwa)), expected, expression);
   }
 });
