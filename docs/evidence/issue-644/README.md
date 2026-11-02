@@ -101,10 +101,15 @@ focused element is the switch on `main` and the frame here; after the second
 click the page has focus again.) So the reader's
 keybinds and activation key work after the click on both
 (`test/chrome-clipboard-monitor.mjs` plays the result with Alt+P after the
-click). Since db16c57c a switch that already has focus keeps it after a click: the
+click). Since 8cad5410 a switch that already has focus keeps it after a click: the
 third audit found that Chrome sends a screen reader's or voice control's
 activation as pointer events after focusing the switch, which the hand-back
-otherwise followed. Escape and Ctrl+U pressed on a focused switch select and clear the box,
+otherwise followed. Since eba748a9 the hand-back waits for the click: the
+fourth audit found that a Chrome tap focuses the switch after its `pointerup`,
+so taps kept focus on it; `results/touch-taps.txt` (the audit's
+`touch-timeline.mjs`) has the frame focused after 23 of 24 taps per run,
+instant and held for 120 ms, on Chrome 152 and 128, the remaining one being
+the first tap, whose permission request headless Chrome leaves pending. Escape and Ctrl+U pressed on a focused switch select and clear the box,
 on `main` and here, and Ctrl+U opens no source view. `scripts/click-detail-probe.mjs`
 shows why the hand-back follows the label's `pointerup` rather than the click's
 `detail`: Chrome 128 reports a click on the label text with `detail` 0, as
