@@ -1101,12 +1101,16 @@ the reader. The frame's debug log goes to the extension's store, measured and
 redacted again by `search.html`, and may update only the records the frame
 wrote. The Clipboard monitor's switch and its reads stay in `search.html`,
 which lays the switch over the end of the frame's header and shows it with the
-frame's themed page; the frame searches what the monitor reads, and tells
-`search.html` when its reader is ready and when text is copied there. While the
-switch has focus, Escape and Ctrl+U still reach the box. Firefox has sandboxed
-pages from 154; in Firefox 153 the frame is an ordinary extension page, with
-its own API, where the script does not run and the channel carries only the
-debug log and the Clipboard monitor.
+frame's themed page. Only text with a Japanese character, the reader's own
+`isLookupWorthy` test, goes on to the frame, which searches it and tells
+`search.html` when its reader is ready and when text is copied there; other
+text the monitor reads never reaches the user's script. A click on the switch
+hands focus back to the frame, where the reader's keybinds and activation key
+work; while the switch has focus from the keyboard, Escape and Ctrl+U still
+reach the box, and the reader's keybinds wait for focus to return to the page.
+Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
+extension page, with its own API, where the script does not run and the
+channel carries only the debug log and the Clipboard monitor.
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and

@@ -241,6 +241,12 @@ async function start() {
   window.addEventListener("focus", () => {
     setTimeout(() => { if (document.activeElement === document.body) frame.focus(); }, 0);
   });
+  // A click on the switch then hands focus back to the frame, where the
+  // reader's keybinds and activation key work, as they did beside the switch
+  // when it shared the page's document. The keyboard's Space leaves it there.
+  document.querySelector(".search-shell-header .lookup-enable").addEventListener("pointerup", () => {
+    setTimeout(() => { frame.focus(); }, 0);
+  });
   // The page's own keys work from the switch too, as they did when it shared
   // the page's document (search.js): Escape selects the box's text and Ctrl+U
   // clears it, rather than showing this page's source.

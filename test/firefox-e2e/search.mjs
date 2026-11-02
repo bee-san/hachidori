@@ -150,11 +150,14 @@ describe("search page", () => {
     const off = await settled(current => current.ready);
     await search.click("#search-clipboard");
     const on = await settled(current => current.on && current.granted);
+    // The click hands focus back to the frame, where the reader's keys work (#644).
+    const handedBack = await waitFor(() => frame.evaluate(() => document.hasFocus() || false), { timeout: 5_000 });
     const baseline = await readTwice("食べたかった");
     const before = await state();
     check("the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
-      off?.on === false && off.granted === false && on?.on === true && baseline === true && before.query === null,
-      JSON.stringify({ off, on, baseline, before }));
+      off?.on === false && off.granted === false && on?.on === true && handedBack === true && baseline === true
+        && before.query === null,
+      JSON.stringify({ off, on, handedBack, baseline, before }));
 
     await copy("読む");
     const shown = await waitFor(async () => {

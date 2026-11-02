@@ -150,6 +150,7 @@ try {
       if (message?.type === "hd_clipboard_read") {
         reply.then(answer => globalThis.clipboardReads.push(answer?.text ?? null), () => {});
       }
+      if (message?.type === "hd_audio_play") globalThis.audioPlays = (globalThis.audioPlays ?? 0) + 1;
       return reply;
     };
   });
@@ -304,11 +305,23 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-clipboard-monitor-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
+  // A click on the switch hands focus back to the page, where the reader's
+  // keybinds work, as beside the switch on one page (#644): Alt+P plays the
+  // result's pronunciation. This copy holds clipboardRead as a required
+  // permission, so the click cannot give it back and the switch stays on.
+  await search.bringToFront();
+  await search.evaluate(() => { globalThis.audioPlays = 0; });
+  await search.click("#search-clipboard");
+  await frame.waitForFunction(() => document.hasFocus(), { polling: 50, timeout: 5_000 });
+  await search.keyboard.down("Alt");
+  await search.keyboard.press("KeyP");
+  await search.keyboard.up("Alt");
+  await search.waitForFunction(() => globalThis.audioPlays > 0, { polling: 50, timeout: 10_000 });
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
     + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard; only"
-    + " text it searches reaches the frame");
+    + " text it searches reaches the frame, and a click on its switch leaves the reader's keybinds working");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();

@@ -109,9 +109,10 @@ bridge.onClipboard((text) => {
 for (const type of ["copy", "cut"]) window.addEventListener(type, () => { bridge.notify("copied"); });
 
 // The same keys, pressed in search.html's header, where the Clipboard monitor
-// switch is.
+// switch is: Escape, and Ctrl+U as "u".
 bridge.onKey((key) => {
-  if (key !== "Escape") return clear();
+  if (key === "u") clear();
+  if (key !== "Escape") return;
   input.focus();
   input.select();
 });

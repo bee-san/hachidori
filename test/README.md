@@ -495,7 +495,9 @@ These run separately:
   not search what was on the clipboard before, text without Japanese, its own
   copies and cuts or a copy made while a Note is written; a 300,000-character
   copy must be searched, and read, as its first 1,000 characters; Settings must
-  not be able to read the clipboard. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves
+  not be able to read the clipboard. Only text the reader would search may reach
+  the search page's frame, where Custom JavaScript runs, and a click on the
+  switch must leave the reader's keybinds working (Alt+P plays the result) (#644). `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves
   the page in four palettes. The switch's request for the permission and turning
   it off are tested in Firefox, whose test profile grants optional permissions
   without a prompt; no suite shows the prompt.
@@ -614,7 +616,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
   | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
   | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
-  | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644). |
+  | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, a click on it hands focus back to the page, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644). |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
   | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
