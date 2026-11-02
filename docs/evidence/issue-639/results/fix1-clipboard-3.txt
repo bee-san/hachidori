@@ -1,0 +1,16 @@
+2026-11-02T10:15:57.917Z lookups, no search page
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+Error: Error
+once (pptr:evaluate;lookups%20(file%3A%2F%2F%2Ftmp%2Fhachi-639%2Fbench-clipboard-cut.mjs%3A74%3A34):6:29)
+    at once (evaluate at lookups (file:///tmp/hachi-639/bench-clipboard-cut.mjs:74:34), <anonymous>:5:28)
+    at #evaluate (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-639/test/tooling/node_modules/puppeteer-core/lib/puppeteer/cdp/ExecutionContext.js:402:19)
+    at async ExecutionContext.evaluate (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-639/test/tooling/node_modules/puppeteer-core/lib/puppeteer/cdp/ExecutionContext.js:288:16)
+    at async IsolatedWorld.evaluate (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-639/test/tooling/node_modules/puppeteer-core/lib/puppeteer/cdp/IsolatedWorld.js:104:16)
+    at async CdpFrame.evaluate (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-639/test/tooling/node_modules/puppeteer-core/lib/puppeteer/api/Frame.js:364:20)
+    at async CdpPage.evaluate (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-639/test/tooling/node_modules/puppeteer-core/lib/puppeteer/api/Page.js:832:20)
+    at async file:///tmp/hachi-639/bench-clipboard-cut.mjs:92:23
+
+Node.js v22.23.1
