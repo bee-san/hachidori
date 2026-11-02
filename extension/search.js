@@ -175,13 +175,12 @@ function runCustomJavaScript(code) {
   }
 }
 
-// The page opens ready to type into, as Yomitan's focuses its box.
-input.focus();
 try {
   const connection = await bridge?.ready;
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
-  // The page stays hidden, its box unfocusable, until settings-theme.js has
-  // the saved theme; in search.html's frame that read waits for the bridge.
+  // The page opens ready to type into, as Yomitan's focuses its box. It is
+  // hidden, and its box cannot take focus, until settings-theme.js has the
+  // saved theme, which in search.html's frame waits for the bridge.
   input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));

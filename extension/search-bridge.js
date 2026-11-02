@@ -69,7 +69,6 @@
   const event = listeners => ({
     addListener: (listener) => { listeners.add(listener); },
     removeListener: (listener) => { listeners.delete(listener); },
-    hasListener: listener => listeners.has(listener),
   });
 
   const runtime = {
