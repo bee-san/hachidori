@@ -261,6 +261,34 @@ node benchmark/theme-languages.mjs /tmp/theme-languages /path/to/before /path/to
 The timings exclude lookup, messaging, images and paint; the hover harness
 measures input to frame.
 
+## Engine start and profile switch with other languages
+
+`engine-start.mjs` closes Chrome and starts it again on the retained profile,
+then times the launch to the first correct `hd_lookup` from an empty extension
+page, for several checkouts in rotating order (docs/languages.md 19). A
+variant is `name=checkout[:codes]`: `--archive` is imported into the Japanese
+profile and a profile is added for each listed language (`hd_profile_add`),
+whose pack `reconcile` loads at every start; `en+` also imports
+`--language-archive en=…` into that profile. The extension runs as a copy whose
+`engine-service.js` records in the engine worker when it started, created the
+WebAssembly module, reconciled (the packs' load inside it) and published (the
+warm-up lookup inside it), and how long its first engine calls took; `hd_memory`
+returns the record as `bench`. The built-in Japanese pack loads in the call
+that first builds the engine (`hdw_reset`), or in the first `hdw_language_load`
+when another pack loads first. A start whose first lookup gets no correct reply
+within 30 s is recorded as failed and the run goes on.
+
+```sh
+node benchmark/engine-start.mjs --archive /path/to/jitendex.zip --output /tmp/engine-start.json \
+  --variant before=/path/to/base --variant after=. --variant after-en-ar=.:en,ar \
+  --variant three=.:en+,ar+ --language-archive en=/path/to/kty-en-en.zip \
+  --language-archive ar=/path/to/kty-ar-en.zip --sessions 3 --restarts 8
+```
+
+The launch-to-lookup time includes Chrome's start; the worker's record does
+not. Low memory mode's recycle and a memory option change start a worker the
+same way, without the browser launch.
+
 ## Entry moves on Alt+ArrowDown/ArrowUp (#597)
 
 `entry-keybind.mjs` times Go to next and previous entry in the real extension:
