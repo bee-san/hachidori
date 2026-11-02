@@ -4,6 +4,7 @@ These instructions apply to the entire repository.
 
 ## Working agreement
 
+- Never edit `README.md` (the repository root README) unless the owner explicitly asks for that change. Leave it out of every other pull request, including docs updates and releases; describe user-visible changes in the CHANGELOG, release notes or `docs/` instead.
 - Deliver every repository change through a pull request from a dedicated branch. Never push changes directly to `main`. Do not stop at a local commit or branch: push it and open the pull request.
 - Keep each pull request to one coherent outcome that can be understood, tested, and reviewed independently.
 - Commit frequently in small, coherent units. Prefer a failing focused contract test followed promptly by its implementation commit when test-first work is practical.

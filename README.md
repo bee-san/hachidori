@@ -59,9 +59,6 @@ Do you keep on seeing a name pop up over & over again in a book, but it's not in
 
 With Hachidori, you can highlight the word and add it as a custom definition.
 
-Never add your own words? Turn off **Settings → Dictionaries → Personal dictionary →
-Use the personal dictionary** and highlighting text no longer opens a popup.
-
 <p align="center">
   <img src="docs/assets/custom-dictionary.gif" alt="Animated demonstration of adding and viewing a custom dictionary definition in Hachidori" width="720">
 </p>
@@ -77,10 +74,6 @@ It can even use anki.
 <p align="center">
   <img src="docs/assets/lookup-blur.gif" alt="Animated demonstration of Hachidori blurring repeated lookups before revealing their definitions" width="720">
 </p>
-
-# Search page
-
-Found a word on an Anki card or outside the browser? Press Alt+Insert, or click **Search** beside Settings in Hachidori's toolbar menu, then type or paste the word and press Enter. The results are the popup you know, in your theme, with Anki and pronunciation. Other shortcuts open the search page in the current tab or in its own popup window.
 
 # Sharing
 
@@ -109,18 +102,8 @@ I also have personally been using this for months, and as I am the main user of 
 
 The assets used are AI generated. If you are an artist and want to contribute to open source, please feel free to make a real logo or a visual novel style background.
 
-## Credits
+# Credits
 
-The logo pack and six visual novel backgrounds were supplied by bee-san. See the
-[asset ownership and publishing record](docs/asset-rights.md) for the original
-assets and their copyright declaration.
+Thanks to Manhhao of hoshi-dicts for creating the underlying dictionary program.
 
-Hachidori is powered by [hoshidicts](https://github.com/Manhhao/hoshidicts) by Manhhao. Its popup renderer, structured-content renderer, furigana segmentation, and CSS are ported from [GameSentenceMiner PR #549](https://github.com/bpwhelan/GameSentenceMiner/pull/549), which adapts [Hoshi Reader](https://github.com/Manhhao/Hoshi-Reader) and [Yomitan](https://github.com/yomidevs/yomitan). See the full [renderer attribution](extension/render/ATTRIBUTION.md).
-
-The experimental Netflix mining's subtitle hooks are adapted from [Subadub](https://github.com/rsimmons/subadub) by Russel Simmons, under the MIT licence ([notice](distribution/licenses/subadub-LICENSE)). Its looping GIFs are encoded with [gifenc](https://github.com/mattdesl/gifenc) by Matt DesLauriers, under the MIT licence ([notice](distribution/licenses/gifenc-LICENSE)).
-
-Headword furigana use the kanji readings of [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project). This file is the property of the [Electronic Dictionary Research and Development Group](https://www.edrdg.org/), and is used in conformance with the Group's [licence](https://www.edrdg.org/edrdg/licence.html). The readings in `extension/vendor/kanjidic/` remain under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
-
-## License
-
-Hachidori is available under [GPL-3.0-or-later](LICENSE), matching hoshidicts and the ported GameSentenceMiner code.
+Thanks to Yomitan for whom this project would not be possible.
