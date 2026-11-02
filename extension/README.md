@@ -222,7 +222,11 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is
   KANJIDIC2's kanji readings for the furigana split (CC BY-SA 4.0), which
   `scripts/kanji-readings.mjs` regenerates from the archive pinned in
-  `vendor/kanjidic/source.json`. They are
+  `vendor/kanjidic/source.json`. `vendor/kanwa/kanwa-readings.json` is the
+  character readings KANJIDIC2 lacks and the compound readings of Jitendex's
+  kanwa data, which the split falls back on (CC BY-SA 4.0);
+  `scripts/kanwa-readings.mjs` regenerates it from the jitendex-data commit
+  pinned in `vendor/kanwa/source.json`. They are
   committed build output: update them with their source change and otherwise
   leave them alone.
 - `icons/` holds the extension's icons.
