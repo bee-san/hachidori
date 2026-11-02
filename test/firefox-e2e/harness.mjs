@@ -126,6 +126,8 @@ const E2E_PLANNED = [
   // search page
   "the popup window opens one search page and brings it forward instead of opening another",
   "the search page looks up a typed word and docks the reader's popup under its box",
+  "the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
+  "the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",

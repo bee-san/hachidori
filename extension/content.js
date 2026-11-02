@@ -3975,6 +3975,12 @@
     return runLookup(candidate);
   }
 
+  // Yomitan's isTextLookupWorthy, for the search page's clipboard monitor
+  // (#639): whether copied text has a Japanese character in it.
+  function isLookupWorthy(text) {
+    return JAPANESE_CHARACTER_PATTERN.test(text);
+  }
+
   function runKeybindAction({ action, argument }, event,
     level = levels.findLast((item) => item.popup && !item.popup.hidden)) {
     if (action === "close") return closeFromKeybind(event);
@@ -4450,7 +4456,10 @@
     // Startup awaits this snapshot before demonstrating its first selection,
     // and the search page before it docks the results and takes searches.
     let storageReady;
-    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search });
+    // The search page's clipboard monitor searches only lookup-worthy text, and
+    // nothing while a Note is being written or saved (#639).
+    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search, isLookupWorthy,
+      holdsNote: () => hasProtectedNote() });
     globalThis.HDReaderReady = new Promise(resolve => {
       storageReady = () => { resolveStoredOptions(); resolve(reader); };
     });

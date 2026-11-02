@@ -43,6 +43,12 @@ async function screenshot(target, name, clip) {
   if (!SCREENSHOTS) return;
   mkdirSync(SCREENSHOTS, { recursive: true });
   await target.bringToFront();
+  // Switches ease their knobs and colours for 120 ms (settings.css, toolbar.css): shoot once they have.
+  await target.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map(animation => animation.finished.catch(() => {}))),
+    new Promise(done => { setTimeout(done, 1000); }),
+  ]));
   await target.screenshot({ path: resolve(SCREENSHOTS, `${name}.png`), ...(clip ? { clip } : {}) });
 }
 
@@ -164,6 +170,27 @@ describe("search page", () => {
     await searchTab.waitForFunction(() => !document.getElementById("search-submit").disabled,
       { polling: 100, timeout: 15_000 });
     const opened = await pageState(searchTab);
+    // The Clipboard monitor (#639) is off: Hachidori holds no clipboardRead
+    // permission, so the offscreen document's paste reads nothing that was copied.
+    const clipboard = await searchTab.evaluate(async () => {
+      const box = document.getElementById("search-input");
+      box.value = "食べたかった";
+      box.select();
+      const copied = document.execCommand("copy");
+      box.value = "";
+      return {
+        copied,
+        on: document.getElementById("search-clipboard").checked,
+        enabled: !document.getElementById("search-clipboard").disabled,
+        optional: chrome.runtime.getManifest().optional_permissions,
+        granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
+        read: await chrome.runtime.sendMessage({ target: "hachidori-clipboard", type: "hd_clipboard_read" }),
+      };
+    });
+    check("the search page's Clipboard monitor is off by default and Hachidori reads nothing from the clipboard until it is switched on",
+      clipboard.copied && !clipboard.on && clipboard.enabled && JSON.stringify(clipboard.optional) === '["clipboardRead"]'
+        && !clipboard.granted && clipboard.read?.ok === true && clipboard.read.text === "",
+      JSON.stringify(clipboard));
     const popup = await popupReader(searchTab);
     const theme = originalOptions.popupTheme === "auto"
       ? await searchTab.evaluate(() => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"))

@@ -34,7 +34,9 @@ function files(directory) {
 test("Firefox runs background.js in an event page and leaves out what Firefox does not implement", () => {
   assert.deepEqual(firefox.background, { page: "background.html" });
   assert.deepEqual(firefox.permissions, chrome.permissions.filter(name => !["offscreen", "tabCapture", "userScripts"].includes(name)));
-  assert.deepEqual(firefox.optional_permissions, ["userScripts"]);
+  // The Chrome manifest's optional permissions stay optional (#639), userScripts after them.
+  assert.deepEqual(firefox.optional_permissions, [...chrome.optional_permissions, "userScripts"]);
+  assert.deepEqual(chrome.optional_permissions, ["clipboardRead"]);
   for (const key of ["minimum_chrome_version", "cross_origin_embedder_policy", "cross_origin_opener_policy"]) {
     assert.equal(Object.hasOwn(firefox, key), false, key);
   }

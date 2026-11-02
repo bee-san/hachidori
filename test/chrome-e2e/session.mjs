@@ -960,7 +960,7 @@ describe("session", () => {
     });
     check(
       "a fresh profile shares by default and waits for dictionaries before it takes the host slot",
-      sharing.optional === null
+      !(sharing.optional ?? []).includes("nativeMessaging")
         && !sharing.permissions.includes("nativeMessaging")
         && sharing.reply?.ok === true
         && sharing.reply.sharing?.enabled === true

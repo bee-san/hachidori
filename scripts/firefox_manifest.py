@@ -3,7 +3,8 @@
 Both builds ship the same extension/ files. Firefox has no extension service
 worker, offscreen documents, cross-origin isolation for extension pages or tab
 capture, and offers userScripts only as an optional permission, so its manifest
-names the background page and leaves out what Firefox does not implement.
+names the background page, adds userScripts to the Chrome manifest's optional
+permissions and leaves out what Firefox does not implement.
 """
 
 import copy
@@ -28,7 +29,8 @@ def firefox_manifest(chrome):
     manifest["background"] = {"page": "background.html"}
     manifest["permissions"] = [permission for permission in chrome["permissions"]
                                if permission not in UNSUPPORTED_PERMISSIONS + OPTIONAL_PERMISSIONS]
-    optional = [permission for permission in OPTIONAL_PERMISSIONS if permission in chrome["permissions"]]
+    optional = chrome.get("optional_permissions", []) + [
+        permission for permission in OPTIONAL_PERMISSIONS if permission in chrome["permissions"]]
     if optional:
         manifest["optional_permissions"] = optional
     manifest["browser_specific_settings"] = {

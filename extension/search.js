@@ -11,6 +11,7 @@ import "./reader-options.js";
 import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
+import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 // Settings → Advanced → Get debug info includes what failed here.
@@ -23,6 +24,7 @@ const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
 const status = document.getElementById("search-status");
+const clipboardSwitch = document.getElementById("search-clipboard");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where
@@ -91,6 +93,55 @@ document.addEventListener("keydown", (event) => {
     input.focus({ preventScroll: true });
   }
 });
+
+// Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
+// ext/js/display/search-display-controller.js): text with Japanese in it,
+// copied in any tab or program, goes into the box and is searched, as a paste
+// is, up to Yomitan's 1,000 characters, which is all the offscreen document
+// sends. A Note being written or saved in the result holds it off: the text is
+// not searched. The switch is the browser's clipboardRead permission, which
+// turning it on asks for and turning it off gives back.
+const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
+const monitor = createClipboardMonitor({
+  async read() {
+    const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
+    return reply?.ok === true ? reply.text : null;
+  },
+  change(text) {
+    if (!reader.isLookupWorthy(text) || reader.holdsNote()) return;
+    input.value = text;
+    search();
+  },
+});
+
+async function showClipboardMonitor() {
+  const on = await chrome.permissions.contains(CLIPBOARD_PERMISSION).catch(() => false);
+  clipboardSwitch.checked = on;
+  if (!on || !reader) monitor.stop();
+  else if (!monitor.running) monitor.start();
+}
+
+clipboardSwitch.addEventListener("change", () => {
+  if (!clipboardSwitch.checked) monitor.stop();
+  // The browser asks only for a request made while it handles the click.
+  const asked = clipboardSwitch.checked ? chrome.permissions.request(CLIPBOARD_PERMISSION)
+    : chrome.permissions.remove(CLIPBOARD_PERMISSION);
+  void asked.catch(() => false).then(showClipboardMonitor);
+});
+chrome.permissions.onAdded.addListener(() => { void showClipboardMonitor(); });
+chrome.permissions.onRemoved.addListener(() => { void showClipboardMonitor(); });
+// Text copied or cut on this page is not searched, as in Yomitan's _onCopy:
+// once it has reached the clipboard, the monitor starts over from it.
+for (const type of ["copy", "cut"]) {
+  window.addEventListener(type, () => {
+    if (!monitor.running) return;
+    monitor.stop();
+    setTimeout(() => { void showClipboardMonitor(); }, 0);
+  });
+}
+// The switch shows its state while the reader loads; the monitor starts once it has.
+await showClipboardMonitor();
+
 // Text pasted anywhere but a text field or the popup is searched at once.
 window.addEventListener("paste", (event) => {
   if (event.composedPath().some(pasteTarget)) return;
@@ -112,6 +163,8 @@ try {
   reader.dock(document.getElementById("search-results"));
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
+  clipboardSwitch.disabled = false;
+  await showClipboardMonitor();
 } catch (error) {
   status.textContent = `The search page could not start: ${describeErrorMessage(error)}`;
   recordUserError(window, "search-status", status.textContent, error);
