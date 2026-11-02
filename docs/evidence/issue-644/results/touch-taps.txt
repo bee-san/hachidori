@@ -2,7 +2,7 @@ Touch taps on the Clipboard monitor switch and its label text, eba748a9, the fou
 (focus in the page before each tap; a tap that turns the switch on leaves headless Chrome's request pending).
 frameHasFocus is whether the frame has focus 800 ms after the tap.
 
-Chrome 152.0.7977.75, press 0 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap: the pending request holds the window's focus)
-Chrome 152.0.7977.75, press 120 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap: the pending request holds the window's focus)
-Chrome 128.0.6613.137, press 0 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap: the pending request holds the window's focus)
-Chrome 128.0.6613.137, press 120 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap: the pending request holds the window's focus)
+Chrome 152.0.7977.75, press 0 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap, which leaves headless Chrome's permission request pending: the focused element is the frame, but the page reports no focus, as main does after its first click)
+Chrome 152.0.7977.75, press 120 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap, which leaves headless Chrome's permission request pending: the focused element is the frame, but the page reports no focus, as main does after its first click)
+Chrome 128.0.6613.137, press 0 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap, which leaves headless Chrome's permission request pending: the focused element is the frame, but the page reports no focus, as main does after its first click)
+Chrome 128.0.6613.137, press 120 ms: frame focused after 23 of 24 taps; tap 0 on the switch: focused element iframe, page focus False (the first tap, which leaves headless Chrome's permission request pending: the focused element is the frame, but the page reports no focus, as main does after its first click)
