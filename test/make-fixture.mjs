@@ -655,14 +655,17 @@ export function buildAtomicReplacementZip(revision, definition, overrides = {}) 
 }
 
 // 好き嫌い, whose kana leave its furigana ambiguous until the engine reads
-// its kanji's KANJIDIC readings (#459). In memory, like the fixtures below.
+// its kanji's KANJIDIC readings (#459), 二十四時間, read one kanji at a time
+// by them (#605), and 日本, read by Jitendex kanwa's 日本 に|ほん (#641). In
+// memory, like the fixtures below.
 export function kanjiReadingFuriganaFixture() {
   const title = 'kanji-reading-furigana-fixture';
   const query = '好き嫌い';
   const compound = '二十四時間';
+  const kanwa = '日本';
   const archive = buildTitledZip(title, { terms: [[query, 'すききらい', '', '', 0, ['likes and dislikes'], 1, ''],
-    [compound, 'にじゅうよじかん', '', '', 0, ['24 hours'], 2, '']] });
-  return { title, query, compound, archive };
+    [compound, 'にじゅうよじかん', '', '', 0, ['24 hours'], 2, ''], [kanwa, 'にほん', '', '', 0, ['Japan'], 3, '']] });
+  return { title, query, compound, kanwa, archive };
 }
 
 export function externalLinksFixture(destinationUrl) {
