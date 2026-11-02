@@ -83,15 +83,32 @@ describe("search page", () => {
       const current = await state();
       return predicate(current) ? current : false;
     }, { timeout: 15_000 });
+    // The monitor's requests, and the texts their replies carry.
+    await search.evaluate(() => {
+      const send = chrome.runtime.sendMessage;
+      globalThis.clipboardReads = { sent: 0, texts: [] };
+      chrome.runtime.sendMessage = function (message, ...rest) {
+        const reply = send.call(this, message, ...rest);
+        if (message?.type === "hd_clipboard_read") {
+          globalThis.clipboardReads.sent += 1;
+          reply.then(answer => globalThis.clipboardReads.texts.push(answer?.text ?? null), () => {});
+        }
+        return reply;
+      };
+    });
+    const reads = () => evaluateJson(search, () => JSON.stringify(globalThis.clipboardReads));
+    // Once the monitor has read `text` twice, it has acted on the first read.
+    const readTwice = text => waitFor(async () => (await reads()).texts.filter(read => read === text).length >= 2,
+      { timeout: 15_000 });
     await copy("食べたかった");
     const off = await settled(current => current.ready);
     await search.click("#search-clipboard");
     const on = await settled(current => current.on && current.granted);
-    await sleep(1500);
+    const baseline = await readTwice("食べたかった");
     const before = await state();
     check("the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
-      off?.on === false && off.granted === false && on?.on === true && before.query === null,
-      JSON.stringify({ off, on, before }));
+      off?.on === false && off.granted === false && on?.on === true && baseline === true && before.query === null,
+      JSON.stringify({ off, on, baseline, before }));
 
     await copy("読む");
     const shown = await waitFor(async () => {
@@ -101,12 +118,17 @@ describe("search page", () => {
     const searched = await state();
     await search.click("#search-clipboard");
     const stopped = await settled(current => !current.on && !current.granted);
+    const sentWhenStopped = (await reads()).sent;
     await copy("漢字");
+    // Several of the monitor's 250 ms reads, had it gone on reading.
     await sleep(1500);
     const after = await state();
+    const sentAfter = (await reads()).sent;
     check("the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it",
-      shown?.plain.includes("to read") && searched.query === "読む" && stopped?.on === false && after.query === "読む",
-      JSON.stringify({ headword: shown?.headword, plain: shown?.plain?.slice(0, 80), searched, stopped, after }));
+      shown?.plain.includes("to read") && searched.query === "読む" && stopped?.on === false
+        && sentAfter === sentWhenStopped && after.query === "読む",
+      JSON.stringify({ headword: shown?.headword, plain: shown?.plain?.slice(0, 80), searched, stopped, sentWhenStopped,
+        sentAfter, after }));
     await search.close();
     await activate(page);
   });

@@ -41,8 +41,6 @@ const EXTENSION = resolve(ROOT, "test/tmp/clipboard-extension");
 // Named like chrome-e2e's own profile, so CI's failure upload collects it.
 const PROFILE = resolve(tmpdir(), `hachidori-e2e-profile-clipboard-${process.pid}`);
 const SCREENSHOTS = process.env.HACHIDORI_SEARCH_SCREENSHOTS;
-// Long enough for several of the monitor's 250 ms reads.
-const QUIET_MS = 1500;
 
 rmSync(EXTENSION, { recursive: true, force: true });
 cpSync(SOURCE_EXTENSION, EXTENSION, { recursive: true });
@@ -133,10 +131,25 @@ try {
     query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
     focused: document.hasFocus(),
   }));
-  const quiet = () => new Promise(done => { setTimeout(done, QUIET_MS); });
+  // The texts the page's monitor reads, as its own requests return them.
+  await search.evaluate(() => {
+    const send = chrome.runtime.sendMessage;
+    globalThis.clipboardReads = [];
+    chrome.runtime.sendMessage = function (message, ...rest) {
+      const reply = send.call(this, message, ...rest);
+      if (message?.type === "hd_clipboard_read") {
+        reply.then(answer => globalThis.clipboardReads.push(answer?.text ?? null), () => {});
+      }
+      return reply;
+    };
+  });
+  const forget = () => search.evaluate(() => { globalThis.clipboardReads.length = 0; });
+  // Once the monitor has read `text` twice, it has acted on the first read.
+  const readTwice = text => search.waitForFunction(value => globalThis.clipboardReads
+    .filter(read => read === value).length >= 2, { polling: 50, timeout: 15_000 }, text);
 
   await web.bringToFront();
-  await quiet();
+  await readTwice("食べたかった");
   const opened = await page();
   assert.equal(opened.switchOn, true, "the switch shows the clipboardRead permission Hachidori holds");
   assert.equal(opened.query, null, "text on the clipboard before the page opened is not searched");
@@ -156,19 +169,21 @@ try {
     await web.bringToFront();
   }
 
+  await forget();
   await copyInWeb("hello world");
-  await quiet();
+  await readTwice("hello world");
   assert.equal((await page()).query, "読む", "text without Japanese is not searched");
 
   // Text copied on the search page itself.
   await search.bringToFront();
   await search.focus("#search-input");
   await search.$eval("#search-input", box => { box.value = "漢字"; box.select(); });
+  await forget();
   await search.keyboard.down("Control");
   await search.keyboard.press("KeyC", { commands: ["Copy"] });
   await search.keyboard.up("Control");
   await web.bringToFront();
-  await quiet();
+  await readTwice("漢字");
   const ownCopy = await page();
   assert.equal(ownCopy.query, "読む", `text copied on the search page is not searched: ${JSON.stringify(ownCopy)}`);
   assert.equal(ownCopy.value, "漢字");
@@ -184,8 +199,9 @@ try {
   }, { timeout: 10_000 });
   assert.equal(noteFocused, true);
   await search.keyboard.type("ab");
+  await forget();
   await copyInWeb("食べる");
-  await quiet();
+  await readTwice("食べる");
   const drafting = await popup.state();
   assert.equal(drafting.noteOpen && drafting.noteDefinition === "ab", true, "the Note draft is kept");
   assert.equal((await page()).query, "読む", "a copy made while a Note is written is not searched");
