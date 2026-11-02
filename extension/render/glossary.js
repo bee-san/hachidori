@@ -1087,18 +1087,27 @@
     "Khar", "Lydi", "Mand", "Mani", "Mend", "Merc", "Mero", "Narb", "Nbat", "Nkoo", "Orkh", "Ougr", "Palm",
     "Phli", "Phlp", "Phnx", "Prti", "Rohg", "Samr", "Sarb", "Sogd", "Sogo", "Syrc", "Thaa", "Yezi"]);
   const RTL_SCRIPT_CLASS = [...RTL_SCRIPTS].map((code) => `\\p{Script=${code}}`).join("");
+  // Each pattern below is compiled the first time it is used. V8 builds the
+  // character set of a Unicode property escape when it parses a regular
+  // expression literal and again when it creates the expression, so as
+  // constants they would cost every frame of every page at injection
+  // (docs/languages.md 19); only text in another language reaches them.
+  const lazyPattern = (source, flags) => {
+    let pattern = null;
+    return () => pattern ??= new RegExp(source, flags);
+  };
   // One class, letters in those scripts: a lookahead per character scans
   // a long glossary several times slower.
-  const RTL_LETTERS = new RegExp(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "gv");
-  const RTL_LETTER = new RegExp(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "v");
-  const LETTERS = /\p{L}/gu;
-  const LETTER = /\p{L}/u;
-  const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
-  const NON_HAN_LETTER = /(?!\p{Script=Han})\p{L}/u;
-  const HAN_OR_CJK_PUNCTUATION = /[\p{Script=Han}\u3000-\u303f\ufe30-\ufe4f\uff01-\uff65]/u;
-  const KANA_LETTER = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
-  const HANGUL_LETTER = /\p{Script=Hangul}/u;
-  const BOPOMOFO_LETTER = /\p{Script=Bopomofo}/u;
+  const RTL_LETTERS = lazyPattern(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "gv");
+  const RTL_LETTER = lazyPattern(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "v");
+  const LETTERS = lazyPattern(String.raw`\p{L}`, "gu");
+  const LETTER = lazyPattern(String.raw`\p{L}`, "u");
+  const NON_LATIN_LETTER = lazyPattern(String.raw`(?!\p{Script=Latin})\p{L}`, "u");
+  const NON_HAN_LETTER = lazyPattern(String.raw`(?!\p{Script=Han})\p{L}`, "u");
+  const HAN_OR_CJK_PUNCTUATION = lazyPattern(String.raw`[\p{Script=Han}\u3000-\u303f\ufe30-\ufe4f\uff01-\uff65]`, "u");
+  const KANA_LETTER = lazyPattern(String.raw`[\p{Script=Hiragana}\p{Script=Katakana}]`, "u");
+  const HANGUL_LETTER = lazyPattern(String.raw`\p{Script=Hangul}`, "u");
+  const BOPOMOFO_LETTER = lazyPattern(String.raw`\p{Script=Bopomofo}`, "u");
   // Codes that are Han alone, and every code that includes Han (7.3, 10.3).
   const HAN_ONLY_SCRIPTS = new Set(["Hani", "Hans", "Hant", "Hanb"]);
   const HAN_SCRIPTS = new Set([...HAN_ONLY_SCRIPTS, "Jpan", "Kore"]);
@@ -1112,16 +1121,16 @@
   const RTL_RANGES = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\ud802\ud803\ud83a\ud83b]/;
   const hasRtlText = (text) => {
     const value = String(text ?? "");
-    return RTL_RANGES.test(value) && RTL_LETTER.test(value);
+    return RTL_RANGES.test(value) && RTL_LETTER().test(value);
   };
 
   // The majority rule (10.2): right to left when more than half of the
   // letters are right-to-left letters; text without letters has no direction.
   function textDirection(text) {
     const value = String(text ?? "");
-    if (!hasRtlText(value)) return LETTER.test(value) ? "ltr" : null;
-    const letters = value.match(LETTERS)?.length ?? 0;
-    return (value.match(RTL_LETTERS)?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
+    if (!hasRtlText(value)) return LETTER().test(value) ? "ltr" : null;
+    const letters = value.match(LETTERS())?.length ?? 0;
+    return (value.match(RTL_LETTERS())?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
   }
 
   function scriptDirection(script) {
@@ -1181,15 +1190,15 @@
       han: HAN_LANGUAGES.has(primary) || Boolean(scripts?.some((code) => HAN_SCRIPTS.has(code))) };
   }
 
-  const hanAlone = (text) => HAN_OR_CJK_PUNCTUATION.test(text) && !NON_HAN_LETTER.test(text);
+  const hanAlone = (text) => HAN_OR_CJK_PUNCTUATION().test(text) && !NON_HAN_LETTER().test(text);
 
   // Steps 2 to 4 of 10.3, which read only the text and the profile.
   function scriptLanguage(text, profile, target) {
-    if (KANA_LETTER.test(text)) return "ja";
-    if (HANGUL_LETTER.test(text)) return "ko";
-    if (BOPOMOFO_LETTER.test(text)) return "zh";
+    if (KANA_LETTER().test(text)) return "ja";
+    if (HANGUL_LETTER().test(text)) return "ko";
+    if (BOPOMOFO_LETTER().test(text)) return "zh";
     if (profile.native?.test(text)) return profile.bcp47;
-    if (profile.latinOnly && target?.latin === false && LETTER.test(text) && !NON_LATIN_LETTER.test(text)) {
+    if (profile.latinOnly && target?.latin === false && LETTER().test(text) && !NON_LATIN_LETTER().test(text)) {
       return profile.bcp47;
     }
     return null;
@@ -1256,9 +1265,9 @@
       let own = 0, ownRtl = 0, all = 0, allRtl = 0;
       for (let child = element.firstChild; child; child = child.nextSibling) {
         if (child.nodeType === 3) {
-          const letters = child.data.match(LETTERS)?.length ?? 0;
+          const letters = child.data.match(LETTERS())?.length ?? 0;
           if (letters > 0) {
-            const rtl = child.data.match(RTL_LETTERS)?.length ?? 0;
+            const rtl = child.data.match(RTL_LETTERS())?.length ?? 0;
             own += letters; ownRtl += rtl; all += letters; allRtl += rtl;
           }
         } else if (child.nodeType === 1) {
