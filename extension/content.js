@@ -114,6 +114,9 @@
   ) {
     return;
   }
+  // The search page's own document, where search.js runs Custom JavaScript (#644).
+  const SEARCH_FRAME = location.protocol === EXTENSION_PROTOCOL
+    && location.href === chrome.runtime.getURL("search-frame.html");
 
   let disposed = false;
   let appearance;
@@ -1762,9 +1765,13 @@
   // attaches that root from the user-script world and returns it through
   // host.shadowRoot to the saved scripts alone; it sees the request only once
   // the host is in the page. Where user scripts do not run (Chrome's switch is
-  // off, a frame, an extension page) the reader attaches the root itself.
+  // off, a frame, an extension page) the reader attaches the root itself. The
+  // search page's frame runs the saved script in the reader's own world
+  // instead (#644), and nothing but the extension reaches its pages, so there
+  // the root is open.
   function attachPopupRoot() {
     if (options.customPopupJavascript) {
+      if (SEARCH_FRAME) return host.attachShadow({ mode: "open" });
       host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
       const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
       if (root) return root;

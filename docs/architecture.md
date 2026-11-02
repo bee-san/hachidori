@@ -22,8 +22,10 @@ right root. A script added or changed runs from the reading page's next load.
 If a lookup builds the popup before the page's user scripts have run, the
 reader attaches its own closed root, and saved scripts cannot reach that popup
 until the page loads again. The Design preview remains open inside its
-extension page. The same script runs on the [search page](#search-page),
-in its sandboxed frame.
+extension page. The [search page](#search-page) runs the same script in its
+sandboxed frame, in the reader's own world, where nothing but the extension
+can reach the popup, so the reader there attaches an open root while Custom
+JavaScript is saved.
 
 ## Runtime layout
 
@@ -1077,13 +1079,16 @@ inline script. Once the reader is ready, the frame runs the script the worker
 registered for web pages (`custom-javascript.js`), so the script runs only
 where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
 `userScripts` permission is on. It shares the frame's document with the
-reader and reaches the docked result through its open root, as on a web page;
-unlike a user script in its own world, it also shares the reader's JavaScript
-globals. A sandboxed frame has no extension APIs, so `search-shell.js` in
+reader and reaches the docked result through `host.shadowRoot`, as on a web
+page; unlike a user script in its own world, it also shares the reader's
+JavaScript globals. There is no `custom-javascript-bridge.js` in the frame:
+nothing but the extension reaches its pages, so while Custom JavaScript is
+saved the reader in `search-frame.html` attaches an open root itself. A sandboxed frame has no extension APIs, so `search-shell.js` in
 `search.html` answers for it over one `MessagePort`: `search-bridge.js` makes
 the channel and offers its port to the extension's origin, which the frame's
-location keeps, so only `search.html` can take it. Whatever the frame is served, the script can use too,
-where on a web page it has no extension messaging at all, so the frame gets
+location keeps, so only `search.html` can take it. Whatever the frame is
+served, the script can use too, where on a web page it has no extension
+messaging at all, so the frame gets
 what the reader needs and no more: the requests a content script's reader
 sends, and of option writes only the reader's own, one **Toggle option**
 keybind's boolean; the stored keys the reader reads, with the AnkiConnect key,

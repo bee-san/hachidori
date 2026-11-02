@@ -210,7 +210,8 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   JavaScript as a user script, with `custom-javascript-bridge.js` ahead of it in
   the same world: the bridge attaches the popup's closed root when the reader
   asks and returns it to the saved code through `host.shadowRoot`
-  ([architecture](../docs/architecture.md)).
+  ([architecture](../docs/architecture.md)). The search page runs the same
+  code in its sandboxed frame, where the reader gives the popup an open root.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
   GameSentenceMiner overlay flips in its copy. It also defines the shared
   host-capability policy used by Settings, the toolbar, the reader and the
