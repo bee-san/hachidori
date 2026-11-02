@@ -34,6 +34,7 @@ npm --prefix test/tooling run install:firefox    # Firefox 159.0
 npm --prefix test/tooling run test:firefox       # the real-Firefox suite
 HACHIDORI_FIREFOX_BUILD=stable_153.0 \
   node test/run.mjs firefox-e2e                  # manifest-minimum Firefox
+node test/run.mjs firefox-languages              # a profile switch and an English and an Arabic lookup in Firefox
 HACHIDORI_BENCH_DATA=DIR node test/run.mjs firefox-large  # full Pixiv import in Firefox
 ```
 
@@ -644,6 +645,16 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   Firefox's parent process that saves to the downloads directory and records
   each request. Firefox's mock audio backend (`media.cubeb.force_mock_context`)
   plays pronunciation audio on hosts with no audio device.
+- **`firefox-languages.mjs`** (`node test/run.mjs firefox-languages`,
+  docs/languages.md 18) runs on `firefox-e2e`'s session and harness, with its
+  own plan of six checks, in a profile of its own: the first run offers the
+  shipped packs and chooses English, Settings adds Arabic, each profile imports
+  its fixture dictionary (`make-language-fixtures.mjs`), an English hover finds
+  *run* in *running*, the toolbar switches to Arabic and the badge reads `AR`,
+  and a hover on الكتاب on a right-to-left page finds كتاب in a popup that is
+  English and left to right, its deinflection trail reading the matched form
+  first. It serves its two reading pages itself and saves both lookups under
+  `test/tmp/languages/firefox/`.
 - Not covered in real Firefox: automatic backups, scheduled update runs, the
   Theme Store, frequency sorting, compact summaries, custom buttons, browser
   speech and local audio, firing a browser command, Google Docs, MDict import,

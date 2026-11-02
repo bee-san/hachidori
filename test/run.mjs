@@ -73,7 +73,8 @@ try {
     await buildFirefox();
     const webExt = resolve(TOOLING, "node_modules/web-ext/bin/web-ext.js");
     await run("firefox-lint", [webExt, "lint", "--source-dir", FIREFOX_EXTENSION, "--no-config-discovery"]);
-  } else if (suite === "firefox-e2e" || suite === "firefox-large") {
+  } else if (suite === "firefox-e2e" || suite === "firefox-large" || suite === "firefox-languages") {
+    // firefox-languages: a profile switch and an English and an Arabic lookup (docs/languages.md 18).
     await run("fixture", ["test/make-fixture.mjs"]);
     await buildFirefox();
     await run(suite, [...NODE_TEST, `test/${suite}.mjs`]);
@@ -131,7 +132,7 @@ try {
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
         + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-languages, chrome-backup-release,"
         + " install-chrome,"
-        + " firefox-lint, firefox-e2e, firefox-large or install-firefox.",
+        + " firefox-lint, firefox-e2e, firefox-languages, firefox-large or install-firefox.",
     );
   }
 } catch (error) {
