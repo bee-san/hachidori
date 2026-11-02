@@ -17,6 +17,7 @@ import { isDeepStrictEqual } from "node:util";
 import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_URL, ANKI_ADDON_VERSION } from "../extension/anki-addon.js";
 import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_TITLE } from "../extension/custom-dictionary.js";
 import { BlobReader, TextWriter, ZipReader } from "../extension/vendor/zip.js";
+import { DEFAULT_SHARING_PORT } from "../extension/sharing-protocol.js";
 import { startAnkiRelayServer } from "./anki-relay-server.mjs";
 import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 
@@ -98,8 +99,11 @@ const CHECKS = [
   "the relay's /ankiCardFormats answers the host's saved Anki Template without its AnkiConnect address or key, and /ankiFields renders every marker it names",
   "the linked browser's Settings sends a ZIP that replaces the host's dictionary of that title, and the replacement answers lookups",
   "a real linked overlay keeps local preferences through host edits, disconnection, restart and Unlink and explains mining capabilities",
+  "a second browser left on the default port, sharing as it does from install, moves to the relay's port in Settings and finds the host there",
 ];
 const LINKED_IMPORT_CHECK = CHECKS[13];
+const LINKED_OVERLAY_CHECK = CHECKS[14];
+const PORT_MISMATCH_CHECK = CHECKS[15];
 const results = [];
 const diagnostics = [];
 
@@ -651,7 +655,7 @@ async function checkOverlaySharing(hostPage) {
       url: "https://example.test/", active: true,
     }));
     await cdp.detach();
-    check(CHECKS.at(-1),
+    check(LINKED_OVERLAY_CHECK,
       afterLink.lookupMode === "hover" && afterLink.sourceHighlightEnabled === false && afterLink.popupWidthPx === 440
         && afterLink.popupTheme === "dracula"
         && afterLink.customButtons[0]?.id === "host-link" && afterLink.customLinks[0]?.label === "Host link"
@@ -764,11 +768,35 @@ try {
   const clientId = await extensionId(clientBrowser);
   console.log(`     client extension id: ${clientId}`);
   // A fresh install opens its startup page, whose look around this computer
-  // uses the port under Advanced; the suite moves that to the relay's port, as
-  // a person on a changed port would have, and lets the page look again.
+  // uses the port under Advanced. #648: the second browser is still on the
+  // default port with sharing on, so the person moves it to the relay's port
+  // in Settings, which looks again there; then the startup page looks again.
   const startup = await startupPage(clientBrowser, clientId, "client-startup");
-  const clientPort = await message(startup, "hachidori-sharing", "hd_sharing_host_enable", { port: PORT });
-  if (clientPort?.ok !== true) throw new Error(`the client port could not be set: ${clientPort?.error}`);
+  const portPage = await openSettings(clientBrowser, clientId, "client-port", "sharing");
+  const waitForFound = prefix => portPage.waitForFunction(text => document.getElementById("sharing-client-found").textContent.startsWith(text),
+    { timeout: 15_000, polling: 100 }, prefix);
+  await waitForFound("No other Hachidori");
+  const onDefault = await portPage.evaluate(() => ({ found: document.getElementById("sharing-client-found").textContent,
+    port: document.getElementById("sharing-host-port").value, portDisabled: document.getElementById("sharing-host-port").disabled,
+    sharing: document.getElementById("sharing-host-enabled").checked }));
+  await portPage.click("#sharing-host details > summary");
+  await portPage.click("#sharing-host-port");
+  await portPage.keyboard.down("Control");
+  await portPage.keyboard.press("KeyA");
+  await portPage.keyboard.up("Control");
+  await portPage.type("#sharing-host-port", String(PORT));
+  await portPage.keyboard.press("Tab");
+  await waitForFound("Another browser on this computer is sharing").catch(() => {});
+  const onRelayPort = await portPage.evaluate(() => ({ found: document.getElementById("sharing-client-found").textContent,
+    use: !document.getElementById("sharing-client-use").hidden }));
+  const clientPortSaved = (await stored(portPage, ["sharing"])).sharing?.host;
+  check(PORT_MISMATCH_CHECK,
+    onDefault.found.startsWith(`No other Hachidori is sharing on this computer on port ${DEFAULT_SHARING_PORT}.`) && onDefault.port === String(DEFAULT_SHARING_PORT)
+      && onDefault.portDisabled === false && onDefault.sharing === true
+      && /^Another browser on this computer is sharing: the Hachidori in .+ on this computer \(1 dictionary\)\.$/.test(onRelayPort.found) && onRelayPort.use
+      && clientPortSaved?.enabled === true && clientPortSaved.port === PORT,
+    JSON.stringify({ onDefault, onRelayPort, clientPortSaved }));
+  await portPage.close();
   await startup.reload({ waitUntil: "domcontentloaded" });
   await startup.waitForSelector("#setup-use-shared", { timeout: 15_000 });
   const offer = await startup.evaluate(() => ({
