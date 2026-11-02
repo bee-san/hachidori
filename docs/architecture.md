@@ -1893,8 +1893,9 @@ cannot read either (景色 けしき). A run that KANJIDIC reads keeps that spli
 印度 インド stays 印(イン)度(ド) though kanwa reads it as a whole, and 日本 にっぽん
 stays 日(にっ)本(ぽん). Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
 and `extension/vendor/kanwa/kanwa-readings.json` hold the readings; the engine
-service imports them as JSON modules as it starts, off the first lookup's reply,
-and derives each kanji's forms when it is first needed.
+service imports them as JSON modules and indexes kanwa's compounds as it
+starts, off the first lookup's reply, and derives each kanji's forms when it is
+first needed.
 `scripts/kanji-readings.mjs` regenerates the KANJIDIC table from the archive
 pinned in `source.json` beside it; point that pin at a newer jmdict-yomitan
 release to update it. `scripts/kanwa-readings.mjs` regenerates the kanwa table
