@@ -4,8 +4,41 @@
    docks its popup over the results area, so the page itself never scrolls. */
 
 html,
-body.search-page {
+body.search-page,
+body.search-shell {
   height: 100%;
+}
+/* search.html holds the page below, search-frame.html, over its whole window
+   (#644): the frame is sandboxed so that Custom JavaScript can run in it. */
+body.search-shell {
+  overflow: hidden;
+}
+/* The frame's root has settings.css's `light dark` scheme until its own theme
+   read. The same scheme here keeps the frame's canvas transparent meanwhile,
+   so the window shows search.html's themed background rather than a canvas in
+   the browser preference's colour. */
+.search-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  color-scheme: light dark;
+}
+/* search.html's Clipboard monitor switch lies over the end of the frame's
+   header. Both documents lay out the whole header, each keeping invisible what
+   the other shows, so the title wraps alike and the switch lands in its place
+   at any width. */
+.search-shell-header {
+  position: fixed;
+  inset: 12px 12px auto;
+  pointer-events: none;
+}
+.search-shell-header > :not(.lookup-enable),
+.search-page .search-header .lookup-enable {
+  visibility: hidden;
+}
+.search-shell-header .lookup-enable {
+  pointer-events: auto;
 }
 html {
   scrollbar-gutter: auto;

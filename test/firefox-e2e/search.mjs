@@ -1,8 +1,10 @@
 /*
  * The search page (#610) in Firefox: the popup window that the Open the popup
  * window shortcut and the toolbar menu's Search open through search-window.js,
- * a typed word's lookup docked under the search box, and its clipboard
- * monitor (#639), whose switch asks Firefox for the clipboardRead permission.
+ * a typed word's lookup docked under the search box, its clipboard monitor
+ * (#639), whose switch asks Firefox for the clipboardRead permission, and
+ * Custom JavaScript there (#644). The page itself is search-frame.html, the
+ * frame search.html holds, so each read of it goes to that frame.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -11,14 +13,17 @@ import "./settings.mjs";
 import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import {
-  activate, bidiSession, evaluateInChrome, evaluateJson, extensionUrl, findPage, openExtensionPage, page, readPopup,
-  sleep, waitFor,
+  activate, bidiSession, browser, childFrame, evaluateInChrome, evaluateJson, extensionUrl, findPage,
+  openExtensionPage, page, readPopup, reloadPage, sleep, waitFor, writeOptions,
 } from "./session.mjs";
 
 // The open search pages, from the extension's own documents as search-window.js finds them.
 const searchPages = () => evaluateJson(page, async url => JSON.stringify(await Promise.all((await chrome.runtime.getContexts({
   contextTypes: ["TAB"], documentUrls: [url] })).map(async ({ tabId, windowId }) => ({ tabId, windowId,
   type: (await chrome.windows.get(windowId)).type })))), extensionUrl("search.html"));
+
+// The search page's own document, in search.html's frame.
+const searchFrame = target => childFrame(target, "search-frame.html");
 
 // search-window.js's openSearchPage, which the browser shortcuts and the toolbar menu call.
 const openSearchPage = mode => evaluateJson(page, async requested => {
@@ -42,9 +47,12 @@ describe("search page", () => {
       opened?.type === "popup" && first?.length === 1 && JSON.stringify(second) === JSON.stringify(first),
       JSON.stringify({ opened, first, second }));
 
-    const search = await findPage("search.html");
+    const search = await searchFrame(await findPage("search.html"));
     const ready = await waitFor(() => search.evaluate(() => !document.getElementById("search-submit").disabled || false),
       { timeout: 30_000 });
+    // The Firefox Custom JavaScript step in settings.mjs has granted user
+    // scripts and cleared its script, so none runs here.
+    const unscripted = await search.evaluate(() => document.documentElement.dataset.customScript ?? null);
     await search.evaluate(() => {
       document.getElementById("search-input").value = "食べたかった";
       document.getElementById("search-form").requestSubmit();
@@ -53,11 +61,43 @@ describe("search page", () => {
       const popup = await readPopup(search);
       return popup?.headword ? popup : false;
     }, { timeout: 20_000 });
+    // The frame's own layout (search.css) applies only if Firefox served it.
     const docked = await search.evaluate(() => document.getElementById("search-results")
-      .contains(document.querySelector("hachidori-host")));
+      .contains(document.querySelector("hachidori-host")) && getComputedStyle(document.body).display === "flex");
     check("the search page looks up a typed word and docks the reader's popup under its box",
-      ready === true && shown?.headword === "食べる" && shown.plain.includes("to eat") && docked === true,
-      JSON.stringify({ ready, headword: shown?.headword, docked, plain: shown?.plain?.slice(0, 120) }));
+      ready === true && shown?.headword === "食べる" && shown.plain.includes("to eat") && docked === true && unscripted === null,
+      JSON.stringify({ ready, headword: shown?.headword, docked, unscripted, plain: shown?.plain?.slice(0, 120) }));
+
+    // The script web pages run, run on the search page too, where it reaches
+    // the docked result through the popup's open root. Firefox has sandboxed
+    // extension pages from 154; before, the frame is an ordinary extension
+    // page, where it cannot run.
+    const sandboxes = Number(/(\d+)\./u.exec(await browser.version())[1]) >= 154;
+    await writeOptions(page, { customPopupJavascript: `document.documentElement.dataset.customScript = "ran";
+      setInterval(() => {
+        const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+        if (popup && !popup.hidden) popup.dataset.customScript = "reached";
+      }, 50);` });
+    const registered = await waitFor(() => page.evaluate(async () => (await chrome.userScripts.getScripts({
+      ids: ["hachidori-custom-javascript"] })).length === 1 || false), { timeout: 10_000 });
+    // The page hands the frame the script as it loads.
+    const scripted = await searchFrame(await reloadPage(await findPage("search.html")));
+    await waitFor(() => scripted.evaluate(() => !document.getElementById("search-submit").disabled || false), { timeout: 30_000 });
+    const sandboxed = await scripted.evaluate(() => self.origin === "null");
+    await scripted.evaluate(() => {
+      document.getElementById("search-input").value = "食べる";
+      document.getElementById("search-form").requestSubmit();
+    });
+    const result = await waitFor(async () => (await readPopup(scripted))?.headword ?? false, { timeout: 20_000 });
+    const marks = await waitFor(() => scripted.evaluate(() => {
+      const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+      return { page: document.documentElement.dataset.customScript ?? null, popup: popup?.dataset.customScript ?? null };
+    }).then(found => (found.popup === "reached" || !sandboxes ? found : false)), { timeout: 5_000 });
+    await writeOptions(page, { customPopupJavascript: "" });
+    check("Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
+      registered === true && result === "食べる" && sandboxed === sandboxes
+        && (sandboxes ? marks?.page === "ran" && marks.popup === "reached" : marks?.page === null && marks.popup === null),
+      JSON.stringify({ registered, result, sandboxes, sandboxed, marks }));
     await evaluateJson(page, async windowId => {
       await chrome.windows.remove(windowId);
       return "null";
@@ -72,13 +112,19 @@ describe("search page", () => {
       Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
       return "copied";
     })(${JSON.stringify(text)})`);
+    // The switch and the monitor are search.html's, the box and the reader its frame's (#644).
     const search = await openExtensionPage("search.html");
-    const state = () => evaluateJson(search, async () => JSON.stringify({
-      ready: !document.getElementById("search-submit").disabled && !document.getElementById("search-clipboard").disabled,
-      on: document.getElementById("search-clipboard").checked,
-      granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
-      query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
-    }));
+    const frame = await searchFrame(search);
+    const state = async () => {
+      const box = await frame.evaluate(() => ({ ready: !document.getElementById("search-submit").disabled,
+        query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent }));
+      const monitor = await evaluateJson(search, async () => JSON.stringify({
+        enabled: !document.getElementById("search-clipboard").disabled,
+        on: document.getElementById("search-clipboard").checked,
+        granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
+      }));
+      return { ready: box.ready && monitor.enabled, on: monitor.on, granted: monitor.granted, query: box.query };
+    };
     const settled = predicate => waitFor(async () => {
       const current = await state();
       return predicate(current) ? current : false;
@@ -104,15 +150,18 @@ describe("search page", () => {
     const off = await settled(current => current.ready);
     await search.click("#search-clipboard");
     const on = await settled(current => current.on && current.granted);
+    // The click hands focus back to the frame, where the reader's keys work (#644).
+    const handedBack = await waitFor(() => frame.evaluate(() => document.hasFocus() || false), { timeout: 5_000 });
     const baseline = await readTwice("食べたかった");
     const before = await state();
     check("the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
-      off?.on === false && off.granted === false && on?.on === true && baseline === true && before.query === null,
-      JSON.stringify({ off, on, baseline, before }));
+      off?.on === false && off.granted === false && on?.on === true && handedBack === true && baseline === true
+        && before.query === null,
+      JSON.stringify({ off, on, handedBack, baseline, before }));
 
     await copy("読む");
     const shown = await waitFor(async () => {
-      const popup = await readPopup(search);
+      const popup = await readPopup(frame);
       return popup?.headword === "読む" ? popup : false;
     }, { timeout: 20_000 });
     const searched = await state();

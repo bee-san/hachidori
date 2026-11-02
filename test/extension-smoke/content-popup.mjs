@@ -437,6 +437,24 @@ describe("content script: popup", () => {
             && harness.rootRequests === (customPopupJavascript === "" ? 0 : 1);
         } finally { harness.close(); }
       }
+      // The search page's frame runs the saved script in the reader's own world
+      // (#644), so there the root is open while Custom JavaScript is saved.
+      // Other extension pages, where no user script runs, keep it closed.
+      for (const [name, customPopupJavascript, page, mode] of [
+        ["the search page's frame gives saved Custom JavaScript an open root without asking a bridge",
+          "document.body.dataset.custom = 'yes';", "search-frame.html", "open"],
+        ["the search page's frame keeps a closed root while no Custom JavaScript is saved", "", "search-frame.html", "closed"],
+        ["the startup page keeps a closed root while Custom JavaScript is saved", "document.body.dataset.custom = 'yes';",
+          "startup.html", "closed"],
+      ]) {
+        const harness = await createHarness(null, { options: { customPopupJavascript },
+          url: `chrome-extension://hachidoricontnotesmoke/${page}` });
+        try {
+          const root = harness.popup.getRootNode();
+          outcomes[name] = root.mode === mode && root.host.shadowRoot === (mode === "open" ? root : null)
+            && harness.rootRequests === (page === "startup.html" ? 1 : 0);
+        } finally { harness.close(); }
+      }
       // A first lookup can start before the stored options arrive (the CI race
       // in #651). The host waits for them, so it still takes the bridge's root.
       const early = await createHarness(null, { options: { customPopupJavascript: "document.body.dataset.custom = 'yes';" },

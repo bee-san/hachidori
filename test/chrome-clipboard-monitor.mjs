@@ -15,6 +15,9 @@
  * whose profile grants optional permissions without showing a prompt; no suite
  * shows the prompt itself.
  *
+ * The switch and the monitor are search.html's; the box, the query and the
+ * reader are in the frame it holds, search-frame.html (#644).
+ *
  * test/run.mjs chrome-e2e runs it after the main scenario; on its own:
  *   node test/chrome-clipboard-monitor.mjs
  * HACHIDORI_SEARCH_SCREENSHOTS=DIR also saves the search page in the default,
@@ -125,15 +128,19 @@ try {
   const search = watch(await browser.newPage(), "search");
   await search.setViewport({ width: 960, height: 760 });
   await search.goto(`chrome-extension://${extensionId}/search.html`, { waitUntil: "domcontentloaded" });
-  await search.waitForFunction(() => !document.getElementById("search-submit").disabled
-    && !document.getElementById("search-clipboard").disabled, { polling: 100, timeout: 30_000 });
-  const popup = await popupReader(search);
-  const page = () => search.evaluate(() => ({
-    switchOn: document.getElementById("search-clipboard").checked,
-    value: document.getElementById("search-input").value,
-    query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
-    focused: document.hasFocus(),
-  }));
+  const frameUrl = `chrome-extension://${extensionId}/search-frame.html`;
+  await search.waitForFrame(frameUrl, { timeout: 30_000 });
+  const frame = search.frames().find(candidate => candidate.url() === frameUrl);
+  await frame.waitForFunction(() => !document.getElementById("search-submit").disabled, { polling: 100, timeout: 30_000 });
+  await search.waitForFunction(() => !document.getElementById("search-clipboard").disabled, { polling: 100, timeout: 30_000 });
+  const popup = await popupReader(search, 0, frameUrl);
+  const page = async () => ({
+    ...await frame.evaluate(() => ({
+      value: document.getElementById("search-input").value,
+      query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
+    })),
+    ...await search.evaluate(() => ({ switchOn: document.getElementById("search-clipboard").checked, focused: document.hasFocus() })),
+  });
   // The texts the page's monitor reads, as its own requests return them.
   await search.evaluate(() => {
     const send = chrome.runtime.sendMessage;
@@ -143,6 +150,7 @@ try {
       if (message?.type === "hd_clipboard_read") {
         reply.then(answer => globalThis.clipboardReads.push(answer?.text ?? null), () => {});
       }
+      if (message?.type === "hd_audio_play") globalThis.audioPlays = (globalThis.audioPlays ?? 0) + 1;
       return reply;
     };
   });
@@ -150,6 +158,13 @@ try {
   // Once the monitor has read `text` twice, it has acted on the first read.
   const readTwice = text => search.waitForFunction(value => globalThis.clipboardReads
     .filter(read => read === value).length >= 2, { polling: 50, timeout: 15_000 }, text);
+
+  // What reaches the frame, where Custom JavaScript runs (#644): only text the
+  // reader would search, never other text the monitor reads.
+  await frame.evaluate(() => {
+    globalThis.monitorTexts = [];
+    globalThis.HDSearchBridge.onClipboard(text => globalThis.monitorTexts.push(text));
+  });
 
   await web.bringToFront();
   await readTwice("食べたかった");
@@ -176,11 +191,13 @@ try {
   await copyInWeb("hello world");
   await readTwice("hello world");
   assert.equal((await page()).query, "読む", "text without Japanese is not searched");
+  const reached = await frame.evaluate(() => globalThis.monitorTexts);
+  assert.deepEqual(reached, ["読む"], `only text the reader searches reaches the frame: ${JSON.stringify(reached)}`);
 
   // Text copied on the search page itself.
   await search.bringToFront();
-  await search.focus("#search-input");
-  await search.$eval("#search-input", box => { box.value = "漢字"; box.select(); });
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", box => { box.value = "漢字"; box.select(); });
   await forget();
   await search.keyboard.down("Control");
   await search.keyboard.press("KeyC", { commands: ["Copy"] });
@@ -193,8 +210,8 @@ try {
   assert.ok((await popup.state()).plain.includes("読む"));
   // And text cut there, which the clipboard did not hold before.
   await search.bringToFront();
-  await search.focus("#search-input");
-  await search.$eval("#search-input", box => { box.value = "聞く"; box.select(); });
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", box => { box.value = "聞く"; box.select(); });
   await forget();
   await search.keyboard.down("Control");
   await search.keyboard.press("KeyX", { commands: ["Cut"] });
@@ -208,7 +225,7 @@ try {
   // A Note being written holds the monitor off, and it searches again once the Note is closed.
   await search.bringToFront();
   assert.equal(await popup.click(".gsm-hoshidicts-note-button"), true, "the Note button opens the form");
-  const noteFocused = await popupRoot(search).waitFor(shadow => {
+  const noteFocused = await popupRoot(search, frameUrl).waitFor(shadow => {
     const field = shadow.querySelector('.gsm-hoshidicts-note-form:not([hidden]) [name="definition"]');
     field?.focus();
     return Boolean(field) && shadow.activeElement === field;
@@ -247,7 +264,7 @@ try {
   const long = "昨日は友達と一緒に駅前の喫茶店へ行った。".repeat(15_000);
   assert.equal(long.length, 300_000);
   await copyInWeb(long);
-  await search.waitForFunction(start => document.getElementById("search-query").textContent === start,
+  await frame.waitForFunction(start => document.getElementById("search-query").textContent === start,
     { polling: 100, timeout: 15_000 }, long.slice(0, 1000));
   const longRead = await search.evaluate(async () => {
     const start = performance.now();
@@ -259,7 +276,7 @@ try {
   assert.equal((await page()).value.length, 1000, "the box holds the first 1,000 characters");
   // A short copy again, for the screenshots.
   await copyInWeb("漢字");
-  await search.waitForFunction(() => document.getElementById("search-query").textContent === "漢字",
+  await frame.waitForFunction(() => document.getElementById("search-query").textContent === "漢字",
     { polling: 100, timeout: 15_000 });
 
   if (SCREENSHOTS) {
@@ -276,8 +293,10 @@ try {
       .getAnimations().map(animation => animation.finished.catch(() => {}))));
     for (const theme of ["girlypop", "high-contrast", "default"]) {
       await writeTheme(theme);
-      await search.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value,
-        { polling: 100, timeout: 10_000 }, theme);
+      for (const target of [search, frame]) {
+        await target.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value,
+          { polling: 100, timeout: 10_000 }, theme);
+      }
       await switchSettled();
       await search.screenshot({ path: resolve(SCREENSHOTS, `search-clipboard-monitor-${theme}.png`) });
     }
@@ -286,10 +305,54 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-clipboard-monitor-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
+  // A click on the switch hands focus back to the page, where the reader's
+  // keybinds work, as beside the switch on one page (#644): Alt+P plays the
+  // result's pronunciation. This copy holds clipboardRead as a required
+  // permission, so the click cannot give it back and the switch stays on.
+  await search.bringToFront();
+  await search.evaluate(() => { globalThis.audioPlays = 0; });
+  await search.click("#search-clipboard");
+  await frame.waitForFunction(() => document.hasFocus(), { polling: 50, timeout: 5_000 });
+  await search.keyboard.down("Alt");
+  await search.keyboard.press("KeyP");
+  await search.keyboard.up("Alt");
+  await search.waitForFunction(() => globalThis.audioPlays > 0, { polling: 50, timeout: 10_000 });
+  // A switch that already has focus keeps it, as after Space: Chrome focuses
+  // the switch before the pointer events of a screen reader's or voice
+  // control's click, which must not move focus off what the user toggled.
+  await search.focus("#search-clipboard");
+  await search.click("#search-clipboard");
+  await new Promise(resolveWait => setTimeout(resolveWait, 300));
+  assert.equal(await search.evaluate(() => document.activeElement?.id), "search-clipboard",
+    "a click on the focused switch leaves focus on it");
+  // A finger's tap hands focus back too, though Chrome focuses the switch only
+  // after the tap's pointerup: a press held as long as a finger rests.
+  await frame.focus("#search-input");
+  await search.evaluate(() => {
+    globalThis.switchClicks = 0;
+    document.getElementById("search-clipboard").addEventListener("click", () => { globalThis.switchClicks += 1; });
+  });
+  const touch = await search.createCDPSession();
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  const [x, y] = await search.$eval("#search-clipboard", (element) => {
+    const box = element.getBoundingClientRect();
+    return [box.x + box.width / 2, box.y + box.height / 2];
+  });
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  await new Promise(resolveWait => setTimeout(resolveWait, 120));
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await search.waitForFunction(() => globalThis.switchClicks > 0, { polling: 50, timeout: 5_000 });
+  await new Promise(resolveWait => setTimeout(resolveWait, 300));
+  const tapped = { shell: await search.evaluate(() => document.activeElement?.localName),
+    frame: await frame.evaluate(() => document.hasFocus()) };
+  assert.deepEqual(tapped, { shell: "iframe", frame: true }, `a tap on the switch hands focus back: ${JSON.stringify(tapped)}`);
+  await touch.send("Emulation.setTouchEmulationEnabled", { enabled: false });
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
-    + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard");
+    + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard; only"
+    + " text it searches reaches the frame, and a click or tap on its switch leaves the reader's keybinds working"
+    + " unless the switch had focus");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();

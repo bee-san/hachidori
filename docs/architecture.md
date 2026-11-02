@@ -22,7 +22,10 @@ right root. A script added or changed runs from the reading page's next load.
 If a lookup builds the popup before the page's user scripts have run, the
 reader attaches its own closed root, and saved scripts cannot reach that popup
 until the page loads again. The Design preview remains open inside its
-extension page.
+extension page. The [search page](#search-page) runs the same script in its
+sandboxed frame, in the reader's own world, where nothing but the extension
+can reach the popup, so the reader there attaches an open root while Custom
+JavaScript is saved.
 
 ## Runtime layout
 
@@ -594,7 +597,8 @@ exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
-link's `#setup-heading`, and its `search.html` ([Search page](#search-page)).
+link's `#setup-heading`, and the search page's `search-frame.html`
+([Search page](#search-page)).
 Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
@@ -1054,7 +1058,10 @@ and every open search page follows a change through `permissions.onAdded` and
 `onRemoved`, so it needs no stored option. Only the search page reads the
 clipboard: it sends `hd_clipboard_read` to the worker, which accepts it from
 that page alone and relays it to the offscreen document, never to a linked
-browser's host, and the offscreen document answers only the worker. As Yomitan's
+browser's host, and the offscreen document answers only the worker. The switch
+and the monitor are `search.html`'s, over the header of its frame (see Custom
+JavaScript below): Firefox asks for a permission only from the document whose
+control the user clicked. As Yomitan's
 `ClipboardReader` does, Chrome pastes into a text area there, which needs
 neither focus nor a prompt once the permission is granted; the text comes from
 the paste event, which is cancelled, because laying out 300,000 pasted
@@ -1063,6 +1070,53 @@ paste command sometimes fails, uses `navigator.clipboard.readText()` in the
 background page's engine frame.
 
 ![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
+
+**Custom JavaScript.** **Design → Custom JavaScript** runs on the search page
+as it does on web pages (#644). Chrome and Firefox run no user script in an
+extension page: `userScripts.register` refuses a `chrome-extension:` match
+pattern, `userScripts.execute` and `scripting.executeScript` cannot access the
+page, and an extension page's policy forbids running a string as code. So
+`search.html` holds the page itself, `search-frame.html`, in a sandboxed frame
+(`manifest.json` → `sandbox`), whose policy allows `eval` and still refuses
+inline script. Once the reader is ready, the frame runs the script the worker
+registered for web pages (`custom-javascript.js`), so the script runs only
+where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
+`userScripts` permission is on. It shares the frame's document with the
+reader and reaches the docked result through `host.shadowRoot`, as on a web
+page; unlike a user script in its own world, it also shares the reader's
+JavaScript globals. There is no `custom-javascript-bridge.js` in the frame:
+nothing but the extension reaches its pages, so while Custom JavaScript is
+saved the reader in `search-frame.html` attaches an open root itself.
+
+A sandboxed frame has no extension APIs, so `search-shell.js` in `search.html`
+answers for it over one `MessagePort`: `search-bridge.js` makes the channel and
+offers its port to the extension's origin, which the frame's location keeps, so
+only `search.html` can take it. Whatever the frame is served, the script can
+use too, where on a web page it has no extension messaging at all, so the frame
+gets what the reader needs and no more: the requests a content script's reader
+sends, and of option writes only the reader's own, one **Toggle option**
+keybind's boolean; the stored keys the reader reads, with the AnkiConnect key,
+which the reader never uses, left out of the options; and the events sent to
+the reader. The frame's debug log goes to the extension's store, measured and
+redacted again by `search.html`, and may update only the records the frame
+wrote. The Clipboard monitor's switch and its reads stay in `search.html`,
+which lays the switch over the end of the frame's header and shows it with the
+frame's themed page. Only text with a Japanese character, the reader's own
+`isLookupWorthy` test, goes on to the frame, which searches it and tells
+`search.html` when its reader is ready and when text is copied there. The
+monitor hands the user's script no other text. In Chrome, while Hachidori
+holds `clipboardRead`, a user script can still read the clipboard itself, on
+the search page as on any web page; in Firefox it cannot. A mouse click or a
+tap on the switch, if the switch does not have focus, hands focus back to the
+frame once the click is done (a tap focuses the switch after its `pointerup`),
+where the reader's keybinds and activation key work. A focused switch keeps
+focus: after Space, and after a screen reader's or voice control's click,
+which Chrome sends as pointer events once it has focused the switch. There
+Escape and Ctrl+U still reach the box, and the reader's keybinds wait for
+focus to return to the page.
+Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
+extension page, with its own API, where the script does not run and the
+channel carries only the debug log and the Clipboard monitor.
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and

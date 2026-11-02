@@ -7,6 +7,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export const SEARCH_PAGE = "search.html";
+// The search page's own document, the frame search.html holds (#644).
+export const SEARCH_FRAME = "search-frame.html";
 
 // Yomitan's popup window is 400 × 250 by default (popupWindow in
 // ext/data/schemas/options-schema.json); this one has room for the search box

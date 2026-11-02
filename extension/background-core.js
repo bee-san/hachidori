@@ -16,7 +16,7 @@ import { CUSTOM_DICTIONARY_ID, CUSTOM_DICTIONARY_SOURCE_KEY, CUSTOM_DICTIONARY_T
 import { sameJsonValue } from "./json-value.js";
 import { boundResponseFailure, responseFits, responseLimitError } from "./response-limits.js";
 import { STARTUP_PAGE } from "./setup-state.js";
-import { SEARCH_PAGE } from "./search-window.js";
+import { SEARCH_FRAME, SEARCH_PAGE } from "./search-window.js";
 
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
@@ -304,9 +304,12 @@ function startupSender(sender) {
 // The extension pages that load the reader themselves: first-run setup's
 // practice and the search page (#610). Their messages may come without
 // sender.tab and tabs hide their URLs, so the worker finds their documents
-// through runtime.getContexts and answers them with runtime messages.
+// through runtime.getContexts and answers them with runtime messages. The
+// search page's reader is in search-frame.html (#644), whose requests
+// search.html sends, except in Firefox before 154: there the frame is not
+// sandboxed and sends its own.
 function readerPageSender(sender) {
-  return startupSender(sender) || extensionPageSender(sender, SEARCH_PAGE);
+  return startupSender(sender) || extensionPageSender(sender, SEARCH_PAGE) || extensionPageSender(sender, SEARCH_FRAME);
 }
 
 // Only the search page's clipboard monitor may have the clipboard read (#639).

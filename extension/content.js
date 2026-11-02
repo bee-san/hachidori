@@ -103,16 +103,20 @@
   }
   // The reader belongs to ordinary pages. First-run setup loads these same
   // scripts into its own startup page for the practice step, and the search
-  // page (#610) into itself. The startup page's native skip link may leave the
-  // known heading fragment before the module loads or on reload; query
-  // variants and every other internal page stay excluded.
+  // page (#610) into itself, the sandboxed frame search.html holds (#644). The
+  // startup page's native skip link may leave the known heading fragment
+  // before the module loads or on reload; query variants and every other
+  // internal page stay excluded.
   if (
     location.protocol === EXTENSION_PROTOCOL &&
-    !["startup.html", "startup.html#setup-heading", "search.html"]
+    !["startup.html", "startup.html#setup-heading", "search-frame.html"]
       .some((page) => location.href === chrome.runtime.getURL(page))
   ) {
     return;
   }
+  // The search page's own document, where search.js runs Custom JavaScript (#644).
+  const SEARCH_FRAME = location.protocol === EXTENSION_PROTOCOL
+    && location.href === chrome.runtime.getURL("search-frame.html");
 
   let disposed = false;
   let appearance;
@@ -1761,9 +1765,13 @@
   // attaches that root from the user-script world and returns it through
   // host.shadowRoot to the saved scripts alone; it sees the request only once
   // the host is in the page. Where user scripts do not run (Chrome's switch is
-  // off, a frame, an extension page) the reader attaches the root itself.
+  // off, a frame, an extension page) the reader attaches the root itself. The
+  // search page's frame runs the saved script in the reader's own world
+  // instead (#644), and nothing but the extension reaches its pages, so there
+  // the root is open.
   function attachPopupRoot() {
     if (options.customPopupJavascript) {
+      if (SEARCH_FRAME) return host.attachShadow({ mode: "open" });
       host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
       const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
       if (root) return root;
@@ -3976,7 +3984,9 @@
   }
 
   // Yomitan's isTextLookupWorthy, for the search page's clipboard monitor
-  // (#639): whether copied text has a Japanese character in it.
+  // (#639): whether copied text has a Japanese character in it. search.html
+  // passes the frame only text this accepts (search-shell.js, #644), testing
+  // the same set: a change here must change that filter too.
   function isLookupWorthy(text) {
     return JAPANESE_CHARACTER_PATTERN.test(text);
   }
