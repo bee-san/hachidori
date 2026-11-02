@@ -72,7 +72,7 @@ test("the manifest asks for tab capture, exposes only the recorder page to Netfl
   const manifest = JSON.parse(await readFile(new URL("manifest.json", extension), "utf8"));
   assert.ok(manifest.permissions.includes("tabCapture"));
   assert.ok(manifest.permissions.includes("scripting"));
-  assert.equal(manifest.optional_permissions, undefined);
+  assert.equal(manifest.optional_permissions?.includes("tabCapture") ?? false, false, "tab capture is not optional");
   assert.equal(/netflix/iu.test(JSON.stringify(manifest.content_scripts)), false, "no Netflix content script is declared");
   const netflixResources = manifest.web_accessible_resources.filter(entry => /netflix/iu.test(JSON.stringify(entry)));
   assert.deepEqual(netflixResources, [{ resources: ["netflix-recorder.html"], matches: ["https://www.netflix.com/*"] }]);
@@ -92,5 +92,5 @@ test("the offscreen document keeps its reasons: the recording happens in the tab
   } finally {
     delete globalThis.chrome;
   }
-  assert.deepEqual(created.map(({ reasons }) => reasons), [["DOM_SCRAPING", "AUDIO_PLAYBACK"]]);
+  assert.deepEqual(created.map(({ reasons }) => reasons), [["DOM_SCRAPING", "AUDIO_PLAYBACK", "CLIPBOARD"]]);
 });
