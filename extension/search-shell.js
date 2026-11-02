@@ -166,16 +166,23 @@ async function userScript(api) {
 // once the frame's reader is ready.
 const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
 
+// The reader's Japanese character set, which content-scan.js publishes. It is
+// loaded once the monitor reads something, rather than as the page starts.
+async function lookupWorthy(text) {
+  await import("./content-scan.js");
+  return globalThis.HDContent.JAPANESE_CHARACTER_PATTERN.test(text);
+}
+
 function clipboardMonitor(clipboardSwitch, search) {
-  const { JAPANESE_CHARACTER_PATTERN } = globalThis.HDContent;
   let ready = false;
   const monitor = createClipboardMonitor({
     async read() {
       const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
       return reply?.ok === true ? reply.text : null;
     },
-    change(text) {
-      if (JAPANESE_CHARACTER_PATTERN.test(text)) search(text);
+    // Not once the switch is off, which it may be by the time the import ends.
+    async change(text) {
+      if (await lookupWorthy(text) && monitor.running) search(text);
     },
   });
   async function show() {
