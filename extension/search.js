@@ -11,7 +11,7 @@ import "./reader-options.js";
 import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
-import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
+import { CLIPBOARD_TARGET, clipboardSearchText, createClipboardMonitor } from "./search-clipboard.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 // Settings → Advanced → Get debug info includes what failed here.
@@ -97,16 +97,18 @@ document.addEventListener("keydown", (event) => {
 // Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
 // ext/js/display/search-display-controller.js): text with Japanese in it,
 // copied in any tab or program, goes into the box and is searched, as a paste
-// is. A Note being written or saved in the result holds it off: the text is not
-// searched. The switch is the browser's clipboardRead permission, which turning
-// it on asks for and turning it off gives back.
+// is, up to Yomitan's 1,000 characters. A Note being written or saved in the
+// result holds it off: the text is not searched. The switch is the browser's
+// clipboardRead permission, which turning it on asks for and turning it off
+// gives back.
 const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
 const monitor = createClipboardMonitor({
   async read() {
     const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
     return reply?.ok === true ? reply.text : null;
   },
-  change(text) {
+  change(copied) {
+    const text = clipboardSearchText(copied);
     if (!reader.isLookupWorthy(text) || reader.holdsNote()) return;
     input.value = text;
     search();

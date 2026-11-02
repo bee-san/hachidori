@@ -11,6 +11,18 @@ export const CLIPBOARD_TARGET = "hachidori-clipboard";
 // Yomitan's interval: the next read starts this long after the last one ended.
 export const CLIPBOARD_POLL_MS = 250;
 
+// Yomitan's default maximum clipboard search length (clipboard.maximumSearchLength):
+// the search page searches the start of a longer copy. Laying out a query of
+// 100,000 characters held the search page for about 30 seconds in Chrome 152.
+export const CLIPBOARD_SEARCH_LENGTH = 1000;
+
+// The start of `text` that is searched, cut between characters.
+export function clipboardSearchText(text) {
+  if (text.length <= CLIPBOARD_SEARCH_LENGTH) return text;
+  const last = text.charCodeAt(CLIPBOARD_SEARCH_LENGTH - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? CLIPBOARD_SEARCH_LENGTH - 1 : CLIPBOARD_SEARCH_LENGTH);
+}
+
 // Reads the clipboard through `read` until stopped and calls `change` with
 // each new text, trimmed. The first read is where it starts, so text that was
 // on the clipboard before is not reported; a failed or empty read reports
@@ -58,15 +70,22 @@ export function createClipboardMonitor({ read, change, interval = CLIPBOARD_POLL
 // Yomitan's ClipboardReader.getText. Chrome reads by pasting into a text area
 // of this document, which needs neither focus nor a prompt once Hachidori has
 // the clipboardRead permission, where navigator.clipboard.readText() needs
-// both. Firefox's paste command sometimes fails (Mozilla bug 1603985), so it
-// reads with navigator.clipboard.readText().
+// both. The text comes from the paste event, which is cancelled so the text
+// area stays empty: laying out 300,000 pasted characters took 30 seconds.
+// Firefox's paste command sometimes fails (Mozilla bug 1603985), so it reads
+// with navigator.clipboard.readText().
 export async function readClipboardText({ document, navigator, firefox }) {
   if (firefox) return navigator.clipboard.readText();
   const target = document.body.appendChild(document.createElement("textarea"));
+  let text = "";
+  target.addEventListener("paste", (event) => {
+    text = event.clipboardData.getData("text/plain");
+    event.preventDefault();
+  });
   try {
     target.focus();
     document.execCommand("paste");
-    return target.value;
+    return text;
   } finally {
     target.remove();
   }

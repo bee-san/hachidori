@@ -4,7 +4,8 @@
  * search page has no focus, and searched there with a real dictionary result.
  * What was on the clipboard before, text without Japanese, text copied on the
  * search page itself and a copy made while a Note is being written are not
- * searched, and no other extension page can read the clipboard.
+ * searched, a long copy is searched from its first 1,000 characters without
+ * holding the page, and no other extension page can read the clipboard.
  *
  * Chrome shows its permission prompt in a window, which headless Chrome cannot
  * answer, so this copy of the extension holds clipboardRead from the start, as
@@ -225,6 +226,26 @@ try {
   assert.equal(others.worker.error, "Unknown clipboard request.");
   assert.equal(typeof others.offscreen?.text, "undefined", `the offscreen document gave Settings no text: ${JSON.stringify(others)}`);
 
+  // A long copy is searched from its start, and reading it does not lay it out:
+  // pasting 300,000 characters into a text area took about 30 seconds.
+  const long = "昨日は友達と一緒に駅前の喫茶店へ行った。".repeat(15_000);
+  assert.equal(long.length, 300_000);
+  await copyInWeb(long);
+  await search.waitForFunction(start => document.getElementById("search-query").textContent === start,
+    { polling: 100, timeout: 15_000 }, long.slice(0, 1000));
+  const longRead = await search.evaluate(async () => {
+    const start = performance.now();
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-clipboard", type: "hd_clipboard_read" });
+    return { ms: performance.now() - start, length: reply?.text?.length };
+  });
+  assert.equal(longRead.length, 300_000, JSON.stringify(longRead));
+  assert.ok(longRead.ms < 2000, `one read of 300,000 characters took ${longRead.ms} ms`);
+  assert.equal((await page()).value.length, 1000, "the box holds the first 1,000 characters");
+  // A short copy again, for the screenshots.
+  await copyInWeb("漢字");
+  await search.waitForFunction(() => document.getElementById("search-query").textContent === "漢字",
+    { polling: 100, timeout: 15_000 });
+
   if (SCREENSHOTS) {
     await search.bringToFront();
     const cdp = await search.createCDPSession();
@@ -247,7 +268,7 @@ try {
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
-    + " Note, and only the search page can read the clipboard");
+    + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();
