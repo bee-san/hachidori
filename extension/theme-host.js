@@ -25,7 +25,10 @@
   });
   const DEFAULT_LABELS = Object.freeze({ reading: "Reading", traceMarker: "", readingBrackets: Object.freeze(["(", ")"]),
     senseSeparator: "; ", listSeparator: ", " });
-  const HAN = /\p{Script=Han}/u;
+  // Compiled the first time it is used, like glossary.js's patterns: a
+  // property escape in a literal costs every frame at injection.
+  let hanPattern = null;
+  const HAN = () => hanPattern ??= new RegExp(String.raw`\p{Script=Han}`, "u");
   const FIRST_STRONG_ISOLATE = "\u2068", POP_ISOLATE = "\u2069";
   const registryPack = code => globalThis.HDLanguages?.get?.(code) ?? null;
 
@@ -182,7 +185,7 @@
       // Japanese keeps the four text themes' \p{Script=Han} (11.6).
       isCharacterLink(character) {
         if (!characterView) return false;
-        return japanese ? HAN.test(character) : characterPattern?.test(character) === true;
+        return japanese ? HAN().test(character) : characterPattern?.test(character) === true;
       },
       display(result, field) {
         return result?.presentation?.[field] ?? result?.term?.[field];
