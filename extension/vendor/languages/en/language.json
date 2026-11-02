@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "code": "en",
+  "iso639_3": "eng",
+  "name": "English",
+  "nativeName": "English",
+  "bcp47": "en",
+  "scripts": ["Latn"],
+  "direction": "ltr",
+  "classes": {
+    "letter": "[A-Za-z\\u00C0-\\u024F]",
+    "word": "[{letter}\\p{M}\\p{Nd}]"
+  },
+  "text": {
+    "pattern": "{letter}",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "{word}",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [".", "!", "?", "\u2026"],
+      "quotePairs": [["\u201C", "\u201D"], ["\"", "\""], ["(", ")"]]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {"id": "decapitalize", "name": "Decapitalize text", "variants": [[{"case": "lower"}]]},
+      {"id": "capitalizeFirstLetter", "name": "Capitalize first letter", "variants": [[{"case": "upperFirst"}]]}
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {
+      "reading": "Reading",
+      "traceMarker": "",
+      "readingBrackets": ["(", ")"],
+      "senseSeparator": "; ",
+      "listSeparator": ", "
+    },
+    "displayTransforms": {}
+  },
+  "settings": [],
+  "host": {
+    "ttsLanguage": "en-US",
+    "audioLanguage": "en",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {"phonetic-transcriptions": ["IPA"]},
+      "partOfSpeechLabels": {"v": "Verb", "n": "Noun", "adj": "Adjective", "adv": "Adverb"}
+    },
+    "frequencySamples": {
+      "common": ["the", "of", "and", "to", "in", "is", "you", "that", "it", "was"],
+      "rare": ["quixotic", "obstreperous", "pulchritude", "sesquipedalian", "defenestration", "lugubrious", "perspicacious", "crepuscular", "susurrus", "callipygian"]
+    },
+    "recommendedDictionaries": [
+      {
+        "name": "Wiktionary English-English (wiktionary-to-yomitan)",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
+        "description": "Wiktionary definitions of English words, with parts of speech for the deinflection filter. Converted from kaikki.org data by wiktionary-to-yomitan (formerly kaikki-to-yomitan).",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "running",
+      "practice": {"text": "She was running late, so she took the earlier train.", "lookup": "running"},
+      "entry": {"expression": "run", "reading": "run", "glossary": ["to move swiftly on foot"], "definitionTags": "v", "matched": "running", "trace": ["ing"]},
+      "character": null
+    }
+  }
+}

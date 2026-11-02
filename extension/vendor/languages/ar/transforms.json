@@ -1,0 +1,1171 @@
+{
+  "schema": 1,
+  "conditions": {
+    "n": {
+      "name": "Noun",
+      "isDictionaryForm": true
+    },
+    "n_p": {
+      "name": "Noun with Prefix only",
+      "isDictionaryForm": false,
+      "subConditions": ["n_wa", "n_bi", "n_ka", "n_li", "n_al", "n_bi_al", "n_ka_al", "n_lil", "n_li_al"]
+    },
+    "n_def": {
+      "name": "Noun with Definite Prefix",
+      "isDictionaryForm": false,
+      "subConditions": ["n_al", "n_bi_al", "n_ka_al", "n_lil", "n_li_al"]
+    },
+    "n_indef": {
+      "name": "Noun with Indefinite Prefix",
+      "isDictionaryForm": false,
+      "subConditions": ["n_wa", "n_bi", "n_ka", "n_li"]
+    },
+    "n_nom": {
+      "name": "Nominative Noun with Prefix",
+      "isDictionaryForm": false,
+      "subConditions": ["n_wa", "n_li", "n_al"]
+    },
+    "n_nom_indef": {
+      "name": "Nominative Noun with Indefinite Prefix",
+      "isDictionaryForm": false,
+      "subConditions": ["n_wa", "n_li"]
+    },
+    "n_wa": {
+      "name": "Noun with و Prefix",
+      "isDictionaryForm": false
+    },
+    "n_bi": {
+      "name": "Noun with ب Prefix",
+      "isDictionaryForm": false
+    },
+    "n_ka": {
+      "name": "Noun with ك Prefix",
+      "isDictionaryForm": false
+    },
+    "n_li": {
+      "name": "Noun with ل Prefix",
+      "isDictionaryForm": false
+    },
+    "n_al": {
+      "name": "Noun with ال Prefix",
+      "isDictionaryForm": false
+    },
+    "n_bi_al": {
+      "name": "Noun with بال Prefix",
+      "isDictionaryForm": false
+    },
+    "n_ka_al": {
+      "name": "Noun with كال Prefix",
+      "isDictionaryForm": false
+    },
+    "n_lil": {
+      "name": "Noun with لل Prefix",
+      "isDictionaryForm": false
+    },
+    "n_li_al": {
+      "name": "Noun with Assimilated لل Prefix",
+      "isDictionaryForm": false
+    },
+    "n_s": {
+      "name": "Noun with Suffix",
+      "isDictionaryForm": false
+    },
+    "v": {
+      "name": "Verb",
+      "isDictionaryForm": true,
+      "subConditions": ["pv", "iv", "cv"]
+    },
+    "pv": {
+      "name": "Perfect Verb (no affixes)",
+      "isDictionaryForm": true
+    },
+    "pv_p": {
+      "name": "Perfect Verb with Prefix",
+      "isDictionaryForm": false
+    },
+    "pv_s": {
+      "name": "Perfect Verb with Suffix only",
+      "isDictionaryForm": false
+    },
+    "iv": {
+      "name": "Imperfect Verb (no affixes)",
+      "isDictionaryForm": true
+    },
+    "iv_p": {
+      "name": "Imperfect Verb with Prefix",
+      "isDictionaryForm": false
+    },
+    "iv_s": {
+      "name": "Imperfect Verb with Suffix only",
+      "isDictionaryForm": false
+    },
+    "cv": {
+      "name": "Command Verb (no affixes)",
+      "isDictionaryForm": true
+    },
+    "cv_p": {
+      "name": "Command Verb with Prefix",
+      "isDictionaryForm": false
+    },
+    "cv_s": {
+      "name": "Command Verb with Suffix only",
+      "isDictionaryForm": false
+    }
+  },
+  "transforms": [
+    {
+      "id": "NPref-Wa",
+      "name": "and",
+      "description": "and (و); and, so (ف)",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "و", "deinflected": "", "conditionsIn": ["n_wa"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "ف", "deinflected": "", "conditionsIn": ["n_wa"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-Bi",
+      "name": "by, with",
+      "description": "by, with",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ب", "deinflected": "", "conditionsIn": ["n_bi"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "وب", "deinflected": "", "conditionsIn": ["n_bi"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فب", "deinflected": "", "conditionsIn": ["n_bi"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-Ka",
+      "name": "like, such as",
+      "description": "like, such as",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ك", "deinflected": "", "conditionsIn": ["n_ka"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "وك", "deinflected": "", "conditionsIn": ["n_ka"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فك", "deinflected": "", "conditionsIn": ["n_ka"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-Li",
+      "name": "for, to; indeed, truly",
+      "description": "for, to (لِ); indeed, truly (لَ)",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ل", "deinflected": "", "conditionsIn": ["n_li"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "ول", "deinflected": "", "conditionsIn": ["n_li"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فل", "deinflected": "", "conditionsIn": ["n_li"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-Al",
+      "name": "the",
+      "description": "the",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ال", "deinflected": "", "conditionsIn": ["n_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "وال", "deinflected": "", "conditionsIn": ["n_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فال", "deinflected": "", "conditionsIn": ["n_al"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-BiAl",
+      "name": "by/with + the",
+      "description": "by/with + the",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "بال", "deinflected": "", "conditionsIn": ["n_bi_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "وبال", "deinflected": "", "conditionsIn": ["n_bi_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فبال", "deinflected": "", "conditionsIn": ["n_bi_al"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-KaAl",
+      "name": "like/such as + the",
+      "description": "like/such as + the",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "كال", "deinflected": "", "conditionsIn": ["n_ka_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "وكال", "deinflected": "", "conditionsIn": ["n_ka_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فكال", "deinflected": "", "conditionsIn": ["n_ka_al"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NPref-Lil",
+      "name": "for/to + the",
+      "description": "for/to + the",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "لل", "deinflected": "", "conditionsIn": ["n_lil"], "conditionsOut": ["n"], "stemNotStartsWith": "[\\u0644]"},
+        {"type": "prefix", "inflected": "ولل", "deinflected": "", "conditionsIn": ["n_lil"], "conditionsOut": ["n"], "stemNotStartsWith": "[\\u0644]"},
+        {"type": "prefix", "inflected": "فلل", "deinflected": "", "conditionsIn": ["n_lil"], "conditionsOut": ["n"], "stemNotStartsWith": "[\\u0644]"}
+      ]
+    },
+    {
+      "id": "NPref-LiAl",
+      "name": "for/to + the",
+      "description": "for/to + the, assimilated with initial ل",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "لل", "deinflected": "ل", "conditionsIn": ["n_li_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "ولل", "deinflected": "ل", "conditionsIn": ["n_li_al"], "conditionsOut": ["n"]},
+        {"type": "prefix", "inflected": "فلل", "deinflected": "ل", "conditionsIn": ["n_li_al"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "NSuff-h",
+      "name": "pos. pron.",
+      "description": "possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "نا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "كما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "كم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "كن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "هما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "هم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "هن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"], "stemNotEndsWith": "[\\u064A]"}
+      ]
+    },
+    {
+      "id": "NSuff-ap",
+      "name": "fem. sg.",
+      "description": "fem. sg.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ة", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-ath",
+      "name": "fem. sg. + pos. pron.",
+      "description": "fem. sg. + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تنا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ته", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تي", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تنا", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تك", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تكن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ته", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تها", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تهن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-AF",
+      "name": "acc. indef.",
+      "description": "accusative indefinite (اً)",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_wa", "n"]},
+        {"type": "suffix", "inflected": "اً", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_wa", "n"]},
+        {"type": "suffix", "inflected": "ًا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_wa", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-An",
+      "name": "dual",
+      "description": "nominative m. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ان", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom", "n"]},
+        {"type": "suffix", "inflected": "آن", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-Ah",
+      "name": "dual + pos. pron.",
+      "description": "nominative m. dual + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آ", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "انا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "اهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آي", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آنا", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آك", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آكما", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آكم", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آكن", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آه", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آها", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آهما", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آهم", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "آهن", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-ayn",
+      "name": "dual",
+      "description": "accusative/genitive m. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ين", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-ayh",
+      "name": "dual + pos. pron.",
+      "description": "accusative/genitive m. dual + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ينا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-atAn",
+      "name": "dual",
+      "description": "nominative f. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تان", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom", "n"]},
+        {"type": "suffix", "inflected": "تان", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-atAh",
+      "name": "dual + pos. pron.",
+      "description": "nominative f. dual + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تا", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تانا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاي", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تانا", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاك", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاكن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاه", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاها", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "تاهن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-tayn",
+      "name": "dual",
+      "description": "accusative/genitive f. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تين", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]},
+        {"type": "suffix", "inflected": "تين", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-tayh",
+      "name": "dual + pos. pron.",
+      "description": "accusative/genitive f. dual + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تي", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تينا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تينا", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيك", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيكن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيه", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيها", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "تيهن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-At",
+      "name": "f. pl.",
+      "description": "sound f. plural",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ات", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]},
+        {"type": "suffix", "inflected": "ات", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]},
+        {"type": "suffix", "inflected": "آت", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]},
+        {"type": "suffix", "inflected": "آت", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-Ath",
+      "name": "f. pl. + pos. pron.",
+      "description": "sound f. plural + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "اتي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتنا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اته", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتي", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتنا", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتك", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتكن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اته", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتها", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهما", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهم", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "اتهن", "deinflected": "ة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتي", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتنا", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتك", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكما", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكم", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكن", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آته", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتها", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهما", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهم", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهن", "deinflected": "أ", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتي", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتنا", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتك", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكما", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكم", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتكن", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آته", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتها", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهما", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهم", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "آتهن", "deinflected": "أة", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-wn",
+      "name": "m. pl.",
+      "description": "nominative sound m. plural",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ون", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-wh",
+      "name": "m. pl + pos. pron.",
+      "description": "nominative sound m. plural + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "و", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "ونا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]},
+        {"type": "suffix", "inflected": "وهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_nom_indef", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-iyn",
+      "name": "m. pl.",
+      "description": "accusative/genitive sound m. plural",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ين", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_p", "n"]}
+      ]
+    },
+    {
+      "id": "NSuff-iyh",
+      "name": "m. pl. + pos. pron.",
+      "description": "accusative/genitive sound m. plural + possessive pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ي", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "ينا", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يك", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يكن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يه", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يها", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهما", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهم", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]},
+        {"type": "suffix", "inflected": "يهن", "deinflected": "", "conditionsIn": ["n_s"], "conditionsOut": ["n_indef", "n"]}
+      ]
+    },
+    {
+      "id": "PVPref-Wa",
+      "name": "and",
+      "description": "and (و); and, so (ف)",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "و", "deinflected": "", "conditionsIn": ["pv_p"], "conditionsOut": ["pv_s", "pv"]},
+        {"type": "prefix", "inflected": "ف", "deinflected": "", "conditionsIn": ["pv_p"], "conditionsOut": ["pv_s", "pv"]}
+      ]
+    },
+    {
+      "id": "PVPref-La",
+      "name": "would have",
+      "description": "Result clause particle (if ... I would have ...)",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ل", "deinflected": "", "conditionsIn": ["pv_p"], "conditionsOut": ["pv_s", "pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-ah",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb + D.O pronoun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "كما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "كم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "كن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "هما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "هم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "هن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-n",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb suffixes assimilating with ن",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ننا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "ناهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u0646]"},
+        {"type": "suffix", "inflected": "نني", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ننا", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نك", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نكما", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نكم", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نكن", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نه", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نها", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نهما", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نهم", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نهن", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "نا", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناك", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناكما", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناكم", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناكن", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناه", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناها", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناهما", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناهم", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ناهن", "deinflected": "ن", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-t",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb suffixes assimilating with ت",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ت", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ته", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تمانا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تماهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تمونا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تموهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تننا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تنهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"], "stemNotEndsWith": "[\\u062A]"},
+        {"type": "suffix", "inflected": "تني", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنا", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تك", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تكن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ته", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تها", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تهن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماني", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تمانا", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماه", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماها", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماهما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماهم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تماهن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموني", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تمونا", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموه", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموها", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموهما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموهم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تموهن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنني", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تننا", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنه", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنها", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنهما", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنهم", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تنهن", "deinflected": "ت", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-at",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb non-assimilating ت suffixes",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "تا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تانا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "تاهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-A",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb 3rd. m. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "انا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "اهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آ", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آني", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آنا", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آك", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آكما", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آكم", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آكن", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آه", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آها", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آهما", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آهم", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "آهن", "deinflected": "أ", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "PVSuff-uw",
+      "name": "Perfect Tense",
+      "description": "Perfect Verb 3rd. m. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "وا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وني", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "ونا", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وك", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وكما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وكم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وكن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وه", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وها", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وهما", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وهم", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]},
+        {"type": "suffix", "inflected": "وهن", "deinflected": "", "conditionsIn": ["pv_s"], "conditionsOut": ["pv"]}
+      ]
+    },
+    {
+      "id": "IVPref-hw",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. m. sing.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "في", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلي", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "في", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلي", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "في", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلي", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "circumfix", "prefixes": [["ي", ""], ["وي", ""], ["في", ""], ["سي", ""], ["وسي", ""], ["فسي", ""], ["لي", ""], ["ولي", ""], ["فلي", ""], ["ي", "أ"], ["وي", "أ"], ["في", "أ"], ["سي", "أ"], ["وسي", "أ"], ["فسي", "أ"], ["لي", "أ"], ["ولي", "أ"], ["فلي", "أ"], ["ي", "ا"], ["وي", "ا"], ["في", "ا"], ["سي", "ا"], ["وسي", "ا"], ["فسي", "ا"], ["لي", "ا"], ["ولي", "ا"], ["فلي", "ا"]], "suffixes": [["ني", ""], ["نا", ""], ["ك", ""], ["كما", ""], ["كم", ""], ["كن", ""], ["ه", ""], ["ها", ""], ["هما", ""], ["هم", ""], ["هن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-hy",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. f. sing.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["لت", ""], ["ولت", ""], ["فلت", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ني", ""], ["نا", ""], ["ك", ""], ["كما", ""], ["كم", ""], ["كن", ""], ["ه", ""], ["ها", ""], ["هما", ""], ["هم", ""], ["هن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-hmA",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. m. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ي", ""], ["وي", ""], ["في", ""], ["سي", ""], ["وسي", ""], ["فسي", ""], ["ي", "أ"], ["وي", "أ"], ["في", "أ"], ["سي", "أ"], ["وسي", "أ"], ["فسي", "أ"], ["ي", "ا"], ["وي", "ا"], ["في", "ا"], ["سي", "ا"], ["وسي", "ا"], ["فسي", "ا"]], "suffixes": [["ان", ""], ["انني", ""], ["اننا", ""], ["انك", ""], ["انكما", ""], ["انكم", ""], ["انكن", ""], ["انه", ""], ["انها", ""], ["انهما", ""], ["انهم", ""], ["انهن", ""], ["آن", "أ"], ["آنني", "أ"], ["آننا", "أ"], ["آنك", "أ"], ["آنكما", "أ"], ["آنكم", "أ"], ["آنكن", "أ"], ["آنه", "أ"], ["آنها", "أ"], ["آنهما", "أ"], ["آنهم", "أ"], ["آنهن", "أ"], ["ا", ""], ["اني", ""], ["انا", ""], ["اك", ""], ["اكما", ""], ["اكم", ""], ["اكن", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آك", "أ"], ["آكما", "أ"], ["آكم", "أ"], ["آكن", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لي", ""], ["ولي", ""], ["فلي", ""], ["لي", "أ"], ["ولي", "أ"], ["فلي", "أ"], ["لي", "ا"], ["ولي", "ا"], ["فلي", "ا"]], "suffixes": [["ا", ""], ["اني", ""], ["انا", ""], ["اك", ""], ["اكما", ""], ["اكم", ""], ["اكن", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آك", "أ"], ["آكما", "أ"], ["آكم", "أ"], ["آكن", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-hmA-ta",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. f. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"]], "suffixes": [["ان", ""], ["انني", ""], ["اننا", ""], ["انك", ""], ["انكما", ""], ["انكم", ""], ["انكن", ""], ["انه", ""], ["انها", ""], ["انهما", ""], ["انهم", ""], ["انهن", ""], ["آن", "أ"], ["آنني", "أ"], ["آننا", "أ"], ["آنك", "أ"], ["آنكما", "أ"], ["آنكم", "أ"], ["آنكن", "أ"], ["آنه", "أ"], ["آنها", "أ"], ["آنهما", "أ"], ["آنهم", "أ"], ["آنهن", "أ"], ["ا", ""], ["اني", ""], ["انا", ""], ["اك", ""], ["اكما", ""], ["اكم", ""], ["اكن", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آك", "أ"], ["آكما", "أ"], ["آكم", "أ"], ["آكن", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لت", ""], ["ولت", ""], ["فلت", ""], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ا", ""], ["اني", ""], ["انا", ""], ["اك", ""], ["اكما", ""], ["اكم", ""], ["اكن", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آك", "أ"], ["آكما", "أ"], ["آكم", "أ"], ["آكن", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-hm",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. m. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ي", ""], ["وي", ""], ["في", ""], ["سي", ""], ["وسي", ""], ["فسي", ""], ["ي", "أ"], ["وي", "أ"], ["في", "أ"], ["سي", "أ"], ["وسي", "أ"], ["فسي", "أ"], ["ي", "ا"], ["وي", "ا"], ["في", "ا"], ["سي", "ا"], ["وسي", "ا"], ["فسي", "ا"]], "suffixes": [["ون", ""], ["ونني", ""], ["وننا", ""], ["ونك", ""], ["ونكما", ""], ["ونكم", ""], ["ونكن", ""], ["ونه", ""], ["ونها", ""], ["ونهما", ""], ["ونهم", ""], ["ونهن", ""], ["وا", ""], ["وني", ""], ["ونا", ""], ["وك", ""], ["وكما", ""], ["وكم", ""], ["وكن", ""], ["وه", ""], ["وها", ""], ["وهما", ""], ["وهم", ""], ["وهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لي", ""], ["ولي", ""], ["فلي", ""], ["لي", "أ"], ["ولي", "أ"], ["فلي", "أ"], ["لي", "ا"], ["ولي", "ا"], ["فلي", "ا"]], "suffixes": [["وا", ""], ["وني", ""], ["ونا", ""], ["وك", ""], ["وكما", ""], ["وكم", ""], ["وكن", ""], ["وه", ""], ["وها", ""], ["وهما", ""], ["وهم", ""], ["وهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-hn",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 3rd. f. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ي", ""], ["وي", ""], ["في", ""], ["سي", ""], ["وسي", ""], ["فسي", ""], ["لي", ""], ["ولي", ""], ["فلي", ""], ["ي", "أ"], ["وي", "أ"], ["في", "أ"], ["سي", "أ"], ["وسي", "أ"], ["فسي", "أ"], ["لي", "أ"], ["ولي", "أ"], ["فلي", "أ"], ["ي", "ا"], ["وي", "ا"], ["في", "ا"], ["سي", "ا"], ["وسي", "ا"], ["فسي", "ا"], ["لي", "ا"], ["ولي", "ا"], ["فلي", "ا"]], "suffixes": [["ن", ""], ["نني", ""], ["ننا", ""], ["نك", ""], ["نكما", ""], ["نكم", ""], ["نكن", ""], ["نه", ""], ["نها", ""], ["نهما", ""], ["نهم", ""], ["نهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1, "stemNotEndsWith": "[\\u0646]"},
+        {"type": "circumfix", "prefixes": [["ي", ""], ["وي", ""], ["في", ""], ["سي", ""], ["وسي", ""], ["فسي", ""], ["لي", ""], ["ولي", ""], ["فلي", ""], ["ي", "أ"], ["وي", "أ"], ["في", "أ"], ["سي", "أ"], ["وسي", "أ"], ["فسي", "أ"], ["لي", "أ"], ["ولي", "أ"], ["فلي", "أ"], ["ي", "ا"], ["وي", "ا"], ["في", "ا"], ["سي", "ا"], ["وسي", "ا"], ["فسي", "ا"], ["لي", "ا"], ["ولي", "ا"], ["فلي", "ا"]], "suffixes": [["ن", "ن"], ["نني", "ن"], ["ننا", "ن"], ["نك", "ن"], ["نكما", "ن"], ["نكم", "ن"], ["نكن", "ن"], ["نه", "ن"], ["نها", "ن"], ["نهما", "ن"], ["نهم", "ن"], ["نهن", "ن"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-Anta",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 2nd. m. sing.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فست", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلت", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["لت", ""], ["ولت", ""], ["فلت", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ني", ""], ["نا", ""], ["ه", ""], ["ها", ""], ["هما", ""], ["هم", ""], ["هن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-Anti",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 2nd. f. sing.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"]], "suffixes": [["ين", ""], ["ينني", ""], ["يننا", ""], ["ينه", ""], ["ينها", ""], ["ينهما", ""], ["ينهم", ""], ["ينهن", ""], ["ي", ""], ["يني", ""], ["ينا", ""], ["يه", ""], ["يها", ""], ["يهما", ""], ["يهم", ""], ["يهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لت", ""], ["ولت", ""], ["فلت", ""], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ي", ""], ["يني", ""], ["ينا", ""], ["يه", ""], ["يها", ""], ["يهما", ""], ["يهم", ""], ["يهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-AntmA",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 2nd. dual",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"]], "suffixes": [["ان", ""], ["انني", ""], ["اننا", ""], ["انه", ""], ["انها", ""], ["انهما", ""], ["انهم", ""], ["انهن", ""], ["آن", "أ"], ["آنني", "أ"], ["آننا", "أ"], ["آنه", "أ"], ["آنها", "أ"], ["آنهما", "أ"], ["آنهم", "أ"], ["آنهن", "أ"], ["ا", ""], ["اني", ""], ["انا", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لت", ""], ["ولت", ""], ["فلت", ""], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ا", ""], ["اني", ""], ["انا", ""], ["اه", ""], ["اها", ""], ["اهما", ""], ["اهم", ""], ["اهن", ""], ["آ", "أ"], ["آني", "أ"], ["آنا", "أ"], ["آه", "أ"], ["آها", "أ"], ["آهما", "أ"], ["آهم", "أ"], ["آهن", "أ"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-Antm",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 2nd. m. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"]], "suffixes": [["ون", ""], ["ونني", ""], ["وننا", ""], ["ونه", ""], ["ونها", ""], ["ونهما", ""], ["ونهم", ""], ["ونهن", ""], ["وا", ""], ["وني", ""], ["ونا", ""], ["وه", ""], ["وها", ""], ["وهما", ""], ["وهم", ""], ["وهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1},
+        {"type": "circumfix", "prefixes": [["لت", ""], ["ولت", ""], ["فلت", ""], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["وا", ""], ["وني", ""], ["ونا", ""], ["وه", ""], ["وها", ""], ["وهما", ""], ["وهم", ""], ["وهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-Antn",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 2nd. f. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["لت", ""], ["ولت", ""], ["فلت", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ن", ""], ["نني", ""], ["ننا", ""], ["نه", ""], ["نها", ""], ["نهما", ""], ["نهم", ""], ["نهن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1, "stemNotEndsWith": "[\\u0646]"},
+        {"type": "circumfix", "prefixes": [["ت", ""], ["وت", ""], ["فت", ""], ["ست", ""], ["وست", ""], ["فست", ""], ["لت", ""], ["ولت", ""], ["فلت", ""], ["ت", "أ"], ["وت", "أ"], ["فت", "أ"], ["ست", "أ"], ["وست", "أ"], ["فست", "أ"], ["لت", "أ"], ["ولت", "أ"], ["فلت", "أ"], ["ت", "ا"], ["وت", "ا"], ["فت", "ا"], ["ست", "ا"], ["وست", "ا"], ["فست", "ا"], ["لت", "ا"], ["ولت", "ا"], ["فلت", "ا"]], "suffixes": [["ن", "ن"], ["نني", "ن"], ["ننا", "ن"], ["نه", "ن"], ["نها", "ن"], ["نهما", "ن"], ["نهم", "ن"], ["نهن", "ن"]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-AnA",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 1st. sing.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "أ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلأ", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "أ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلأ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "أ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلأ", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "آ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلآ", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "circumfix", "prefixes": [["أ", ""], ["وأ", ""], ["فأ", ""], ["سأ", ""], ["وسأ", ""], ["فسأ", ""], ["لأ", ""], ["ولأ", ""], ["فلأ", ""], ["أ", "أ"], ["وأ", "أ"], ["فأ", "أ"], ["سأ", "أ"], ["وسأ", "أ"], ["فسأ", "أ"], ["لأ", "أ"], ["ولأ", "أ"], ["فلأ", "أ"], ["أ", "ا"], ["وأ", "ا"], ["فأ", "ا"], ["سأ", "ا"], ["وسأ", "ا"], ["فسأ", "ا"], ["لأ", "ا"], ["ولأ", "ا"], ["فلأ", "ا"], ["آ", "أ"], ["وآ", "أ"], ["فآ", "أ"], ["سآ", "أ"], ["وسآ", "أ"], ["فسآ", "أ"], ["لآ", "أ"], ["ولآ", "أ"], ["فلآ", "أ"]], "suffixes": [["ك", ""], ["كما", ""], ["كم", ""], ["كن", ""], ["ه", ""], ["ها", ""], ["هما", ""], ["هم", ""], ["هن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "IVPref-nHn",
+      "name": "Imperfect Tense",
+      "description": "Imperfect Verb 1st. pl.",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "ن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ون", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلن", "deinflected": "", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ون", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلن", "deinflected": "أ", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ون", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "سن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "وسن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فسن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "لن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "ولن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "prefix", "inflected": "فلن", "deinflected": "ا", "conditionsIn": ["iv_p"], "conditionsOut": ["iv"]},
+        {"type": "circumfix", "prefixes": [["ن", ""], ["ون", ""], ["فن", ""], ["سن", ""], ["وسن", ""], ["فسن", ""], ["لن", ""], ["ولن", ""], ["فلن", ""], ["ن", "أ"], ["ون", "أ"], ["فن", "أ"], ["سن", "أ"], ["وسن", "أ"], ["فسن", "أ"], ["لن", "أ"], ["ولن", "أ"], ["فلن", "أ"], ["ن", "ا"], ["ون", "ا"], ["فن", "ا"], ["سن", "ا"], ["وسن", "ا"], ["فسن", "ا"], ["لن", "ا"], ["ولن", "ا"], ["فلن", "ا"]], "suffixes": [["ك", ""], ["كما", ""], ["كم", ""], ["كن", ""], ["ه", ""], ["ها", ""], ["هما", ""], ["هم", ""], ["هن", ""]], "conditionsIn": ["iv_p"], "conditionsOut": ["iv"], "stemCharacters": "{letter}", "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "CVPref",
+      "name": "Imperative",
+      "description": "Command Verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "و", "deinflected": "", "conditionsIn": ["cv_p"], "conditionsOut": ["cv_s"]},
+        {"type": "prefix", "inflected": "ف", "deinflected": "", "conditionsIn": ["cv_p"], "conditionsOut": ["cv_s"]},
+        {"type": "prefix", "inflected": "ا", "deinflected": "", "conditionsIn": ["cv_p"], "conditionsOut": ["cv_s", "cv"]},
+        {"type": "prefix", "inflected": "وا", "deinflected": "", "conditionsIn": ["cv_p"], "conditionsOut": ["cv_s", "cv"]},
+        {"type": "prefix", "inflected": "فا", "deinflected": "", "conditionsIn": ["cv_p"], "conditionsOut": ["cv_s", "cv"]}
+      ]
+    },
+    {
+      "id": "CVSuff",
+      "name": "Imperative",
+      "description": "Command Verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ني", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ه", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ها", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "هما", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "هم", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "هن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ي", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يني", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ينا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يه", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يها", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يهما", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يهم", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "يهن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اني", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "انا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اه", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اها", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اهما", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اهم", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "اهن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وني", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ونا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وه", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وها", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وهما", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وهم", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "وهن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نني", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "ننا", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نه", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نها", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نهما", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نهم", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]},
+        {"type": "suffix", "inflected": "نهن", "deinflected": "", "conditionsIn": ["cv_s"], "conditionsOut": ["cv"]}
+      ]
+    },
+    {
+      "id": "VDoubled",
+      "name": "doubled verb",
+      "description": "Doubled (geminate) verb whose last radical is written twice before a consonant-initial ending",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "ءء", "deinflected": "ء", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "بب", "deinflected": "ب", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "تت", "deinflected": "ت", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "ثث", "deinflected": "ث", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "جج", "deinflected": "ج", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "حح", "deinflected": "ح", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "خخ", "deinflected": "خ", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "دد", "deinflected": "د", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "ذذ", "deinflected": "ذ", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "رر", "deinflected": "ر", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "زز", "deinflected": "ز", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "سس", "deinflected": "س", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "شش", "deinflected": "ش", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "صص", "deinflected": "ص", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "ضض", "deinflected": "ض", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "طط", "deinflected": "ط", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "ظظ", "deinflected": "ظ", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "عع", "deinflected": "ع", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "غغ", "deinflected": "غ", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "فف", "deinflected": "ف", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "قق", "deinflected": "ق", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "كك", "deinflected": "ك", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "لل", "deinflected": "ل", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "مم", "deinflected": "م", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "نن", "deinflected": "ن", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "هه", "deinflected": "ه", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "وو", "deinflected": "و", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1},
+        {"type": "suffix", "inflected": "يي", "deinflected": "ي", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 1}
+      ]
+    },
+    {
+      "id": "VFinalWeak",
+      "name": "final-weak verb",
+      "description": "Final-weak verb whose stem ends in ي or و where the dictionary form ends in ى or ا",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "ي", "deinflected": "ى", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 2},
+        {"type": "suffix", "inflected": "و", "deinflected": "ا", "conditionsIn": ["v"], "conditionsOut": ["v"], "stemMinLength": 2}
+      ]
+    }
+  ]
+}

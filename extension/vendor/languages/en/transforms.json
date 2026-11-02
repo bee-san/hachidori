@@ -1,0 +1,671 @@
+{
+  "schema": 1,
+  "conditions": {
+    "v": {
+      "name": "Verb",
+      "isDictionaryForm": true,
+      "subConditions": ["v_phr"]
+    },
+    "v_phr": {
+      "name": "Phrasal verb",
+      "isDictionaryForm": true
+    },
+    "n": {
+      "name": "Noun",
+      "isDictionaryForm": true,
+      "subConditions": ["np", "ns"]
+    },
+    "np": {
+      "name": "Noun plural",
+      "isDictionaryForm": true
+    },
+    "ns": {
+      "name": "Noun singular",
+      "isDictionaryForm": true
+    },
+    "adj": {
+      "name": "Adjective",
+      "isDictionaryForm": true
+    },
+    "adv": {
+      "name": "Adverb",
+      "isDictionaryForm": true
+    }
+  },
+  "wordLists": {
+    "particles": ["aboard", "about", "above", "across", "ahead", "alongside", "apart", "around", "aside", "astray", "away", "back", "before", "behind", "below", "beneath", "besides", "between", "beyond", "by", "close", "down", "east", "west", "north", "south", "eastward", "westward", "northward", "southward", "forward", "backward", "backwards", "forwards", "home", "in", "inside", "instead", "near", "off", "on", "opposite", "out", "outside", "over", "overhead", "past", "round", "since", "through", "throughout", "together", "under", "underneath", "up", "within", "without"],
+    "phrasalWords": ["aboard", "about", "above", "across", "ahead", "alongside", "apart", "around", "aside", "astray", "away", "back", "before", "behind", "below", "beneath", "besides", "between", "beyond", "by", "close", "down", "east", "west", "north", "south", "eastward", "westward", "northward", "southward", "forward", "backward", "backwards", "forwards", "home", "in", "inside", "instead", "near", "off", "on", "opposite", "out", "outside", "over", "overhead", "past", "round", "since", "through", "throughout", "together", "under", "underneath", "up", "within", "without", "aback", "after", "against", "along", "among", "as", "at", "even", "for", "forth", "from", "into", "of", "onto", "open", "to", "toward", "towards", "upon", "way", "with"]
+  },
+  "transforms": [
+    {
+      "id": "plural",
+      "name": "plural",
+      "description": "Plural form of a noun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "s", "deinflected": "", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "es", "deinflected": "", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ies", "deinflected": "y", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ves", "deinflected": "fe", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ves", "deinflected": "f", "conditionsIn": ["np"], "conditionsOut": ["ns"]}
+      ]
+    },
+    {
+      "id": "possessive",
+      "name": "possessive",
+      "description": "Possessive form of a noun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "'s", "deinflected": "", "conditionsIn": ["n"], "conditionsOut": ["n"]},
+        {"type": "suffix", "inflected": "s'", "deinflected": "s", "conditionsIn": ["n"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "past",
+      "name": "past",
+      "description": "Simple past tense of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ed", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ed", "deinflected": "e", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ied", "deinflected": "y", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "cked", "deinflected": "c", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "bbed", "deinflected": "b", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "dded", "deinflected": "d", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "gged", "deinflected": "g", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "kked", "deinflected": "k", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "lled", "deinflected": "l", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "mmed", "deinflected": "m", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "nned", "deinflected": "n", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "pped", "deinflected": "p", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "rred", "deinflected": "r", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ssed", "deinflected": "s", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "tted", "deinflected": "t", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "zzed", "deinflected": "z", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "laid", "deinflected": "lay", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "paid", "deinflected": "pay", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "said", "deinflected": "say", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "phrasal", "inflected": "ed", "deinflected": "", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ed", "deinflected": "e", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ied", "deinflected": "y", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "cked", "deinflected": "c", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "bbed", "deinflected": "b", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "dded", "deinflected": "d", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "gged", "deinflected": "g", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "kked", "deinflected": "k", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "lled", "deinflected": "l", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "mmed", "deinflected": "m", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "nned", "deinflected": "n", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "pped", "deinflected": "p", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "rred", "deinflected": "r", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ssed", "deinflected": "s", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "tted", "deinflected": "t", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "zzed", "deinflected": "z", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "laid", "deinflected": "lay", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "paid", "deinflected": "pay", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "said", "deinflected": "say", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]}
+      ]
+    },
+    {
+      "id": "ing",
+      "name": "ing",
+      "description": "Present participle of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ing", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ing", "deinflected": "e", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ying", "deinflected": "ie", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "cking", "deinflected": "c", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "bbing", "deinflected": "b", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "dding", "deinflected": "d", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "gging", "deinflected": "g", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "kking", "deinflected": "k", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "lling", "deinflected": "l", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "mming", "deinflected": "m", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "nning", "deinflected": "n", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "pping", "deinflected": "p", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "rring", "deinflected": "r", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ssing", "deinflected": "s", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "tting", "deinflected": "t", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "zzing", "deinflected": "z", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "phrasal", "inflected": "ing", "deinflected": "", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ing", "deinflected": "e", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ying", "deinflected": "ie", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "cking", "deinflected": "c", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "bbing", "deinflected": "b", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "dding", "deinflected": "d", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "gging", "deinflected": "g", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "kking", "deinflected": "k", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "lling", "deinflected": "l", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "mming", "deinflected": "m", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "nning", "deinflected": "n", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "pping", "deinflected": "p", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "rring", "deinflected": "r", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ssing", "deinflected": "s", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "tting", "deinflected": "t", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "zzing", "deinflected": "z", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]}
+      ]
+    },
+    {
+      "id": "3rd pers. sing. pres",
+      "name": "3rd pers. sing. pres",
+      "description": "Third person singular present tense of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "s", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "es", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ies", "deinflected": "y", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "phrasal", "inflected": "s", "deinflected": "", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "es", "deinflected": "", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]},
+        {"type": "phrasal", "inflected": "ies", "deinflected": "y", "followedBy": "phrasalWords", "conditionsIn": ["v"], "conditionsOut": ["v_phr"]}
+      ]
+    },
+    {
+      "id": "interposed object",
+      "name": "interposed object",
+      "description": "Phrasal verb with interposed object",
+      "source": "yomitan",
+      "rules": [
+        {"type": "interposedObject", "particles": "particles", "guardWords": "phrasalWords", "conditionsIn": [], "conditionsOut": ["v_phr"]}
+      ]
+    },
+    {
+      "id": "archaic",
+      "name": "archaic",
+      "description": "Archaic form of a word",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "'d", "deinflected": "ed", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "adverb",
+      "name": "adverb",
+      "description": "Adverb form of an adjective",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "ly", "deinflected": "", "conditionsIn": ["adv"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ily", "deinflected": "y", "conditionsIn": ["adv"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ly", "deinflected": "le", "conditionsIn": ["adv"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "comparative",
+      "name": "comparative",
+      "description": "Comparative form of an adjective",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "er", "deinflected": "", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "er", "deinflected": "e", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ier", "deinflected": "y", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "bber", "deinflected": "b", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "dder", "deinflected": "d", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "gger", "deinflected": "g", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "mmer", "deinflected": "m", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "nner", "deinflected": "n", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "tter", "deinflected": "t", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "superlative",
+      "name": "superlative",
+      "description": "Superlative form of an adjective",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "est", "deinflected": "", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "est", "deinflected": "e", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "iest", "deinflected": "y", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "bbest", "deinflected": "b", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ddest", "deinflected": "d", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ggest", "deinflected": "g", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "mmest", "deinflected": "m", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "nnest", "deinflected": "n", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "suffix", "inflected": "ttest", "deinflected": "t", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "dropped g",
+      "name": "dropped g",
+      "description": "Dropped g in -ing form of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "in'", "deinflected": "ing", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "-y",
+      "name": "-y",
+      "description": "Adjective formed from a verb or noun",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "y", "deinflected": "", "conditionsIn": ["adj"], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "y", "deinflected": "e", "conditionsIn": ["adj"], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "ggy", "deinflected": "g", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "lly", "deinflected": "l", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "mmy", "deinflected": "m", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "nny", "deinflected": "n", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "ppy", "deinflected": "p", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "rry", "deinflected": "r", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "ssy", "deinflected": "s", "conditionsIn": [], "conditionsOut": ["n", "v"]},
+        {"type": "suffix", "inflected": "tty", "deinflected": "t", "conditionsIn": [], "conditionsOut": ["n", "v"]}
+      ]
+    },
+    {
+      "id": "un-",
+      "name": "un-",
+      "description": "Negative form of an adjective, adverb, or verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "un", "deinflected": "", "conditionsIn": ["adj", "adv", "v"], "conditionsOut": ["adj", "adv", "v"]}
+      ]
+    },
+    {
+      "id": "going-to future",
+      "name": "going-to future",
+      "description": "Going-to future tense of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "going to ", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "will future",
+      "name": "will future",
+      "description": "Will-future tense of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "will ", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "imperative negative",
+      "name": "imperative negative",
+      "description": "Negative imperative form of a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "prefix", "inflected": "don't ", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "prefix", "inflected": "do not ", "deinflected": "", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "-able",
+      "name": "-able",
+      "description": "Adjective formed from a verb",
+      "source": "yomitan",
+      "rules": [
+        {"type": "suffix", "inflected": "able", "deinflected": "", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "able", "deinflected": "e", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "iable", "deinflected": "y", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "bbable", "deinflected": "b", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ddable", "deinflected": "d", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ggable", "deinflected": "g", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "kkable", "deinflected": "k", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "llable", "deinflected": "l", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "mmable", "deinflected": "m", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "nnable", "deinflected": "n", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ppable", "deinflected": "p", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "rrable", "deinflected": "r", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ssable", "deinflected": "s", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "ttable", "deinflected": "t", "conditionsIn": ["adj"], "conditionsOut": ["v"]},
+        {"type": "suffix", "inflected": "zzable", "deinflected": "z", "conditionsIn": ["adj"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "irregular past",
+      "name": "past",
+      "description": "Simple past tense of an irregular verb",
+      "source": "own",
+      "rules": [
+        {"type": "wholeWord", "inflected": "arose", "deinflected": "arise", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "awoke", "deinflected": "awake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "was", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "were", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bore", "deinflected": "bear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "became", "deinflected": "become", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "began", "deinflected": "begin", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bent", "deinflected": "bend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bound", "deinflected": "bind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bit", "deinflected": "bite", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bled", "deinflected": "bleed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "blew", "deinflected": "blow", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "broke", "deinflected": "break", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bred", "deinflected": "breed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "brought", "deinflected": "bring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "built", "deinflected": "build", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "burnt", "deinflected": "burn", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bought", "deinflected": "buy", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "caught", "deinflected": "catch", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "chose", "deinflected": "choose", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "clung", "deinflected": "cling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "came", "deinflected": "come", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "crept", "deinflected": "creep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dealt", "deinflected": "deal", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dug", "deinflected": "dig", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "did", "deinflected": "do", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "drew", "deinflected": "draw", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dreamt", "deinflected": "dream", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "drank", "deinflected": "drink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "drove", "deinflected": "drive", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "ate", "deinflected": "eat", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fell", "deinflected": "fall", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fed", "deinflected": "feed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "felt", "deinflected": "feel", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fought", "deinflected": "fight", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "found", "deinflected": "find", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fled", "deinflected": "flee", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "flung", "deinflected": "fling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "flew", "deinflected": "fly", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forbade", "deinflected": "forbid", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forgot", "deinflected": "forget", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forgave", "deinflected": "forgive", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "froze", "deinflected": "freeze", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "got", "deinflected": "get", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "gave", "deinflected": "give", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "went", "deinflected": "go", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "ground", "deinflected": "grind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "grew", "deinflected": "grow", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "hung", "deinflected": "hang", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "had", "deinflected": "have", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "heard", "deinflected": "hear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "hid", "deinflected": "hide", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "held", "deinflected": "hold", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "kept", "deinflected": "keep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "knelt", "deinflected": "kneel", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "knew", "deinflected": "know", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "led", "deinflected": "lead", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "leant", "deinflected": "lean", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "leapt", "deinflected": "leap", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "learnt", "deinflected": "learn", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "left", "deinflected": "leave", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lent", "deinflected": "lend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lay", "deinflected": "lie", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lit", "deinflected": "light", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lost", "deinflected": "lose", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "made", "deinflected": "make", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "meant", "deinflected": "mean", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "met", "deinflected": "meet", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "rode", "deinflected": "ride", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "rang", "deinflected": "ring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "rose", "deinflected": "rise", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "ran", "deinflected": "run", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "saw", "deinflected": "see", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sought", "deinflected": "seek", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sold", "deinflected": "sell", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sent", "deinflected": "send", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shook", "deinflected": "shake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shone", "deinflected": "shine", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shot", "deinflected": "shoot", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shrank", "deinflected": "shrink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sang", "deinflected": "sing", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sank", "deinflected": "sink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sat", "deinflected": "sit", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slept", "deinflected": "sleep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slid", "deinflected": "slide", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slung", "deinflected": "sling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spoke", "deinflected": "speak", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spent", "deinflected": "spend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spun", "deinflected": "spin", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sprang", "deinflected": "spring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stood", "deinflected": "stand", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stole", "deinflected": "steal", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stuck", "deinflected": "stick", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stung", "deinflected": "sting", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stank", "deinflected": "stink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "struck", "deinflected": "strike", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swore", "deinflected": "swear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swept", "deinflected": "sweep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swam", "deinflected": "swim", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swung", "deinflected": "swing", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "took", "deinflected": "take", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "taught", "deinflected": "teach", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "tore", "deinflected": "tear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "told", "deinflected": "tell", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "thought", "deinflected": "think", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "threw", "deinflected": "throw", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "understood", "deinflected": "understand", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "woke", "deinflected": "wake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wore", "deinflected": "wear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wove", "deinflected": "weave", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wept", "deinflected": "weep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "won", "deinflected": "win", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wound", "deinflected": "wind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wrote", "deinflected": "write", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "irregular past participle",
+      "name": "past participle",
+      "description": "Past participle of an irregular verb",
+      "source": "own",
+      "rules": [
+        {"type": "wholeWord", "inflected": "arisen", "deinflected": "arise", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "awoken", "deinflected": "awake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "been", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "borne", "deinflected": "bear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "born", "deinflected": "bear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "beaten", "deinflected": "beat", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "begun", "deinflected": "begin", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bent", "deinflected": "bend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bound", "deinflected": "bind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bitten", "deinflected": "bite", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bled", "deinflected": "bleed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "blown", "deinflected": "blow", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "broken", "deinflected": "break", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bred", "deinflected": "breed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "brought", "deinflected": "bring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "built", "deinflected": "build", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "burnt", "deinflected": "burn", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "bought", "deinflected": "buy", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "caught", "deinflected": "catch", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "chosen", "deinflected": "choose", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "clung", "deinflected": "cling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "crept", "deinflected": "creep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dealt", "deinflected": "deal", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dug", "deinflected": "dig", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "done", "deinflected": "do", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "drawn", "deinflected": "draw", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "dreamt", "deinflected": "dream", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "drunk", "deinflected": "drink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "driven", "deinflected": "drive", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "eaten", "deinflected": "eat", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fallen", "deinflected": "fall", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fed", "deinflected": "feed", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "felt", "deinflected": "feel", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fought", "deinflected": "fight", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "found", "deinflected": "find", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "fled", "deinflected": "flee", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "flung", "deinflected": "fling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "flown", "deinflected": "fly", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forbidden", "deinflected": "forbid", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forgotten", "deinflected": "forget", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "forgiven", "deinflected": "forgive", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "frozen", "deinflected": "freeze", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "gotten", "deinflected": "get", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "got", "deinflected": "get", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "given", "deinflected": "give", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "gone", "deinflected": "go", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "ground", "deinflected": "grind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "grown", "deinflected": "grow", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "hung", "deinflected": "hang", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "had", "deinflected": "have", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "heard", "deinflected": "hear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "hidden", "deinflected": "hide", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "held", "deinflected": "hold", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "kept", "deinflected": "keep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "knelt", "deinflected": "kneel", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "known", "deinflected": "know", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "led", "deinflected": "lead", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "leant", "deinflected": "lean", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "leapt", "deinflected": "leap", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "learnt", "deinflected": "learn", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "left", "deinflected": "leave", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lent", "deinflected": "lend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lain", "deinflected": "lie", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lit", "deinflected": "light", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "lost", "deinflected": "lose", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "made", "deinflected": "make", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "meant", "deinflected": "mean", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "met", "deinflected": "meet", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "ridden", "deinflected": "ride", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "rung", "deinflected": "ring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "risen", "deinflected": "rise", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "seen", "deinflected": "see", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sought", "deinflected": "seek", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sold", "deinflected": "sell", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sent", "deinflected": "send", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shaken", "deinflected": "shake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shone", "deinflected": "shine", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shot", "deinflected": "shoot", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shown", "deinflected": "show", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "shrunk", "deinflected": "shrink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sung", "deinflected": "sing", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sunk", "deinflected": "sink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sat", "deinflected": "sit", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slept", "deinflected": "sleep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slid", "deinflected": "slide", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "slung", "deinflected": "sling", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spoken", "deinflected": "speak", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spent", "deinflected": "spend", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "spun", "deinflected": "spin", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sprung", "deinflected": "spring", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stood", "deinflected": "stand", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stolen", "deinflected": "steal", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stuck", "deinflected": "stick", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stung", "deinflected": "sting", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "stunk", "deinflected": "stink", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "struck", "deinflected": "strike", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "sworn", "deinflected": "swear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swept", "deinflected": "sweep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swum", "deinflected": "swim", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "swung", "deinflected": "swing", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "taken", "deinflected": "take", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "taught", "deinflected": "teach", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "torn", "deinflected": "tear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "told", "deinflected": "tell", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "thought", "deinflected": "think", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "thrown", "deinflected": "throw", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "understood", "deinflected": "understand", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "woken", "deinflected": "wake", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "worn", "deinflected": "wear", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "woven", "deinflected": "weave", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wept", "deinflected": "weep", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "won", "deinflected": "win", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "wound", "deinflected": "wind", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "written", "deinflected": "write", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "irregular plural",
+      "name": "plural",
+      "description": "Irregular or classical plural form of a noun",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "men", "deinflected": "man", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "children", "deinflected": "child", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "feet", "deinflected": "foot", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "teeth", "deinflected": "tooth", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "geese", "deinflected": "goose", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "mice", "deinflected": "mouse", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "lice", "deinflected": "louse", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "wholeWord", "inflected": "oxen", "deinflected": "ox", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "wholeWord", "inflected": "people", "deinflected": "person", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "zzes", "deinflected": "z", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ae", "deinflected": "a", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "i", "deinflected": "us", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ia", "deinflected": "ium", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ices", "deinflected": "ex", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ices", "deinflected": "ix", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "ses", "deinflected": "sis", "conditionsIn": ["np"], "conditionsOut": ["ns"]},
+        {"type": "suffix", "inflected": "eaux", "deinflected": "eau", "conditionsIn": ["np"], "conditionsOut": ["ns"]}
+      ]
+    },
+    {
+      "id": "irregular comparative",
+      "name": "comparative",
+      "description": "Irregular comparative form of an adjective",
+      "source": "own",
+      "rules": [
+        {"type": "wholeWord", "inflected": "better", "deinflected": "good", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "worse", "deinflected": "bad", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "further", "deinflected": "far", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "farther", "deinflected": "far", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "less", "deinflected": "little", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "more", "deinflected": "much", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "more", "deinflected": "many", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "irregular superlative",
+      "name": "superlative",
+      "description": "Irregular superlative form of an adjective",
+      "source": "own",
+      "rules": [
+        {"type": "wholeWord", "inflected": "best", "deinflected": "good", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "worst", "deinflected": "bad", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "furthest", "deinflected": "far", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "farthest", "deinflected": "far", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "least", "deinflected": "little", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "most", "deinflected": "much", "conditionsIn": ["adj"], "conditionsOut": ["adj"]},
+        {"type": "wholeWord", "inflected": "most", "deinflected": "many", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "irregular present",
+      "name": "present",
+      "description": "Present tense of be, and has for have",
+      "source": "own",
+      "rules": [
+        {"type": "wholeWord", "inflected": "am", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "are", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "is", "deinflected": "be", "conditionsIn": ["v"], "conditionsOut": ["v"]},
+        {"type": "wholeWord", "inflected": "has", "deinflected": "have", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "possessive typographic",
+      "name": "possessive",
+      "description": "Possessive form of a noun, written with ’",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "’s", "deinflected": "", "conditionsIn": ["n"], "conditionsOut": ["n"]},
+        {"type": "suffix", "inflected": "s’", "deinflected": "s", "conditionsIn": ["n"], "conditionsOut": ["n"]}
+      ]
+    },
+    {
+      "id": "archaic typographic",
+      "name": "archaic",
+      "description": "Archaic form of a word, written with ’",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "’d", "deinflected": "ed", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "dropped g typographic",
+      "name": "dropped g",
+      "description": "Dropped g in -ing form of a verb, written with ’",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "in’", "deinflected": "ing", "conditionsIn": ["v"], "conditionsOut": ["v"]}
+      ]
+    },
+    {
+      "id": "comparative -ey",
+      "name": "comparative",
+      "description": "Comparative form of an adjective ending in -ey",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "ier", "deinflected": "ey", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    },
+    {
+      "id": "superlative -ey",
+      "name": "superlative",
+      "description": "Superlative form of an adjective ending in -ey",
+      "source": "own",
+      "rules": [
+        {"type": "suffix", "inflected": "iest", "deinflected": "ey", "conditionsIn": ["adj"], "conditionsOut": ["adj"]}
+      ]
+    }
+  ]
+}

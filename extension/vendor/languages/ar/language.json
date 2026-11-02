@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "code": "ar",
+  "iso639_3": "ara",
+  "name": "Arabic",
+  "nativeName": "\u0627\u0644\u0639\u0631\u0628\u064A\u0629",
+  "bcp47": "ar",
+  "scripts": ["Arab"],
+  "direction": "rtl",
+  "classes": {
+    "letter": "[\\u0620-\\u065F\\u066E-\\u06D3\\u06D5\\u06EE\\u06EF\\u06FA-\\u06FC\\u06FF]",
+    "harakat": "[\\u0618-\\u061A\\u064B-\\u0656\\u0670]",
+    "tatweel": "[\\u0640]"
+  },
+  "text": {
+    "pattern": "[{letter}{harakat}{tatweel}]",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "[{letter}{harakat}{tatweel}]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [".", "!", "\u061F", "\u2026"],
+      "quotePairs": [["\u00AB", "\u00BB"], ["(", ")"]]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {"id": "removeArabicScriptDiacritics", "name": "Remove diacritics", "variants": [[{"strip": "{harakat}"}]]},
+      {"id": "removeTatweel", "name": "Remove tatweel characters", "variants": [[{"strip": "{tatweel}"}]]},
+      {"id": "normalizeUnicode", "name": "Normalize unicode", "variants": [[{"normalize": "NFKC"}]]},
+      {"id": "addHamzaTop", "name": "Add Hamza to top of Alif", "variants": [[{"map": {"\u0627": "\u0623"}, "at": "first"}]]},
+      {"id": "addHamzaBottom", "name": "Add Hamza to bottom of Alif", "variants": [[{"map": {"\u0627": "\u0625"}, "at": "first"}]]},
+      {"id": "convertAlifMaqsuraToYaa", "name": "Convert Alif Maqsura to Yaa", "variants": [[{"map": {"\u0649": "\u064A"}, "at": "end"}]]}
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": true
+    },
+    "labels": {
+      "reading": "Vocalised",
+      "traceMarker": "",
+      "readingBrackets": ["(", ")"],
+      "senseSeparator": "\u061B ",
+      "listSeparator": "\u060C "
+    },
+    "displayTransforms": {
+      "stripVowelMarks": [{"strip": "{harakat}"}]
+    }
+  },
+  "settings": [
+    {
+      "id": "vowelMarks",
+      "type": "enum",
+      "default": "show",
+      "values": [{"id": "show", "label": "Show"}, {"id": "hide", "label": "Hide"}],
+      "label": "Vowel marks in headwords",
+      "description": "Arabic dictionaries often write short vowels. Hiding them shows words as they appear in most text.",
+      "group": "display",
+      "effect": {"display": {"fields": ["expression", "reading"], "when": "hide", "transform": "stripVowelMarks"}}
+    }
+  ],
+  "host": {
+    "ttsLanguage": "ar-SA",
+    "audioLanguage": "ar",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {"phonetic-transcriptions": ["IPA"]},
+      "partOfSpeechLabels": {"n": "Noun", "v": "Verb", "adj": "Adjective", "adv": "Adverb", "prep": "Preposition", "pron": "Pronoun", "ptcl": "Particle"}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Wiktionary Arabic-English (wiktionary-to-yomitan)",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
+        "description": "Wiktionary definitions of Arabic words in English, with headwords written without short vowels and vocalised readings. Converted from kaikki.org data by wiktionary-to-yomitan (formerly kaikki-to-yomitan).",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "\u0643\u062A\u0628",
+      "practice": {"text": "\u0630\u0647\u0628 \u0627\u0644\u0648\u0644\u062F \u0625\u0644\u0649 \u0627\u0644\u0645\u062F\u0631\u0633\u0629.", "lookup": "\u0627\u0644\u0645\u062F\u0631\u0633\u0629"},
+      "entry": {"expression": "\u0645\u064E\u062F\u0652\u0631\u064E\u0633\u064E\u0629", "reading": "\u0645\u064E\u062F\u0652\u0631\u064E\u0633\u064E\u0629", "glossary": ["school"], "definitionTags": "n", "matched": "\u0627\u0644\u0645\u062F\u0631\u0633\u0629", "trace": ["the"]},
+      "character": null
+    }
+  }
+}
