@@ -122,6 +122,9 @@ try {
     await run("chrome-languages-sharing", ["test/chrome-languages/sharing.mjs"]);
     // An Arabic note through a fake AnkiConnect, in left-to-right and right-to-left card templates.
     await run("chrome-languages-anki", ["test/chrome-languages/anki.mjs"]);
+  } else if (suite === "chrome-language-pack") {
+    // One language pack with a real dictionary: HACHIDORI_LANGUAGE and HACHIDORI_DICTIONARY (see its header).
+    await run(suite, [`test/${suite}.mjs`]);
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
     // The released backup is also restored in the Firefox build.
@@ -130,8 +133,8 @@ try {
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-languages, chrome-backup-release,"
-        + " install-chrome,"
+        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-languages, chrome-language-pack,"
+        + " chrome-backup-release, install-chrome,"
         + " firefox-lint, firefox-e2e, firefox-languages, firefox-large or install-firefox.",
     );
   }

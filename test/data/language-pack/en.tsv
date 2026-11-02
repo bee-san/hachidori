@@ -1,0 +1,12 @@
+# Cases for test/chrome-language-pack.mjs: sentence<TAB>word<TAB>expected headword.
+# English, written for kaikki-to-yomitan's kty-en-en (revision 2025.04.08), whose
+# first result is the lemma for these words. Regular forms such as "walked" or
+# "children" have their own form-of entries there, which come first.
+We borrowed my brother's car for the weekend.	brother's	brother
+Tomorrow I will paint the fence.	will paint	paint
+Please don't touch the wet paint.	don't touch	touch
+She looked the word up in her dictionary.	looked the word up	look up
+He turned the radio off before bed.	turned the radio off	turn off
+Teacher's notes are on the desk.	Teacher's	teacher
+We are going to paint the kitchen.	going to paint	paint
+It is a five-minute walk to the station.	minute	minute

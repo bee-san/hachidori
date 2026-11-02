@@ -1,0 +1,9 @@
+# Cases for test/chrome-language-pack.mjs: sentence<TAB>word<TAB>expected headword.
+# Japanese, written for Jitendex (revision 2026.10.03.0).
+昨日は早く寝た。	寝た	寝る
+弟は漫画を読んでいる。	読んでいる	読む
+今日は宿題をしなかった。	しなかった	する
+子供の頃は野菜を食べたくなかった。	食べたくなかった	食べる
+この手紙は英語で書かれた。	書かれた	書く
+明日、東京へ行きます。	行きます	行く
+あのケーキは美味しくなかった。	美味しくなかった	美味しい

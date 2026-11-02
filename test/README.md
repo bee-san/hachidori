@@ -539,6 +539,21 @@ These run separately:
   `chrome-languages/builds.mjs`; the sharing suite needs `python3` and the
   relay from `HACHIDORI_RELAY_SERVER`, `HACHIDORI_ANKI_ADDON` or the pinned
   release.
+- **`chrome-language-pack.mjs`** (`node test/run.mjs chrome-language-pack`)
+  checks one language pack of `extension/vendor/languages/` with a real
+  dictionary: the check each language's pack passes before it merges. It is
+  not in CI, because it needs the dictionary. In a fresh profile Settings
+  adds the language (`HACHIDORI_LANGUAGE`) beside Japanese and imports the
+  dictionary (`HACHIDORI_DICTIONARY`, any Yomitan .zip) into it. Each case of
+  `HACHIDORI_CASES` (`sentence<TAB>word<TAB>expected headword`, by default the
+  pack's practice sample) is a page in the language, hovered where the pack's
+  scan starts; the first result's headword must be the expected one. The
+  first result is added to a fake AnkiConnect, and the toolbar switches to
+  Japanese and back. It prints one JSON summary line and saves screenshots of
+  the language dialog, the switcher and the first lookup. Its header lists
+  the inputs; `test/data/language-pack/` has the English, Arabic and Japanese
+  cases it was proved with (for kaikki-to-yomitan's dictionaries and
+  Jitendex).
 - **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
   Dark Reader API build against the production popup in a tab of its own. It
   checks Default, Light, Dark, High contrast and Custom CSS while the page
@@ -769,6 +784,7 @@ compiler. Nothing else needs a native compiler.
 | `HACHIDORI_WASM_VARIANT` | `threaded-idbfs` or `fallback` for `node-smoke.mjs` |
 | `HACHIDORI_SHARING_PORT`, `HACHIDORI_ANKI_ADDON`, `HACHIDORI_RELAY_SERVER` | the sharing relay's port, a local add-on archive, the relay server script to run |
 | `HACHIDORI_ANKI_URL`, `HACHIDORI_CUSTOM_BUTTONS_*` | the real-Anki custom-buttons harness |
+| `HACHIDORI_LANGUAGE`, `HACHIDORI_DICTIONARY`, `HACHIDORI_CASES`, `HACHIDORI_SCREENSHOTS` | `chrome-language-pack.mjs`: the pack's code, the dictionary .zip, the cases file and the screenshot directory (default `test/tmp/language-pack/<code>/`) |
 | `HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK`, `HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK`, `HACHIDORI_SHARING_BENCHMARK` | write benchmark evidence to that path |
 | `HACHIDORI_BACKUP_BASELINE=HEAD` | `electron-backup.cjs` against the original Settings files |
 | `HACHIDORI_BACKUP_RELEASE`, `HACHIDORI_BACKUP_RELEASE_ZIP` | `chrome-backup-release.mjs`: another release as `"<version> <12-digit commit> <SHA-256 of its Chrome ZIP>"`, and a local copy of that ZIP, with the release's `SHA256SUMS` file beside it, for an offline run |
