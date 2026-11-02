@@ -26,7 +26,7 @@ import {
 import {
   NETFLIX_TARGET, NETFLIX_RECORDER_PORT, NETFLIX_WATCH_URL, adoptNetflixRecorder, handleNetflixRequest,
 } from "./background-netflix.js";
-import { extensionApi as chrome } from "./browser-api.js";
+import { extensionApi as chrome, isExactExtensionSender } from "./browser-api.js";
 import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
 import "./reader-options.js";
@@ -47,7 +47,8 @@ import {
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyNetflixFlag } from "./netflix.js";
-import { openSearchPage } from "./search-window.js";
+import { CLIPBOARD_TARGET } from "./search-clipboard.js";
+import { SEARCH_PAGE, openSearchPage } from "./search-window.js";
 
 /*
  * Service worker for Hachidori.
@@ -243,6 +244,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   chrome.tabs.getZoom(tabId).then((zoomFactor) => sendResponse(workerReply(message, { zoomFactor })),
+    (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+// The search page's clipboard monitor (#639) reads the clipboard through the
+// offscreen document, which can paste while no page has focus. Only the search
+// page may ask, and a linked browser never asks its host: the clipboard is this
+// computer's.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== CLIPBOARD_TARGET || message.relayed === true) return false;
+  if (message.type !== "hd_clipboard_read" || !isExactExtensionSender(sender, SEARCH_PAGE, chrome)) {
+    sendResponse(failureReply(message, new Error("Unknown clipboard request.")));
+    return false;
+  }
+  relay({ target: CLIPBOARD_TARGET, type: message.type }).then(sendResponse,
     (error) => sendResponse(failureReply(message, error)));
   return true;
 });
