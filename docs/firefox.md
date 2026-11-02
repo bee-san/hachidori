@@ -40,6 +40,7 @@ anything else differs.
 | `offscreen` permission | none | Firefox has no offscreen documents; `background.html` holds `offscreen.html` in a frame |
 | `tabCapture` permission | none | Firefox has no tab capture for extensions |
 | `userScripts` permission | `optional_permissions: ["clipboardRead", "userScripts"]`, after the Chrome manifest's own optional `clipboardRead` | Firefox grants it only on request |
+| `web_accessible_resources` | one more entry: the stylesheets and modules of the search page's sandboxed frame | Firefox lets a sandboxed page link a stylesheet or import a module only if a web page could; Chrome serves it every file ([Search page](architecture.md#search-page)) |
 | `minimum_chrome_version`, `cross_origin_*_policy` | `browser_specific_settings.gecko`: ID `hachidori@bee-san`, `strict_min_version` 153.0, `data_collection_permissions` | Firefox cannot isolate extension pages; the ID keys Firefox's storage for the add-on; the data types are explained under [Packaging](#packaging-and-addonsmozillaorg) |
 
 `background.html` also loads `event-page.js`, which calls
@@ -80,7 +81,8 @@ Two runtime rules keep one source for both browsers:
   is instead of offering a button.
 - **Custom JavaScript.** Settings → Design → Custom JavaScript has an **Allow
   user scripts** button; Firefox asks once, and the saved script runs from then
-  on.
+  on. On the search page it runs from Firefox 154, the first with sandboxed
+  extension pages ([Search page](architecture.md#search-page)).
 - **Clipboard monitor.** Firefox asks for `clipboardRead` each time the search
   page's switch is turned on, because turning it off gives the permission back
   and Firefox prompts for any optional permission the add-on does not hold.
@@ -109,10 +111,11 @@ owner's decision. Before a first upload:
   ([privacy.md](privacy.md)). Nothing goes to Hachidori's publisher.
 - **User scripts.** AMO's policy allows the `userScripts` API only in user
   script managers. A listed version may have to leave Custom JavaScript out of
-  the Firefox manifest.
+  the Firefox manifest, and with it the search page's sandbox policy that
+  allows `eval`.
 
-`web-ext lint` (the addons.mozilla.org validator) reports no errors and five
-warnings, all in code shared with Chrome:
+`web-ext lint` (the addons.mozilla.org validator) reports no errors and
+fourteen warnings, all in code shared with Chrome:
 
 - `anki-glossary.js` sets `innerHTML` on an inert document to read glossary HTML
   it has escaped.
@@ -120,6 +123,11 @@ warnings, all in code shared with Chrome:
   a packaged theme, and zip.js's worker.
 - `chrome-offscreen.js` tests for `chrome.offscreen.createDocument` and calls it
   when it exists. Firefox has no offscreen API, so it never makes the call.
+- The search page's sandboxed frame runs Custom JavaScript (#644): `search.js`
+  calls `eval` on the user's script, `content_security_policy.sandbox` allows
+  `eval` (two warnings), and the `sandbox` key, its `pages` and
+  `content_security_policy.sandbox` arrive in Firefox 154, after the minimum,
+  153 (six warnings, desktop and Android).
 
 ## Tests
 

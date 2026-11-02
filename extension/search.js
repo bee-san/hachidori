@@ -22,6 +22,7 @@ const bridge = globalThis.HDSearchBridge ?? null;
 // Settings → Advanced → Get debug info includes what failed here.
 captureDocumentActions(document, captureDebugLog(window, {
   context: "search", store: bridge?.debugLogStore ?? openDebugLogStore(window.indexedDB),
+  version: bridge ? async () => (await bridge.ready).manifest.version : undefined,
 }));
 
 const { normaliseOptions } = globalThis.HDReaderOptions;

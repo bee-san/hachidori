@@ -22,7 +22,8 @@ right root. A script added or changed runs from the reading page's next load.
 If a lookup builds the popup before the page's user scripts have run, the
 reader attaches its own closed root, and saved scripts cannot reach that popup
 until the page loads again. The Design preview remains open inside its
-extension page.
+extension page. The same script runs on the [search page](#search-page),
+in its sandboxed frame.
 
 ## Runtime layout
 
@@ -594,7 +595,8 @@ exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
-link's `#setup-heading`, and its `search.html` ([Search page](#search-page)).
+link's `#setup-heading`, and the search page's `search-frame.html`
+([Search page](#search-page)).
 Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
@@ -1063,6 +1065,28 @@ paste command sometimes fails, uses `navigator.clipboard.readText()` in the
 background page's engine frame.
 
 ![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
+
+**Custom JavaScript.** **Design → Custom JavaScript** runs on the search page
+as it does on web pages (#644). Chrome and Firefox run no user script in an
+extension page: `userScripts.register` refuses a `chrome-extension:` match
+pattern, `userScripts.execute` and `scripting.executeScript` cannot access the
+page, and an extension page's policy forbids running a string as code. So
+`search.html` holds the page itself, `search-frame.html`, in a sandboxed frame
+(`manifest.json` → `sandbox`), whose policy allows `eval` and still refuses
+inline script. Once the reader is ready, the frame runs the script the worker
+registered for web pages (`custom-javascript.js`), so the script runs only
+where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
+`userScripts` permission is on. It shares the frame's document with the
+reader and reaches the docked result through its open root, as on a web page;
+unlike a user script in its own world, it also shares the reader's JavaScript
+globals. A sandboxed frame has no extension APIs, so `search-shell.js` in
+`search.html` answers for it over one `MessagePort`, whose other end is
+`search-bridge.js`: it forwards the requests a content script's reader sends
+and refuses any other, so the script reaches no more than the reader does,
+reads only the stored keys the reader reads, passes on the events sent to the
+reader and keeps the frame's debug log in the extension's store. Firefox has
+sandboxed pages from 154; in Firefox 153 the frame is an ordinary extension
+page, where the script does not run.
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
