@@ -94,7 +94,11 @@ the box, one frame (11-15 ms) after the title, in 4 of 4 opens (the second
 audit saw 3 of 4, and title and box together in the fourth); `main` draws it
 with the title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`, 818dba12)
 shows a click on the switch or its label handing focus to the frame, where on
-`main` it stays on the switch in the reader's own document, so the reader's
+`main` it stays on the switch in the reader's own document. (Its first click
+turns the monitor on, and headless Chrome's pending permission prompt then
+holds the window's focus, so the frame reports none while `search.html`'s
+focused element is the frame; the second click, which gives the permission
+back, leaves the frame focused.) So the reader's
 keybinds and activation key work after the click on both
 (`test/chrome-clipboard-monitor.mjs` plays the result with Alt+P after the
 click). Escape and Ctrl+U pressed on a focused switch select and clear the box,
