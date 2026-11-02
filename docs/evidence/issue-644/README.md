@@ -84,9 +84,9 @@ frame's header. `scripts/layout-probe.mjs` (`results/layout.txt`) finds the
 header, title, switch, form and results at the same positions as on `main`, to
 1/64 px. `scripts/switch-paint-probe.mjs` with `switch-paint-analyse.py`
 (`results/switch-paint.txt`, every painted frame of four page opens, Default
-theme) shows the switch appearing with the frame's title and box, after its
-first paint, as on `main`: an earlier version drew the switch 33-48 ms
-before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
+theme) shows the switch appearing with the frame's title (2 of 4 opens) or
+with its box one frame, 14 ms, later (2 of 4); `main` draws it with the
+title. An earlier version drew the switch 33-48 ms before the title. `scripts/switch-focus-probe.mjs` (`results/switch-focus.txt`)
 shows a click on the switch or its label leaving focus on the switch, and
 Escape and Ctrl+U pressed there selecting and clearing the box, on `main` and
 here; Ctrl+U opens no source view.
