@@ -111,9 +111,12 @@ so taps kept focus on it; `results/touch-taps.txt` (the audit's
 instant and held for 120 ms, on Chrome 152 and 128, the remaining one being
 the first tap, whose permission request headless Chrome leaves pending. Escape and Ctrl+U pressed on a focused switch select and clear the box,
 on `main` and here, and Ctrl+U opens no source view. `scripts/click-detail-probe.mjs`
-shows why the hand-back follows the label's `pointerup` rather than the click's
-`detail`: Chrome 128 reports a click on the label text with `detail` 0, as
-Space.
+shows why the hand-back does not use the click's `detail`: Chrome 128 reports a
+click on the label text with `detail` 0, as Space. Since eba748a9 it follows
+the label's click whose `pointerType` is set; `scripts/click-type-probe.mjs`
+(`results/click-type.txt`) lists what each browser's label listener sees: a
+mouse or a finger gives `mouse` or `touch`, Space gives an empty `pointerType`,
+and so does the click Chrome 128 forwards from the label to its checkbox.
 
 The user's Custom JavaScript runs in the frame, so `search.html` passes on only
 the text the reader would search: text with a Japanese character, the reader's
