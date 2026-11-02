@@ -698,23 +698,45 @@
   // readKanwaRun. A reading is one part over the whole compound (今日 きょう) or
   // one part per character, "|" between them (日本 に|ほん); each reading keeps
   // where each character's share starts in it, null for a character after the
-  // first of a compound read as a whole.
+  // first of a compound read as a whole. The compounds that start with a
+  // character are parsed the first time a run starts with it; `starts` tells
+  // whether any does.
   function createKanjiCompounds(table) {
     const byFirst = new Map();
-    for (const [compound, readings] of Object.entries(table)) {
-      const characters = Array.from(compound);
-      if (!byFirst.has(characters[0])) byFirst.set(characters[0], []);
-      byFirst.get(characters[0]).push({ characters, readings: readings.split(" ").map((reading) => {
-        const parts = reading.split("|");
-        let start = 0;
-        const shares = parts.length === 1
-          ? characters.map((_, index) => (index === 0 ? 0 : null))
-          : parts.map((part) => (start += part.length) - part.length);
-        return { reading: parts.join(""), shares };
-      }) });
+    for (const compound of Object.keys(table)) {
+      const first = String.fromCodePoint(compound.codePointAt(0));
+      const group = byFirst.get(first);
+      if (group === undefined) byFirst.set(first, [compound]);
+      else group.push(compound);
     }
-    return (characters, start) => byFirst.get(characters[start])?.filter((compound) =>
-      compound.characters.every((character, index) => characters[start + index] === character)) ?? NO_KANJI_COMPOUNDS;
+    const parsed = new Map();
+    const startingWith = (character) => {
+      let compounds = parsed.get(character);
+      if (compounds === undefined) {
+        compounds = (byFirst.get(character) ?? NO_KANJI_COMPOUNDS)
+          .map((compound) => parseKanjiCompound(compound, table[compound]));
+        parsed.set(character, compounds);
+      }
+      return compounds;
+    };
+    return {
+      starts: (character) => byFirst.has(character),
+      at: (characters, start) => startingWith(characters[start]).filter((compound) =>
+        compound.characters.every((character, index) => characters[start + index] === character)),
+    };
+  }
+
+  // A compound and its readings as createKanjiCompounds keeps them.
+  function parseKanjiCompound(compound, readings) {
+    const characters = Array.from(compound);
+    return { characters, readings: readings.split(" ").map((reading) => {
+      const parts = reading.split("|");
+      let start = 0;
+      const shares = parts.length === 1
+        ? characters.map((_, index) => (index === 0 ? 0 : null))
+        : parts.map((part) => (start += part.length) - part.length);
+      return { reading: parts.join(""), shares };
+    }) };
   }
 
   // What Jitendex's kanwa data adds to `kanjiReadings` (createKanjiReadings),
@@ -723,11 +745,11 @@
   // and `compounds` (createKanjiCompounds). `adds` tells whether kanwa gives a
   // character such a reading or names a compound that starts with it.
   function createKanwaReadings({ readings, compounds }, kanjiReadings) {
-    const adding = new Set([...Object.keys(readings), ...Object.keys(compounds).map((compound) => Array.from(compound)[0])]);
+    const known = createKanjiCompounds(compounds);
     return {
       kanjiReadings: createKanjiReadings(readings, kanjiReadings),
-      compounds: createKanjiCompounds(compounds),
-      adds: (character) => adding.has(character),
+      compounds: known.at,
+      adds: (character) => Object.hasOwn(readings, character) || known.starts(character),
     };
   }
 
