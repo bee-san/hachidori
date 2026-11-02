@@ -799,8 +799,12 @@
   }
 
   /** The SVG <text> carrying `rect`'s run at its position, transform and font; invisible and not hit-testable. */
-  // A run whose first letter is of a right-to-left script.
-  const RIGHT_TO_LEFT_RUN = /^\P{L}*[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}]/u;
+  // A run whose first letter is of a right-to-left script. Compiled the
+  // first time it is used, like glossary.js's patterns: a property escape in
+  // a literal costs every frame at injection.
+  let rightToLeftRun = null;
+  const RIGHT_TO_LEFT_RUN = () => rightToLeftRun ??= new RegExp(
+    String.raw`^\P{L}*[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}]`, "u");
 
   function docsImposterFor(rect) {
     const run = rect.getAttribute("aria-label");
@@ -822,7 +826,7 @@
     important("text-anchor", "start");
     // With profiles the imposter reads in the run's direction, from its first
     // letter (docs/languages.md 8.5); a right-to-left run ends at the rect's left.
-    if (readingProfiles !== null && RIGHT_TO_LEFT_RUN.test(run)) {
+    if (readingProfiles !== null && RIGHT_TO_LEFT_RUN().test(run)) {
       important("direction", "rtl");
       important("text-anchor", "end");
     }
