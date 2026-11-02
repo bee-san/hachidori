@@ -27,10 +27,9 @@
 #include <utility>
 #include <vector>
 
-#ifdef HACHIDORI_OPFS
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 #include <emscripten/emscripten.h>
 #ifdef HACHIDORI_OPFS
@@ -936,43 +935,75 @@ struct WireIndexTitle {
   std::string title;
 };
 
+// A regular file's size and its first `count` bytes (all of them when it is
+// shorter), read with one read. Through WasmFS's OPFS backend each read of a
+// read-only descriptor is an asynchronous Blob round trip, about 0.8 ms in
+// Chrome, and an ifstream refills its 4 KB buffer with two of them, so
+// validating a package with ifstreams took ten round trips at every load.
+struct FileStart {
+  uintmax_t size = 0;
+  std::string bytes;
+};
+
+std::optional<FileStart> read_file_start(const std::filesystem::path &path, uintmax_t count) {
+  const int fd = open(path.c_str(), O_RDONLY);
+  if (fd < 0) {
+    return std::nullopt;
+  }
+  struct stat st{};
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+    close(fd);
+    return std::nullopt;
+  }
+  FileStart file{.size = static_cast<uintmax_t>(st.st_size)};
+  file.bytes.resize(static_cast<size_t>(std::min(count, file.size)));
+  size_t done = 0;
+  while (done < file.bytes.size()) {
+    const ssize_t n = pread(fd, file.bytes.data() + done, file.bytes.size() - done, static_cast<off_t>(done));
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    if (n <= 0) {
+      break;
+    }
+    done += static_cast<size_t>(n);
+  }
+  close(fd);
+  file.bytes.resize(done);
+  return file;
+}
+
 bool valid_hash_table(const std::filesystem::path &path) {
-  std::error_code error;
-  const uintmax_t size = std::filesystem::file_size(path, error);
-  if (error || size < sizeof(uint32_t)) {
+  const auto file = read_file_start(path, sizeof(uint32_t));
+  if (!file || file->bytes.size() < sizeof(uint32_t)) {
     return false;
   }
   uint32_t capacity = 0;
-  std::ifstream input(path, std::ios::binary);
-  input.read(reinterpret_cast<char *>(&capacity), sizeof(capacity));
-  return input.good() && capacity >= 16 &&
-         size == sizeof(uint32_t) + static_cast<uintmax_t>(capacity) * 16;
+  std::memcpy(&capacity, file->bytes.data(), sizeof(capacity));
+  return capacity >= 16 && file->size == sizeof(uint32_t) + static_cast<uintmax_t>(capacity) * 16;
 }
 
 bool valid_bloom_filter(const std::filesystem::path &path) {
-  std::error_code error;
-  const uintmax_t size = std::filesystem::file_size(path, error);
-  if (error || size < 2 * sizeof(uint64_t)) {
+  const auto file = read_file_start(path, 2 * sizeof(uint64_t));
+  if (!file || file->bytes.size() < 2 * sizeof(uint64_t)) {
     return false;
   }
   uint64_t num_bits = 0;
   uint64_t num_hashes = 0;
-  std::ifstream input(path, std::ios::binary);
-  input.read(reinterpret_cast<char *>(&num_bits), sizeof(num_bits));
-  input.read(reinterpret_cast<char *>(&num_hashes), sizeof(num_hashes));
-  return input.good() && num_bits >= 64 && std::has_single_bit(num_bits) &&
-         num_hashes > 0 && size == 2 * sizeof(uint64_t) + num_bits / 8;
+  std::memcpy(&num_bits, file->bytes.data(), sizeof(num_bits));
+  std::memcpy(&num_hashes, file->bytes.data() + sizeof(num_bits), sizeof(num_hashes));
+  return num_bits >= 64 && std::has_single_bit(num_bits) &&
+         num_hashes > 0 && file->size == 2 * sizeof(uint64_t) + num_bits / 8;
 }
 
 bool valid_dictionary_index(const std::filesystem::path &path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
+  const auto file = read_file_start(path, UINTMAX_MAX);
+  if (!file) {
     return false;
   }
-  const std::string contents(std::istreambuf_iterator<char>(input), {});
   WireIndexTitle index;
   return !glz::read<glz::opts{.error_on_unknown_keys = false}>(
-             index, std::string_view{contents}) &&
+             index, std::string_view{file->bytes}) &&
          !index.title.empty();
 }
 

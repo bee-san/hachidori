@@ -560,10 +560,12 @@ describe("engine: boot and import", () => {
       "the fallback import archive can collide with a dictionary title",
     );
     const bindingsSource = readFileSync(resolve(ROOT, "wasm/bindings.cpp"), "utf8");
+    // Package validation reads through read-only descriptors; the barrier is
+    // flush_file's own open.
+    const flushFile = /\nvoid flush_file\([^)]*\) \{\n[\s\S]*?\n\}\n/u.exec(bindingsSource)?.[0] ?? "";
     check(
       "the OPFS durability barrier opens writable sync-access handles before fsync",
-      /open\(path\.c_str\(\), O_RDWR\)/u.test(bindingsSource)
-        && !/open\(path\.c_str\(\), O_RDONLY\)/u.test(bindingsSource),
+      /open\(path\.c_str\(\), O_RDWR\)/u.test(flushFile) && !/O_RDONLY/u.test(flushFile),
       "flush_file can still select WasmFS's non-flushing Blob path",
     );
     check(
