@@ -57,7 +57,7 @@ type that address into **On another computer** under Sharing and press
 ## Sharing this Hachidori
 
 Settings → Sharing says what is happening in one line: *Sharing starts once
-this Hachidori has dictionaries*, *Waiting for Anki*, *Sharing through Anki*,
+this Hachidori has dictionaries*, *Waiting for Anki on port 8771*, *Sharing through Anki*,
 or *Sharing is on, but another browser on this computer is already sharing
 through Anki*, in which case the section offers to use that one instead. The
 linked browsers are named as they connect: *Linked: Chrome on this computer,
@@ -127,10 +127,15 @@ and the same report.
 ### The port
 
 Everything on one computer uses port 8771. Change it only if something else
-already uses that port: set the new one under **Settings → Sharing →
-Advanced** in Hachidori and under **Tools → Add-ons → Hachidori Relay →
-Config** in Anki, then restart Anki. Anki shows a warning when the add-on
-cannot use its port. Browsers on other computers then enter `address:port`.
+already uses that port: set the new one under **Tools → Add-ons → Hachidori
+Relay → Config** in Anki, restart Anki, and set the same port under
+**Settings → Sharing → Advanced** in **every** browser on that computer, the
+one sharing and the ones that use it. A browser looks for the shared
+Hachidori on its own port, so one left on 8771 says *No other Hachidori is
+sharing on this computer on port 8771*. The port can be changed while sharing
+is on; the browser then reconnects on it and looks again. Anki shows a
+warning when the add-on cannot use its port. Browsers on other computers then
+enter `address:port`.
 
 ## Using another Hachidori
 

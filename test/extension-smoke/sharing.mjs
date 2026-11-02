@@ -122,6 +122,19 @@ async function sharingHostStage() {
   await settle(() => sent(socket).length >= 1);
   const hello = sent(socket)[0];
   const listening = await send("hd_sharing_status");
+  // #648: this computer is looked for on the port Settings shows, which may be
+  // a relay port this install has never shared on, else on its own port.
+  const probeSockets = () => FakeSharingSocket.instances.filter(entry => entry.url.endsWith("/link"));
+  const probeErrors = [];
+  for (const port of [6771, undefined, "70000"]) {
+    const reply = send("hd_sharing_client_probe", port === undefined ? { address: "" } : { address: "", port });
+    await settle(() => probeSockets().length > probeErrors.length);
+    probeSockets()[probeErrors.length].drop();
+    probeErrors.push((await reply).error);
+  }
+  check("a probe of this computer uses the port Settings shows, or this install's own when it shows none or a bad one",
+    JSON.stringify(probeErrors) === JSON.stringify([6771, 4321, 4321].map(port => `No shared Hachidori answered at ws://127.0.0.1:${port}/link.`)),
+    JSON.stringify(probeErrors));
   check("a browser install shares by default once it has dictionaries, connects to the relay on the chosen port, asks for the network it was set to, and answers a linked browser's hello with the shared snapshot",
     empty.sharing?.enabled === true && empty.sharing.connected === false && empty.sharing.dictionaries === 0 && noSocketWhileEmpty
       && before.sharing?.enabled === true && before.sharing.connected === false && before.sharing.error === null && before.sharing.dictionaries === 1

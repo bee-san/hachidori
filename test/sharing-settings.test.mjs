@@ -65,18 +65,19 @@ test("a fresh install waits for dictionaries, offers the add-on, and looks for a
   f.controller.start();
   await settle();
   assert.deepEqual(f.sent("hd_sharing_status").length, 1);
-  assert.deepEqual(f.sent("hd_sharing_client_probe"), [{ type: "hd_sharing_client_probe", address: "" }], "this computer is probed once on opening");
+  assert.deepEqual(f.sent("hd_sharing_client_probe"), [{ type: "hd_sharing_client_probe", address: "", port: 8771 }], "this computer is probed once on opening");
   assert.equal(f.el("sharing-host-enabled").checked, true);
   assert.equal(f.el("sharing-host-enabled").disabled, false);
   assert.equal(f.el("sharing-host-network").checked, false);
   assert.equal(f.el("sharing-host-network").disabled, false);
   assert.equal(f.el("sharing-addon").hidden, false, "the add-on is offered until Anki carries the connection");
   assert.equal(f.el("sharing-host-port").value, "8771");
-  assert.equal(f.el("sharing-host-port").disabled, true, "the port is fixed while sharing");
+  assert.equal(f.el("sharing-host-port").disabled, false, "the port can be matched to Anki's while sharing");
   assert.equal(f.el("sharing-host-addresses").hidden, true);
   assert.equal(f.el("sharing-host-clients").textContent, "");
   assert.equal(f.el("sharing-client-nearby").hidden, false);
-  assert.equal(f.el("sharing-client-found").textContent, "No other Hachidori is sharing on this computer.");
+  assert.equal(f.el("sharing-client-found").textContent,
+    "No other Hachidori is sharing on this computer on port 8771. If you changed the add-on’s port in Anki, enter the same port under Advanced.");
   assert.equal(f.el("sharing-client-use").hidden, true);
   assert.equal(f.el("sharing-client-remote").hidden, false);
   assert.deepEqual(f.lastStatus(), ["Sharing starts once this Hachidori has dictionaries.", undefined]);
@@ -129,7 +130,7 @@ test("waiting for Anki, a refusal by another host, and sharing are told apart", 
   f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ dictionaries: 3 }) });
   f.controller.start();
   await settle();
-  assert.deepEqual(f.lastStatus(), ["Waiting for Anki. Sharing starts when Anki is open with the Hachidori Relay add-on.", undefined]);
+  assert.deepEqual(f.lastStatus(), ["Waiting for Anki on port 8771. Sharing starts when Anki is open with the Hachidori Relay add-on.", undefined]);
 
   // The relay turning this install away means another browser is sharing: it is looked for again and offered.
   f.replies.hd_sharing_client_probe = () => ({ ok: true, address: "ws://127.0.0.1:8771/link", display: "this computer", host: CHROME });
@@ -213,6 +214,66 @@ test("sharing with other computers shows the addresses to enter, with a copy for
   await settle();
   assert.deepEqual(f.requests.at(-1), { type: "hd_sharing_host_enable", port: 9000, network: false });
   assert.equal(f.el("sharing-host-port").value, "9000");
+});
+
+// #648: Helium and Anki's relay moved to port 6771; LibreWolf, still on the
+// default port and sharing by default, looked only there and found nothing.
+test("a browser on another port moves to the relay's port and finds the Hachidori sharing there", async t => {
+  const f = fixture(t, { probe: fields => (fields.port === 6771
+    ? { ok: true, address: "ws://127.0.0.1:6771/link", display: "this computer", host: CHROME }
+    : { ok: false, error: `No shared Hachidori answered at ws://127.0.0.1:${fields.port}/link.` }) });
+  let current = status({ dictionaries: 0 });
+  f.replies.hd_sharing_status = () => ({ ok: true, sharing: current });
+  f.controller.start();
+  await settle();
+  assert.equal(f.el("sharing-client-use").hidden, true);
+  assert.match(f.el("sharing-client-found").textContent, /on port 8771\./);
+  assert.equal(f.el("sharing-host-port").disabled, false);
+
+  f.replies.hd_sharing_host_enable = fields => {
+    current = status({ dictionaries: 0, port: fields.port });
+    return { ok: true, sharing: current };
+  };
+  f.el("sharing-host-port").value = "6771";
+  f.el("sharing-host-port").dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  f.el("sharing-host-port").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  await settle();
+  assert.deepEqual(f.sent("hd_sharing_host_enable"), [{ type: "hd_sharing_host_enable", port: 6771, network: false }]);
+  assert.deepEqual(f.sent("hd_sharing_client_probe").at(-1), { type: "hd_sharing_client_probe", address: "", port: 6771 });
+  assert.equal(f.el("sharing-host-port").value, "6771");
+  assert.equal(f.el("sharing-client-found").textContent,
+    "Another browser on this computer is sharing: the Hachidori in Chrome on this computer (5 dictionaries).");
+  f.replies.hd_sharing_client_link = () => ({ ok: true, sharing: linkedStatus({ address: "ws://127.0.0.1:6771/link", display: "this computer" }) });
+  f.el("sharing-client-use").click();
+  await settle();
+  assert.deepEqual(f.requests.at(-1), { type: "hd_sharing_client_link", address: "ws://127.0.0.1:6771/link" });
+});
+
+test("with sharing off, a typed port is where this computer is looked for, and a bad one is refused", async t => {
+  const f = fixture(t, { probe: fields => ({ ok: false, error: `No shared Hachidori answered at ws://127.0.0.1:${fields.port}/link.` }) });
+  f.replies.hd_sharing_status = () => ({ ok: true, sharing: status({ enabled: false }) });
+  f.controller.start();
+  await settle();
+  f.el("sharing-host-port").value = "9100";
+  f.el("sharing-host-port").dispatchEvent(new f.window.Event("input", { bubbles: true }));
+  f.el("sharing-host-port").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(f.sent("hd_sharing_host_enable").length, 0, "sharing stays off");
+  assert.deepEqual(f.sent("hd_sharing_client_probe").at(-1), { type: "hd_sharing_client_probe", address: "", port: 9100 });
+  f.controller.render();
+  assert.equal(f.el("sharing-host-port").value, "9100", "a poll keeps the typed port");
+  assert.equal(f.el("sharing-client-found").textContent,
+    "No other Hachidori is sharing on this computer on port 9100. If the add-on in Anki uses another port, enter the same port under Advanced.");
+  f.el("sharing-client-find").click();
+  await settle();
+  assert.deepEqual(f.sent("hd_sharing_client_probe").at(-1), { type: "hd_sharing_client_probe", address: "", port: 9100 }, "Look again uses it too");
+
+  const probes = f.sent("hd_sharing_client_probe").length;
+  f.el("sharing-host-port").value = "70000";
+  f.el("sharing-host-port").dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  await settle();
+  assert.deepEqual(f.lastStatus(), ["Enter a port from 1 to 65535.", "error"]);
+  assert.equal(f.sent("hd_sharing_client_probe").length, probes);
 });
 
 test("a failed action stays visible for a moment above the polled status", async t => {
