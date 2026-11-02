@@ -1033,7 +1033,10 @@ is Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
 `ext/js/display/search-display-controller.js`). It is off by default. While it
 is on, `search-clipboard.js` reads the clipboard every 250 ms, and text copied
 in any tab or program goes into the box and is searched as a paste is, once
-for each new text, trimmed. What was on the clipboard when the monitor started
+for each new text, trimmed. A longer copy is searched from its first 1,000
+characters, Yomitan's default maximum clipboard search length: echoing a
+100,000-character query held the page for about 30 seconds in Chrome 152. A
+paste is still searched whole. What was on the clipboard when the monitor started
 is not searched, nor is text without a Japanese character (the reader's
 `isLookupWorthy`, Yomitan's `isTextLookupWorthy`). Text copied or cut on the
 page itself is not searched either: the monitor starts over from it, as
@@ -1048,15 +1051,17 @@ needs no stored option. Only the search page reads the clipboard: it sends
 relays it to the offscreen document, never to a linked browser's host, and the
 offscreen document answers only the worker. As Yomitan's `ClipboardReader`
 does, Chrome pastes into a text area there, which needs neither focus nor a
-prompt once the permission is granted, and Firefox, whose paste command
-sometimes fails, uses `navigator.clipboard.readText()` in the background
-page's engine frame.
+prompt once the permission is granted; the text comes from the paste event,
+which is cancelled, because laying out 300,000 pasted characters took about 30
+seconds where the event takes 5 ms. Firefox, whose paste command sometimes
+fails, uses `navigator.clipboard.readText()` in the background page's engine
+frame.
 
 ![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
-maximum clipboard search length, as a paste has no limit either; profiles;
+the setting for the maximum clipboard search length; profiles;
 automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
 browser's history; the popup window's size, position and state settings;
