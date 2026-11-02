@@ -1,7 +1,8 @@
 /*
  * The search page (#610) in Firefox: the popup window that the Open the popup
  * window shortcut and the toolbar menu's Search open through search-window.js,
- * and a typed word's lookup docked under the search box.
+ * a typed word's lookup docked under the search box, and its clipboard
+ * monitor (#639), whose switch asks Firefox for the clipboardRead permission.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -9,7 +10,10 @@
 import "./settings.mjs";
 import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
-import { activate, evaluateJson, extensionUrl, findPage, page, readPopup, waitFor } from "./session.mjs";
+import {
+  activate, bidiSession, evaluateInChrome, evaluateJson, extensionUrl, findPage, openExtensionPage, page, readPopup,
+  sleep, waitFor,
+} from "./session.mjs";
 
 // The open search pages, from the extension's own documents as search-window.js finds them.
 const searchPages = () => evaluateJson(page, async url => JSON.stringify(await Promise.all((await chrome.runtime.getContexts({
@@ -58,6 +62,52 @@ describe("search page", () => {
       await chrome.windows.remove(windowId);
       return "null";
     }, first?.[0]?.windowId);
+    await activate(page);
+  });
+
+  step("the search page's clipboard monitor", async () => {
+    // Firefox's own clipboard, as a copy in another program would fill it.
+    const copy = text => evaluateInChrome(bidiSession(page), `(text => {
+      const { classes: Cc, interfaces: Ci } = Components;
+      Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
+      return "copied";
+    })(${JSON.stringify(text)})`);
+    const search = await openExtensionPage("search.html");
+    const state = () => evaluateJson(search, async () => JSON.stringify({
+      ready: !document.getElementById("search-submit").disabled && !document.getElementById("search-clipboard").disabled,
+      on: document.getElementById("search-clipboard").checked,
+      granted: await chrome.permissions.contains({ permissions: ["clipboardRead"] }),
+      query: document.getElementById("search-query").hidden ? null : document.getElementById("search-query").textContent,
+    }));
+    const settled = predicate => waitFor(async () => {
+      const current = await state();
+      return predicate(current) ? current : false;
+    }, { timeout: 15_000 });
+    await copy("食べたかった");
+    const off = await settled(current => current.ready);
+    await search.click("#search-clipboard");
+    const on = await settled(current => current.on && current.granted);
+    await sleep(1500);
+    const before = await state();
+    check("the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
+      off?.on === false && off.granted === false && on?.on === true && before.query === null,
+      JSON.stringify({ off, on, before }));
+
+    await copy("読む");
+    const shown = await waitFor(async () => {
+      const popup = await readPopup(search);
+      return popup?.headword === "読む" ? popup : false;
+    }, { timeout: 20_000 });
+    const searched = await state();
+    await search.click("#search-clipboard");
+    const stopped = await settled(current => !current.on && !current.granted);
+    await copy("漢字");
+    await sleep(1500);
+    const after = await state();
+    check("the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it",
+      shown?.plain.includes("to read") && searched.query === "読む" && stopped?.on === false && after.query === "読む",
+      JSON.stringify({ headword: shown?.headword, plain: shown?.plain?.slice(0, 80), searched, stopped, after }));
+    await search.close();
     await activate(page);
   });
 });

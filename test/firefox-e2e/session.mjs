@@ -212,7 +212,7 @@ async function launchFirefox(profile) {
       // A relaunch reinstalls the temporary add-on into the storage it left.
       "extensions.webextensions.keepStorageOnUninstall": true,
       "extensions.webextensions.keepUuidOnUninstall": true,
-      // permissions.request() for userScripts is granted without a prompt.
+      // permissions.request() for userScripts and clipboardRead is granted without a prompt.
       "extensions.webextOptionalPermissionPrompts": false,
       "browser.download.dir": downloadDir,
       "browser.download.folderList": 2,
@@ -679,7 +679,7 @@ function setBidi(next) {
 
 export {
   activate, ANKI_PATH, ANKI_REFUSED_PATH, anki, bidiSession, browser, characterPoint, clickInPopup, contextId,
-  dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateJson, EXTENSION,
+  dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateInChrome, evaluateJson, EXTENSION,
   extensionUrl, findPage, FIXTURE, FIXTURE_ID, GECKO_ID, HERE, highlightSize, hoverForPopup, importArchives, inPopup,
   installHachidori, launchFirefox, listIdbfsPaths, makeAudioWav, navigate, openExtensionPage, openPage, ORIGIN, page,
   PROFILE, readPopup, readStorage, RECOMMENDED, reloadPage, routes, saveDialogs, sendRuntime, servedAudio, servedFiles, serverUrl,
