@@ -403,6 +403,7 @@ const PLANNED = [
   "a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
   "the search page and its results follow a popup theme change at once",
   "keys typed, Ctrl+U and text pasted in the docked result's Note form stay in the form",
+  "Custom JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages",
   "the settings page lists the dictionary again after a restart",
   "local-only libraries can install recommended dictionaries after a browser restart",
   "the dictionary survives a browser restart via OPFS",

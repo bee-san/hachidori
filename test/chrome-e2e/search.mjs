@@ -1,6 +1,8 @@
 /*
  * The search page (#610): Yomitan's search page and popup window, opened from
  * the toolbar menu and its shortcuts, with real lookups docked in the page.
+ * The page itself is search-frame.html, the sandboxed frame search.html holds
+ * (#644), so each read of it goes to that frame.
  *
  * Part of the real-Chrome suite (test/chrome-e2e.mjs); see test/README.md.
  *
@@ -15,7 +17,7 @@ import { describe } from "node:test";
 import { check, diagnostics, EXTENSION, step } from "./harness.mjs";
 import { popupRoot } from "../chrome-popup-root.mjs";
 import { popupReader } from "./popup-reader.mjs";
-import { browser, editSettingsControls, extensionId, page } from "./session.mjs";
+import { browser, editSettingsControls, extensionId, page, pageUrl } from "./session.mjs";
 
 const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
   .content_scripts[0].js.filter(src => src !== "reader-options.js");
@@ -26,6 +28,17 @@ const SEARCH_COMMANDS = ["openSearchPage", "openSearchPageCurrentTab", "openPopu
 let searchTab, searchPopup, originalOptions;
 
 const searchUrl = () => `chrome-extension://${extensionId}/search.html`;
+const frameUrl = () => `chrome-extension://${extensionId}/search-frame.html`;
+
+// The search page's own document, in search.html's frame.
+async function searchFrame(target) {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    const frame = target.frames().find(candidate => candidate.url() === frameUrl());
+    if (frame || Date.now() >= deadline) return frame ?? null;
+    await new Promise(resolveWait => setTimeout(resolveWait, 50));
+  }
+}
 
 // The open search pages, as the worker finds them: tabs hide extension URLs.
 const searchPages = () => page.evaluate(async url => Promise.all((await chrome.runtime.getContexts({
@@ -54,7 +67,7 @@ async function screenshot(target, name, clip) {
 
 // What the search page shows: its theme, the reader it loaded, the box, the
 // echoed query and where its results area is.
-const pageState = target => target.evaluate(() => {
+const pageState = async target => (await searchFrame(target)).evaluate(() => {
   const box = document.getElementById("search-input");
   const area = document.getElementById("search-results").getBoundingClientRect();
   return {
@@ -72,8 +85,9 @@ const pageState = target => target.evaluate(() => {
 });
 
 async function searchFor(target, text) {
-  await target.focus("#search-input");
-  await target.$eval("#search-input", (box, value) => { box.value = value; }, text);
+  const frame = await searchFrame(target);
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", (box, value) => { box.value = value; }, text);
   await target.keyboard.press("Enter");
 }
 
@@ -167,9 +181,11 @@ describe("search page", () => {
   step("searching on the search page", async () => {
     await searchTab.setViewport({ width: 960, height: 760 });
     await searchTab.bringToFront();
-    await searchTab.waitForFunction(() => !document.getElementById("search-submit").disabled,
+    const frame = await searchFrame(searchTab);
+    await frame.waitForFunction(() => !document.getElementById("search-submit").disabled,
       { polling: 100, timeout: 15_000 });
     const opened = await pageState(searchTab);
+    const shellScripts = await searchTab.evaluate(() => document.querySelectorAll("script[data-search-reader]").length);
     // The Clipboard monitor (#639) is off: Hachidori holds no clipboardRead
     // permission, so the offscreen document's paste reads nothing that was copied.
     const clipboard = await searchTab.evaluate(async () => {
@@ -191,7 +207,7 @@ describe("search page", () => {
       clipboard.copied && !clipboard.on && clipboard.enabled && JSON.stringify(clipboard.optional) === '["clipboardRead"]'
         && !clipboard.granted && clipboard.read?.ok === true && clipboard.read.text === "",
       JSON.stringify(clipboard));
-    const popup = await popupReader(searchTab);
+    const popup = await popupReader(searchTab, 0, frameUrl());
     const theme = originalOptions.popupTheme === "auto"
       ? await searchTab.evaluate(() => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"))
       : originalOptions.popupTheme;
@@ -200,33 +216,33 @@ describe("search page", () => {
     const docked = await pageState(searchTab);
     const rect = await popup.rect();
     await screenshot(searchTab, "search-page");
-    await searchTab.click(".search-header h1");
+    await frame.click(".search-header h1");
     await new Promise(resolveWait => setTimeout(resolveWait, 500));
     const afterClick = await popup.state();
     await searchTab.keyboard.press("Escape");
-    await searchTab.waitForFunction(() => document.activeElement === document.getElementById("search-input"),
+    await frame.waitForFunction(() => document.activeElement === document.getElementById("search-input"),
       { polling: 50, timeout: 5_000 }).catch(() => {});
     const afterEscape = await popup.state();
     const escaped = await pageState(searchTab);
     check("the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box",
       opened.focused && result !== null && result.text.includes("to eat") && docked.ready && docked.theme === theme
-        && JSON.stringify(docked.readerScripts) === JSON.stringify(READER_SCRIPTS)
+        && JSON.stringify(docked.readerScripts) === JSON.stringify(READER_SCRIPTS) && shellScripts === 0
         && docked.query === "食べたかった" && !docked.focused && fills(rect, docked.area) && docked.inResults
         && popup.visible(afterClick) && afterClick.plain.includes("食べる")
         && popup.visible(afterEscape) && escaped.focused && escaped.selected,
-      JSON.stringify({ opened, result: result?.plain.slice(0, 120), docked, rect, afterClick: afterClick?.plain.slice(0, 60),
+      JSON.stringify({ opened, shellScripts, result: result?.plain.slice(0, 120), docked, rect, afterClick: afterClick?.plain.slice(0, 60),
         afterEscape: afterEscape?.plain.slice(0, 60), escaped }));
 
-    await searchTab.$eval("#search-input", box => box.setSelectionRange(box.value.length, box.value.length));
-    await searchTab.click(".search-header h1");
+    await frame.$eval("#search-input", box => box.setSelectionRange(box.value.length, box.value.length));
+    await frame.click(".search-header h1");
     await searchTab.keyboard.press("a");
     const typed = await pageState(searchTab);
-    await searchTab.click(".search-header h1");
+    await frame.click(".search-header h1");
     await searchTab.keyboard.down("Control");
     await searchTab.keyboard.press("u");
     await searchTab.keyboard.up("Control");
     const cleared = await pageState(searchTab);
-    await searchTab.evaluate(() => {
+    await frame.evaluate(() => {
       const data = new DataTransfer();
       data.setData("text/plain", "漢字");
       document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
@@ -245,7 +261,7 @@ describe("search page", () => {
     await popup.waitForVisible(15_000, state => state.plain.includes("食べる") && state.text.includes("to eat"));
     const changed = originalOptions.popupTheme === "dracula" ? "girlypop" : "dracula";
     await writeOptions({ popupTheme: changed });
-    const followed = await searchTab.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme
+    const followed = await frame.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme
       && document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === theme,
     { polling: 100, timeout: 10_000 }, changed).then(() => true, () => false);
     const themed = await pageState(searchTab);
@@ -254,7 +270,7 @@ describe("search page", () => {
     // The palettes the PR shows, in screenshot runs only.
     for (const palette of SCREENSHOTS ? ["default", "high-contrast"] : []) {
       await writeOptions({ popupTheme: palette });
-      await searchTab.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme
+      await frame.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme
         && document.querySelector("hachidori-host")?.dataset.hoshidictsTheme === theme,
       { polling: 100, timeout: 10_000 }, palette).catch(() => {});
       await screenshot(searchTab, `search-page-${palette}`);
@@ -267,7 +283,7 @@ describe("search page", () => {
     // The page sees only the reader's host of the closed popup root, so keys
     // and pastes inside the docked result stay there: here, its Note form.
     const noteOpened = await popup.click(".gsm-hoshidicts-note-button");
-    const root = popupRoot(searchTab);
+    const root = popupRoot(searchTab, frameUrl());
     const noteFocused = await root.waitFor(shadow => {
       const field = shadow.querySelector('.gsm-hoshidicts-note-form:not([hidden]) [name="definition"]');
       field?.focus();
@@ -298,8 +314,8 @@ describe("search page", () => {
 
     if (SCREENSHOTS) {
       await searchPopup.setViewport({ width: 600, height: 640 });
-      const windowPopup = await popupReader(searchPopup);
-      await searchPopup.waitForFunction(() => !document.getElementById("search-submit").disabled,
+      const windowPopup = await popupReader(searchPopup, 0, frameUrl());
+      await (await searchFrame(searchPopup)).waitForFunction(() => !document.getElementById("search-submit").disabled,
         { polling: 100, timeout: 15_000 });
       await searchFor(searchPopup, "読む");
       await windowPopup.waitForVisible(15_000, state => state.plain.includes("読む"));
@@ -314,5 +330,92 @@ describe("search page", () => {
     }
     await searchPopup.close();
     await searchTab.close();
+  });
+
+  // Design → Custom JavaScript on the search page (#644). Chrome runs no user
+  // script in an extension page, so the page is a sandboxed frame, which runs
+  // the script that web pages run, and only where they run it: once the user
+  // allows user scripts on chrome://extensions and the worker has registered it.
+  step("Custom JavaScript on the search page", async () => {
+    const script = `document.documentElement.dataset.customScript = "ran";
+      setInterval(() => {
+        const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
+        if (popup && !popup.hidden) popup.dataset.customScript = "reached";
+      }, 50);`;
+    const allowUserScripts = async allowed => {
+      const extensions = await browser.newPage();
+      try {
+        await extensions.goto(`chrome://extensions/?id=${extensionId}`, { waitUntil: "load" });
+        await extensions.evaluate((id, allowed) => chrome.developerPrivate.updateExtensionConfiguration({
+          extensionId: id, userScriptsAccess: allowed }), extensionId, allowed);
+      } finally {
+        await extensions.close();
+      }
+    };
+    const registered = () => {
+      const worker = browser.targets().findLast(target => target.type() === "service_worker"
+        && target.url() === `chrome-extension://${extensionId}/background.js`);
+      return worker.worker().then(handle => handle.evaluate(async () => {
+        try {
+          return (await chrome.userScripts.getScripts({ ids: ["hachidori-custom-javascript"] })).length === 1;
+        } catch {
+          return false;
+        }
+      }));
+    };
+    // A search for 食べる on a new search page, and the marks the script left.
+    const searched = async () => {
+      const tab = await browser.newPage();
+      try {
+        await tab.setViewport({ width: 960, height: 760 });
+        await tab.goto(searchUrl(), { waitUntil: "load" });
+        const frame = await searchFrame(tab);
+        await frame.waitForFunction(() => !document.getElementById("search-submit").disabled,
+          { polling: 100, timeout: 15_000 });
+        const popup = await popupReader(tab, 0, frameUrl());
+        await searchFor(tab, "食べる");
+        const result = await popup.waitForVisible(15_000, state => state.plain.includes("食べる"));
+        await frame.waitForFunction(() => document.querySelector("hachidori-host")?.shadowRoot
+          ?.querySelector(".gsm-hoshidicts-popup")?.dataset.customScript, { polling: 50, timeout: 2_000 }).catch(() => {});
+        return { shown: result !== null, ...await frame.evaluate(() => ({
+          page: document.documentElement.dataset.customScript ?? null,
+          popup: document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup")
+            ?.dataset.customScript ?? null,
+        })) };
+      } finally {
+        await tab.close();
+      }
+    };
+    // A reading page, where the worker's user script runs.
+    const read = async () => {
+      const tab = await browser.newPage();
+      try {
+        await tab.goto(pageUrl, { waitUntil: "load" });
+        return await tab.waitForFunction(() => document.documentElement.dataset.customScript === "ran",
+          { polling: 50, timeout: 5_000 }).then(() => true, () => false);
+      } finally {
+        await tab.close();
+      }
+    };
+    let blocked, allowed, onPage;
+    try {
+      await writeOptions({ customPopupJavascript: script });
+      blocked = await searched();
+      await allowUserScripts(true);
+      // The worker registers the saved script when the options next change.
+      await writeOptions({ customPopupJavascript: `${script}\n` });
+      for (let attempt = 0; attempt < 50 && !await registered(); attempt += 1) {
+        await new Promise(resolveWait => setTimeout(resolveWait, 100));
+      }
+      allowed = await searched();
+      onPage = await read();
+    } finally {
+      await writeOptions({ customPopupJavascript: originalOptions.customPopupJavascript });
+      await allowUserScripts(false);
+    }
+    check("Custom JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages",
+      blocked.shown && blocked.page === null && blocked.popup === null
+        && allowed.shown && allowed.page === "ran" && allowed.popup === "reached" && onPage,
+      JSON.stringify({ blocked, allowed, onPage }));
   });
 });

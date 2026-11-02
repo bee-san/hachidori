@@ -4,8 +4,20 @@
    docks its popup over the results area, so the page itself never scrolls. */
 
 html,
-body.search-page {
+body.search-page,
+body.search-shell {
   height: 100%;
+}
+/* search.html holds the page below, search-frame.html, over its whole window
+   (#644): the frame is sandboxed so that Custom JavaScript can run in it. */
+body.search-shell {
+  overflow: hidden;
+}
+.search-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 html {
   scrollbar-gutter: auto;

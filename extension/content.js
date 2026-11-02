@@ -103,12 +103,13 @@
   }
   // The reader belongs to ordinary pages. First-run setup loads these same
   // scripts into its own startup page for the practice step, and the search
-  // page (#610) into itself. The startup page's native skip link may leave the
-  // known heading fragment before the module loads or on reload; query
-  // variants and every other internal page stay excluded.
+  // page (#610) into itself, the sandboxed frame search.html holds (#644). The
+  // startup page's native skip link may leave the known heading fragment
+  // before the module loads or on reload; query variants and every other
+  // internal page stay excluded.
   if (
     location.protocol === EXTENSION_PROTOCOL &&
-    !["startup.html", "startup.html#setup-heading", "search.html"]
+    !["startup.html", "startup.html#setup-heading", "search-frame.html"]
       .some((page) => location.href === chrome.runtime.getURL(page))
   ) {
     return;

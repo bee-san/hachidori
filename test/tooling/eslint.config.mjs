@@ -20,7 +20,7 @@ const chrome = readonly(["chrome"]);
 const published = readonly([
   "HDAnki", "HDAudio", "HDContent", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
-  "HDReaderOptions", "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
+  "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
   "HDWordStatusOverrides",
 ]);
 
@@ -29,7 +29,7 @@ const published = readonly([
 // on, and the classic <script> files of extension pages.
 const CLASSIC = [
   ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
-  "design-preview.js", "settings-theme.js", "visual-novel.js",
+  "design-preview.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in

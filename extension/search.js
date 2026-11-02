@@ -4,7 +4,9 @@
 // the box is looked up through the reader this page loads into itself, which
 // docks its popup over the results area. The page follows the popup theme as
 // Settings does, and the popup is the reader's own, with its theme, Anki,
-// pronunciation, tabs and child popups.
+// pronunciation, tabs and child popups. This page is search-frame.html, the
+// sandboxed frame search.html holds so that Custom JavaScript runs here too
+// (#644); search-bridge.js lends it the extension APIs.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
@@ -14,9 +16,12 @@ import { loadReaderScripts } from "./reader-page.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { applyPageTheme } from "./settings-dom.js";
 
+// Firefox before 154 has no sandboxed pages, and so no bridge: the frame is an
+// ordinary extension page there.
+const bridge = globalThis.HDSearchBridge ?? null;
 // Settings → Advanced → Get debug info includes what failed here.
 captureDocumentActions(document, captureDebugLog(window, {
-  context: "search", store: openDebugLogStore(window.indexedDB),
+  context: "search", store: bridge?.debugLogStore ?? openDebugLogStore(window.indexedDB),
 }));
 
 const { normaliseOptions } = globalThis.HDReaderOptions;
@@ -155,12 +160,31 @@ window.addEventListener("paste", (event) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
 });
+
+// Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
+// once the reader is ready, as a user script runs at document_idle after the
+// content scripts. search.html hands it over only where the worker registered
+// it, which Chrome's Allow User Scripts or Firefox's permission allows. The
+// frame's sandbox allows eval for this alone; inline script stays blocked.
+function runCustomJavaScript(code) {
+  try {
+    (0, eval)(code); // NOSONAR: the user's own Custom JavaScript, as their user script; see above.
+  } catch (error) {
+    console.error("hachidori: Custom JavaScript failed on the search page:", error);
+  }
+}
+
 // The page opens ready to type into, as Yomitan's focuses its box.
 input.focus();
 try {
+  const connection = await bridge?.ready;
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  // The page stays hidden, its box unfocusable, until settings-theme.js has
+  // the saved theme; in search.html's frame that read waits for the bridge.
+  input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
+  if (connection?.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
   clipboardSwitch.disabled = false;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-const SCRIPT_ID = "hachidori-custom-javascript";
+export const SCRIPT_ID = "hachidori-custom-javascript";
 let application = Promise.resolve();
 
 // Chrome MV3 `userScripts` registration. Hosts without a USER_SCRIPT world
