@@ -3984,7 +3984,9 @@
   }
 
   // Yomitan's isTextLookupWorthy, for the search page's clipboard monitor
-  // (#639): whether copied text has a Japanese character in it.
+  // (#639): whether copied text has a Japanese character in it. search.html
+  // passes the frame only text this accepts (search-shell.js, #644), testing
+  // the same set: a change here must change that filter too.
   function isLookupWorthy(text) {
     return JAPANESE_CHARACTER_PATTERN.test(text);
   }

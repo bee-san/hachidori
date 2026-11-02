@@ -1103,11 +1103,16 @@ wrote. The Clipboard monitor's switch and its reads stay in `search.html`,
 which lays the switch over the end of the frame's header and shows it with the
 frame's themed page. Only text with a Japanese character, the reader's own
 `isLookupWorthy` test, goes on to the frame, which searches it and tells
-`search.html` when its reader is ready and when text is copied there; other
-text the monitor reads never reaches the user's script. A click on the switch
-hands focus back to the frame, where the reader's keybinds and activation key
-work; while the switch has focus from the keyboard, Escape and Ctrl+U still
-reach the box, and the reader's keybinds wait for focus to return to the page.
+`search.html` when its reader is ready and when text is copied there. The
+monitor hands the user's script no other text. In Chrome, while Hachidori
+holds `clipboardRead`, a user script can still read the clipboard itself, on
+the search page as on any web page; in Firefox it cannot. A click on the
+switch, if the switch does not have focus, hands focus back to the frame,
+where the reader's keybinds and activation key work. A focused switch keeps
+focus: after Space, and after a screen reader's or voice control's click,
+which Chrome sends as pointer events once it has focused the switch. There
+Escape and Ctrl+U still reach the box, and the reader's keybinds wait for
+focus to return to the page.
 Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
 extension page, with its own API, where the script does not run and the
 channel carries only the debug log and the Clipboard monitor.
