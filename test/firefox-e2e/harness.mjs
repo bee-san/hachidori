@@ -128,7 +128,7 @@ const E2E_PLANNED = [
   "the search page looks up a typed word and docks the reader's popup under its box",
   "the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
   "the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it",
-  "Custom JavaScript runs on the search page and reaches the docked result once Firefox grants user scripts",
+  "Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",

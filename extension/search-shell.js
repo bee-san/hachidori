@@ -4,14 +4,17 @@
 // Design → Custom JavaScript runs as it does on a web page. The frame has no
 // extension APIs: this page answers for it over one MessagePort, of which
 // search-bridge.js is the other end. The user's script shares the frame's
-// document with the reader, so the frame gets what the reader needs and no
+// document and globals with the reader, so whatever this page serves the
+// reader, the script can use too, where on a web page it has no extension
+// messaging at all. The frame therefore gets what the reader needs and no
 // more: the requests a content script's reader sends, the stored keys it
 // reads and the events sent to it.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
-import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
+import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
+import "./reader-options.js";
 
 // The requests the reader sends, by target. test/search-bridge.test.mjs keeps
 // these equal to the ones the content scripts name.
@@ -39,8 +42,21 @@ function readerKeys(keys) {
   return Object.fromEntries(Object.entries(keys ?? {}).filter(([key]) => readerKey(key)));
 }
 
+// The reader never uses the AnkiConnect key.
+const readerValue = (key, value) => (key === "options" && value?.anki
+  ? { ...value, anki: { ...value.anki, apiKey: "" } } : value);
+
+// The one option write the reader makes: a Toggle option keybind's boolean.
+function readerOptionsWrite(options) {
+  const entries = Object.entries(options ?? {});
+  return entries.length === 1 && typeof entries[0][1] === "boolean"
+    && globalThis.HDReaderOptions.KEYBIND_TOGGLE_OPTIONS.includes(entries[0][0]);
+}
+
 // Answers the frame on `port` until the returned function closes it.
 export function serveSearchFrame(api, port, store) {
+  // The ring's keys of the records this frame wrote, the only ones it may update.
+  const written = new Set();
   const answer = (id, request) => {
     Promise.resolve().then(request).then((value) => { port.postMessage({ kind: "reply", id, value }); },
       (error) => { port.postMessage({ kind: "reply", id, error: describeErrorMessage(error) }); });
@@ -48,14 +64,22 @@ export function serveSearchFrame(api, port, store) {
   port.onmessage = ({ data }) => {
     if (data?.kind === "send") {
       answer(data.id, () => {
-        const { target, type } = data.message ?? {};
-        if (!READER_REQUESTS.get(target)?.has(type)) throw new Error(`The search page cannot send ${type} to ${target}.`);
+        const { target, type, options } = data.message ?? {};
+        if (!READER_REQUESTS.get(target)?.has(type) || (type === "hd_options_write" && !readerOptionsWrite(options))) {
+          throw new Error(`The search page cannot send ${type} to ${target}.`);
+        }
         return api.runtime.sendMessage(data.message);
       });
     } else if (data?.kind === "get") {
-      answer(data.id, () => api.storage.local.get(readerKeys(data.keys)));
+      answer(data.id, async () => Object.fromEntries(Object.entries(await api.storage.local.get(readerKeys(data.keys)))
+        .map(([key, value]) => [key, readerValue(key, value)])));
     } else if (data?.kind === "log") {
-      answer(data.id, () => store.write(data.ops));
+      answer(data.id, async () => {
+        const keys = await store.write(data.ops.map(({ key, record }) => ({ key: written.has(key) ? key : undefined,
+          record: debugLogRecord({ ...record, context: "search" }) })));
+        for (const key of keys) written.add(key);
+        return keys;
+      });
     }
   };
   const onMessage = (message, sender) => {
@@ -63,7 +87,8 @@ export function serveSearchFrame(api, port, store) {
     return false;
   };
   const onChanged = (changes, area) => {
-    const read = Object.fromEntries(Object.entries(changes).filter(([key]) => readerKey(key)));
+    const read = Object.fromEntries(Object.entries(changes).filter(([key]) => readerKey(key))
+      .map(([key, { oldValue, newValue }]) => [key, { oldValue: readerValue(key, oldValue), newValue: readerValue(key, newValue) }]));
     if (area === "local" && Object.keys(read).length > 0) port.postMessage({ kind: "changed", changes: read, area });
   };
   api.runtime.onMessage.addListener(onMessage);
@@ -94,21 +119,22 @@ async function start() {
   const frame = document.createElement("iframe");
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
-  // Settings' Copy error details, beside an error the page shows.
-  frame.allow = "clipboard-write";
   let close = null;
   frame.addEventListener("load", () => {
-    // Only the frame's own code can navigate it. A later load is a new
-    // document, which gets no port: the page starts again instead.
+    // Only the frame's own code can navigate it, perhaps to another site, so
+    // a later document gets no port: the page starts again instead.
     if (close) {
       close();
       location.reload();
       return;
     }
-    const channel = new MessageChannel();
-    close = serveSearchFrame(chrome, channel.port1, store);
     // Focused first, so the frame can focus its box once it is connected.
     frame.focus();
+    // Firefox before 154 ignores the sandbox, and the frame is then an
+    // ordinary extension page with the extension's API of its own.
+    if (frame.contentDocument) return;
+    const channel = new MessageChannel();
+    close = serveSearchFrame(chrome, channel.port1, store);
     // A sandboxed frame's origin is opaque, so no target origin can name it.
     frame.contentWindow.postMessage({ type: "hachidori-search-bridge", id: chrome.runtime.id,
       manifest: chrome.runtime.getManifest(), customJavaScript }, "*", [channel.port2]);

@@ -342,12 +342,17 @@ describe("search page", () => {
         const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
         if (popup && !popup.hidden) popup.dataset.customScript = "reached";
       }, 50);`;
+    // Chrome 138 added Allow User Scripts to the extension's details page;
+    // before it, as in the manifest-minimum Chrome 128, Developer mode allowed them.
+    const perExtension = Number(/Chrome\/(\d+)/u.exec(await browser.version())[1]) >= 138;
     const allowUserScripts = async allowed => {
       const extensions = await browser.newPage();
       try {
         await extensions.goto(`chrome://extensions/?id=${extensionId}`, { waitUntil: "load" });
-        await extensions.evaluate((id, allowed) => chrome.developerPrivate.updateExtensionConfiguration({
-          extensionId: id, userScriptsAccess: allowed }), extensionId, allowed);
+        await extensions.evaluate((id, allowed, perExtension) => (perExtension
+          ? chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, userScriptsAccess: allowed })
+          : chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: allowed })),
+        extensionId, allowed, perExtension);
       } finally {
         await extensions.close();
       }

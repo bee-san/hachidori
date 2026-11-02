@@ -1081,12 +1081,16 @@ reader and reaches the docked result through its open root, as on a web page;
 unlike a user script in its own world, it also shares the reader's JavaScript
 globals. A sandboxed frame has no extension APIs, so `search-shell.js` in
 `search.html` answers for it over one `MessagePort`, whose other end is
-`search-bridge.js`: it forwards the requests a content script's reader sends
-and refuses any other, so the script reaches no more than the reader does,
-reads only the stored keys the reader reads, passes on the events sent to the
-reader and keeps the frame's debug log in the extension's store. Firefox has
-sandboxed pages from 154; in Firefox 153 the frame is an ordinary extension
-page, where the script does not run.
+`search-bridge.js`. Whatever the frame is served, the script can use too,
+where on a web page it has no extension messaging at all, so the frame gets
+what the reader needs and no more: the requests a content script's reader
+sends, and of option writes only the reader's own, one **Toggle option**
+keybind's boolean; the stored keys the reader reads, with the AnkiConnect key,
+which the reader never uses, left out of the options; and the events sent to
+the reader. The frame's debug log goes to the extension's store, measured and
+redacted again by `search.html`, and may update only the records the frame
+wrote. Firefox has sandboxed pages from 154; in Firefox 153 the frame is an
+ordinary extension page, where the script does not run.
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and

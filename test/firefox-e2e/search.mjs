@@ -69,7 +69,10 @@ describe("search page", () => {
       JSON.stringify({ ready, headword: shown?.headword, docked, unscripted, plain: shown?.plain?.slice(0, 120) }));
 
     // The script web pages run, run on the search page too, where it reaches
-    // the docked result through the popup's open root.
+    // the docked result through the popup's open root. Firefox has sandboxed
+    // extension pages from 154; before, the frame is an ordinary extension
+    // page, where it cannot run.
+    const sandboxes = Number(/(\d+)\./u.exec(await browser.version())[1]) >= 154;
     await writeOptions(page, { customPopupJavascript: `document.documentElement.dataset.customScript = "ran";
       setInterval(() => {
         const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
@@ -80,18 +83,21 @@ describe("search page", () => {
     // The page hands the frame the script as it loads.
     const scripted = await searchFrame(await reloadPage(await findPage("search.html")));
     await waitFor(() => scripted.evaluate(() => !document.getElementById("search-submit").disabled || false), { timeout: 30_000 });
+    const sandboxed = await scripted.evaluate(() => self.origin === "null");
     await scripted.evaluate(() => {
       document.getElementById("search-input").value = "食べる";
       document.getElementById("search-form").requestSubmit();
     });
+    const result = await waitFor(async () => (await readPopup(scripted))?.headword ?? false, { timeout: 20_000 });
     const marks = await waitFor(() => scripted.evaluate(() => {
       const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
-      return popup?.dataset.customScript === "reached"
-        ? { page: document.documentElement.dataset.customScript ?? null, popup: popup.dataset.customScript } : false;
-    }), { timeout: 20_000 });
+      return { page: document.documentElement.dataset.customScript ?? null, popup: popup?.dataset.customScript ?? null };
+    }).then(found => (found.popup === "reached" || !sandboxes ? found : false)), { timeout: 5_000 });
     await writeOptions(page, { customPopupJavascript: "" });
-    check("Custom JavaScript runs on the search page and reaches the docked result once Firefox grants user scripts",
-      registered === true && marks?.page === "ran" && marks.popup === "reached", JSON.stringify({ registered, marks }));
+    check("Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
+      registered === true && result === "食べる" && sandboxed === sandboxes
+        && (sandboxes ? marks?.page === "ran" && marks.popup === "reached" : marks?.page === null && marks.popup === null),
+      JSON.stringify({ registered, result, sandboxes, sandboxed, marks }));
     await evaluateJson(page, async windowId => {
       await chrome.windows.remove(windowId);
       return "null";
