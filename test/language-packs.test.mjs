@@ -125,6 +125,20 @@ test("every shipped pack's classes agree with its engine expectation table and i
   }
 });
 
+// `host.anki.fieldAliases` suggests field names by the marker they fill
+// (docs/languages.md 12); Settings ignores a key that names no marker, so a
+// pack's typo would never suggest anything.
+test("every shipped pack's Anki field aliases are keyed by marker names", async () => {
+  const { ANKI_TEMPLATE_MARKERS } = await import("../extension/anki-templates.js");
+  const markers = new Set(ANKI_TEMPLATE_MARKERS);
+  const registry = loadRegistry(readFileSync(join(ROOT, "extension/vendor/languages/registry.js"), "utf8"));
+  for (const code of registry.codes) {
+    for (const key of Object.keys(registry.get(code).host.anki.fieldAliases)) {
+      assert.ok(markers.has(key), `${code}: host.anki.fieldAliases has "${key}", which is not an Anki marker`);
+    }
+  }
+});
+
 test("a pack's personal dictionary id is the first 32 hexadecimal digits of SHA-256", () => {
   assert.deepEqual(personalDictionary({ code: "ja", name: "Japanese" }),
     { id: "e4c2e20a1a964b6cbd4ae3f87643c1f0", title: "Hachidori Custom Dictionary" });
