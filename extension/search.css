@@ -13,11 +13,16 @@ body.search-shell {
 body.search-shell {
   overflow: hidden;
 }
+/* The frame's root has settings.css's `light dark` scheme until its own theme
+   read. The same scheme here keeps the frame's canvas transparent meanwhile,
+   so the window shows search.html's themed background rather than a canvas in
+   the browser preference's colour. */
 .search-frame {
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
+  color-scheme: light dark;
 }
 html {
   scrollbar-gutter: auto;
