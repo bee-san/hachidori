@@ -18,8 +18,9 @@
   const state = () => levels.map(level => {
     const popup = level.popup;
     const expressions = [...(popup?.querySelectorAll('.gsm-hoshidicts-expression') ?? [])].map(node => {
+      // Each headword without its furigana or the reading its pitch is drawn on.
       const clone = node.cloneNode(true);
-      for (const ruby of clone.querySelectorAll('rt, rp')) ruby.remove();
+      for (const reading of clone.querySelectorAll('rt, rp, .gsm-hoshidicts-pitch-reading')) reading.remove();
       return clone.textContent.trim();
     });
     return { depth: level.depth, popup: identity(popup), view: identity(level.view),

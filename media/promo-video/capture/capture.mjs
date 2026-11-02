@@ -229,11 +229,11 @@ async function hover(page, selector, expected, { index = 0, rest = null } = {}) 
           .find(node => !node.hidden && node.getBoundingClientRect().width > 0);
         if (!popup) return false;
         if (expected.text) return popup.innerText.includes(expected.text);
-        // The first headword, with its furigana removed.
+        // The first headword, without its furigana or the reading its pitch is drawn on.
         const head = popup.querySelector(".gsm-hoshidicts-expression");
         if (!head) return false;
         const copy = head.cloneNode(true);
-        copy.querySelectorAll("rt, rp").forEach(node => node.remove());
+        copy.querySelectorAll("rt, rp, .gsm-hoshidicts-pitch-reading").forEach(node => node.remove());
         return copy.textContent.replace(/\s+/gu, "") === expected.headword;
       }, { timeout: 5000 }, typeof expected === "string" ? { headword: expected } : expected);
       break;

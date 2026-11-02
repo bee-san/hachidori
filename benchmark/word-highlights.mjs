@@ -172,7 +172,7 @@ async function session(variant, origin) {
     await exposePopupRoot(page, { timeout: 10_000 });
     // One hover: Escape closes the last popup and the pointer leaves for blank
     // header space, then enters the word; the latency runs from its mousemove
-    // to the popup showing the word.
+    // to the popup showing the word as its first headword.
     const hover = async index => {
       await page.mouse.move(1200, 30);
       await page.keyboard.press("Escape");
@@ -182,12 +182,20 @@ async function session(variant, origin) {
       }, { polling: 20, timeout: 5000 });
       const box = await (await page.$(`#t${index}`)).boundingBox();
       await page.evaluate(word => {
+        // The first headword without its furigana or the reading its pitch is
+        // drawn on. The popup's text does not hold the word: each kanji has its
+        // own furigana, so 地震 reads 地じ震しん.
+        const headword = popup => {
+          const copy = popup.querySelector(".gsm-hoshidicts-expression")?.cloneNode(true);
+          for (const node of copy?.querySelectorAll("rt, rp, .gsm-hoshidicts-pitch-reading") ?? []) node.remove();
+          return copy?.textContent;
+        };
         window.__hovered = new Promise(resolveShown => {
           let moved = null;
           document.addEventListener("mousemove", event => { moved ??= event.timeStamp; }, { capture: true, once: true });
           const observer = new MutationObserver(() => {
             const popup = window.__popupRoot.querySelector(".gsm-hoshidicts-popup");
-            if (moved !== null && popup && !popup.hidden && popup.textContent.includes(word)) {
+            if (moved !== null && popup && !popup.hidden && headword(popup) === word) {
               observer.disconnect();
               resolveShown(performance.now() - moved);
             }
