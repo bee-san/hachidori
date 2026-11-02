@@ -196,7 +196,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `chrome-web-store` | The service-account assertion and its token endpoint. |
 | `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
 | `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
-| `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option. |
+| `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option; its registration runs `custom-javascript-bridge.js` first, which attaches the reader's closed root and returns it through `host.shadowRoot`. |
 | `debug-info`, `debug-log` | The debug report's contents without reader content; the log's capture, redaction, named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
 | `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
 | `definition-tag-colors` | Definition tags take Yomitan's colour for their category, each at 4.5:1 for its label in light and dark palettes and 7:1 in High contrast (#604). |
@@ -305,7 +305,7 @@ wasm module or the fixtures are missing.
 | `recommended.mjs` | The five trusted recommendations, the shared dictionary-group module, and the Settings installer. |
 | `settings.mjs`, `library.mjs` | Settings navigation, reader controls and autosave; library management, groups, removal, batch imports that wait for a busy engine, retry and cancel, and MDX imports. |
 | `startup.mjs`, `design.mjs`, `source-highlight.mjs` | The startup page (welcome, installer runs, recovery, practice, visual novel scenes), the Design preview, source highlighting. |
-| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; lookup counts; blur, which a first result without definitions never takes (#620); scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes; the search page's docked results, looked up again when a lookup option such as #620's changes (`content-search.mjs`). |
+| `content.mjs`, `content-harness.mjs`, `content-*.mjs` | The real `content.js`, with `content-dictionaries.js` and `content-scan.js`, in jsdom pages: stale kanji replies; popup visibility, fullscreen hosts, failures and option revisions; the popup's closed shadow root, with Custom JavaScript's bridge or without it and for a lookup that starts before the stored options arrive (#645); lookup counts; blur, which a first result without definitions never takes (#620); scanning and selections; activation, scan delays and keybinds; nested popups and media; Notes; the search page's docked results, looked up again when a lookup option such as #620's changes (`content-search.mjs`). |
 | `engine.mjs` → `engine-replacement.mjs` → `engine-updates.mjs` → `engine-library.mjs` → `engine-lookup.mjs` → `renderer.mjs` → `engine-restart.mjs` → `engine-storage.mjs` | One scenario on one engine: boot and relay, storage ownership and `hd_import`, atomic replacement, trusted recommended imports and managed updates, library state (migration, CAS ownership, titles, reloads), every read path and error path, the renderer against the engine's replies, `hd_remove`, the trained layout, a restart, then isolated imports, paged dictionaries and blob-backed IDBFS. |
 
 The fakes cover only the Chrome surface the extension actually touches:
@@ -511,8 +511,11 @@ These run separately:
 - **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
   Dark Reader API build against the production popup in a tab of its own. It
   checks Default, Light, Dark, High contrast and Custom CSS while the page
-  actually darkens, plus the saved Custom JavaScript DOM-access opt-in after a
-  reload. Before/after PNGs go to `test/tmp/ci/dark-reader-*.png`.
+  actually darkens. It then allows Hachidori's user scripts (the Allow User
+  Scripts switch from Chrome 138, developer mode before it), saves a Custom
+  JavaScript that marks the popup through `host.shadowRoot`, reloads, and checks
+  the same with Automatic colours under a dark preference, the root still
+  closed to the page (#645). Before/after PNGs go to `test/tmp/ci/dark-reader-*.png`.
   `chrome-popup-root.mjs` reads closed roots through CDP without exposing them
   to page scripts; its `exposePopupRoot` hands the root to the page's own code
   for the benchmarks and the promo capture, then detaches. The API build
@@ -596,7 +599,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `first-run.mjs` | Start setup downloads the five recommended archives (intercepted), one failing once and installed by Retry; an unreachable Anki; practice looks up its word; Finish; Remove all imported dictionaries. |
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
   | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
-  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, Get debug info. |
+  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
   | `search.mjs` | The popup window opens one search page and brings it forward on a second request; a typed word's lookup docks under the search box. |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |

@@ -121,6 +121,7 @@ const E2E_PLANNED = [
   "Keybinds list Yomitan's default keybinds",
   "browser shortcuts list Firefox's commands and open Firefox's shortcut manager",
   "Custom JavaScript runs on pages once Firefox grants user scripts",
+  "Custom JavaScript reaches the popup through host.shadowRoot while the page sees no root",
   "Get debug info reports Firefox and its IndexedDB engine",
   // search page
   "the popup window opens one search page and brings it forward instead of opening another",

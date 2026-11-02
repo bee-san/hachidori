@@ -32,8 +32,9 @@ const CLASSIC = [
   "design-preview.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
-// extension APIs.
-const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js"];
+// extension APIs, and the bridge that runs ahead of Custom JavaScript in
+// Chrome's user-script world, which has none either.
+const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js"];
 // The service worker serializes this module's function into Netflix's page.
 const NETFLIX_PREVIEW = "netflix-preview.js";
 // The MV3 service worker module and the modules only it loads.
