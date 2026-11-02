@@ -115,8 +115,9 @@ export async function checkDarkReader(settings, pageUrl) {
     await allowUserScripts(browser, extensionId, true);
     scriptsAllowed = true;
     await writeOptions({ popupTheme: "auto", customPopupCss: "", customPopupJavascript: CUSTOM_JAVASCRIPT });
+    // Settings is a background tab, where animation frames do not run.
     await settings.waitForFunction(async code => (await chrome.userScripts.getScripts())
-      .some(script => script.js.some(source => source.code === code)), {}, CUSTOM_JAVASCRIPT);
+      .some(script => script.js.some(source => source.code === code)), { polling: 100 }, CUSTOM_JAVASCRIPT);
     await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     await tab.reload({ waitUntil: "load" });
     await loadPage();
@@ -130,7 +131,7 @@ export async function checkDarkReader(settings, pageUrl) {
     if (scriptsAllowed) {
       // Clearing the code removes the registration while Chrome still allows it.
       if (!saved.customPopupJavascript) {
-        await settings.waitForFunction(async () => (await chrome.userScripts.getScripts()).length === 0);
+        await settings.waitForFunction(async () => (await chrome.userScripts.getScripts()).length === 0, { polling: 100 });
       }
       await allowUserScripts(browser, extensionId, false);
     }

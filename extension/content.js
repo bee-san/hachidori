@@ -32,6 +32,9 @@
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
+  // Asks Custom JavaScript's bridge (custom-javascript-bridge.js) to attach the
+  // popup's closed root from the user-script world.
+  const POPUP_ROOT_EVENT = "hachidori-popup-root";
   const EXTENSION_PROTOCOL = (() => {
     try {
       return new URL(chrome.runtime.getURL("")).protocol;
@@ -1748,6 +1751,21 @@
     positionPopup();
   }
 
+  // Dark Reader traverses open roots and rewrites their styles, so the popup's
+  // root is always closed. While Custom JavaScript is saved, its bridge
+  // attaches that root from the user-script world and returns it through
+  // host.shadowRoot to the saved scripts alone; it sees the request only once
+  // the host is in the page. Where user scripts do not run (Chrome's switch is
+  // off, a frame, an extension page) the reader attaches the root itself.
+  function attachPopupRoot() {
+    if (options.customPopupJavascript) {
+      host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
+      const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
+      if (root) return root;
+    }
+    return host.attachShadow({ mode: "closed" });
+  }
+
   function buildUi() {
     host = document.createElement(HOST_TAG);
     // Inline !important is the only declaration a page cannot override, and the
@@ -1765,12 +1783,8 @@
       "z-index: 2147483647 !important",
     ].join("; ");
     applyPageZoom();
-    // Dark Reader traverses open roots and rewrites their styles. Keep the
-    // reader's selected palette isolated unless the user explicitly needs DOM
-    // access for Custom JavaScript (which takes effect after a page reload).
-    shadow = host.attachShadow({ mode: options.customPopupJavascript ? "open" : "closed" });
-
     mountHost();
+    shadow = attachPopupRoot();
     appearance = globalThis.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = globalThis.HDPopup.createCustomPopupStyle(shadow);

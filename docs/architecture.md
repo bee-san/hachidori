@@ -5,12 +5,20 @@ extension, with a service worker and offscreen document. The Firefox build runs
 the same code in a background page that holds the offscreen document in a
 frame; [Firefox](firefox.md) describes what differs.
 
-The normal reader popup uses a closed shadow root so page extensions such as
-Dark Reader cannot rewrite its palette, dictionary styles or Custom CSS.
-Saving non-empty **Design → Custom JavaScript** opts into an open root so those
-scripts retain their existing `host.shadowRoot` access; Dark Reader can also
-reach that root. Reload the reading page after adding or clearing a script.
-The Design preview remains open inside its extension page.
+The reader popup uses a closed shadow root, so neither page scripts nor
+extensions such as Dark Reader (or a site's own dark theme built on its
+library) can rewrite its palette, dictionary styles or Custom CSS. Saved
+**Design → Custom JavaScript** still reaches the popup through `host.shadowRoot`.
+The service worker registers `custom-javascript-bridge.js` ahead of that code
+in the same user-script world. When the reader builds its host it dispatches
+`hachidori-popup-root` on it, the bridge attaches the closed root from that
+world and returns it to those scripts alone, and the reader reads it back with
+`chrome.dom.openOrClosedShadowRoot` (Chrome) or `openOrClosedShadowRoot`
+(Firefox). Where user scripts do not run (Chrome's Allow User Scripts switch
+is off, Firefox has not granted them, in frames and on extension pages) the
+reader attaches the closed root itself. A script added or changed runs from
+the reading page's next load. The Design preview remains open inside its
+extension page.
 
 ## Runtime layout
 
