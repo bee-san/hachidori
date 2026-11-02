@@ -170,6 +170,21 @@ Session medians for readiness ranged 88-102 ms on `main` and 109-135 ms on
 each branch build; an earlier batch on the unmodified `main`
 (`results/bench-d1fed77b-ready-only.jsonl`) gave 97 against 140. The shell's
 Clipboard monitor costs nothing measurable over `cdec3b79`.
+
+After the second audit, `818dba12` loaded `content-scan.js` in `search.html`'s
+head for the monitor's character set, and four interleaved sessions of five
+pages put it at 116.5 ms against `ad4bd2aa`'s 108 and `main`'s 87. `b6a518d7`
+imports it only when the monitor first filters a text
+(`results/bench-b6a518d7.jsonl`, four sessions of five pages each):
+
+| measure (median ms, n) | `main` 568412b4 | `ad4bd2aa` | this PR b6a518d7 |
+| --- | --- | --- | --- |
+| a new search page until it takes a search | 89.5 (20) | 118 (20) | 107 (20) |
+| a page's first search | 17.2 (20) | 16.3 (20) | 16.2 (20) |
+| later searches | 4.6 (80) | 5.2 (80) | 5.5 (80) |
+
+`results/startup-split-b6a518d7.txt` (8 pages each): `main` ready at 76 ms;
+here the frame's document starts at 32 ms and is ready at 102 ms.
 `scripts/startup-split.mjs` (`results/startup-split-d1fed77b.txt`, 8 pages
 each) puts `main`'s page at ready in 88 ms; here `search.html` has parsed its
 theme files at 35 ms, the frame's document starts then, and the frame is ready
