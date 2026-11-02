@@ -1,0 +1,13 @@
+report("war-module.js", "ran");
+const base = location.href.replace(/frame\.html.*/, "");
+const tryIt = async (name, fn) => { try { report(name, await fn()); } catch (e) { report(name, "ERROR " + (e?.message ?? e)); } };
+await tryIt("import-war", async () => (await import(base + "vendor/theme.js")).x);
+await tryIt("import-nonwar", async () => (await import(base + "nonwar.js")).y);
+await tryIt("fetch-war", async () => (await (await fetch(base + "war.css")).text()).length);
+await tryIt("fetch-nonwar", async () => (await (await fetch(base + "plain.css")).text()).length);
+await tryIt("styles", async () => { const s = getComputedStyle(document.getElementById("p")); return [s.color, s.backgroundColor]; });
+await tryIt("eval", async () => eval("1+1"));
+await tryIt("dynamic-classic-nonwar", () => new Promise((resolve) => { const s = document.createElement("script"); s.src = base + "classic.js"; s.onload = () => resolve("loaded"); s.onerror = () => resolve("error"); document.head.append(s); }));
+await tryIt("origin", async () => ({ origin: self.origin, locationOrigin: location.origin, secure: isSecureContext, chrome: typeof globalThis.chrome, browser: typeof globalThis.browser }));
+await tryIt("image-nonwar", () => new Promise(resolve => { const img = new Image(); img.onload = () => resolve(img.naturalWidth); img.onerror = () => resolve("error"); img.src = base + "icon.png"; }));
+await tryIt("messagechannel", async () => typeof MessageChannel);

@@ -1,0 +1,58 @@
+# Issue #644 evidence: Custom JavaScript on the search page
+
+This branch is not for merging. It holds the screenshots, ad-hoc probes and
+raw results behind the pull request for #644. Unless a row says otherwise they
+were taken with Chrome for Testing 152.0.7977.75, the suites' fixture
+dictionaries and, for the reproduction, dictionaries built in the probe. The
+reporter's script and CSS come from the debug log attached to #644 and are not
+copied here; `reporter-probe.mjs` reads them from `REPORTER_JS` and
+`REPORTER_CSS`.
+
+## Screenshots
+
+| file | what it shows |
+| --- | --- |
+| `reporter-script-before-after.png` | The reporter's own pitch filter and CSS on the search page, 嵐 with four pitch dictionaries that agree. Left, `main` (37bb0a86): all four rows, as in the issue's first screenshot. Right, this PR: NHK alone, as in the issue's "should look like this" |
+| `reporter-script-main.png`, `reporter-script-this-pr.png` | the two halves at full size |
+| `parity-web-page.png`, `parity-search-page.png` | the same lookup (食べたかった, Default theme, a red Custom CSS outline) as a web page's popup and as the search page's docked result |
+
+## Reproducing #644 on `main`
+
+`scripts/probe-userscripts.mjs` allows user scripts for the extension, as a
+user does on `chrome://extensions`, and tries every way to run code in
+`search.html` from the service worker:
+
+```text
+"register own-extension pattern": "ERROR: Script with ID 'probe-ext' has invalid value for matches[0]: Invalid scheme."
+"userScripts.execute USER_SCRIPT": "ERROR: Cannot access contents of the page. Extension manifest must request permission to access the respective host."
+"userScripts.execute MAIN": "ERROR: Cannot access contents of the page. ..."
+"scripting.executeScript": "ERROR: Cannot access contents of the page. ..."
+```
+
+`<all_urls>` does not cover the extension's own pages, so the registration the
+worker makes for web pages never reaches the search page. `reporter-probe.mjs`
+shows the user-visible result: 4 of 4 pitch groups visible on `main`, 1 of 4
+with this PR.
+
+```sh
+REPORTER_JS=reporter.js REPORTER_CSS=reporter.css HACHIDORI_CHROME=… \
+  node scripts/reporter-probe.mjs "$REPO" out.png
+# main: {"groups":4,"visible":4}   this PR: {"groups":4,"visible":1}
+```
+
+## Parity audit: the popup against the search page
+
+Each probe runs the same lookup in a web page's popup and in the search page,
+with the same options, and compares them.
+
+| probe | what it compares | result on this PR |
+| --- | --- | --- |
+| `audit-probe.mjs` | the popup's DOM, computed style, theme and renderer in 15 scenarios: defaults; scale 150 % and opacity 70 %; toolbar at the bottom; two columns; Dracula; JL; Nazeka; Plain; Bee; Crystal Retro blue; compact glossary with the summary and grammar tags hidden; overline furigana pitch with graph and colours, no badge, names or text; average frequency with tags, names and compact numbers; no audio button and no lookup counts; a custom link button | identical HTML in all 15 apart from the resize grip, which a docked result does not have, and the lookup count, which each lookup raises (`results/parity-rendering-diff.txt`); Custom JavaScript ran on both and reached both popups |
+| `audit-probe2.mjs` | Alt+ArrowDown/ArrowUp entry moves, the kanji view from the headword, Alt+B and Alt+F history, Back, a browser shortcut delivered with `tabs.sendMessage`, word highlighting and click-to-reveal blur | the same on both; the search page's entry moves scroll further only because its result is taller |
+| `anki-probe.mjs` | recorded audio from a URL source, and Add to Anki with `{screenshot}` against a fake AnkiConnect | the same on both: audio plays and ends, and both notes arrive with a screenshot |
+| `nested-probe.mjs` | a child popup from a word in the definitions, an internal link, dictionary images and the dictionary's `styles.css` | the same on both |
+| `focus-probe.mjs` | the box has focus when the page opens, in a tab and in a popup window | focused in both |
+| `scripts/sandbox-prototype-run.mjs`, `scripts/firefox-sandbox-prototype-*` | what a sandboxed frame may load and do in Chrome 152 and Firefox 159 | Chrome serves it every extension file; Firefox only web-accessible stylesheets and modules (classic scripts and images load either way), which is why the Firefox manifest adds one entry |
+| `chrome128-probe.mjs` | the manifest-minimum Chrome 128, where Developer mode gates user scripts | the search frame runs the script there too |
+
+The only gap found was Custom JavaScript itself.

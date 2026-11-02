@@ -1,0 +1,1 @@
+report("classic.js", "ran");
