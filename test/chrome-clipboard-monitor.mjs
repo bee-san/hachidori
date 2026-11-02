@@ -158,6 +158,13 @@ try {
   const readTwice = text => search.waitForFunction(value => globalThis.clipboardReads
     .filter(read => read === value).length >= 2, { polling: 50, timeout: 15_000 }, text);
 
+  // What reaches the frame, where Custom JavaScript runs (#644): only text the
+  // reader would search, never other text the monitor reads.
+  await frame.evaluate(() => {
+    globalThis.monitorTexts = [];
+    globalThis.HDSearchBridge.onClipboard(text => globalThis.monitorTexts.push(text));
+  });
+
   await web.bringToFront();
   await readTwice("食べたかった");
   const opened = await page();
@@ -183,6 +190,8 @@ try {
   await copyInWeb("hello world");
   await readTwice("hello world");
   assert.equal((await page()).query, "読む", "text without Japanese is not searched");
+  const reached = await frame.evaluate(() => globalThis.monitorTexts);
+  assert.deepEqual(reached, ["読む"], `only text the reader searches reaches the frame: ${JSON.stringify(reached)}`);
 
   // Text copied on the search page itself.
   await search.bringToFront();
@@ -298,7 +307,8 @@ try {
   passed = true;
   console.log("PASS: the clipboard monitor searches Japanese copied in another tab through the offscreen document without"
     + " focus; it skips what was there before, text without Japanese, copies on the search page and copies during a"
-    + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard");
+    + " Note, searches a long copy's first 1,000 characters, and only the search page can read the clipboard; only"
+    + " text it searches reaches the frame");
 } finally {
   if (!passed) for (const line of diagnostics) console.log(line);
   await browser.close();

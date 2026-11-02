@@ -159,19 +159,24 @@ async function userScript(api) {
 // ext/js/display/search-display-controller.js): text with Japanese in it,
 // copied in any tab or program, is searched in the frame, as a paste is, up
 // to Yomitan's 1,000 characters, which is all the offscreen document sends.
-// The switch is the browser's clipboardRead permission, which turning it on
-// asks for and turning it off gives back. The monitor starts once the frame's
-// reader is ready.
+// Only that text reaches the frame, which the user's script shares: other
+// text, which the reader would not search, stays here (isLookupWorthy in
+// content.js). The switch is the browser's clipboardRead permission, which
+// turning it on asks for and turning it off gives back. The monitor starts
+// once the frame's reader is ready.
 const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
 
 function clipboardMonitor(clipboardSwitch, search) {
+  const { JAPANESE_CHARACTER_PATTERN } = globalThis.HDContent;
   let ready = false;
   const monitor = createClipboardMonitor({
     async read() {
       const reply = await chrome.runtime.sendMessage({ target: CLIPBOARD_TARGET, type: "hd_clipboard_read" });
       return reply?.ok === true ? reply.text : null;
     },
-    change: search,
+    change(text) {
+      if (JAPANESE_CHARACTER_PATTERN.test(text)) search(text);
+    },
   });
   async function show() {
     const on = await chrome.permissions.contains(CLIPBOARD_PERMISSION).catch(() => false);

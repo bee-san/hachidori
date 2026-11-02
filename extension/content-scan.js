@@ -12,15 +12,17 @@
 (function () {
   "use strict";
 
+  // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
+  // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
+  // The search page's Clipboard monitor (search-shell.js) passes on only text
+  // with one, as the reader's isLookupWorthy searches only such text.
+  const JAPANESE_CHARACTER_PATTERN =
+    /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
+
   // `isOurNode(node)` is content.js's test for the reader's own popup host and
   // text-field imposter, which a scan never reads as page text.
   function createPageScanner({ isOurNode }) {
     const { SENTENCE_SCAN_EXTENT, extractSentence } = globalThis.HDSentence;
-
-    // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
-    // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
-    const JAPANESE_CHARACTER_PATTERN =
-      /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
     const TOKEN_BOUNDARY_PATTERN = /[\p{White_Space}\p{Punctuation}\p{Symbol}]/u;
     const COLLAPSIBLE_WHITESPACE_PATTERN = /[\t\n\r\f ]/u;
     const SEGMENT_BREAK_PATTERN = /[\n\r]/u;
@@ -717,5 +719,5 @@
     };
   }
 
-  globalThis.HDContent = { ...globalThis.HDContent, createPageScanner };
+  globalThis.HDContent = { ...globalThis.HDContent, createPageScanner, JAPANESE_CHARACTER_PATTERN };
 }());
