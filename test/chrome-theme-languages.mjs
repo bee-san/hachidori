@@ -193,15 +193,37 @@ function pageHarness() {
     return results;
   };
 
-  window.measureTrail = theme => {
+  // The deinflection trail is English interface text (10.1, 11.7): its row
+  // reads left to right whatever the page's direction, the matched form
+  // first, then Default's arrow and lemma or JL's, Bee's and Crystal's rule
+  // names, and each language endpoint is an isolate. Each part's box must
+  // end before the next one starts, so a reversed row or an endpoint that
+  // is not isolated fails, and a trail that is not drawn reports null.
+  window.measureTrail = (theme, matchedText) => {
+    const box = item => ({ text: item.text, left: Math.round(item.rect.left * 10) / 10, right: Math.round(item.rect.right * 10) / 10 });
+    const measure = (row, endpoints, parts) => {
+      const boxes = parts.map(box);
+      return { ok: getComputedStyle(row).direction === "ltr" && parts[0].text === matchedText
+        && endpoints.every(endpoint => getComputedStyle(endpoint).unicodeBidi === "isolate")
+        && boxes.every((part, index) => index === 0 || boxes[index - 1].right <= part.left + 1),
+      direction: getComputedStyle(row).direction, isolates: endpoints.map(endpoint => getComputedStyle(endpoint).unicodeBidi), boxes };
+    };
     if (theme === "default") {
-      const [matched, lemma] = [...state.popup.querySelectorAll(".gsm-hoshidicts-deinflection-endpoint")].map(rect);
-      return matched && lemma ? { ok: matched.left < lemma.left } : null;
+      const path = state.popup.querySelector(".gsm-hoshidicts-deinflection-path");
+      const endpoints = [...(path?.querySelectorAll(":scope > .gsm-hoshidicts-deinflection-endpoint") ?? [])];
+      const arrow = path?.querySelector(":scope > [aria-hidden='true']");
+      if (endpoints.length !== 2 || !arrow) return null;
+      return measure(path, endpoints, [endpoints[0], arrow, endpoints[1]].map(item => ({ text: item.textContent, rect: rect(item) })));
     }
     const trail = state.popup.querySelector(".jl-deconj, .crystal-deconj");
-    if (!trail?.firstElementChild || !trail.lastChild || trail.lastChild.nodeType !== 3) return null;
-    const process = visible(range(trail.lastChild, 1, trail.lastChild.data.length).getClientRects())[0];
-    return { ok: rect(trail.firstElementChild).left < process.left };
+    const form = trail?.firstElementChild;
+    const rules = trail?.lastChild;
+    if (!form || rules?.nodeType !== 3 || !rules.data.trim()) return null;
+    const start = rules.data.length - rules.data.trimStart().length;
+    const names = visible(range(rules, start, rules.data.length).getClientRects());
+    if (!names.length) return null;
+    return measure(trail, [form], [{ text: form.textContent, rect: rect(form) },
+      { text: rules.data.trim(), rect: { left: Math.min(...names.map(item => item.left)), right: Math.max(...names.map(item => item.right)) } }]);
   };
 
   window.measureFrequencies = (name, value) => {
@@ -301,6 +323,8 @@ const coverage = Object.fromEntries(Object.entries(SAMPLES).map(([code, characte
 const runs = [...THEMES.flatMap(theme => (VARIANTS[theme] ?? ["auto"]).map(variant => ({ theme, variant }))), { theme: "legacy", variant: "auto" }];
 const RICH = new Set(["default", "bee", "crystal"]);
 const TEXT_MODE = new Set(["jl", "nazeka", "plain", "legacy"]);
+// Themes whose trail shows the matched form (Nazeka's shows only rule names).
+const TRAILS = new Set(["default", "jl", "bee", "crystal"]);
 const PAGES = { ltr: { lang: "en", dir: "ltr" }, rtl: { lang: "ar", dir: "rtl" } };
 const current = Number(chromeName) >= 152;
 const results = [];
@@ -389,8 +413,10 @@ try {
                 check(`${id}: a list of mixed direction pads its end as its start`, list.end === list.start, JSON.stringify(list));
               }
             }
-            const trail = await page.evaluate(name => window.measureTrail(name), theme);
-            if (trail) check(`${id}: the deinflection trail keeps the matched form first`, trail.ok);
+            if (TRAILS.has(theme)) {
+              const trail = await page.evaluate((name, matched) => window.measureTrail(name, matched), theme, scenario.results[0].matched);
+              check(`${id}: the deinflection trail reads left to right, the matched form first`, trail?.ok === true, JSON.stringify(trail));
+            }
             if (["default", "bee", "crystal", "jl"].includes(theme)) {
               for (const [name, value] of [["تردد الكلمات", "95"], ["Arabic Frequency", "312"]]) {
                 const frequency = await page.evaluate((n, v) => window.measureFrequencies(n, v), name, value);
