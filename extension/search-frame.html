@@ -18,10 +18,15 @@
     <link rel="stylesheet" href="content.css" />
   </head>
   <body class="search-page">
-    <!-- The Clipboard monitor switch is search.html's, over this header's end. -->
+    <!-- The Clipboard monitor switch is search.html's, over this header's end:
+         the label here only keeps its room, invisible. -->
     <header class="search-header">
       <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
       <h1>Hachidori Search</h1>
+      <label class="lookup-enable" aria-hidden="true">
+        <span>Clipboard monitor</span>
+        <input type="checkbox" />
+      </label>
     </header>
     <form class="search-form" id="search-form" role="search">
       <textarea id="search-input" lang="ja" rows="1" autocomplete="off" autocapitalize="off" spellcheck="false"

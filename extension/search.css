@@ -24,13 +24,18 @@ body.search-shell {
   border: 0;
   color-scheme: light dark;
 }
-/* search.html's Clipboard monitor switch, where it would end the frame's
-   header: in a box at the page's padding, as tall as the header's title line. */
+/* search.html's Clipboard monitor switch lies over the end of the frame's
+   header. Both documents lay out the whole header, each keeping invisible what
+   the other shows, so the title wraps alike and the switch lands in its place
+   at any width. */
 .search-shell-header {
   position: fixed;
   inset: 12px 12px auto;
-  height: calc(var(--font-large) * 1.5);
   pointer-events: none;
+}
+.search-shell-header > :not(.lookup-enable),
+.search-page .search-header .lookup-enable {
+  visibility: hidden;
 }
 .search-shell-header .lookup-enable {
   pointer-events: auto;
