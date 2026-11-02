@@ -16,7 +16,9 @@ world and returns it to those scripts alone, and the reader reads it back with
 `chrome.dom.openOrClosedShadowRoot` (Chrome) or `openOrClosedShadowRoot`
 (Firefox). Where user scripts do not run (Chrome's Allow User Scripts switch
 is off, Firefox has not granted them, in frames and on extension pages) the
-reader attaches the closed root itself. A script added or changed runs from
+reader attaches the closed root itself. The host waits for the reader's first
+read of the stored options, so a lookup that starts before them still gets the
+right root. A script added or changed runs from
 the reading page's next load. The Design preview remains open inside its
 extension page.
 

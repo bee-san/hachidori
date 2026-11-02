@@ -155,6 +155,11 @@
   let shadow = null;
   let highlighter = null;
   let uiPromise = null;
+  // Settles once start()'s first storage read has been adopted, or has failed.
+  // The popup host waits for it: its shadow root depends on the stored Custom
+  // JavaScript and cannot be replaced once attached.
+  let resolveStoredOptions;
+  const storedOptions = new Promise(resolve => { resolveStoredOptions = resolve; });
   let popupLayoutFrame = null;
   let popupLayouts = new Map();
   let pageZoom = 1;
@@ -2273,7 +2278,7 @@
         if (!document.body || !globalThis.HDPopup || !globalThis.HDGlossary) {
           throw new Error("render modules or document body unavailable");
         }
-        await themeHost.sync();
+        await Promise.all([themeHost.sync(), storedOptions]);
         if (disposed) {
           throw new Error("torn down");
         }
@@ -4447,7 +4452,7 @@
     let storageReady;
     const reader = Object.freeze({ scanSelectedText, dock: dockResults, search });
     globalThis.HDReaderReady = new Promise(resolve => {
-      storageReady = () => { resolve(reader); };
+      storageReady = () => { resolveStoredOptions(); resolve(reader); };
     });
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);

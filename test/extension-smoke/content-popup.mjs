@@ -437,6 +437,23 @@ describe("content script: popup", () => {
             && harness.rootRequests === (customPopupJavascript === "" ? 0 : 1);
         } finally { harness.close(); }
       }
+      // A first lookup can start before the stored options arrive (the CI race
+      // in #651). The host waits for them, so it still takes the bridge's root.
+      const early = await createHarness(null, { options: { customPopupJavascript: "document.body.dataset.custom = 'yes';" },
+        userScripts: true, deferInitialStorage: true, prebuildUi: false });
+      try {
+        const lookup = early.driver.runLookup(early.candidate);
+        await early.settle();
+        const hostBeforeOptions = early.window.document.querySelector("hachidori-host");
+        early.deliverInitialStorage();
+        await early.settle();
+        early.reply(early.take("hd_lookup"), { dictionaryCount: 1, results: [early.term(early.candidate.query)] });
+        await lookup;
+        const host = early.window.document.querySelector("hachidori-host");
+        const popup = early.driver.popupAt(0);
+        outcomes["a lookup before the stored options arrive builds the popup in the bridge's root"] = hostBeforeOptions === null
+          && host?.shadowRoot?.mode === "closed" && popup?.getRootNode() === host.shadowRoot && early.rootRequests === 1;
+      } finally { early.close(); }
       return outcomes;
     } });
     for (const [name, passed] of Object.entries(result?.isolation ?? {})) check(name, passed, String(passed));
