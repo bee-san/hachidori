@@ -39,7 +39,7 @@ const PLANNED = [
   "the welcome card offers every pack, Japanese first and selected, outside the actions",
   "choosing English at first run makes English the only profile, with no catalogue download",
   "a single-profile Settings page has the Language menu and no Use for lookups",
-  "an import joins the edited profile",
+  "an import joins the edited profile, its row carrying the archive's targetLanguage",
   "Add a language adds Japanese and Arabic, each edited at once and its import joining it",
   "the records hold three profiles, each with its own dictionary",
   "the toolbar lists the languages as radio buttons, the switch reads Lookups and the badge names the language",
@@ -53,6 +53,7 @@ const PLANNED = [
   "the popup names a profile in effect that is not the active one",
   "Settings edits English while Japanese is active, and only English changes",
   "pitch accent, the clicked-kanji dictionary and Anki's note-type setup hide for English and show for Japanese",
+  "the Arabic-English dictionary's block takes its targetLanguage as its default lang",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -262,7 +263,7 @@ try {
     const stored = await storage(["dictionaryState"]);
     const english = stored.dictionaryState?.dictionaries?.find(row => row.title === ENGLISH.title);
     const listed = stored.dictionaryState?.profiles?.en?.dictionaries?.some(entry => entry.id === english?.id);
-    check(PLANNED[3], Boolean(english) && listed, JSON.stringify(stored.dictionaryState));
+    check(PLANNED[3], Boolean(english) && listed && english.targetLanguage === "en", JSON.stringify(stored.dictionaryState));
   });
 
   await step(PLANNED[4], async () => {
@@ -331,6 +332,35 @@ try {
   reading.on("console", entry => { if (["error", "warn"].includes(entry.type())) errors.push(`[page] console: ${entry.text()}`); });
   await reading.setViewport({ width: 1280, height: 720 });
   const popup = await popupReader(reading);
+  // The language marks of the root popup's glossary blocks (docs/languages.md 10.1).
+  const popupBlocks = async page => {
+    const cdp = await page.createCDPSession();
+    try {
+      const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
+      let nodeId = null;
+      const walk = node => {
+        const attributes = node.attributes || [];
+        for (let i = 0; i < attributes.length; i += 2) {
+          if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")
+              && attributes[attributes.indexOf("data-hoshidicts-depth") + 1] === "0") nodeId = node.nodeId;
+        }
+        for (const shadow of node.shadowRoots || []) walk(shadow);
+        for (const child of node.children || []) walk(child);
+      };
+      walk(root);
+      if (nodeId === null) return [];
+      const { object } = await cdp.send("DOM.resolveNode", { nodeId });
+      const { result } = await cdp.send("Runtime.callFunctionOn", { objectId: object.objectId, returnByValue: true,
+        functionDeclaration: `function () {
+          return [...this.querySelectorAll("[data-hd-lang-default]")].map(node => ({
+            lang: node.getAttribute("lang"), default: node.hasAttribute("data-hd-lang-default") }));
+        }` });
+      return result.value ?? [];
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
+  };
+
   const hoverAt = async (path, selector, index, accept) => {
     await reading.bringToFront();
     if (!reading.url().endsWith(path)) await reading.goto(`${origin}${path}`, { waitUntil: "load" });
@@ -358,6 +388,10 @@ try {
     const state = await hoverAt("/arabic.html", "#sample", 3, current => current.plain.includes("book"));
     if (state) await screenshot(reading, "lookup-arabic");
     check(PLANNED[9], state?.plain.includes("\u0643\u062A\u0627\u0628") && state.plain.includes("book"), JSON.stringify(state?.plain));
+    // The closed shadow root is reachable only through CDP (popup-reader.mjs).
+    const blocks = await popupBlocks(reading);
+    check("the Arabic-English dictionary's block takes its targetLanguage as its default lang",
+      blocks.some(block => block.lang === "en" && block.default), JSON.stringify(blocks));
   });
 
   await step(PLANNED[10], async () => {

@@ -1009,6 +1009,26 @@ function importedIdentityFromIndex(path) {
   return dictionaryArchiveIdentity(readDictionaryIndex(path));
 }
 
+// Rows of records with profiles also carry the index's `targetLanguage`,
+// which glossary direction and language, child-popup switching and notes read
+// (docs/languages.md 4.2, 10.1-10.3, 12). Single-profile rows keep today's
+// fields, so only the schema-2 commits and the conversion add it.
+function withTargetLanguage(row) {
+  if (!row || typeof row !== "object" || typeof row.path !== "string") return row;
+  let target;
+  try {
+    target = optionalText(readDictionaryIndex(row.path)?.targetLanguage);
+  } catch {
+    return row;
+  }
+  const { targetLanguage: _stored, ...rest } = row;
+  return target ? { ...rest, targetLanguage: target } : rest;
+}
+
+function withTargetLanguages(state) {
+  return { ...state, dictionaries: state.dictionaries.map(withTargetLanguage) };
+}
+
 async function packageFromIndex(path) {
   const index = readDictionaryIndex(path);
   const title = text(index?.title);
@@ -1269,7 +1289,8 @@ function withPublicState(reply) {
 async function commitProfileCustomStorage(snapshot, source, semanticRevision, dictionaries, custom) {
   const document = expectedCustomDocument(snapshot.document, source, semanticRevision);
   const { stored } = snapshot.state;
-  const next = dictionaries === undefined ? null : profileState.mergeEngineDictionaries(stored, dictionaries);
+  const next = dictionaries === undefined ? null
+    : profileState.mergeEngineDictionaries(stored, dictionaries.map(withTargetLanguage));
   const changesState = next !== null
     && !(sameJsonValue(next.dictionaries, stored.dictionaries) && sameJsonValue(next.profiles, stored.profiles));
   const language = custom.language ?? JAPANESE_PROFILE_ID;
@@ -1418,8 +1439,8 @@ async function commitProfileDictionaryState(baseRevision, next) {
 // package joins.
 async function commitDictionaryState(baseRevision, dictionaries, context = null) {
   if (context?.stored) {
-    return commitProfileDictionaryState(baseRevision, profileState.mergeEngineDictionaries(context.stored, dictionaries,
-      { profileId: context.profileId ?? JAPANESE_PROFILE_ID }));
+    return commitProfileDictionaryState(baseRevision, profileState.mergeEngineDictionaries(context.stored,
+      dictionaries.map(withTargetLanguage), { profileId: context.profileId ?? JAPANESE_PROFILE_ID }));
   }
   try {
     return await ask("hd_state_cas", { baseRevision, dictionaries });
@@ -2171,7 +2192,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const stored = snapshot.state?.stored ?? profileState.dictionaryStateWithProfiles(snapshot.state);
+    const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
     const personal = personalDictionaryIdentity(language);
     const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
       ? [{ id: personal.id, enabled: true }] : [];

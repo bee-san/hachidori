@@ -302,7 +302,16 @@ async function profileCas(message) {
   // personal package and nothing else.
   const before = new Map(dictionaryStateWithProfiles(current).dictionaries.map(row => [row.id, row]));
   const personal = personalDictionaryIdentity(language);
-  if (state.dictionaries.some(row => !sameJsonValue(before.get(row.id), row))) {
+  // The request that first gives the records profiles also adds each
+  // package's `targetLanguage`, read from its index by the engine
+  // (docs/languages.md 4.2); every other field stays as stored.
+  const converting = !hasDictionaryProfiles(current);
+  const comparable = (row) => {
+    if (!converting || row?.targetLanguage === undefined) return row;
+    const { targetLanguage, ...rest } = row;
+    return typeof targetLanguage === "string" && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u.test(targetLanguage) ? rest : row;
+  };
+  if (state.dictionaries.some(row => !sameJsonValue(before.get(row.id), comparable(row)))) {
     throw new Error("adding or removing a language changes no dictionary");
   }
   const kept = new Set(state.dictionaries.map(row => row.id));
