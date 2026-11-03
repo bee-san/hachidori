@@ -1549,6 +1549,16 @@ Anki can be set up in Settings; the practice stage uses the pack's
 - **Badge.** With two or more profiles the toolbar icon's badge shows the
   active profile's code (`JA`, `EN`).
 
+
+The search page runs its box and reader in a sandboxed frame (main #644) that
+reaches storage and messages only through `search-shell.js`. The frame loads
+`registry.js` like other extension pages, reads `languageSelection` with the
+reader's other keys, and may send the two requests the reader sends with
+profiles, each checked for its shape: `hd_language_selection_write` with only
+`baseRevision` and `activeProfileId` (the Switch to the next language
+keybind), and `hd_open_settings` for the Anki section only. Both act on this
+browser's own choices, so the user's Custom JavaScript, which shares the
+frame, gains nothing it could not do from the toolbar.
 ### 16.3 Settings
 
 - **Language menu.** At the top of the sidebar, above the search field, a

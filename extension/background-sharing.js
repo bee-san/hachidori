@@ -9,7 +9,7 @@ import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./s
 import {
   API_CAPABILITY, API_CLIENT_ORIGIN, FORWARDED_REQUESTS, LANGUAGE_PROFILES_CAPABILITY, LANGUAGE_PROFILES_OPT_IN,
   LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
-  browserName, mutatingForwardedRequest, parseLinkAddress,
+  browserName, mutatingForwardedRequest, parseLinkAddress, sharingPort,
 } from "./sharing-protocol.js";
 import {
   CHANGING_LANGUAGES, PROFILES_NOT_SHARED, PROFILE_REQUEST_TYPES, RECORD_REPLY_TYPES, createLanguageTracker,
@@ -650,10 +650,13 @@ async function writeSharingConfig(patch) {
   });
 }
 
-// An empty address means this computer, on the port set under Advanced.
-function linkTarget(text) {
+// An empty address means this computer, on the port Settings is showing under
+// Advanced, or else the stored one. The other browser may share through a relay
+// on a port this install has never used itself (#648).
+function linkTarget(text, port = null) {
   const trimmed = String(text ?? "").trim();
-  return parseLinkAddress(trimmed === "" ? `127.0.0.1:${getSharingHost().status().port}` : trimmed);
+  const localPort = sharingPort(port) ?? getSharingHost().status().port;
+  return parseLinkAddress(trimmed === "" ? `127.0.0.1:${localPort}` : trimmed);
 }
 
 // Own the whole user action, including its probe, independently of storage.
@@ -688,7 +691,7 @@ const SHARING_HANDLERS = {
     return { sharing: sharingStatus() };
   },
   async hd_sharing_client_probe(message) {
-    const { address, display } = linkTarget(message.address);
+    const { address, display } = linkTarget(message.address, message.port);
     const hello = await getSharingClient().probe(address);
     return { address, display, host: { version: hello.version, name: hello.name, dictionaryCount: hello.dictionaryCount } };
   },

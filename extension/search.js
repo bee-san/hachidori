@@ -4,18 +4,21 @@
 // the box is looked up through the reader this page loads into itself, which
 // docks its popup over the results area. The page follows the popup theme as
 // Settings does, and the popup is the reader's own, with its theme, Anki,
-// pronunciation, tabs and child popups.
+// pronunciation, tabs and child popups. This page is search-frame.html, the
+// sandboxed frame search.html holds under its header so that Custom JavaScript
+// runs here too (#644); search-bridge.js lends it the extension APIs.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
 import { applyPageTheme } from "./settings-dom.js";
 
+const bridge = globalThis.HDSearchBridge;
 // Settings → Advanced → Get debug info includes what failed here.
 captureDocumentActions(document, captureDebugLog(window, {
-  context: "search", store: openDebugLogStore(window.indexedDB),
+  context: "search", store: bridge.debugLogStore, version: async () => (await bridge.ready).manifest.version,
 }));
 
 const { normaliseOptions, hasProfiles, profiles, profileDescriptor, activeProfileId, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
@@ -91,6 +94,29 @@ document.addEventListener("keydown", (event) => {
     input.focus({ preventScroll: true });
   }
 });
+
+// What search.html's Clipboard monitor (#639) reads: text with Japanese in it,
+// copied in any tab or program, goes into the box and is searched, as a paste
+// is. A Note being written or saved in the result holds it off: the text is
+// not searched.
+bridge.onClipboard((text) => {
+  if (!reader.isLookupWorthy(text) || reader.holdsNote()) return;
+  input.value = text;
+  search();
+});
+// Text copied or cut on this page is not searched, as in Yomitan's _onCopy:
+// once it has reached the clipboard, the monitor starts over from it.
+for (const type of ["copy", "cut"]) window.addEventListener(type, () => { bridge.notify("copied"); });
+
+// The same keys, pressed in search.html's header, where the Clipboard monitor
+// switch is: Escape, and Ctrl+U as "u".
+bridge.onKey((key) => {
+  if (key === "u") clear();
+  if (key !== "Escape") return;
+  input.focus();
+  input.select();
+});
+
 // Text pasted anywhere but a text field or the popup is searched at once.
 window.addEventListener("paste", (event) => {
   if (event.composedPath().some(pasteTarget)) return;
@@ -142,18 +168,39 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[LANGUAGE_SELECTION_KEY]) selection = changes[LANGUAGE_SELECTION_KEY].newValue ?? null;
   if (changes.options || changes[LANGUAGE_SELECTION_KEY]) applyLanguage();
 });
-// The page opens ready to type into, as Yomitan's focuses its box.
-input.focus();
+
+// Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
+// once the reader is ready, as a user script runs at document_idle after the
+// content scripts. search.html hands it over only where the worker registered
+// it, which Chrome's Allow User Scripts or Firefox's permission allows. The
+// frame's sandbox allows eval for this alone; inline script stays blocked.
+function runCustomJavaScript(code) {
+  try {
+    (0, eval)(code); // NOSONAR: the user's own Custom JavaScript, as their user script; see above.
+  } catch (error) {
+    console.error("hachidori: Custom JavaScript failed on the search page:", error);
+  }
+}
+
 try {
+  const connection = await bridge.ready;
   const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
   storedOptions ??= stored.options;
   selection ??= stored[LANGUAGE_SELECTION_KEY] ?? null;
   applyPageTheme(document, normaliseOptions(stored.options));
   applyLanguage();
+  bridge.notify("shown");
+  // The page opens ready to type into, as Yomitan's focuses its box. It is
+  // hidden, and its box cannot take focus, until settings-theme.js has the
+  // saved theme, which in search.html's frame waits for the bridge.
+  input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
+  if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
+  // The Clipboard monitor starts.
+  bridge.notify("ready");
 } catch (error) {
   status.textContent = `The search page could not start: ${describeErrorMessage(error)}`;
   recordUserError(window, "search-status", status.textContent, error);

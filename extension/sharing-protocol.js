@@ -99,6 +99,14 @@ export function mutatingForwardedRequest(message) {
   return forwardableRequest(message) && MUTATING_FORWARDED_REQUESTS[message.target]?.has(message.type) === true;
 }
 
+// A port typed under Settings → Sharing → Advanced, or null when it is not one.
+export function sharingPort(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return null;
+  const port = Number(text);
+  return port >= 1 && port <= 65535 ? port : null;
+}
+
 export function formatLinkAddress({ host = "127.0.0.1", port = DEFAULT_SHARING_PORT } = {}) {
   return `ws://${host}:${port}${LINK_PATH}`;
 }

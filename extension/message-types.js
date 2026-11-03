@@ -62,6 +62,8 @@
     "hd_backup_read",
     "hd_backup_release",
     "hd_backup_restore",
+    // The search page's clipboard monitor (#639), relayed to the offscreen document.
+    "hd_clipboard_read",
     "hd_custom_append",
     "hd_custom_cas",
     "hd_custom_read",

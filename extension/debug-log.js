@@ -285,6 +285,21 @@ function storedRecord(entry) {
   return record;
 }
 
+// A record another document sends for the ring, as the search page's frame
+// does (#644): only its text, numbers and flags, the text redacted again, and
+// its size measured here, so the ring's totals stay exact. Each text keeps its
+// DEBUG_LOG_MESSAGE_LIMIT but the fields are not counted, so the frame's code,
+// the user's own script among it, can empty the ring with one record larger
+// than DEBUG_LOG_MAX_BYTES. The ring holds only the user's own debug info.
+export function debugLogRecord(value) {
+  const record = {};
+  for (const [field, entry] of Object.entries(value ?? {})) {
+    if (typeof entry === "string") record[field] = redactDebugText(entry);
+    else if (["number", "boolean"].includes(typeof entry) || entry === null) record[field] = entry;
+  }
+  return storedRecord(record);
+}
+
 /* ------------------------------------------------------------ capture */
 
 const sameEntry = (left, right) => left.level === right.level && left.message === right.message

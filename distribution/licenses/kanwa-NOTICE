@@ -1,0 +1,25 @@
+vendor/kanwa/kanwa-readings.json holds character and compound readings from
+the kanwa data of jitendex-data, the data behind the Jitendex dictionary.
+Hachidori uses them to place headword furigana over the kanji each reading
+belongs to where the KANJIDIC2 readings in vendor/kanjidic/ cannot: 日本 にほん
+as 日(に)本(ほん), and compounds such as 今日 きょう read as a whole inside a
+longer word.
+
+  jitendex-data: https://github.com/Jitendex/jitendex-data
+  Jitendex: https://jitendex.org/, by Stephen Kraus
+
+The readings were taken from kanwa/characters.json and kanwa/compounds.json
+at the jitendex-data commit that vendor/kanwa/source.json records, with the
+SHA-256 of each file. Changes: readings are converted to hiragana; a
+kun'yomi keeps the "." before its okurigana; the "-" that marks a prefix or
+suffix reading is removed; a character's Chinese and Korean readings, its
+empty readings and the readings KANJIDIC2 already gives it are left out, as
+are kana characters and compounds that contain kana or have one character; a
+repeated reading is listed once.
+
+The adapted readings are licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International licence:
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+They are provided without any warranty as to their accuracy or suitability
+for a particular application.

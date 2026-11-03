@@ -21,6 +21,9 @@
     "unlimitedStorage",
     "userScripts"
   ],
+  "optional_permissions": [
+    "clipboardRead"
+  ],
   "host_permissions": [
     "<all_urls>"
   ],
@@ -143,7 +146,13 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-eval'; child-src 'self'"
+  },
+  "sandbox": {
+    "pages": [
+      "search-frame.html"
+    ]
   },
   "cross_origin_embedder_policy": {
     "value": "require-corp"

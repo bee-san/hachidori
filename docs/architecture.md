@@ -5,12 +5,27 @@ extension, with a service worker and offscreen document. The Firefox build runs
 the same code in a background page that holds the offscreen document in a
 frame; [Firefox](firefox.md) describes what differs.
 
-The normal reader popup uses a closed shadow root so page extensions such as
-Dark Reader cannot rewrite its palette, dictionary styles or Custom CSS.
-Saving non-empty **Design → Custom JavaScript** opts into an open root so those
-scripts retain their existing `host.shadowRoot` access; Dark Reader can also
-reach that root. Reload the reading page after adding or clearing a script.
-The Design preview remains open inside its extension page.
+The reader popup uses a closed shadow root, so neither page scripts nor
+extensions such as Dark Reader (or a site's own dark theme built on its
+library) can rewrite its palette, dictionary styles or Custom CSS. Saved
+**Design → Custom JavaScript** still reaches the popup through `host.shadowRoot`.
+The service worker registers `custom-javascript-bridge.js` ahead of that code
+in the same user-script world. When the reader builds its host it dispatches
+`hachidori-popup-root` on it, the bridge attaches the closed root from that
+world and returns it to those scripts alone, and the reader reads it back with
+`chrome.dom.openOrClosedShadowRoot` (Chrome) or `openOrClosedShadowRoot`
+(Firefox). Where user scripts do not run (Chrome's Allow User Scripts switch
+is off, Firefox has not granted them, in frames and on extension pages) the
+reader attaches the closed root itself. The host waits for the reader's first
+read of the stored options, so a lookup that starts before them still gets the
+right root. A script added or changed runs from the reading page's next load.
+If a lookup builds the popup before the page's user scripts have run, the
+reader attaches its own closed root, and saved scripts cannot reach that popup
+until the page loads again. The Design preview remains open inside its
+extension page. The [search page](#search-page) runs the same script in its
+sandboxed frame, in the reader's own world, where nothing but the extension
+can reach the popup, so the reader there attaches an open root while Custom
+JavaScript is saved.
 
 ## Runtime layout
 
@@ -599,7 +614,8 @@ exact selection can be answered. All exercise lookups use ordinary
 runtime messages, the installed dictionaries, WASM, popup renderer and styles.
 No sample result is substituted. Among extension pages the reader permits only
 this extension’s `startup.html`, with either no fragment or the native skip
-link's `#setup-heading`, and its `search.html` ([Search page](#search-page)).
+link's `#setup-heading`, and the search page's `search-frame.html`
+([Search page](#search-page)).
 Query variants, unknown fragments, Settings and the
 static design preview remain excluded. The skip handler focuses the heading
 directly; a fragment created before it attaches still works after reload.
@@ -1032,8 +1048,97 @@ progress and takes its mining screenshots as it does the startup page's
 (`readerPageSender`): an extension page's messages may come without its tab,
 and tabs hide its URL.
 
-Not ported: Yomitan's clipboard monitor, which needs the `clipboardRead`
-permission; profiles; automatic kana conversion; the query parser's word
+**Clipboard monitor.** The **Clipboard monitor** switch at the top of the page
+is Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
+`ext/js/comm/clipboard-monitor.js`, `clipboard-reader.js` and
+`ext/js/display/search-display-controller.js`). It is off by default. While it
+is on, `search-clipboard.js` reads the clipboard every 250 ms, and text copied
+in any tab or program goes into the box and is searched as a paste is, once for
+each new text, trimmed. A longer copy is searched from its first 1,000
+characters, Yomitan's default maximum clipboard search length: echoing a
+100,000-character query held the page for about 30 seconds in Chrome 152. The
+offscreen document sends only those characters, counted from the end of the
+copy's leading spaces: it and the worker carry every lookup, and sending a
+1,000,000-character copy through them four times a second held lookups for up to
+270 ms. A paste is still searched whole. What was on the clipboard when the
+monitor started is not searched, nor is text without a Japanese character (the
+reader's `isLookupWorthy`, the characters of its Japanese text only gate;
+Yomitan's `isTextLookupWorthy` also counts CJK punctuation and fullwidth Latin
+letters and digits). Text copied or cut on the page itself is not searched
+either: the monitor starts over from it, as Yomitan's `_onCopy` ignores the
+search page's own copies. A Note being written or saved in the result holds the
+monitor off (`holdsNote`), so copying a meaning from another tab cannot discard
+the draft; that text is not searched. The switch is the optional `clipboardRead`
+permission itself: turning it on asks the browser for it, turning it off gives
+it back (Chrome then grants it again without asking; Firefox asks each time),
+and every open search page follows a change through `permissions.onAdded` and
+`onRemoved`, so it needs no stored option. Only the search page reads the
+clipboard: it sends `hd_clipboard_read` to the worker, which accepts it from
+that page alone and relays it to the offscreen document, never to a linked
+browser's host, and the offscreen document answers only the worker. The switch
+and the monitor are `search.html`'s, over the header of its frame (see Custom
+JavaScript below): Firefox asks for a permission only from the document whose
+control the user clicked. As Yomitan's
+`ClipboardReader` does, Chrome pastes into a text area there, which needs
+neither focus nor a prompt once the permission is granted; the text comes from
+the paste event, which is cancelled, because laying out 300,000 pasted
+characters took 16 to 34 seconds where the event takes 5 ms. Firefox, whose
+paste command sometimes fails, uses `navigator.clipboard.readText()` in the
+background page's engine frame.
+
+![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
+
+**Custom JavaScript.** **Design → Custom JavaScript** runs on the search page
+as it does on web pages (#644). Chrome and Firefox run no user script in an
+extension page: `userScripts.register` refuses a `chrome-extension:` match
+pattern, `userScripts.execute` and `scripting.executeScript` cannot access the
+page, and an extension page's policy forbids running a string as code. So
+`search.html` holds the page itself, `search-frame.html`, in a sandboxed frame
+(`manifest.json` → `sandbox`), whose policy allows `eval` and still refuses
+inline script. Once the reader is ready, the frame runs the script the worker
+registered for web pages (`custom-javascript.js`), so the script runs only
+where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
+`userScripts` permission is on. It shares the frame's document with the
+reader and reaches the docked result through `host.shadowRoot`, as on a web
+page; unlike a user script in its own world, it also shares the reader's
+JavaScript globals. There is no `custom-javascript-bridge.js` in the frame:
+nothing but the extension reaches its pages, so while Custom JavaScript is
+saved the reader in `search-frame.html` attaches an open root itself.
+
+A sandboxed frame has no extension APIs, so `search-shell.js` in `search.html`
+answers for it over one `MessagePort`: `search-bridge.js` makes the channel and
+offers its port to the extension's origin, which the frame's location keeps, so
+only `search.html` can take it. Whatever the frame is served, the script can
+use too, where on a web page it has no extension messaging at all, so the frame
+gets what the reader needs and no more: the requests a content script's reader
+sends, and of option writes only the reader's own, one **Toggle option**
+keybind's boolean; the stored keys the reader reads, with the AnkiConnect key,
+which the reader never uses, left out of the options; and the events sent to
+the reader. The frame's debug log goes to the extension's store, measured and
+redacted again by `search.html`, and may update only the records the frame
+wrote. The Clipboard monitor's switch and its reads stay in `search.html`,
+which lays the switch over the end of the frame's header and shows it with the
+frame's themed page. Only text with a Japanese character, the reader's own
+`isLookupWorthy` test, goes on to the frame, which searches it and tells
+`search.html` when its reader is ready and when text is copied there. The
+monitor hands the user's script no other text. In Chrome, while Hachidori
+holds `clipboardRead`, a user script can still read the clipboard itself, on
+the search page as on any web page; in Firefox it cannot. A mouse click or a
+tap on the switch, if the switch does not have focus, hands focus back to the
+frame once the click is done (a tap focuses the switch after its `pointerup`),
+where the reader's keybinds and activation key work. A focused switch keeps
+focus: after Space, and after a screen reader's or voice control's click,
+which Chrome sends as pointer events once it has focused the switch. There
+Escape and Ctrl+U still reach the box, and the reader's keybinds wait for
+focus to return to the page.
+Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
+extension page, with its own API, where the script does not run and the
+channel carries only the debug log and the Clipboard monitor.
+
+Not ported: Yomitan's background clipboard monitor, which opens the search
+page when text is copied; its clipboard search mode (Update query only) and
+the setting for the maximum clipboard search length; profiles;
+automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
 browser's history; the popup window's size, position and state settings;
 Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
@@ -1888,20 +1993,36 @@ kana leave more than one split, it is the one split that reads (#459). Then
 each run of two or more kanji is read one kanji at a time when exactly one split
 of its share reads (#605):
 二十四時間 is 二(に)十(じゅう)四(よ)時(じ)間(かん), where Yomitan puts にじゅうよじかん
-over the run. A run that no split reads, such as jukujikun (今日 きょう) or a run
-with a digit (２人 ふたり), keeps one ruby, as does a run that two splits read. A
+over the run. A run that no split reads by KANJIDIC, such as jukujikun (今日
+きょう), 日本 にほん (KANJIDIC has no に for 日) or a run with a digit (２人 ふたり),
+is read again with Jitendex's kanwa data (below); a run that two splits read
+keeps one ruby. A
 kanji reads as an on'yomi, or as a kun'yomi's stem, stem and okurigana,
 masu-stem (す.く: す, すく, すき), or stem with the start of its okurigana where a
 word leaves the rest unwritten (う.える: うえ in 植木 うえき), each also with
 rendaku (a voiced ち or つ also as じ or ず: 世界中 せかいじゅう) and with a final つ,
 ち, く, き or り as っ; 々 reads as the kanji before it, and a digit or letter never
-reads. Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
-holds the readings; the engine service imports it as a JSON module as it starts,
-off the first lookup's reply, and derives each kanji's forms when it is first
-needed.
-`scripts/kanji-readings.mjs` regenerates the table from the KANJIDIC archive
+reads by KANJIDIC. The second reading (#641) adds kanwa's character readings
+that KANJIDIC lacks, among them numerals and letters (２ ふた, so ２人 is
+２(ふた)人(り)), and its compound readings. A compound reads either one part per
+character, as 日本 に|ほん, which splits 日本 and 日本語 にほんご, or as a whole, as
+今日 きょう, which keeps one ruby inside its run: 今日中 きょうじゅう is
+今日(きょう)中(じゅう). Where several splits read, those that read the most
+characters by compounds count, as Jitendex reads a known compound before its
+characters, so 河原者 かわらもの is 河原(かわら)者(もの) although 河 か and 原 わら
+also read it; two that read as many keep one ruby, as does a run that kanwa
+cannot read either (景色 けしき). A run that KANJIDIC reads keeps that split, so
+印度 インド stays 印(イン)度(ド) though kanwa reads it as a whole, and 日本 にっぽん
+stays 日(にっ)本(ぽん). Every other reply is unchanged. `extension/vendor/kanjidic/kanji-readings.json`
+and `extension/vendor/kanwa/kanwa-readings.json` hold the readings; the engine
+service imports them as JSON modules and indexes kanwa's compounds as it
+starts, off the first lookup's reply, and derives each kanji's forms when it is
+first needed.
+`scripts/kanji-readings.mjs` regenerates the KANJIDIC table from the archive
 pinned in `source.json` beside it; point that pin at a newer jmdict-yomitan
-release to update it. The popup headword's ruby,
+release to update it. `scripts/kanwa-readings.mjs` regenerates the kanwa table
+from the jitendex-data commit pinned in its `source.json`, against the shipped
+KANJIDIC table, so it runs again after that table changes. The popup headword's ruby,
 `{furigana}`/`{furigana-plain}` and the API's scanning parser read the split
 through `termFurigana`, which falls back to the local split when a term carries
 none, as from an older sharing host, or one that does not spell its expression.
@@ -2660,9 +2781,10 @@ operations before an offscreen-startup retry can dispatch them. Popup requests
 use the enabled persisted sources, not caller-provided URLs. Offscreen lazily
 imports the player; audio never acquires the dictionary mutation lock.
 
-The offscreen document declares DOM_SCRAPING and AUDIO_PLAYBACK together. Chrome
-keeps it while its dictionary-engine purpose remains active, including after
-audio's 30-second idle window. URL playback fetches without credentials.
+The offscreen document declares DOM_SCRAPING, AUDIO_PLAYBACK and CLIPBOARD
+(the search page's clipboard monitor) together. Chrome keeps it while its
+dictionary-engine purpose remains active, including after audio's 30-second
+idle window. URL playback fetches without credentials.
 Candidate fallback includes actual decoding/playback failures. Speech waits for
 Chrome's asynchronously loaded voice list within the existing playback deadline.
 Automatic Japanese uses an available Google Japanese voice, then a Japanese
@@ -3868,6 +3990,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_status` | Report readiness, loading state, registered-kind count (`dictionaryCount` and `registeredKindCount`), unique `packageCount`, generation, storage backend, threading mode, and whether the worker is the low-memory one (`lowMemory`) and its entry storage policy (`dictionaryEntryStorage`) and whether every package's entries are read from disk (`pagedDictionaries`), requested hash policy (`dictionaryIndexStorage`), the normal-mode RAM default (`useLessRamByDefault`), actual policy (`hashIndexStorage`) and resident hash budget; while the offscreen bridge runs an import, `updating: { id, phase, fallback }` names the replaced package and phase |
 | `hd_memory` | Report WASM capacity (`heapBytes`), live/free allocator bytes, combined cache (`pageCacheBytes`) with `entries`/`indexes` activity, requested/actual hash policy, `useLessRamByDefault` and budget, package/kind counts, and each package's hash, other-resident and resident-entry bytes plus actual hash residency; see [memory.md](memory.md) |
 | `hd_memory_total` | Answered by the offscreen document itself, outside the engine queue: `performance.measureUserAgentSpecificMemory()` over the document and its workers, with the engine heap (`heapBytes`, from `hd_memory`) counted once rather than once per engine thread; `bytes` is `null` where the API is unavailable; see [memory.md](memory.md) |
+| `hd_clipboard_read` | The search page's clipboard monitor (#639): from that page only, the worker relays it to the offscreen document, which returns the clipboard's text, at most its first 1,000 characters after any leading spaces; never forwarded to a linked browser's host |
 | `hd_engine_config` | Read `options.lowMemoryMode`, `options.dictionaryEntryStorage`, `options.dictionaryIndexStorage` and `options.useLessRamByDefault` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when a stored option changes |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |

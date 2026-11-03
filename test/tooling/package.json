@@ -28,12 +28,12 @@
     "install:firefox": "node ../run.mjs install-firefox"
   },
   "devDependencies": {
-    "@puppeteer/browsers": "3.2.4",
+    "@puppeteer/browsers": "3.2.6",
     "darkreader": "4.9.134",
     "eslint": "10.13.0",
     "globals": "17.13.0",
     "jsdom": "30.1.3",
-    "puppeteer-core": "25.13.0",
+    "puppeteer-core": "25.16.0",
     "web-ext": "10.8.0"
   }
 }

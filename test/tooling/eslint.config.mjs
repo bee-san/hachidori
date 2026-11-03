@@ -20,7 +20,7 @@ const chrome = readonly(["chrome"]);
 const published = readonly([
   "HDAnki", "HDAudio", "HDContent", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
-  "HDReaderOptions", "HDReaderReady", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
+  "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
   "HDWordStatusOverrides",
 ]);
 
@@ -29,11 +29,12 @@ const published = readonly([
 // on, and the classic <script> files of extension pages.
 const CLASSIC = [
   ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
-  "design-preview.js", "settings-theme.js", "visual-novel.js",
+  "design-preview.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
-// extension APIs.
-const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js"];
+// extension APIs, and the bridge that runs ahead of Custom JavaScript in
+// Chrome's user-script world, which has none either.
+const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js"];
 // The service worker serializes this module's function into Netflix's page.
 const NETFLIX_PREVIEW = "netflix-preview.js";
 // The MV3 service worker module and the modules only it loads.

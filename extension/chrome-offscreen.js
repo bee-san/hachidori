@@ -22,9 +22,10 @@ async function createOffscreen(url) {
   try {
     await chrome.offscreen.createDocument({
       url,
-      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK"],
+      // CLIPBOARD: the search page's clipboard monitor reads through it (#639).
+      reasons: ["DOM_SCRAPING", "AUDIO_PLAYBACK", "CLIPBOARD"],
       justification:
-        "Runs the local dictionary engine and pronunciation audio.",
+        "Runs the local dictionary engine and pronunciation audio, and reads the clipboard for the search page.",
     });
   } catch (error) {
     // Another extension context may have won the race; only a genuine absence

@@ -22,7 +22,7 @@ let JSDOM;
 
 const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
-async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false, url = "https://example.test/", dock = null } = {}) {
+async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "term" }, { holdLookupStats = false, options: optionOverrides = {}, deferInitialStorage = false, url = "https://example.test/", dock = null, userScripts = false, prebuildUi = true } = {}) {
   const dom = new JSDOM(
     "<!doctype html><body><span id=anchor>\u98df\u3079\u305f</span></body>",
     {
@@ -35,6 +35,13 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
   const popupEvents = [];
   window.addEventListener("hachidori-popup-shown", () => popupEvents.push("shown"));
   window.addEventListener("hachidori-popup-hidden", () => popupEvents.push("hidden"));
+  // The reader's requests for Custom JavaScript's bridge to attach its root.
+  let rootRequests = 0;
+  window.addEventListener("hachidori-popup-root", () => { rootRequests += 1; }, true);
+  // `userScripts` runs the bridge as Chrome does, ahead of the saved code. jsdom
+  // has one world, so the bridge's shadowRoot getter also stands in for
+  // chrome.dom.openOrClosedShadowRoot.
+  if (userScripts) window.eval(readFileSync(resolve(EXTENSION, "custom-javascript-bridge.js"), "utf8"));
   let storageListener = null;
   let deferredInitialStorage = null;
   const popupRecords = new Map();
@@ -169,6 +176,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
   };
   const runtimeListeners = new Set();
   window.chrome = {
+    ...(userScripts ? { dom: { openOrClosedShadowRoot: element => element.shadowRoot } } : {}),
     runtime: {
       id: "hachidoricontnotesmoke",
       onMessage: { addListener(fn) { runtimeListeners.add(fn); }, removeListener(fn) { runtimeListeners.delete(fn); } },
@@ -312,7 +320,8 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     window.document.body.append(dockElement);
     driver.dock(dockElement);
   }
-  const popup = await driver.install();
+  // `prebuildUi: false` leaves the popup to the reader's first lookup, as on a page.
+  const popup = prebuildUi ? await driver.install() : null;
   const popupRecord = (depth = 0) => popupRecords.get(driver.popupAt(depth));
   const anchor = window.document.getElementById("anchor");
   const anchorRange = window.document.createRange();
@@ -460,6 +469,8 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     pending,
     popup,
     popupEvents,
+    get rootRequests() { return rootRequests; },
+    window,
     render: (depth = 0) => popupRecord(depth)?.renders.at(-1),
     setTermViewport(value) { popupRecord().viewport = value; },
     presentations: (depth = 0) => popupRecord(depth)?.presentations,

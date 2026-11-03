@@ -422,16 +422,56 @@ async function externalLinksCase() {
 describe("content script: popup", () => {
   test("popup style isolation and custom JavaScript access", async () => {
     const result = await contentNoteStage({ isolation: async () => {
+      const cases = [
+        ["normal popups keep their styles in a closed shadow root and never ask for another", "", false],
+        ["saved Custom JavaScript reaches the popup through the closed root its bridge attached", "document.body.dataset.custom = 'yes';", true],
+        ["saved Custom JavaScript where user scripts do not run still gets a closed root", "document.body.dataset.custom = 'yes';", false],
+      ];
       const outcomes = {};
-      for (const customPopupJavascript of ["", "document.body.dataset.custom = 'yes';"]) {
-        const harness = await createHarness(null, { options: { customPopupJavascript } });
+      for (const [name, customPopupJavascript, userScripts] of cases) {
+        const harness = await createHarness(null, { options: { customPopupJavascript }, userScripts });
         try {
           const root = harness.popup.getRootNode();
-          const custom = customPopupJavascript !== "";
-          outcomes[custom ? "saved Custom JavaScript retains popup DOM access" : "normal popups keep their styles in a closed shadow root"] =
-            root.mode === (custom ? "open" : "closed") && root.host.shadowRoot === (custom ? root : null);
+          // With the bridge loaded, root.host.shadowRoot is what Custom JavaScript sees.
+          outcomes[name] = root.mode === "closed" && root.host.shadowRoot === (userScripts ? root : null)
+            && harness.rootRequests === (customPopupJavascript === "" ? 0 : 1);
         } finally { harness.close(); }
       }
+      // The search page's frame runs the saved script in the reader's own world
+      // (#644), so there the root is open while Custom JavaScript is saved.
+      // Other extension pages, where no user script runs, keep it closed.
+      for (const [name, customPopupJavascript, page, mode] of [
+        ["the search page's frame gives saved Custom JavaScript an open root without asking a bridge",
+          "document.body.dataset.custom = 'yes';", "search-frame.html", "open"],
+        ["the search page's frame keeps a closed root while no Custom JavaScript is saved", "", "search-frame.html", "closed"],
+        ["the startup page keeps a closed root while Custom JavaScript is saved", "document.body.dataset.custom = 'yes';",
+          "startup.html", "closed"],
+      ]) {
+        const harness = await createHarness(null, { options: { customPopupJavascript },
+          url: `chrome-extension://hachidoricontnotesmoke/${page}` });
+        try {
+          const root = harness.popup.getRootNode();
+          outcomes[name] = root.mode === mode && root.host.shadowRoot === (mode === "open" ? root : null)
+            && harness.rootRequests === (page === "startup.html" ? 1 : 0);
+        } finally { harness.close(); }
+      }
+      // A first lookup can start before the stored options arrive (the CI race
+      // in #651). The host waits for them, so it still takes the bridge's root.
+      const early = await createHarness(null, { options: { customPopupJavascript: "document.body.dataset.custom = 'yes';" },
+        userScripts: true, deferInitialStorage: true, prebuildUi: false });
+      try {
+        const lookup = early.driver.runLookup(early.candidate);
+        await early.settle();
+        const hostBeforeOptions = early.window.document.querySelector("hachidori-host");
+        early.deliverInitialStorage();
+        await early.settle();
+        early.reply(early.take("hd_lookup"), { dictionaryCount: 1, results: [early.term(early.candidate.query)] });
+        await lookup;
+        const host = early.window.document.querySelector("hachidori-host");
+        const popup = early.driver.popupAt(0);
+        outcomes["a lookup before the stored options arrive builds the popup in the bridge's root"] = hostBeforeOptions === null
+          && host?.shadowRoot?.mode === "closed" && popup?.getRootNode() === host.shadowRoot && early.rootRequests === 1;
+      } finally { early.close(); }
       return outcomes;
     } });
     for (const [name, passed] of Object.entries(result?.isolation ?? {})) check(name, passed, String(passed));

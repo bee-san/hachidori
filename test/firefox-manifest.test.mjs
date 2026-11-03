@@ -34,7 +34,9 @@ function files(directory) {
 test("Firefox runs background.js in an event page and leaves out what Firefox does not implement", () => {
   assert.deepEqual(firefox.background, { page: "background.html" });
   assert.deepEqual(firefox.permissions, chrome.permissions.filter(name => !["offscreen", "tabCapture", "userScripts"].includes(name)));
-  assert.deepEqual(firefox.optional_permissions, ["userScripts"]);
+  // The Chrome manifest's optional permissions stay optional (#639), userScripts after them.
+  assert.deepEqual(firefox.optional_permissions, [...chrome.optional_permissions, "userScripts"]);
+  assert.deepEqual(chrome.optional_permissions, ["clipboardRead"]);
   for (const key of ["minimum_chrome_version", "cross_origin_embedder_policy", "cross_origin_opener_policy"]) {
     assert.equal(Object.hasOwn(firefox, key), false, key);
   }
@@ -46,9 +48,31 @@ test("Firefox runs background.js in an event page and leaves out what Firefox do
   // pages and resources cannot drift between the builds.
   const shared = manifest => Object.fromEntries(Object.entries(manifest).filter(([key]) => ![
     "background", "permissions", "optional_permissions", "browser_specific_settings", "minimum_chrome_version",
-    "cross_origin_embedder_policy", "cross_origin_opener_policy",
+    "cross_origin_embedder_policy", "cross_origin_opener_policy", "web_accessible_resources",
   ].includes(key)));
   assert.deepEqual(shared(firefox), shared(chrome));
+  assert.deepEqual(firefox.web_accessible_resources.slice(0, -1), chrome.web_accessible_resources);
+});
+
+// Firefox serves a sandboxed page (#644) only the stylesheets and modules a web
+// page could load; Chrome serves it every file of the extension.
+test("Firefox can serve every stylesheet and module the sandboxed search frame loads", () => {
+  const accessible = new Set(firefox.web_accessible_resources.filter(entry => entry.matches?.includes("<all_urls>"))
+    .flatMap(entry => entry.resources));
+  const covered = path => accessible.has(path) || [...accessible].some(pattern => pattern.endsWith("/*")
+    && path.startsWith(pattern.slice(0, -1)));
+  const loaded = new Set();
+  const visit = module => {
+    if (loaded.has(module)) return;
+    loaded.add(module);
+    for (const [, path] of read(`extension/${module}`).matchAll(/^import (?:[^;]*? from )?"\.\/([^"]+)";/gmu)) visit(path);
+  };
+  assert.deepEqual(chrome.sandbox.pages, ["search-frame.html"]);
+  const page = read("extension/search-frame.html");
+  for (const [, path] of page.matchAll(/<link rel="stylesheet" href="([^"]+)"/gu)) loaded.add(path);
+  for (const [, path] of page.matchAll(/<script type="module" src="([^"]+)"/gu)) visit(path);
+  assert.ok(loaded.has("search.js") && loaded.has("debug-log.js") && loaded.has("search.css"), [...loaded].join());
+  assert.deepEqual([...loaded].filter(path => !covered(path)), []);
 });
 
 // Firefox's content-script window is the page's window, where another content

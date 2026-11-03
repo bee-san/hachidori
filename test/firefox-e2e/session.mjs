@@ -212,7 +212,7 @@ async function launchFirefox(profile) {
       // A relaunch reinstalls the temporary add-on into the storage it left.
       "extensions.webextensions.keepStorageOnUninstall": true,
       "extensions.webextensions.keepUuidOnUninstall": true,
-      // permissions.request() for userScripts is granted without a prompt.
+      // permissions.request() for userScripts and clipboardRead is granted without a prompt.
       "extensions.webextOptionalPermissionPrompts": false,
       "browser.download.dir": downloadDir,
       "browser.download.folderList": 2,
@@ -285,6 +285,32 @@ async function findPage(path, target = browser) {
     }
     return false;
   });
+}
+
+// The extension page `path` in a frame of `target`'s page, as the search
+// page's sandboxed frame (#644). Puppeteer lists no frames of an extension
+// page here, so the frame is found in BiDi's tree. It evaluates as a page
+// does, with JSON arguments and results, and readPopup() and inPopup() take it.
+async function childFrame(target, path) {
+  const tab = browsingContextOf(target);
+  const session = tab.userContext.browser.session;
+  const url = extensionUrl(path);
+  const flat = contexts => contexts.flatMap(context => [context, ...flat(context.children ?? [])]);
+  const context = await waitFor(async () => {
+    const { result } = await session.send("browsingContext.getTree", { root: tab.id });
+    return flat(result.contexts).find(entry => entry.url === url)?.context ?? false;
+  }, { timeout: 15_000 });
+  if (!context) return null;
+  return {
+    browsingContext: { id: context, userContext: tab.userContext },
+    async evaluate(fn, ...args) {
+      const { result } = await session.send("script.callFunction", {
+        functionDeclaration: `async args => JSON.stringify(await (${fn})(...JSON.parse(args)) ?? null)`,
+        awaitPromise: true, target: { context }, arguments: [{ type: "string", value: JSON.stringify(args) }] });
+      if (result.type === "exception") throw new Error(result.exceptionDetails?.text ?? "frame script failed");
+      return JSON.parse(result.result.value);
+    },
+  };
 }
 
 // A same-URL navigation keeps the document when only the hash differs, so the
@@ -678,8 +704,8 @@ function setBidi(next) {
 }
 
 export {
-  activate, ANKI_PATH, ANKI_REFUSED_PATH, anki, bidiSession, browser, characterPoint, clickInPopup, contextId,
-  dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateJson, EXTENSION,
+  activate, ANKI_PATH, ANKI_REFUSED_PATH, anki, bidiSession, browser, characterPoint, childFrame, clickInPopup, contextId,
+  dictionaryState, dismissPopup, downloadedFiles, downloadsDirectory, engineStatus, evaluateInChrome, evaluateJson, EXTENSION,
   extensionUrl, findPage, FIXTURE, FIXTURE_ID, GECKO_ID, HERE, highlightSize, hoverForPopup, importArchives, inPopup,
   installHachidori, launchFirefox, listIdbfsPaths, makeAudioWav, navigate, openExtensionPage, openPage, ORIGIN, page,
   PROFILE, readPopup, readStorage, RECOMMENDED, reloadPage, routes, saveDialogs, sendRuntime, servedAudio, servedFiles, serverUrl,

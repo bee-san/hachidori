@@ -10,8 +10,10 @@
 // element.shadowRoot from an injected script, and that property is null for a
 // root attached with mode "closed". CDP's DOM domain can -- DOM.getDocument with
 // pierce:true reports the closed root and its subtree -- so every read of the
-// popup goes through a session instead of a selector.
-async function popupReader(page, depth = 0) {
+// popup goes through a session instead of a selector. `documentUrl` names the
+// frame document whose popup to read, as search.html's frame (#644);
+// otherwise it is the page's own.
+async function popupReader(page, depth = 0, documentUrl = null) {
   const cdp = await page.createCDPSession();
   await cdp.send("DOM.enable");
   await cdp.send("Runtime.enable");
@@ -21,18 +23,20 @@ async function popupReader(page, depth = 0) {
     // nodeIds live only until the next getDocument, so each operation re-walks.
     const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
     let nodeId = null;
-    const walk = node => {
+    const walk = (node, url) => {
       const attributes = node.attributes || [];
       for (let i = 0; i < attributes.length; i += 2) {
         if (attributes[i] === "class" && String(attributes[i + 1]).includes("gsm-hoshidicts-popup")
-            && attributes[attributes.indexOf("data-hoshidicts-depth") + 1] === String(depth)) {
+            && attributes[attributes.indexOf("data-hoshidicts-depth") + 1] === String(depth)
+            && (documentUrl === null || url === documentUrl)) {
           nodeId = node.nodeId;
         }
       }
-      for (const shadow of node.shadowRoots || []) walk(shadow);
-      for (const child of node.children || []) walk(child);
+      for (const shadow of node.shadowRoots || []) walk(shadow, url);
+      for (const child of node.children || []) walk(child, url);
+      if (documentUrl !== null && node.contentDocument) walk(node.contentDocument, node.contentDocument.documentURL);
     };
-    walk(root);
+    walk(root, root.documentURL);
     if (nodeId === null) return null;
     const { object } = await cdp.send("DOM.resolveNode", { nodeId });
     return object;

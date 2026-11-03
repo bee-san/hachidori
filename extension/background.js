@@ -5,6 +5,7 @@
 import {
   DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
+  CLIPBOARD_TARGET, searchPageSender,
   ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
   serialiseStorage, workerReply, failureReply, requestProfileId, updateLookupProfiles,
 } from "./background-core.js";
@@ -278,6 +279,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   chrome.tabs.getZoom(tabId).then((zoomFactor) => sendResponse(workerReply(message, { zoomFactor })),
+    (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+// The search page's clipboard monitor (#639) reads the clipboard through the
+// offscreen document, which can paste while no page has focus. Only the search
+// page may ask, and a linked browser never asks its host: the clipboard is this
+// computer's.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== CLIPBOARD_TARGET || message.relayed === true) return false;
+  if (message.type !== "hd_clipboard_read" || !searchPageSender(sender)) {
+    sendResponse(failureReply(message, new Error("Unknown clipboard request.")));
+    return false;
+  }
+  relay({ target: CLIPBOARD_TARGET, type: message.type }).then(sendResponse,
     (error) => sendResponse(failureReply(message, error)));
   return true;
 });

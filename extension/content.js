@@ -32,6 +32,9 @@
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
+  // Asks Custom JavaScript's bridge (custom-javascript-bridge.js) to attach the
+  // popup's closed root from the user-script world.
+  const POPUP_ROOT_EVENT = "hachidori-popup-root";
   const EXTENSION_PROTOCOL = (() => {
     try {
       return new URL(chrome.runtime.getURL("")).protocol;
@@ -101,16 +104,20 @@
   }
   // The reader belongs to ordinary pages. First-run setup loads these same
   // scripts into its own startup page for the practice step, and the search
-  // page (#610) into itself. The startup page's native skip link may leave the
-  // known heading fragment before the module loads or on reload; query
-  // variants and every other internal page stay excluded.
+  // page (#610) into itself, the sandboxed frame search.html holds (#644). The
+  // startup page's native skip link may leave the known heading fragment
+  // before the module loads or on reload; query variants and every other
+  // internal page stay excluded.
   if (
     location.protocol === EXTENSION_PROTOCOL &&
-    !["startup.html", "startup.html#setup-heading", "search.html"]
+    !["startup.html", "startup.html#setup-heading", "search-frame.html"]
       .some((page) => location.href === chrome.runtime.getURL(page))
   ) {
     return;
   }
+  // The search page's own document, where search.js runs Custom JavaScript (#644).
+  const SEARCH_FRAME = location.protocol === EXTENSION_PROTOCOL
+    && location.href === chrome.runtime.getURL("search-frame.html");
 
   let disposed = false;
   let appearance;
@@ -405,6 +412,11 @@
   let shadow = null;
   let highlighter = null;
   let uiPromise = null;
+  // Settles once start()'s first storage read has been adopted, or has failed.
+  // The popup host waits for it: its shadow root depends on the stored Custom
+  // JavaScript and cannot be replaced once attached.
+  let resolveStoredOptions;
+  const storedOptions = new Promise(resolve => { resolveStoredOptions = resolve; });
   let popupLayoutFrame = null;
   let popupLayouts = new Map();
   let pageZoom = 1;
@@ -2105,6 +2117,25 @@
     positionPopup();
   }
 
+  // Dark Reader traverses open roots and rewrites their styles, so the popup's
+  // root is always closed. While Custom JavaScript is saved, its bridge
+  // attaches that root from the user-script world and returns it through
+  // host.shadowRoot to the saved scripts alone; it sees the request only once
+  // the host is in the page. Where user scripts do not run (Chrome's switch is
+  // off, a frame, an extension page) the reader attaches the root itself. The
+  // search page's frame runs the saved script in the reader's own world
+  // instead (#644), and nothing but the extension reaches its pages, so there
+  // the root is open.
+  function attachPopupRoot() {
+    if (options.customPopupJavascript) {
+      if (SEARCH_FRAME) return host.attachShadow({ mode: "open" });
+      host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
+      const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
+      if (root) return root;
+    }
+    return host.attachShadow({ mode: "closed" });
+  }
+
   function buildUi() {
     host = document.createElement(HOST_TAG);
     // Inline !important is the only declaration a page cannot override, and the
@@ -2122,12 +2153,8 @@
       "z-index: 2147483647 !important",
     ].join("; ");
     applyPageZoom();
-    // Dark Reader traverses open roots and rewrites their styles. Keep the
-    // reader's selected palette isolated unless the user explicitly needs DOM
-    // access for Custom JavaScript (which takes effect after a page reload).
-    shadow = host.attachShadow({ mode: options.customPopupJavascript ? "open" : "closed" });
-
     mountHost();
+    shadow = attachPopupRoot();
     appearance = globalThis.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = globalThis.HDPopup.createCustomPopupStyle(shadow);
@@ -2651,7 +2678,7 @@
         if (!document.body || !globalThis.HDPopup || !globalThis.HDGlossary) {
           throw new Error("render modules or document body unavailable");
         }
-        await themeHost.sync();
+        await Promise.all([themeHost.sync(), storedOptions]);
         if (disposed) {
           throw new Error("torn down");
         }
@@ -4371,6 +4398,14 @@
     return runLookup(candidate);
   }
 
+  // Yomitan's isTextLookupWorthy, for the search page's clipboard monitor
+  // (#639): whether copied text has a Japanese character in it. search.html
+  // passes the frame only text this accepts (search-shell.js, #644), testing
+  // the same set: a change here must change that filter too.
+  function isLookupWorthy(text) {
+    return JAPANESE_CHARACTER_PATTERN.test(text);
+  }
+
   function runKeybindAction({ action, argument }, event,
     level = levels.findLast((item) => item.popup && !item.popup.hidden)) {
     if (action === "close") return closeFromKeybind(event);
@@ -4915,9 +4950,12 @@
     // Startup awaits this snapshot before demonstrating its first selection,
     // and the search page before it docks the results and takes searches.
     let storageReady;
-    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search });
+    // The search page's clipboard monitor searches only lookup-worthy text, and
+    // nothing while a Note is being written or saved (#639).
+    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search, isLookupWorthy,
+      holdsNote: () => hasProtectedNote() });
     globalThis.HDReaderReady = new Promise(resolve => {
-      storageReady = () => { resolve(reader); };
+      storageReady = () => { resolveStoredOptions(); resolve(reader); };
     });
     try {
       chrome.storage.onChanged.addListener(onStorageChanged);

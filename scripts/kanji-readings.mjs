@@ -4,6 +4,8 @@
 // `sha256` in extension/vendor/kanjidic/source.json pin. To move to a newer
 // KANJIDIC, point both at a newer jmdict-yomitan release and run this again:
 // it rewrites the table and source.json's title, revision and file checksum.
+// Then run scripts/kanwa-readings.mjs, whose table holds only the readings
+// this one lacks (#641).
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
