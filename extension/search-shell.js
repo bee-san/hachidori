@@ -234,49 +234,49 @@ function clipboardMonitor(clipboardSwitch, search) {
 // switch does; the arrow keys change the choice and keep focus.
 const WORKER_TARGET = "hoshidicts-worker";
 
+// Moves Template `id` first, and resolves whether that wrote the options.
+async function chooseTemplate(id) {
+  const { options: stored } = await chrome.storage.local.get("options");
+  const current = globalThis.HDReaderOptions.normaliseOptions(stored).anki;
+  const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
+  if (next === null) return false;
+  const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
+    baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
+    options: { anki: next } });
+  if (reply?.conflict === true) return chooseTemplate(id);
+  if (!reply?.ok) throw new Error(reply?.error || "Hachidori did not reply.");
+  return true;
+}
+
 function templateSwitch(select, frame) {
   let anki = null;
   let wanted = null;
-  let saving = false;
+  let saving = Promise.resolve();
   const show = (next = anki) => {
     anki = next;
     renderTemplateChoices(select, anki, wanted ?? anki.templates[0].id);
   };
-  async function choose(id) {
-    for (;;) {
-      const { options: stored } = await chrome.storage.local.get("options");
-      const current = globalThis.HDReaderOptions.normaliseOptions(stored).anki;
-      const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
-      if (next === null) return;
-      const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
-        baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
-        options: { anki: next } });
-      if (reply?.ok) return;
-      if (reply?.conflict !== true) throw new Error(reply?.error || "Hachidori did not reply.");
-    }
-  }
-  async function save() {
-    saving = true;
+  // Saves the last choice, unless a save before it already has. A write
+  // shows itself through its storage change, unless that has come already.
+  async function saveWanted() {
+    const id = wanted;
+    if (id === null) return;
+    let wrote = false;
     try {
-      while (wanted !== null) {
-        const id = wanted;
-        await choose(id);
-        if (wanted === id) wanted = null;
-      }
+      wrote = await chooseTemplate(id);
     } catch (error) {
-      wanted = null;
       console.error("hachidori: could not choose the Anki Template:", describeErrorMessage(error));
-    } finally {
-      saving = false;
-      show();
     }
+    if (wanted !== id) return;
+    wanted = null;
+    if (!wrote || anki.templates[0].id === id) show();
   }
   let handBack = false;
   select.addEventListener("pointerdown", () => { handBack = document.activeElement !== select; });
   select.addEventListener("keydown", () => { handBack = false; });
   select.addEventListener("change", () => {
     wanted = select.value;
-    if (!saving) void save();
+    saving = saving.then(saveWanted);
     if (!handBack) return;
     handBack = false;
     setTimeout(() => { frame.focus(); }, 0);
