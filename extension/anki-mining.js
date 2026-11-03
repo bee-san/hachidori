@@ -5,7 +5,7 @@ import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiSetupFamily } from "./anki-setup.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
-  findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
+  findAnkiDuplicateNotes, isAnkiDuplicateError, keepsAnkiSentenceField, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
 // The sentence-audio field the Kiku, Lapis and Senren presets leave blank.
@@ -166,13 +166,15 @@ function fieldsForDecision(prepared, checked, request) {
     };
   }
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
+  const templates = Object.fromEntries(Object.entries(canonical.templates)
+    .filter(([, template]) => !keepsAnkiSentenceField(template, request)));
   // Only the initial write omits unchanged values. Pronunciation enrichment
   // compares its complete desired value with the text-only write it replaces.
-  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, canonical.templates, { request }), target.fields);
+  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, templates), target.fields);
   return {
     fields,
     target,
-    templates: Object.fromEntries(Object.entries(canonical.templates).filter(([field]) => Object.hasOwn(fields, field))),
+    templates: Object.fromEntries(Object.entries(templates).filter(([field]) => Object.hasOwn(fields, field))),
   };
 }
 

@@ -46,16 +46,19 @@ function overwriteValue(existing, incoming, mode) {
 
 // The markers a template fills from the lookup's sentence.
 const SENTENCE_MARKERS = new Set(["sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix"]);
-const usesSentence = template => ankiTemplateMarkerNames(template).some(name => SENTENCE_MARKERS.has(name));
 
-// A lookup whose sentence is only the word it matched, with no cloze prefix or
-// suffix, has no sentence to give a note it updates (#655). The search page
+// Whether updating a note from `request` leaves the field made by `template`
+// as it is. A lookup whose sentence is only the word it matched, with no cloze
+// prefix or suffix, has no sentence to give the note (#655). The search page
 // takes a word typed alone for its sentence, as Yomitan's does
 // (yomidevs/yomitan@ac1d839 search-display-controller.js, `sentence: {text:
 // query, offset: 0}`), where Append then adds the word to the note's sentences
 // (display-anki.js `_getOverwrittenField`). Here those fields stay as they are.
-const sentenceIsMatch = ({ sentence, matchOffset, matched }) =>
-  sentence.slice(0, matchOffset) === "" && sentence.slice(matchOffset + matched.length) === "";
+export function keepsAnkiSentenceField(template, request) {
+  if (!ankiTemplateMarkerNames(template.value).some(name => SENTENCE_MARKERS.has(name))) return false;
+  const { sentence, matchOffset, matched } = request;
+  return sentence.slice(0, matchOffset) === "" && sentence.slice(matchOffset + matched.length) === "";
+}
 
 export function canonicalAnkiFields(fields, templates, existing) {
   const names = new Map(Object.keys(existing).map(name => [name.toLowerCase(), name]));
@@ -73,10 +76,8 @@ export function canonicalAnkiFields(fields, templates, existing) {
   return { templates: Object.fromEntries(canonicalTemplates), fields: Object.fromEntries(incoming) };
 }
 
-export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false, request } = {}) {
-  return Object.fromEntries(Object.entries(templates)
-    .filter(([, template]) => (includeAudio || !isAnkiAudioOnlyTemplate(template.value))
-      && !(usesSentence(template.value) && sentenceIsMatch(request)))
+export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false } = {}) {
+  return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template.value))
     .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
 }
 

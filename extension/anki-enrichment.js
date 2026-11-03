@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
-import { canonicalAnkiFields, overwriteAnkiFields } from "./anki-duplicates.js";
+import { canonicalAnkiFields, keepsAnkiSentenceField, overwriteAnkiFields } from "./anki-duplicates.js";
 import { readAnkiNoteFields, verifyAnkiFields } from "./anki-mining.js";
 
 function pronunciationFields(incoming, current, appliedFields, existingFields, warnings) {
@@ -28,7 +28,7 @@ export async function enrichAnkiNote(context, { audio, render, store }) {
   const canonical = existingFields ? canonicalAnkiFields({}, resolved.templates, existingFields).templates : resolved.templates;
   const templates = Object.fromEntries(Object.entries(canonical).filter(([field, template]) => {
     if (!ankiTemplateMarkerNames(template.value).includes("audio")) return false;
-    return !existingFields || (template.overwriteMode !== "skip"
+    return !existingFields || (template.overwriteMode !== "skip" && !keepsAnkiSentenceField(template, request)
       && !(template.overwriteMode === "coalesce" && existingFields[field]));
   }));
   // No enabled audio source means no pronunciation, like a screenshot turned off.
@@ -37,7 +37,7 @@ export async function enrichAnkiNote(context, { audio, render, store }) {
     const file = resources.audioPrepared ? resources.audio : await audio(request, context.config);
     await ensure(file, "pronunciation");
     const rendered = await render(request, templates, `[sound:${file.filename}]`, resources);
-    const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true, request }) : rendered.fields;
+    const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true }) : rendered.fields;
     // Audio work may have taken seconds. Re-read just before updating; never
     // clobber an external edit or append to our already-applied text a second
     // time. AnkiConnect has no CAS, so the final inter-call race remains.
