@@ -74,3 +74,15 @@ test("an unconfirmed media upload warns without changing the checked first-field
   assert.match((await enrichAnkiNote(f.context, f.dependencies)).join(" "), /not confirmed/u);
   assert.deepEqual(f.updates, []);
 });
+
+// Issue #655: the pronunciation update leaves alone the sentence fields that
+// the note's update left alone.
+test("a lookup whose sentence is only its word adds no pronunciation to a sentence field", async () => {
+  const f = fixture();
+  f.context.request = { sentence: "猫", matchOffset: 0, matched: "猫" };
+  f.context.resolved.templates.Back = template("{sentence}{audio}", "append");
+  f.context.appliedFields = { front: "猫" };
+  f.edit({ back: "old" });
+  assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
+  assert.deepEqual(f.updates, [{ audio: "[sound:chosen.wav]" }]);
+});

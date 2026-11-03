@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService, verifyAnkiFields } from "../extension/anki-mining.js";
+import { buildAnkiFields } from "../extension/anki-values.js";
 import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
 import { createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { lookupAnkiIndex, lookupAnkiIndexMany } from "../extension/anki-index.js";
@@ -574,6 +575,51 @@ test("overwrite leaves preserved fields out of the mutation when Anki changes du
   assert.deepEqual(result.warnings, []);
   assert.deepEqual(updates, [{ Back: "cat" }]);
   assert.deepEqual(fields, { Front: "猫", Keep: "edited keep", Fill: "edited fill", Fallback: "edited fallback", Back: "cat" });
+});
+
+// Issue #655: the search page takes a word typed alone for its sentence, as
+// Yomitan's does, and an update appended that word to each Append sentence field.
+test("an update from a lookup whose sentence is only its word leaves the note's sentence fields as they are", async () => {
+  // The reporter's Senren Template: each sentence field appends a scene.
+  const fieldTemplates = {
+    word: { value: "{expression}", overwriteMode: "skip" },
+    sentence: { value: '<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>',
+      overwriteMode: "append" },
+    sentenceFurigana: { value: '<span class="group">{sentence-furigana}</span>', overwriteMode: "append" },
+    miscInfo: { value: "{document-title}", overwriteMode: "overwrite" },
+  };
+  const f = fixture();
+  f.change({ model: "Senren", duplicateBehavior: "overwrite", fieldTemplates });
+  f.gateway.discover = async () => ({ connected: true, model: "Senren", models: ["Senren"], decks: ["Default"],
+    fields: Object.keys(fieldTemplates), errors: [] });
+  const scene = '<span class="group">スキナーの<span class="highlight">声明</span>まであと１日だし</span>';
+  const furiganaScene = '<span class="group">スキナーの<b>声明</b>まであと１日だし</span>';
+  const fields = { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Page" };
+  const updates = [];
+  f.gateway.invoke = async (action, params) => {
+    if (action === "notesInfo") return [{ noteId: 123, modelName: "Senren", fields: Object.fromEntries(
+      Object.entries(fields).map(([field, value]) => [field, { value }]),
+    ) }];
+    if (action === "updateNoteFields") { updates.push(params.note.fields); Object.assign(fields, params.note.fields); return null; }
+    assert.fail(`Unexpected ${action}`);
+  };
+  const service = createAnkiMiningService({ ...f.dependencies, duplicateIndex: testIndex(() => [123]),
+    buildFields: async (request, current) => ({
+      fields: await buildAnkiFields(request, current.resolved.templates, { definition: () => "" }) }) });
+  const { configKey } = await service.status();
+  const lookup = (sentence, documentTitle) => ({ configKey, expression: "声明",
+    term: { expression: "声明", reading: "せいめい", rules: "", glossaries: [], frequencies: [], pitches: [] },
+    trace: [], sentence, matchOffset: 0, matched: "声明", popupSelectionText: "", searchQuery: "声明", documentTitle,
+    dictionaryAliases: {}, dictionaryIds: {}, frequencyDictionaries: [] });
+  for (let update = 0; update < 3; update++) {
+    assert.equal((await service.submit(lookup("声明", "Search"))).state, "updated");
+  }
+  assert.deepEqual(updates, [{ miscInfo: "Search" }, {}, {}]);
+  assert.deepEqual(fields, { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Search" });
+  // A sentence around the word is a new scene, which each field appends.
+  assert.equal((await service.submit(lookup("声明を読んだ。", "Novel"))).state, "updated");
+  assert.deepEqual(updates.at(-1), { sentence: `${scene}<span class="group"><span class="highlight">声明</span>を読んだ。</span>`,
+    sentenceFurigana: `${furiganaScene}<span class="group"><b>声明</b>を読んだ。</span>`, miscInfo: "Novel" });
 });
 
 test("each Template has an independent configuration identity and routes its note to the selected destination", async () => {
