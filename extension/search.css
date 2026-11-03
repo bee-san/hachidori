@@ -24,20 +24,20 @@ body.search-shell {
   border: 0;
   color-scheme: light dark;
 }
-/* search.html's Clipboard monitor switch lies over the end of the frame's
-   header. Both documents lay out the whole header, each keeping invisible what
-   the other shows, so the title wraps alike and the switch lands in its place
-   at any width. */
+/* search.html's Anki Template (#656) and Clipboard monitor switches lie over
+   the end of the frame's header. Both documents lay out the whole header,
+   each keeping invisible what the other shows, so the title wraps alike and
+   the switches land in their place at any width. */
 .search-shell-header {
   position: fixed;
   inset: 12px 12px auto;
   pointer-events: none;
 }
-.search-shell-header > :not(.lookup-enable),
-.search-page .search-header .lookup-enable {
+.search-shell-header > :not(.lookup-enable, .search-template),
+.search-page .search-header :is(.lookup-enable, .search-template) {
   visibility: hidden;
 }
-.search-shell-header .lookup-enable {
+.search-shell-header :is(.lookup-enable, .search-template) {
   pointer-events: auto;
 }
 html {
@@ -67,6 +67,22 @@ body.search-page {
   margin-left: auto;
   padding: 0;
   border-top: 0;
+}
+/* The Anki Template switch (#656), before it, where Yomitan's search page has
+   its profile switch. A long name is cut by the menu, not the header. */
+.search-header .search-template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+}
+.search-header .search-template select {
+  width: auto;
+  max-width: 16em;
+}
+.search-header .search-template:not([hidden]) + .lookup-enable {
+  margin-left: 12px;
 }
 .search-form {
   --search-control-height: 42px;

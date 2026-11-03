@@ -13,6 +13,7 @@ import "./reader-options.js";
 import { captureDebugLog, captureDocumentActions, recordUserError } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
+import { renderTemplateChoices } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 const bridge = globalThis.HDSearchBridge;
@@ -26,6 +27,7 @@ const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
 const status = document.getElementById("search-status");
+const templateChoices = document.querySelector(".search-template select");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where
@@ -128,8 +130,16 @@ window.addEventListener("paste", (event) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
+  if (area === "local" && changes.options) adoptOptions(changes.options.newValue);
 });
+
+// The page follows the popup theme, and lays out search.html's Anki Template
+// switch, which lies over this header (#656), with the same Templates.
+function adoptOptions(stored) {
+  const options = normaliseOptions(stored);
+  applyPageTheme(document, options);
+  renderTemplateChoices(templateChoices, options.anki);
+}
 
 // Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
 // once the reader is ready, as a user script runs at document_idle after the
@@ -146,7 +156,7 @@ function runCustomJavaScript(code) {
 
 try {
   const connection = await bridge.ready;
-  applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  adoptOptions((await chrome.storage.local.get("options")).options);
   bridge.notify("shown");
   // The page opens ready to type into, as Yomitan's focuses its box. It is
   // hidden, and its box cannot take focus, until settings-theme.js has the

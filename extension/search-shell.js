@@ -10,7 +10,8 @@
 // more: the requests a content script's reader sends, the stored keys it
 // reads and the events sent to it. This page keeps the header, whose
 // Clipboard monitor switch asks for a permission: Firefox grants one only to
-// the document that handles the click.
+// the document that handles the click. Its Anki Template switch writes the
+// options, which the frame may not.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
@@ -18,6 +19,7 @@ import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.
 import { describeErrorMessage } from "./error-text.js";
 import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
+import { renderTemplateChoices, withBuiltinTemplate } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 // The requests the reader sends, by target. test/search-bridge.test.mjs keeps
@@ -222,15 +224,81 @@ function clipboardMonitor(clipboardSwitch, search) {
   };
 }
 
+// The Anki Template switch (#656): the Template the built-in Anki button
+// uses, which is the first, as Settings → Anki → Set built-in makes it. The
+// frame may write only the reader's own option, so this page writes the
+// choice, with the stored record's revision, and again if another page wrote
+// in between. While one choice is saved, only the last one made meanwhile is
+// saved after it, and the switch shows it. A choice made with the mouse or a
+// tap hands focus back to the frame, as a click on the Clipboard monitor
+// switch does; the arrow keys change the choice and keep focus.
+const WORKER_TARGET = "hoshidicts-worker";
+
+function templateSwitch(select, frame) {
+  let anki = null;
+  let wanted = null;
+  let saving = false;
+  const show = (next = anki) => {
+    anki = next;
+    renderTemplateChoices(select, anki, wanted ?? anki.templates[0].id);
+  };
+  async function choose(id) {
+    for (;;) {
+      const { options: stored } = await chrome.storage.local.get("options");
+      const current = globalThis.HDReaderOptions.normaliseOptions(stored).anki;
+      const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
+      if (next === null) return;
+      const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
+        baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
+        options: { anki: next } });
+      if (reply?.ok) return;
+      if (reply?.conflict !== true) throw new Error(reply?.error || "Hachidori did not reply.");
+    }
+  }
+  async function save() {
+    saving = true;
+    try {
+      while (wanted !== null) {
+        const id = wanted;
+        await choose(id);
+        if (wanted === id) wanted = null;
+      }
+    } catch (error) {
+      wanted = null;
+      console.error("hachidori: could not choose the Anki Template:", describeErrorMessage(error));
+    } finally {
+      saving = false;
+      show();
+    }
+  }
+  let handBack = false;
+  select.closest("label").addEventListener("pointerdown", () => { handBack = document.activeElement !== select; });
+  select.addEventListener("keydown", () => { handBack = false; });
+  select.addEventListener("change", () => {
+    wanted = select.value;
+    if (!saving) void save();
+    if (!handBack) return;
+    handBack = false;
+    setTimeout(() => { frame.focus(); }, 0);
+  });
+  return { show };
+}
+
 async function start() {
   const store = openDebugLogStore(window.indexedDB);
   captureDebugLog(window, { context: "search", store });
   const { normaliseOptions } = globalThis.HDReaderOptions;
+  const frame = document.createElement("iframe");
+  const templates = templateSwitch(document.getElementById("search-template"), frame);
+  const adoptOptions = (stored) => {
+    const options = normaliseOptions(stored);
+    applyPageTheme(document, options);
+    templates.show(options.anki);
+  };
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
+    if (area === "local" && changes.options) adoptOptions(changes.options.newValue);
   });
   const customJavaScript = await userScript(chrome);
-  const frame = document.createElement("iframe");
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
   let port = null;
@@ -273,7 +341,7 @@ async function start() {
     frame.focus();
     port?.postMessage({ kind: "key", key: event.key });
   });
-  applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  adoptOptions((await chrome.storage.local.get("options")).options);
 }
 
 if (globalThis.document) await start();
