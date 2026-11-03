@@ -364,3 +364,18 @@ test("a save refused because its profile was removed elsewhere is not written in
   assert.deepEqual(writes, ["en"]);
   assert.equal(settings.records.options.profiles.find(profile => profile.id === "ja").settings.scanLength, 16);
 });
+
+// Design 17.6: a linked browser can add only the languages both installations
+// have packs for.
+test("while linked, Add a language lists only the packs the host has too", async t => {
+  const settings = await open(t, { hash: "#lookup", stored: withProfiles(), onMessage: async message => (
+    message.type === "hd_sharing_status"
+      ? { ok: true, sharing: { client: { linked: true, connected: true, languageProfiles: { hostLanguages: ["ja", "ar"] } } } }
+      : undefined) });
+  const { el } = settings;
+  el("settings-language-manage").click();
+  await settle(100);
+  const rows = id => [...el(id).querySelectorAll(".language-row")].map(row => row.querySelector("strong").textContent);
+  assert.deepEqual(rows("settings-language-profiles"), ["Japanese", "Arabic"]);
+  assert.deepEqual(rows("settings-language-available"), [], "the host has no English pack");
+});

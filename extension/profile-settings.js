@@ -37,6 +37,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
   let busy = false;
   let removing = null;
   let held = [];
+  // While linked, the packs the host has too (17.6); null otherwise.
+  let hostLanguages = null;
 
   function create(tag, { className = "", text = "", ...attributes } = {}) {
     const node = document.createElement(tag);
@@ -165,7 +167,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
 
   function renderAvailable() {
     const used = new Set(profileList().map(profile => profile.language));
-    const codes = (Array.isArray(registry.codes) ? registry.codes : []).filter(code => !used.has(code));
+    const codes = (Array.isArray(registry.codes) ? registry.codes : [])
+      .filter(code => !used.has(code) && (hostLanguages === null || hostLanguages.has(code)));
     const container = dialog.querySelector("#settings-language-available");
     container.replaceChildren(...codes.map(code => {
       const item = create("li", { className: "language-row" });
@@ -481,9 +484,25 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "");
     void refreshHeld().catch(error => setStatus(dialogStatus, describeErrorOrJson(error), "error", error));
+    void refreshHostLanguages();
   });
   dialog.querySelector("#settings-language-remove-confirm").addEventListener("click", () => { void remove(); });
   dialog.querySelector("#settings-language-remove-cancel").addEventListener("click", closeRemoval);
+
+  async function refreshHostLanguages() {
+    let next = null;
+    try {
+      const client = (await send("hd_sharing_status", {}, "hachidori-sharing"))?.sharing?.client;
+      const codes = client?.linked === true ? client.languageProfiles?.hostLanguages : null;
+      next = Array.isArray(codes) ? new Set(codes) : null;
+    } catch {
+      // Without the status every pack stays listed; the host refuses one it lacks.
+    }
+    const key = codes => (codes === null ? null : [...codes].sort().join(" "));
+    if (key(next) === key(hostLanguages)) return;
+    hostLanguages = next;
+    renderAvailable();
+  }
 
   return {
     render,

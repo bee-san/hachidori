@@ -1061,11 +1061,14 @@ async function mirroredProfile(language) {
 // Another language on a linked browser: the host's profile when it has one,
 // else one the host adds, chosen in this browser (16.1).
 async function chooseLinkedLanguage(language) {
-  const stored = await chrome.storage.local.get("options");
+  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
   let id = hasProfiles(stored.options)
     ? optionProfiles(stored.options).find(profile => profile.language === language)?.id : undefined;
   if (id === undefined) {
-    const reply = await send("hd_profile_add", { language }, ENGINE_TARGET);
+    // The new profile copies the active one's settings (section 5.2); a host
+    // set up in another language may have no Japanese profile to copy.
+    const copyFrom = hasProfiles(stored.options) ? activeProfileId(stored.options, stored[LANGUAGE_SELECTION_KEY]) : undefined;
+    const reply = await send("hd_profile_add", { language, ...(copyFrom === undefined ? {} : { copyFrom }) }, ENGINE_TARGET);
     if (!reply.ok) throw new Error(reply.error || `${languageName(language)} could not be added`);
     id = await mirroredProfile(language);
   }
@@ -1116,16 +1119,28 @@ async function useSharedHachidori() {
   try {
     const reply = await send("hd_sharing_client_link", { address: sharedHost.address }, SHARING_TARGET);
     if (!reply.ok) throw new Error(reply.error || "the link did not complete");
-    // The link first, then the chosen language (16.1).
-    if (chosenLanguage !== "ja") await chooseLinkedLanguage(chosenLanguage);
   } catch (error) {
     saving = false;
     setStatus(`Could not use that Hachidori: ${describeErrorMessage(error)}`, "error", error);
     render();
     return;
   }
+  // The link first, then the chosen language (16.1). The link stays when the
+  // language cannot be added; setup finishes in Japanese and says why.
+  let languageFailure = null;
+  if (chosenLanguage !== "ja") {
+    try {
+      await chooseLinkedLanguage(chosenLanguage);
+    } catch (error) {
+      languageFailure = error;
+    }
+  }
   saving = false;
-  await advance("complete");
+  const completed = await advance("complete");
+  if (completed && languageFailure !== null) {
+    setStatus(`Linked. ${languageName(chosenLanguage)} could not be added, so Hachidori reads Japanese: `
+      + `${describeErrorMessage(languageFailure)} Add it in Settings → Language.`, "error", languageFailure);
+  }
 }
 
 function welcomeView() {
