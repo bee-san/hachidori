@@ -132,9 +132,19 @@
   // arrives first: the list read at the start or a line kept meanwhile. While
   // the list is scrolled to its end it stays there, as lines arrive and as the
   // page around it changes size (the searched text appears after a search).
+  // Only the reader's own scrolling unpins it: a scroll event for the position
+  // follow() set can arrive after the list has shrunk, when it no longer looks
+  // like the end.
   let pinned = true;
-  const follow = () => { if (pinned) list.scrollTop = list.scrollHeight; };
-  list.addEventListener("scroll", () => { pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 24; });
+  let followed = null;
+  const follow = () => {
+    if (!pinned) return;
+    list.scrollTop = list.scrollHeight;
+    followed = list.scrollTop;
+  };
+  list.addEventListener("scroll", () => {
+    if (list.scrollTop !== followed) pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+  });
   new ResizeObserver(follow).observe(list);
   function add(line, newest) {
     if (items.has(line.id)) return;

@@ -609,7 +609,10 @@ try {
   await reopened.frame.waitForFunction(() => [...document.querySelectorAll("#hd-texthooker .hd-th-text")].at(-1)
     ?.textContent === "漢字の本" && document.getElementById("search-query").textContent === "漢字の本",
   { polling: 50, timeout: 15_000 });
-  await settle(200);
+  // A hidden tab runs no resize observer or scroll event: look at it, and
+  // let two frames pass.
+  await reopened.tab.bringToFront();
+  await reopened.frame.evaluate(() => new Promise(done => { requestAnimationFrame(() => requestAnimationFrame(done)); }));
   const followed = await reopened.frame.evaluate(() => {
     const list = document.querySelector("#hd-texthooker ol");
     return { bottom: Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2, overflows: list.scrollHeight > list.clientHeight };
