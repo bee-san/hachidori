@@ -170,8 +170,12 @@ try {
     await tab.goto(`chrome-extension://${extensionId}/search.html`, { waitUntil: "domcontentloaded" });
     await tab.waitForFrame(frameUrl, { timeout: 30_000 });
     const frame = tab.frames().find(candidate => candidate.url() === frameUrl);
-    await frame.waitForFunction(() => !document.getElementById("search-submit").disabled, { polling: 100, timeout: 30_000 });
-    await tab.waitForFunction(() => !document.getElementById("search-clipboard").disabled, { polling: 100, timeout: 30_000 });
+    // The frame's document may still be loading when the frame is found: a
+    // check that threw there would end the wait.
+    await frame.waitForFunction(() => document.getElementById("search-submit")?.disabled === false,
+      { polling: 100, timeout: 30_000 });
+    await tab.waitForFunction(() => document.getElementById("search-clipboard")?.disabled === false,
+      { polling: 100, timeout: 30_000 });
     return { tab, frame, popup: await popupReader(tab, 0, frameUrl) };
   }
   const { tab: search, frame, popup } = await openSearch("search");
