@@ -19,7 +19,7 @@
 //
 // HACHIDORI_WASM_VARIANT chooses the build, as for node-smoke.mjs.
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFixtureZip } from "./make-fixture.mjs";
@@ -221,6 +221,32 @@ check("Arabic text is split at word starts", () => {
 check("Japanese segmentation with its selection is today's", () => {
   same(spans("漢字を読んで食べた。", withLanguage("ja", [japanesePath])), JSON.parse(japaneseOnly[7]).spans, "Japanese spans");
 });
+
+group("every shipped pack loads in this build");
+// extension/vendor/languages holds the packs the extension ships (written by
+// scripts/sync-languages.mjs); a pack that uses a key this build's engine does
+// not know would fail at engine start in every installation that has it.
+{
+  const shipped = join(HERE, "..", "extension", "vendor", "languages");
+  const codes = readdirSync(shipped, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+  check("the build ships at least the Japanese pack", () => ok(codes.includes("ja"), `shipped packs: ${codes.join(", ")}`));
+  for (const code of codes.filter(code => code !== "ja")) {
+    check(`${code} loads, and deinflects its warm-up sample`, () => {
+      const directory = join(shipped, code);
+      const languageJson = readFileSync(join(directory, "language.json"), "utf8");
+      const descriptor = JSON.parse(languageJson);
+      const transformsFile = descriptor.lookup?.transforms;
+      const transformsJson = typeof transformsFile === "string" && transformsFile !== ""
+        ? readFileSync(join(directory, transformsFile), "utf8") : "";
+      ok(loadLanguage(languageJson, transformsJson) === 1, `${code}: ${lastError()}`);
+      const sample = descriptor.host?.sample?.warmup;
+      ok(typeof sample === "string" && sample !== "", `${code}: no host.sample.warmup`);
+      const reply = deinflect(sample, code);
+      ok(Array.isArray(reply?.results) && reply.results.length > 0 && lastError() === "",
+        `${code}: hdw_deinflect gave ${JSON.stringify(reply).slice(0, 200)} ${lastError()}`);
+    });
+  }
+}
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length > 0) process.exitCode = 1;
