@@ -156,7 +156,7 @@ function omitUnchangedFields(fields, existing) {
   return fields;
 }
 
-function fieldsForDecision(prepared, checked) {
+function fieldsForDecision(prepared, checked, request) {
   const target = checked.target;
   if (!target) {
     return {
@@ -168,7 +168,7 @@ function fieldsForDecision(prepared, checked) {
   const canonical = canonicalAnkiFields(prepared.note.fields, prepared.resolved.templates, target.fields);
   // Only the initial write omits unchanged values. Pronunciation enrichment
   // compares its complete desired value with the text-only write it replaces.
-  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, canonical.templates), target.fields);
+  const fields = omitUnchangedFields(overwriteAnkiFields(canonical.fields, target.fields, canonical.templates, { request }), target.fields);
   return {
     fields,
     target,
@@ -338,7 +338,7 @@ export function createAnkiMiningService({
   }
 
   async function preflightReply(request, prepared, result) {
-    const applied = result.canAdd ? fieldsForDecision(prepared, result) : null;
+    const applied = result.canAdd ? fieldsForDecision(prepared, result, request) : null;
     const extra = await preflightExtra({ request, prepared, applied, deferred: false });
     return {
       state: result.state,
@@ -409,7 +409,7 @@ export function createAnkiMiningService({
     if (!checked.canAdd) return { state: checked.state, error: checked.error,
       action: checked.action, noteIds: checked.noteIds };
     const { config, configJson, firstField, note, invoke } = prepared;
-    const { fields, target } = fieldsForDecision(prepared, checked);
+    const { fields, target } = fieldsForDecision(prepared, checked, request);
     if (JSON.stringify(await readConfig(request?.templateId)) !== configJson) throw new Error(CONFIG_CHANGED);
     const writeResources = await beforeWrite({
       request,

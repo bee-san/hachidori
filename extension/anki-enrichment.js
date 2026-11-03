@@ -37,7 +37,7 @@ export async function enrichAnkiNote(context, { audio, render, store }) {
     const file = resources.audioPrepared ? resources.audio : await audio(request, context.config);
     await ensure(file, "pronunciation");
     const rendered = await render(request, templates, `[sound:${file.filename}]`, resources);
-    const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true }) : rendered.fields;
+    const incoming = existingFields ? overwriteAnkiFields(rendered.fields, existingFields, templates, { includeAudio: true, request }) : rendered.fields;
     // Audio work may have taken seconds. Re-read just before updating; never
     // clobber an external edit or append to our already-applied text a second
     // time. AnkiConnect has no CAS, so the final inter-call race remains.
