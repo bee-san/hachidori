@@ -286,8 +286,10 @@ function assertProfileOptions(options, allowInvalidSettings) {
   const { applyOptionsPatch, profiles } = globalThis.HDReaderOptions;
   if (!plainObject(options) || !Array.isArray(options.profiles)) throw invalidProfiles();
   const list = profiles(options);
-  // Every stored profile reads back; one that does not is not a setting.
-  if (list.length !== options.profiles.length || list.length === 0) throw invalidProfiles();
+  // Every stored profile reads back; one that does not is not a setting. In
+  // version 1 a profile's id is its language code (decision 0002).
+  if (list.length !== options.profiles.length || list.length === 0
+      || list.some(profile => profile.id !== profile.language)) throw invalidProfiles();
   if (!allowInvalidSettings && !sameJsonValue(options, applyOptionsPatch(options, {}))) {
     throw new Error("The backup contains invalid reader settings.");
   }

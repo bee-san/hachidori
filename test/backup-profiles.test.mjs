@@ -210,6 +210,12 @@ test("a backup of records with profiles is a version 3 snapshot of their Japanes
   const stale = structuredClone(profiles);
   stale.languages.en.document.text = "run, , changed\n";
   await assert.rejects(assertBackupProfiles(snapshot, stale), /invalid semantics/u);
+  // In version 1 a profile's id is its language code (decision 0002).
+  const renamed = structuredClone(profiles);
+  renamed.options.profiles.find(profile => profile.id === "en").id = "english";
+  renamed.dictionaryState.profiles.english = renamed.dictionaryState.profiles.en;
+  delete renamed.dictionaryState.profiles.en;
+  await assert.rejects(assertBackupProfiles(snapshot, renamed), /invalid language profiles/u);
 });
 
 test("a version 4 archive is version 3 for builds without profiles: the view's packages and nothing more", async () => {
