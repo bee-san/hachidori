@@ -1900,14 +1900,15 @@
       cancelScanDwell();
       dismissLevels(depth, false);
     });
-    // Reading → Activation → Child popups → Click: a primary click on a word in
-    // the definitions opens its child once the press above has retired the
-    // previous one. A press that travels or leaves a selection is a copy, and
-    // links, images, buttons and disclosures keep their own click.
+    // Reading → Activation → Child popups → Click, and on the search page
+    // Reading → Search page → Look up words with a click (#656): a primary
+    // click on a word in the definitions opens its child once the press above
+    // has retired the previous one. A press that travels or leaves a selection
+    // is a copy, and links, images, buttons and disclosures keep their own click.
     popup.addEventListener("click", (event) => {
       const start = press;
       press = null;
-      if (options.definitionLookupMode !== "click" || !start || event.defaultPrevented || hasProtectedNote()
+      if (!definitionClickLookup() || !start || event.defaultPrevented || hasProtectedNote()
           || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX
           || event.target.closest("a, button, summary")) return;
       const selection = shadow.getSelection?.() ?? window.getSelection();
@@ -3370,6 +3371,13 @@
     return options.definitionLookupMode !== "click" && (!definitionKeyGated() || activationPressed);
   }
 
+  // Whether a click on a word in a popup's definitions opens its child: Child
+  // popups → Click a word, or the search page's Look up words with a click
+  // (#656), which hover keeps working beside.
+  function definitionClickLookup() {
+    return options.definitionLookupMode === "click" || (dock !== null && options.searchClickLookup);
+  }
+
   // Reading → Activation → Hover scan delay and Definition hover delay. Only a
   // lookup that needs no key waits: a held key or button, a click, a link or
   // a selection is deliberate. Definitions follow the page unless set.
@@ -3591,19 +3599,7 @@
     const signature = candidateSignature(candidate);
     // Scanning the popup's own word again, pending or shown, keeps the popup
     // and cancels its cursor-exit hide, and ends a dwell on any other word.
-    if (pendingCandidateLookup?.token === rootLevel.lookupToken
-        && pendingCandidateLookup.signature === signature
-        && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) {
-      cancelScanDwell();
-      clearHideTimer();
-      clearCursorExitTimer();
-      return;
-    }
-    if (
-      rootLevel.popup && !rootLevel.popup.hidden && !rootLevel.popup.inert &&
-      rootLevel.activeSignature === signature &&
-      sameAnchorNode(candidate, rootLevel.activeCandidate)
-    ) {
+    if (rootHolds(candidate, signature)) {
       cancelScanDwell();
       clearHideTimer();
       clearCursorExitTimer();
@@ -3612,6 +3608,15 @@
     clearHideTimer();
     if (!dwellElapsed(candidate, null, signature)) return;
     lookupCandidate(candidate, signature);
+  }
+
+  // Whether the root popup is loading or shows the word at `candidate`.
+  function rootHolds(candidate, signature = candidateSignature(candidate)) {
+    if (pendingCandidateLookup?.token === rootLevel.lookupToken
+        && pendingCandidateLookup.signature === signature
+        && sameAnchorNode(candidate, pendingCandidateLookup.candidate)) return true;
+    return Boolean(rootLevel.popup) && !rootLevel.popup.hidden && !rootLevel.popup.inert
+      && rootLevel.activeSignature === signature && sameAnchorNode(candidate, rootLevel.activeCandidate);
   }
 
   function onPopupMouseMove(event, level) {
@@ -4003,6 +4008,32 @@
     if (!candidate) return Promise.resolve(false);
     dismissPopups();
     return runLookup(candidate);
+  }
+
+  // Reading → Search page → Look up words with a click (#656): a primary click
+  // on a word of `element`, the query the search page echoes, shows that
+  // word's results in the results area, as a click in Yomitan's query parser
+  // does (yomidevs/yomitan@ac1d839 ext/js/display/query-parser.js,
+  // searchOnClick). The word is looked up as the activation key would look it
+  // up, Japanese text only included, and while lookups are off, as a search
+  // is. A press that travels or leaves a selection is a copy, and a Note being
+  // written or saved keeps the result.
+  function lookUpOnClick(element) {
+    let press = null;
+    element.addEventListener("mousedown", (event) => {
+      press = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+    });
+    element.addEventListener("click", (event) => {
+      const start = press;
+      press = null;
+      if (disposed || !dock || !options.searchClickLookup || !start || event.defaultPrevented || hasProtectedNote()
+          || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX) return;
+      if (window.getSelection()?.isCollapsed === false) return;
+      const candidate = resolveCandidate(event.clientX, event.clientY);
+      if (!candidate || rootHolds(candidate)) return;
+      dismissPopups();
+      lookupCandidate(candidate);
+    });
   }
 
   // Yomitan's isTextLookupWorthy, for the search page's clipboard monitor
@@ -4489,8 +4520,9 @@
     // and the search page before it docks the results and takes searches.
     let storageReady;
     // The search page's clipboard monitor searches only lookup-worthy text, and
-    // nothing while a Note is being written or saved (#639).
-    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search, isLookupWorthy,
+    // nothing while a Note is being written or saved (#639). Its echoed query
+    // takes click lookups (#656).
+    const reader = Object.freeze({ scanSelectedText, dock: dockResults, search, lookUpOnClick, isLookupWorthy,
       holdsNote: () => hasProtectedNote() });
     globalThis.HDReaderReady = new Promise(resolve => {
       storageReady = () => { resolveStoredOptions(); resolve(reader); };

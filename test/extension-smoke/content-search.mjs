@@ -236,10 +236,11 @@ async function dockedKanjiCase() {
 }
 
 // Reading → Search page → Look up words with a click (#656). The harness's
-// stored lookup settings, so turning the switch changes nothing else and the
-// docked result is not looked up again.
+// stored lookup settings, so turning the switch does not look the docked
+// result up again, in the default lookup mode, where a selection waits for
+// the activation key.
 const STORED = { frequencyDictionary: "Frequency A", frequencyOrder: "descending",
-  kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, modifier: "none", scanLength: 9 };
+  kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, scanLength: 9, lookupMode: "activationSticky" };
 
 // A pointer press on `target` at `from`, released at `to`.
 function click(window, target, from, to = from) {

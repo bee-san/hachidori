@@ -154,6 +154,8 @@ try {
   input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
+  // Reading → Search page → Look up words with a click (#656).
+  reader.lookUpOnClick(query);
   if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
