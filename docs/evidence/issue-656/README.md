@@ -27,4 +27,8 @@ Scripts: `probe.mjs` and `ffprobe.test.mjs` asked Chrome 152 and Firefox 159
 which window sizes `windows.create` accepts; `order.mjs` logged, in 8 loads,
 that the frame lays out its invisible copy of the menu before it tells
 search.html it is shown (copy, then shown, 0.2-3.4 ms apart, every time);
-`preview.mjs`, `keys.mjs`, `evidence.mjs` and `contrast.mjs` produced the rest.
+`conflict.mjs` made another write land between the switch's read and its
+write: the switch's first write met the conflict, its retry wrote the choice,
+and the other write and the AnkiConnect key were kept; a failed write left
+the stored Template and the menu went back to it. `preview.mjs`, `keys.mjs`,
+`evidence.mjs` and `contrast.mjs` produced the rest.
