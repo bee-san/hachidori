@@ -2147,8 +2147,9 @@ function profileRequestError(text, code) {
 // read back (docs/languages.md 5.2): the committed state is the expected one,
 // or its single-profile conversion, at the next revision; the options hold
 // the languages they should, as the read reports them; an erased language's
-// personal document is empty one revision up. The counts and marks of an
-// erase are written in the same storage write as these.
+// personal document is empty one revision up, or gone with the `languages`
+// entries when the erase converted the records back. The counts and marks of
+// an erase are written in the same storage write as these.
 async function profileCasReadback(commitError, baseRevision, next, wantsLanguages, erased = null) {
   let snapshot;
   let document = null;
@@ -2165,7 +2166,8 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
       ? sameJsonValue(committed.dictionaries, expected.dictionaries) && sameJsonValue(committed.profiles, expected.profiles)
         && wantsLanguages(recordLanguages)
       : sameJsonValue(committed, profileState.dictionaryStateWithoutProfiles(expected)))
-    && (erased === null || (document.text === "" && document.revision === erased.documentRevision + 1));
+    && (erased === null || (document.text === "" && (document.revision === erased.documentRevision + 1
+      || (!hasDictionaryProfiles(committed) && document.revision === 0))));
   if (matches) {
     return { ok: true, state: committed, converted: !profileRecords, ...(profileRecords ? { languages: recordLanguages } : {}) };
   }

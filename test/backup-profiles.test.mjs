@@ -551,7 +551,9 @@ function servePacks() {
   };
 }
 
-async function engineInstallation() {
+// `lose(message)` returning true loses that worker reply after the worker
+// answered it, as a restarted service worker would.
+async function engineInstallation({ lose = () => false } = {}) {
   engineCounter += 1;
   const tag = `backup-profiles-${engineCounter}`;
   const bus = makeBus(), storage = makeStorage(), alarms = makeAlarms();
@@ -565,7 +567,11 @@ async function engineInstallation() {
   globalThis.HDLanguages = BUILD;
   const { default: createHoshidicts } = await import(`file://${resolve(EXTENSION, "vendor", "hoshidicts.mjs").replace(/\\/gu, "/")}?${tag}`);
   let engine = null;
-  engineService.configureEngineService(message => engineChrome.runtime.sendMessage(message), {
+  engineService.configureEngineService(async message => {
+    const reply = await engineChrome.runtime.sendMessage(message);
+    if (lose(message)) throw new Error(`the ${message.type} reply was lost`);
+    return reply;
+  }, {
     createHoshidicts: async (...args) => {
       engine = await createHoshidicts(...args);
       return engine;
@@ -602,8 +608,8 @@ async function engineInstallation() {
 
 const englishTerms = [["run", "", "", "", 10, ["to move fast"], 1, ""], ["walk", "", "", "", 5, ["to move slowly"], 2, ""]];
 
-async function englishInstallation() {
-  const installation = await engineInstallation();
+async function englishInstallation(options) {
+  const installation = await engineInstallation(options);
   const { accepted, worker } = installation;
   await accepted("hd_import", { fileName: "japanese.zip",
     blobUrl: createObjectURL(buildTitledZip("Japanese words", { indexOverrides: { sourceLanguage: "ja", targetLanguage: "en" } })) });
@@ -702,4 +708,27 @@ test("an automatic snapshot with profiles keeps another language's personal pack
   assert.equal(restored.state.dictionaries.find(entry => entry.id === english.id).path, kept.path);
   assert.equal(restored.document.languages.en.text, ENTRIES.en.text);
   assert.equal(restored.document.languages.en.revision, before.document.revision + 2);
+});
+
+// AGENTS.md, Transaction boundaries: a lost reply is read back before failure
+// is reported. Erasing the last other language converts the records back, so
+// its personal document is gone rather than one revision up (design 5.2).
+test("an erase that converts the records back reports its commit after a lost hd_profile_cas reply", async () => {
+  let armed = false;
+  const { accepted, request, worker, storage } = await engineInstallation({
+    lose: message => armed && message.type === "hd_profile_cas" && !(armed = false) });
+  await accepted("hd_import", { fileName: "japanese.zip",
+    blobUrl: createObjectURL(buildTitledZip("Japanese words", { indexOverrides: { sourceLanguage: "ja", targetLanguage: "en" } })) });
+  await accepted("hd_profile_add", { language: "en", copyFrom: "ja" });
+  await accepted("hd_custom_save", { language: "en", baseDocumentRevision: 0, text: ENTRIES.en.text });
+  await accepted("hd_import", { fileName: "english.zip", profileId: "en",
+    blobUrl: createObjectURL(buildTitledZip("English words", { terms: englishTerms,
+      indexOverrides: { sourceLanguage: "en", targetLanguage: "en" } })) });
+  const before = await worker({ type: "hd_custom_read", profileId: "en" });
+  armed = true;
+  const reply = await request("hd_profile_remove", { profileId: "en", erase: true, baseDocumentRevision: before.document.revision });
+  assert.equal(armed, false, "the reply was lost");
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.equal(storage.raw.get("dictionaryState").schemaVersion, 1);
+  assert.equal((await request("hd_status")).dictionaryCount, 1, "only the Japanese dictionary stays loaded");
 });
