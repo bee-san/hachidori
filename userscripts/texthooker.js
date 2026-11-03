@@ -18,9 +18,10 @@
 // It uses only HDSearchHistory, the search page's public history API, and
 // does nothing on other pages, where Custom JavaScript runs too. Inspired by
 // texthooker-ui (https://github.com/Renji-XD/texthooker-ui, MIT, Copyright (c)
-// 2023 Renji-xD); no code is taken from it. It has no websocket connection:
-// the lines come from the search page's history, which the Clipboard monitor
-// fills, and Hachidori's pages make no network connections of their own.
+// 2023 Renji-xD); no code is taken from it. It has no websocket client, as
+// texthooker-ui has for Textractor's and mpv's plugins: the lines come from the
+// search page's history, which the Clipboard monitor fills with what those
+// programs copy, and the search page opens no connection of its own.
 (function () {
   "use strict";
   const history = globalThis.HDSearchHistory;

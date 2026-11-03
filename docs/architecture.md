@@ -859,7 +859,7 @@ hotkeys, so here that gesture is an ordinary binding.
 Several Yomitan actions are omitted because Hachidori has no matching feature:
 
 - profiles
-- the search scope and its Focus search box, which the [search page](#search-page)
+- the search scope's Focus search box, which the [search page](#search-page)
   does itself on Escape
 - card-format arguments
 - copying the host selection, which the in-page popup never needs
@@ -885,7 +885,11 @@ isolation, and Ctrl+wheel stays with the browser unless it is bound.
 
 Yomitan's popup scope means a popup that has focus. Hachidori's hover popup never
 takes focus, so here the popup scope means a popup is open or its lookup is
-pending. The page scope applies anywhere. Settings offers the scopes Yomitan's
+pending. The page scope applies anywhere. The search scope is the search
+page's own keys ([search history](search-history.md#keys)): Up and Down walk
+its box's history, and in its searched text the arrows move the cursor and
+Enter runs Add note. Its default rows are the plain arrows and Enter, and a
+keybind list saved before the scope existed gains them when read. Settings offers the scopes Yomitan's
 controller offers for each action. Toggle option adds the page scope, because no
 popup exists while lookups are off.
 
@@ -1169,6 +1173,18 @@ Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
 extension page, with its own API, where the script does not run and the
 channel carries only the debug log and the Clipboard monitor.
 
+**History.** The page keeps each line it searches, typed, pasted or read by
+the Clipboard monitor, in the IndexedDB database `hachidori-search-history`,
+which `search.html` serves to its frame and Settings counts, limits and clears
+(`search-history.js`). Up and Down in the box walk the lines as a shell's do.
+The searched text takes focus after a search; there the arrow keys move Rubi's
+cursor by word and row (`search-lines.js`, a port of Rubi's
+`core/text_rows.c`), each word looked up, and past the top row on to earlier
+lines between their neighbours' dimmed rows, and Enter adds the word to Anki.
+User scripts reach the lines through `HDSearchHistory`, and
+`userscripts/texthooker.js` turns the page into a texthooker view. The lines
+are in no backup. [Search history](search-history.md) has the details.
+
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
 the setting for the maximum clipboard search length; profiles, and so the
@@ -1177,9 +1193,10 @@ automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
 browser's history; the popup window's position and state settings;
 Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
-after a search, which lets PageDown scroll them. Here focus stays on the page,
-so a typed character still goes into the box; Alt+ArrowUp and Alt+ArrowDown
-move between the result's entries and Tab reaches its controls.
+after a search, which lets PageDown scroll them. Here focus goes to the
+searched text, whose arrow keys move its cursor, so a typed character still
+goes into the box; Alt+ArrowUp and Alt+ArrowDown move between the result's
+entries and Tab reaches its controls.
 
 ![The search page with a real result, the toolbar menu and the popup window](assets/search-page.png)
 
@@ -3954,6 +3971,7 @@ uncertain write leaves it for inspection and an explicit retry.
 | Capture tab/document routing identities | service worker; recovered by validating the surviving offscreen host and reader | transient memory only |
 | Watched DOM nodes/ranges, cue/DOM observers, and collector epochs | linked content script | transient memory only |
 | Debug log: redacted warnings, errors, failed requests and fetches, shown errors and named page actions, newest 5,000 entries within 2 MiB | each extension context appends its own entries (`debug-log.js`); Get debug info reads them | IndexedDB database `hachidori-debug-log` (`events` records, `meta` totals); each context also keeps its newest 200 in memory |
+| Search history: each line the search page searched, with its time, source and window, newest `searchHistoryLimit` | `search.html` for its frame, and Settings for the count, a lowered limit and Clear history (`search-history.js`); a `BroadcastChannel` tells the other pages | IndexedDB database `hachidori-search-history` (`lines` records); not in backups ([search history](search-history.md#where-the-lines-are-kept)) |
 
 The debug log is the one store every context writes directly: each context's
 entries from one task go in one transaction that also updates the ring's

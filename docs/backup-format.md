@@ -14,6 +14,7 @@ reader/Design/audio/Anki settings, update schedules, local lookup counts and the
 words marked as known or ignored for word highlighting. The archive is
 unencrypted and can contain personal notes, custom URLs and API keys. Keep it
 private. It does not contain browser history, downloads, cached runtime results,
+the search page's line history ([why](search-history.md#where-the-lines-are-kept)),
 or Anki's own collection/media database.
 
 Update eligibility is preserved, not inferred from Yomitan's `isUpdatable` flag
