@@ -360,6 +360,7 @@ const PLANNED = [
   "Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA",
   "a later entry shows the pitch accent dictionaries it shows on its own after twelve frequency tags",
   "a word only frequency and pitch dictionaries have is the first entry, without definitions, only while Settings asks for it",
+  "a reading only frequency and pitch dictionaries have follows the word a dictionary defines, only while Settings asks for it (#658)",
   "external dictionary Enter activation creates one safe browser tab through the extension",
   "a custom link's %s is the hovered or selected word's sentence without ruby readings",
   "an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup",
