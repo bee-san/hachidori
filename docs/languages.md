@@ -1068,8 +1068,11 @@ Every physical margin, padding and border inside glossary content becomes
 logical (`padding-left` → `padding-inline-start` and so on, in `reader.css`
 and the themes' glossary rules), including the negative margin that lets
 tables inside disclosures reach into the indent, the external-link icon's
-margin and Crystal's example rule. The logical forms compute to today's values
-left to right.
+margin and Crystal's example rule. The logical forms apply only in marked
+popups (`:where(.gsm-hoshidicts-popup[data-hd-language])`, at each rule's base
+specificity); the physical rules stay as they are for a popup without
+profiles, so a Japanese-only popup on a right-to-left page, which inherits the
+page's direction (section 21), lays out exactly as before.
 
 ### 10.3 Language of glossary text
 

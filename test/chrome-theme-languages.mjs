@@ -63,8 +63,10 @@ function pageHarness() {
     popup.className = "gsm-hoshidicts-popup";
     Object.assign(popup.style, { left: "20px", top: "20px", width: "560px", height: "760px" });
     shadow.append(popup);
-    const language = HDThemeHost.createLanguage(packs[profile], { marked: true, packSettings: packSettings ?? scenario.packSettings,
-      dictionaries: scenario.dictionaries, packFor: code => packs[code] ?? null });
+    // `extra.unmarked`: the popup of an installation without profiles (design 4.5).
+    const language = extra.unmarked ? HDThemeHost.createLanguage()
+      : HDThemeHost.createLanguage(packs[profile], { marked: true, packSettings: packSettings ?? scenario.packSettings,
+        dictionaries: scenario.dictionaries, packFor: code => packs[code] ?? null });
     const clicks = [];
     const view = themeHost.createView({ document, window, popup, language, positionPopup() {},
       appendExpressionRuby: HDGlossary.appendExpressionRuby, createPronunciationPitchAccent: HDGlossary.createPronunciationPitchAccent,
@@ -286,6 +288,16 @@ function pageHarness() {
     return Boolean(tab);
   };
   window.showMorePressed = () => state.showMorePressed === true;
+
+  // The popup's alignment and the indents of its numbered or bulleted lists.
+  window.unmarkedLayout = () => {
+    const view = state.popup.ownerDocument.defaultView;
+    const lists = [...state.popup.querySelectorAll(".gloss-list, .definition-list, .gloss-sc-ul, .gloss-sc-ol")]
+      .map(list => view.getComputedStyle(list))
+      .filter(style => style.listStyleType !== "none" && style.display !== "inline")
+      .map(style => [style.paddingLeft, style.paddingRight]);
+    return { marked: state.popup.hasAttribute("data-hd-language"), textAlign: view.getComputedStyle(state.popup).textAlign, lists };
+  };
 }
 
 const server = createServer((request, response) => {
@@ -452,6 +464,25 @@ try {
           `${JSON.stringify(ltr[part])} ${JSON.stringify(japanese[part])}`);
       }
     }
+  }
+  // A Japanese-only popup (no profiles, so unmarked) on a right-to-left page keeps
+  // today's physical layout (design 4.5; logical forms apply only in marked
+  // popups): the themes' left alignment, and every list indent the stylesheets
+  // set on the left as on a left-to-right page. Lists that keep the browser's
+  // own 40px indent move with the page's direction, as they always did.
+  for (const { theme, variant } of runs.filter(run => run.theme !== "legacy")) {
+    const label = variant === "auto" ? theme : `${theme}-${variant}`;
+    const layouts = {};
+    for (const [name, dir] of [["ltr", "ltr"], ["rtl", "rtl"]]) {
+      await page.goto(`${origin}/page?lang=${name === "rtl" ? "ar" : "ja"}&dir=${dir}`);
+      await page.evaluate(config => window.renderScenario(config),
+        { theme, variant, mode: "declared", profile: "ja", packs: PACKS, scenario: SCENARIOS.ja, extra: { unmarked: true } });
+      layouts[name] = await page.evaluate(() => window.unmarkedLayout());
+    }
+    const { ltr, rtl } = layouts;
+    const indents = ltr.lists.every(([left], index) => left === "40px" || rtl.lists[index]?.[0] === left);
+    check(`${chromeName} ${label} unmarked Japanese on a right-to-left page: today's physical layout`,
+      !rtl.marked && (theme === "default" || rtl.textAlign === "left") && indents, JSON.stringify(layouts));
   }
   // An undeclared theme outside Japanese: character clicks are ignored (11.4).
   for (const [profile, expected] of [["zh", 0], ["ja", 1]]) {

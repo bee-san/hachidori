@@ -2920,27 +2920,25 @@ html[data-hoshidicts-theme="girlypop"],
  * them. Hachidori's own adjustments are marked. */
 .definition-list {
   margin: 0;
-  padding: 0;
-  padding-inline-start: var(--list-padding1);
+  padding: 0 0 0 var(--list-padding1);
   list-style-type: decimal;
 }
 
 .definition-list[data-count="0"],
 .definition-list[data-count="1"] {
-  padding-inline-start: 0;
+  padding-left: 0;
   list-style-type: none;
 }
 
 .gloss-list {
   margin: 0;
-  padding: 0;
-  padding-inline-start: var(--list-padding2);
+  padding: 0 0 0 var(--list-padding2);
   list-style-type: circle;
 }
 
 .gloss-list[data-count="0"],
 .gloss-list[data-count="1"] {
-  padding-inline-start: 0;
+  padding-left: 0;
   list-style-type: none;
 }
 
@@ -3020,7 +3018,7 @@ html[data-hoshidicts-theme="girlypop"],
   vertical-align: middle;
   width: calc(16em / var(--font-size-no-units));
   height: calc(16em / var(--font-size-no-units));
-  margin-inline-start: 0.25em;
+  margin-left: 0.25em;
   position: relative;
 }
 
@@ -3055,18 +3053,18 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gloss-sc-ol,
 .gloss-sc-ul {
-  padding-inline-start: var(--list-padding2);
+  padding-left: var(--list-padding2);
 }
 
 .gloss-sc-details {
-  padding-inline-start: var(--list-padding1);
+  padding-left: var(--list-padding1);
 }
 
 .gloss-sc-details > .gloss-sc-table-container {
   /* Include the disclosure indent in the scrollport: dictionary-authored
      negative table margins (NHK-pitch) must not clip the first column. */
-  margin-inline-start: calc(-1 * var(--list-padding1));
-  padding-inline-start: var(--list-padding1);
+  margin-left: calc(-1 * var(--list-padding1));
+  padding-left: var(--list-padding1);
   max-width: none;
 }
 
@@ -3114,7 +3112,7 @@ html[data-hoshidicts-theme="girlypop"],
 :host([data-hoshidicts-glossary-layout="compact"]) .gloss-sc-ul[data-sc-content="glossary"] {
   display: inline;
   list-style: none;
-  padding-inline-start: 0;
+  padding-left: 0;
 }
 
 :host([data-hoshidicts-glossary-layout="compact"]) .gloss-item:not(:first-child)::before,
@@ -3504,7 +3502,7 @@ html[data-hoshidicts-theme="girlypop"],
 
 .gsm-hoshidicts-kanji-meanings {
   margin: var(--hd-space-1) 0 var(--hd-space-3);
-  padding-inline-start: 22px;
+  padding-left: 22px;
 }
 
 .gsm-hoshidicts-kanji-stats > summary {
@@ -3527,3 +3525,22 @@ html[data-hoshidicts-theme="girlypop"],
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* Logical spacing and start alignment apply only in marked popups (records
+   with profiles, docs/languages.md 10.1-10.2). A popup without profiles keeps
+   the physical rules above, so a Japanese-only popup on a right-to-left page
+   lays out exactly as before. :where() keeps each rule at its base specificity. */
+:where(.gsm-hoshidicts-popup[data-hd-language]) .definition-list { padding: 0; padding-inline-start: var(--list-padding1); }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .definition-list[data-count="0"],
+:where(.gsm-hoshidicts-popup[data-hd-language]) .definition-list[data-count="1"] { padding-inline-start: 0; }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-list { padding: 0; padding-inline-start: var(--list-padding2); }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-list[data-count="0"],
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-list[data-count="1"] { padding-inline-start: 0; }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gsm-hoshidicts-glossary-content .gloss-link-external-icon { margin-left: 0; margin-inline-start: 0.25em; }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-sc-ol,
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-sc-ul { padding-left: 0; padding-inline-start: var(--list-padding2); }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-sc-details { padding-left: 0; padding-inline-start: var(--list-padding1); }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-sc-details > .gloss-sc-table-container { margin-left: 0; padding-left: 0;
+  margin-inline-start: calc(-1 * var(--list-padding1)); padding-inline-start: var(--list-padding1); }
+:host([data-hoshidicts-glossary-layout="compact"]) :where(.gsm-hoshidicts-popup[data-hd-language]) .gloss-sc-ul[data-sc-content="glossary"] { padding-inline-start: 0; }
+:where(.gsm-hoshidicts-popup[data-hd-language]) .gsm-hoshidicts-kanji-meanings { padding-left: 0; padding-inline-start: 22px; }
