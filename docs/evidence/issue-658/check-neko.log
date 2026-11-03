@@ -1,0 +1,11 @@
+inputs: 39997
+first result differs: 0
+leading metadata-only results differ: 0
+defined order differs: 0
+defined cut by max_results: 1195
+base metadata result missing: 0
+length order broken: 0
+metadata before defined at equal length: 0
+inputs with leading (longer) metadata-only results, base: 1387
+inputs with extra metadata-only results: 12436
+extra metadata-only results: 16656

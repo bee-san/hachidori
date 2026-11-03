@@ -1,0 +1,107 @@
+Test project /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/build-merge
+      Start 18: json-skip-scalar
+      Start 17: json-skip-simd
+      Start 13: ja-lookup-parity
+      Start 31: open-dict-files
+      Start 12: ja-process-parity
+      Start 47: language-options-default
+      Start 39: cli-languages
+      Start 32: open-dict-reads
+ 1/51 Test #32: open-dict-reads ..................   Passed    0.39 sec
+      Start 11: ja-deinflect-parity
+ 2/51 Test #39: cli-languages ....................   Passed    0.50 sec
+      Start 37: mdict-import
+ 3/51 Test #47: language-options-default .........   Passed    0.62 sec
+      Start 42: check-yomitan-cli
+ 4/51 Test #12: ja-process-parity ................   Passed    0.63 sec
+      Start 35: mdict-reader
+ 5/51 Test #11: ja-deinflect-parity ..............   Passed    0.36 sec
+      Start 14: form-of
+ 6/51 Test #35: mdict-reader .....................   Passed    0.24 sec
+      Start 22: lookup-order
+ 7/51 Test #37: mdict-import .....................   Passed    0.38 sec
+      Start  4: language-es
+ 8/51 Test #14: form-of ..........................   Passed    0.15 sec
+      Start 41: cli-untagged-terms
+ 9/51 Test #42: check-yomitan-cli ................   Passed    0.32 sec
+      Start 40: cli-form-of
+10/51 Test #22: lookup-order .....................   Passed    0.17 sec
+      Start  8: language-vi
+11/51 Test #41: cli-untagged-terms ...............   Passed    0.14 sec
+      Start 20: languages
+12/51 Test  #4: language-es ......................   Passed    0.15 sec
+      Start  7: language-ko
+13/51 Test #40: cli-form-of ......................   Passed    0.12 sec
+      Start  5: language-fr
+14/51 Test  #8: language-vi ......................   Passed    0.13 sec
+      Start  3: language-en
+15/51 Test #20: languages ........................   Passed    0.12 sec
+      Start  2: language-aii
+16/51 Test  #5: language-fr ......................   Passed    0.11 sec
+      Start 15: untagged-terms
+17/51 Test  #7: language-ko ......................   Passed    0.13 sec
+      Start 38: import-equivalence
+18/51 Test #38: import-equivalence ...............   Passed    0.06 sec
+      Start 30: dictionary-storage
+19/51 Test #15: untagged-terms ...................   Passed    0.10 sec
+      Start  9: language-zh
+20/51 Test  #2: language-aii .....................   Passed    0.11 sec
+      Start 16: c-smoke
+21/51 Test  #3: language-en ......................   Passed    0.13 sec
+      Start 27: title-folder
+22/51 Test #30: dictionary-storage ...............   Passed    0.06 sec
+      Start 21: score-roundtrip
+23/51 Test #27: title-folder .....................   Passed    0.03 sec
+      Start 29: long-key-scan
+24/51 Test  #9: language-zh ......................   Passed    0.06 sec
+      Start 25: zip64
+25/51 Test #21: score-roundtrip ..................   Passed    0.03 sec
+      Start 10: ja-export-legacy
+26/51 Test #16: c-smoke ..........................   Passed    0.06 sec
+      Start 28: data-descriptor
+27/51 Test #28: data-descriptor ..................   Passed    0.02 sec
+      Start 26: escaped-strings
+28/51 Test #10: ja-export-legacy .................   Passed    0.02 sec
+      Start 23: tag-bank
+29/51 Test #25: zip64 ............................   Passed    0.03 sec
+      Start  6: language-ja
+30/51 Test #29: long-key-scan ....................   Passed    0.04 sec
+      Start 49: language-untagged-terms-filter
+31/51 Test  #6: language-ja ......................   Passed    0.02 sec
+      Start 50: language-untagged-terms-pass
+32/51 Test #23: tag-bank .........................   Passed    0.03 sec
+      Start 46: language-verb-guards-undefined
+33/51 Test #26: escaped-strings ..................   Passed    0.03 sec
+      Start 24: kanji-meta
+34/51 Test #49: language-untagged-terms-filter ...   Passed    0.02 sec
+      Start 51: language-untagged-terms-value
+35/51 Test #50: language-untagged-terms-pass .....   Passed    0.02 sec
+      Start 43: language-needs-corpus
+36/51 Test #46: language-verb-guards-undefined ...   Passed    0.02 sec
+37/51 Test #51: language-untagged-terms-value ....   Passed    0.01 sec
+      Start 48: language-form-of-value
+      Start  1: deinflector
+38/51 Test #24: kanji-meta .......................   Passed    0.02 sec
+      Start 44: language-settings-own-rules
+39/51 Test #43: language-needs-corpus ............   Passed    0.01 sec
+      Start 33: paged-hash
+40/51 Test #48: language-form-of-value ...........   Passed    0.01 sec
+      Start 45: language-verb-guards
+41/51 Test  #1: deinflector ......................   Passed    0.01 sec
+      Start 34: deps-smoke
+42/51 Test #33: paged-hash .......................   Passed    0.01 sec
+      Start 36: html-to-structured
+43/51 Test #44: language-settings-own-rules ......   Passed    0.01 sec
+      Start 19: builtins
+44/51 Test #45: language-verb-guards .............   Passed    0.01 sec
+45/51 Test #36: html-to-structured ...............   Passed    0.00 sec
+46/51 Test #19: builtins .........................   Passed    0.00 sec
+47/51 Test #34: deps-smoke .......................   Passed    0.01 sec
+48/51 Test #31: open-dict-files ..................   Passed    2.27 sec
+49/51 Test #17: json-skip-simd ...................   Passed   10.32 sec
+50/51 Test #18: json-skip-scalar .................   Passed   12.78 sec
+51/51 Test #13: ja-lookup-parity .................   Passed   54.65 sec
+
+100% tests passed, 0 tests failed out of 51
+
+Total Test time (real) =  54.66 sec

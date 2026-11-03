@@ -1,0 +1,78 @@
+emcmake: cmake -S /local/home/skerraut/herd-synth3/clones/hachi-issue-658/wasm -B /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=ON -DCMAKE_TOOLCHAIN_FILE=/local/home/skerraut/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=/local/home/skerraut/emsdk/node/24.19.0_64bit/bin/node in directory /local/home/skerraut/herd-synth3/clones/hachi-issue-658
+-- ZSTD VERSION: 1.6.0
+-- CMAKE_INSTALL_PREFIX: /local/home/skerraut/emsdk/upstream/emscripten/cache/sysroot
+-- CMAKE_INSTALL_LIBDIR: lib
+-- ZSTD_LEGACY_SUPPORT disabled
+-- Multi-threading support enabled
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build
+[ 14%] Built target utf8proc
+[ 24%] Built target libdeflate_static
+[ 37%] Built target gumbo
+[ 72%] Built target libzstd_static
+[ 74%] Built target lzokay
+[ 75%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/query.cpp.o
+[ 76%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/lookup.cpp.o
+[ 77%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/hoshidicts_c.cpp.o
+[ 78%] Linking CXX static library libhoshidicts.a
+[ 97%] Built target hoshidicts
+[ 98%] Building CXX object CMakeFiles/hoshidicts_wasm.dir/bindings.cpp.o
+[100%] Linking CXX executable hoshidicts-threaded.mjs
+clang: warning: future releases of the clang compiler will prefer GCC installations containing libstdc++ include directories; '/usr/lib/gcc/x86_64-amazon-linux/11' would be chosen over '/usr/lib/gcc/x86_64-amazon-linux/14' [-Wgcc-install-dir-libstdcxx]
+em++: warning: -pthread + ALLOW_MEMORY_GROWTH may run non-wasm code slowly, see https://github.com/WebAssembly/design/issues/1271 [-Wpthreads-mem-growth]
+[100%] Built target hoshidicts_wasm
+emcmake: cmake -S /local/home/skerraut/herd-synth3/clones/hachi-issue-658/wasm -B /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build-idbfs -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=ON -DHACHIDORI_WASMFS=OFF -DCMAKE_TOOLCHAIN_FILE=/local/home/skerraut/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=/local/home/skerraut/emsdk/node/24.19.0_64bit/bin/node in directory /local/home/skerraut/herd-synth3/clones/hachi-issue-658
+-- ZSTD VERSION: 1.6.0
+-- CMAKE_INSTALL_PREFIX: /local/home/skerraut/emsdk/upstream/emscripten/cache/sysroot
+-- CMAKE_INSTALL_LIBDIR: lib
+-- ZSTD_LEGACY_SUPPORT disabled
+-- Multi-threading support enabled
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build-idbfs
+[  2%] Built target utf8proc
+[ 20%] Built target libdeflate_static
+[ 37%] Built target gumbo
+[ 41%] Built target lzokay
+[ 74%] Built target libzstd_static
+[ 75%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/query.cpp.o
+[ 76%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/lookup.cpp.o
+[ 77%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/hoshidicts_c.cpp.o
+[ 78%] Linking CXX static library libhoshidicts.a
+[ 97%] Built target hoshidicts
+[ 98%] Building CXX object CMakeFiles/hoshidicts_wasm.dir/bindings.cpp.o
+[100%] Linking CXX executable hoshidicts-threaded-idbfs.mjs
+clang: warning: future releases of the clang compiler will prefer GCC installations containing libstdc++ include directories; '/usr/lib/gcc/x86_64-amazon-linux/11' would be chosen over '/usr/lib/gcc/x86_64-amazon-linux/14' [-Wgcc-install-dir-libstdcxx]
+em++: warning: -pthread + ALLOW_MEMORY_GROWTH may run non-wasm code slowly, see https://github.com/WebAssembly/design/issues/1271 [-Wpthreads-mem-growth]
+[100%] Built target hoshidicts_wasm
+emcmake: cmake -S /local/home/skerraut/herd-synth3/clones/hachi-issue-658/wasm -B /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build-fallback -DCMAKE_BUILD_TYPE=Release -DHACHIDORI_PTHREADS=OFF -DHACHIDORI_WASMFS=ON -DCMAKE_TOOLCHAIN_FILE=/local/home/skerraut/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CROSSCOMPILING_EMULATOR=/local/home/skerraut/emsdk/node/24.19.0_64bit/bin/node in directory /local/home/skerraut/herd-synth3/clones/hachi-issue-658
+-- ZSTD VERSION: 1.6.0
+-- CMAKE_INSTALL_PREFIX: /local/home/skerraut/emsdk/upstream/emscripten/cache/sysroot
+-- CMAKE_INSTALL_LIBDIR: lib
+-- ZSTD_LEGACY_SUPPORT disabled
+-- Multi-threading support enabled
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /local/home/skerraut/herd-synth3/reports/hachi-issue-658-evidence/wasm-build-fallback
+[  2%] Built target utf8proc
+[ 15%] Built target libdeflate_static
+[ 37%] Built target gumbo
+[ 40%] Built target lzokay
+[ 74%] Built target libzstd_static
+[ 75%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/query.cpp.o
+[ 76%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/lookup.cpp.o
+[ 77%] Building CXX object hoshidicts/CMakeFiles/hoshidicts.dir/src/hoshidicts_c.cpp.o
+[ 78%] Linking CXX static library libhoshidicts.a
+[ 97%] Built target hoshidicts
+[ 98%] Building CXX object CMakeFiles/hoshidicts_wasm.dir/bindings.cpp.o
+[100%] Linking CXX executable hoshidicts.mjs
+clang: warning: future releases of the clang compiler will prefer GCC installations containing libstdc++ include directories; '/usr/lib/gcc/x86_64-amazon-linux/11' would be chosen over '/usr/lib/gcc/x86_64-amazon-linux/14' [-Wgcc-install-dir-libstdcxx]
+[100%] Built target hoshidicts_wasm
+-rw-r--r--. 1 skerraut amazon   98010 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts-threaded-idbfs.mjs
+-rw-r--r--. 1 skerraut amazon 2932314 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts-threaded-idbfs.wasm
+-rw-r--r--. 1 skerraut amazon   63547 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts-threaded.mjs
+-rw-r--r--. 1 skerraut amazon 3022508 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts-threaded.wasm
+-rw-r--r--. 1 skerraut amazon   79510 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts.mjs
+-rw-r--r--. 1 skerraut amazon 2863175 Nov  3 20:40 /local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/vendor/hoshidicts.wasm
+emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.9 (4e4223852a0835923411059a3929907d7df1232e)

@@ -1,0 +1,5 @@
+base-off: median 16072 ms (+0.0% vs base-off), min 15772, max 16636
+fix-off: median 16136 ms (+0.4% vs base-off), min 15751, max 16978
+base-on: median 16714 ms (+4.0% vs base-off), min 15805, max 17079
+fix-on: median 17059 ms (+6.1% vs base-off), min 16572, max 17789
+fix-on vs base-on: +2.1%

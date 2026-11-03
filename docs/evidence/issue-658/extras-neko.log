@@ -1,0 +1,48 @@
+defined results lost to the max_results cut: 1509
+by kind:
+  other reading of a defined expression: 8416
+  reads as itself (rows without a reading): 5383
+  katakana reading of a kanji/hiragana word: 2855
+  expression only a frequency/pitch row has: 2
+by position in the list (10 = 10 or later): {1: 1465, 2: 2153, 3: 2369, 4: 1965, 5: 2028, 6: 1328, 7: 1005, 8: 975, 9: 629, 10: 2739}
+most frequent:
+  人/ヒト: 321
+  てい/てい: 216
+  出/いざき: 164
+  吾/ぎよ: 159
+  御/おさむ: 151
+  一/にのまえ: 142
+  ち/ち: 138
+  来/きたる: 136
+  何/ナニ: 121
+  何/あが: 121
+  大/だいふく: 111
+  大/おおざき: 111
+  気/たいき: 105
+  分/わけ: 103
+  思/さよぷ: 102
+  いた/いた: 97
+  云/いんのしょう: 97
+  日/にっ: 90
+  日/あきら: 90
+  生/ウブ: 86
+  生/あり: 86
+  いて/いて: 86
+  間/ハザマ: 86
+  してい/してい: 85
+  猫/ネコ: 83
+  君/キミ: 79
+  にな/にな: 74
+  時/あき: 72
+  時/ときざき: 72
+  中/あたり: 69
+  方/あたる: 69
+  彼/アレ: 68
+  心/あい: 66
+  行/あきら: 65
+  今/いな: 64
+  今/いまざき: 64
+  ほ/ほ: 57
+  名/なじお: 54
+  名/なしお: 54
+  無/のん: 53

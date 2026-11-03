@@ -1,0 +1,1028 @@
+[gate-2]
+
+$ node test/make-fixture.mjs
+   2309  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture.zip
+   1652  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-trained.zip
+   4747  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-many-banks.zip
+    569  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-generic-kanji-fixture.zip
+    340  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/parent-title.zip
+    127  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/malformed-index.zip
+    644  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/no-index.zip
+    147  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/not-a-zip.txt
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v1.zip
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v2.zip
+    538  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v3.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-same-v2.zip
+    529  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-lower-v1.zip
+    515  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-missing-version.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-malformed-version.zip
+    531  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-nonnumeric-version.zip
+    457  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-corrupt.zip
+
+expected import counts:
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ node test/chrome-theme-store.mjs
+settings loaded
+engine ready
+fixture imported
+hover
+hover
+hover
+PASS: normal Settings, carousel buttons, Nazeka actions, kanji/Back, Plain definitions, JL and Bee actions, Bee rich content, Crystal sections, colours and contrast and Default restore. Evidence: /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/theme-store
+
+$ HACHIDORI_DEINFLECTION_SCREENSHOT="/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/ci/deinflection.png" HACHIDORI_SETTINGS_THEME_FILMSTRIP="/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/ci/settings-theme-first-frame.png" HACHIDORI_SHARING_SCREENSHOTS="/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/ci/sharing" HACHIDORI_FREQUENCY_SCREENSHOT="/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/ci/frequency-inference.png" node --test-force-exit --test-reporter=spec test/chrome-e2e.mjs
+
+=== session > the extension loads and its service worker starts
+     profile: /tmp/hachidori-e2e-profile-1423062
+ok   extension loads and its service worker starts
+     extension id: hnhcjemdmiapogcmkhmdjddhiljfphme
+
+=== session > the manifest and settings page are branded as Hachidori
+▶ session
+  ✔ the extension loads and its service worker starts (780.588755ms)
+ok   manifest and settings page are branded as Hachidori
+
+=== session > a fresh profile shares by default once it has dictionaries
+  ✔ the manifest and settings page are branded as Hachidori (320.835605ms)
+ok   a fresh profile shares by default and waits for dictionaries before it takes the host slot
+
+=== session > Chrome registers the browser shortcuts that Keybinds lists
+  ✔ a fresh profile shares by default once it has dictionaries (52.435093ms)
+ok   Chrome registers Hachidori's browser shortcuts and Keybinds lists them
+
+=== first-run setup > a clean profile offers one recommended install beside local import
+  ✔ Chrome registers the browser shortcuts that Keybinds lists (40.009002ms)
+✔ session (1195.470217ms)
+ok   a clean profile shows one recommended install action beside local import
+
+=== first-run setup > a fresh install waits for Start setup
+▶ first-run setup
+  ✔ a clean profile offers one recommended install beside local import (124.398803ms)
+ok   a fresh install uses AUTO in startup and Settings before Start setup and waits for work
+
+=== first-run setup > Start setup begins automatic installation
+  ✔ a fresh install waits for Start setup (215.289064ms)
+ok   Start setup begins automatic dictionary installation with first-install preferences
+
+=== first-run setup > Settings offers Resume setup while setup is incomplete
+  ✔ Start setup begins automatic installation (87.602496ms)
+ok   Settings shows Resume setup while first-run setup is incomplete
+
+=== first-run setup > a reconnecting startup page rejoins the running installer
+  ✔ Settings offers Resume setup while setup is incomplete (1.650623ms)
+ok   a reconnecting startup page rejoins the running installer whose held download stays indeterminate
+
+=== first-run setup > the installer continues after a mocked failure
+  ✔ a reconnecting startup page rejoins the running installer (120.309845ms)
+ok   the automatic installer continues after a mocked failure through real download and installation phases
+
+=== first-run setup > Retry installs only the missing dictionary
+  ✔ the installer continues after a mocked failure (1603.660706ms)
+ok   Retry installs only the missing dictionary and the committed entries settle their selections once
+
+=== first-run setup > the all-installed result advances to the Anki check
+  ✔ Retry installs only the missing dictionary (298.028091ms)
+ok   the all-installed result advances immediately before setup checks for Anki
+
+=== first-run setup > startup practice
+  ✔ the all-installed result advances to the Anki check (3151.479976ms)
+ok   startup practice waits for reader storage before its automatic lookup
+ok   startup screenshot capture resolves its own live extension document
+ok   startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup
+ok   the startup reader exception keeps Settings and the static preview excluded
+
+=== first-run setup > the practice scene looks a word up through the real reader
+  ✔ startup practice (24536.218684ms)
+     practice lookup answered in 33 ms
+ok   the practice visual novel scene fits narrow screens and looks a word up through the real reader and installed dictionaries
+
+=== first-run setup > an absent Anki settles and setup finishes
+  ✔ the practice scene looks a word up through the real reader (315.974898ms)
+ok   an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup
+
+=== first-run setup > the reader refuses to run on Settings
+  ✔ an absent Anki settles and setup finishes (28.366611ms)
+ok   the reader refuses to run on Settings even when its own scripts are loaded there
+
+=== first-run setup > Remove all imported dictionaries
+  ✔ the reader refuses to run on Settings (1756.132871ms)
+ok   Remove all imported dictionaries clears disabled and search-hidden packages through the real engine after one confirmation
+
+=== Settings > first-run Anki detection
+  ✔ Remove all imported dictionaries (407.991133ms)
+✔ first-run setup (32649.164217ms)
+ok   startup practice without a usable dictionary retains recovery and completion controls
+ok   first-run detection configures an existing Kiku mining setup read-only from the startup page
+ok   first-run setup automatically prepends detected local audio as source 1
+ok   Settings recovers Anki setup after onboarding and preserves a verified saved mapping
+
+=== Settings > Settings autosave
+▶ Settings
+  ✔ first-run Anki detection (9654.222336ms)
+ok   Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts
+
+=== Settings > Settings save feedback
+  ✔ Settings autosave (944.0732ms)
+ok   Settings size steppers keep quiet, stable feedback through autosave and expose failures
+
+=== Settings > Settings option transport
+  ✔ Settings save feedback (1437.524468ms)
+ok   Settings rejects malformed and oversized option frames before commit and still autosaves without reload
+
+=== Settings > the Design preview
+  ✔ Settings option transport (464.010705ms)
+ok   Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup
+ok   Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries
+ok   Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable
+ok   Design exposes AUTO, 42 grouped palettes and five layouts and applies live browser preference changes
+ok   Design previews opacity and dimensions immediately and resets only Design settings
+ok   toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards
+ok   low-opacity popup content scrolls in a clipped viewport without overlapping either toolbar position
+ok   custom CSS editor previews unsaved text, persists its count and resets only its stylesheet
+ok   custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS
+
+=== Settings > Audio Settings
+  ✔ the Design preview (6066.905921ms)
+ok   Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload
+ok   Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors
+ok   Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle
+
+=== Settings > Anki Settings
+  ✔ Audio Settings (34532.859742ms)
+ok   Anki discovery is lazy and refresh recovers an offline connection through the real service worker
+ok   Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes
+ok   Anki configuration persists through reload without reloading the dictionary engine
+ok   Anki field mappings expose accessible editable combobox behavior without replacing free-form text
+ok   Anki presets expose editable field templates and persist overwrite modes with visible marker errors
+ok   Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged
+ok   Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape
+ok   Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads
+
+=== Settings > dictionary CSS
+  ✔ Anki Settings (6422.505712ms)
+ok   dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules
+ok   dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron
+ok   dictionary CSS cannot load remote resources or inherit resource-valued variables
+ok   dictionary CSS cannot paint or intercept input outside its glossary card
+
+=== recommended dictionaries > recommended dictionaries on a desktop page
+  ✔ dictionary CSS (57.237253ms)
+✔ Settings (59580.329149ms)
+ok   settings page renders exactly five safe recommended dictionary links
+ok   recommended dictionaries form a readable list on desktop
+
+=== recommended dictionaries > recommended dictionaries on a narrow page
+▶ recommended dictionaries
+  ✔ recommended dictionaries on a desktop page (21.629498ms)
+ok   recommended dictionaries stack without overflow on narrow screens
+
+=== recommended dictionaries > the offscreen document compiles the wasm
+  ✔ recommended dictionaries on a narrow page (10.487349ms)
+ok   offscreen document compiles the wasm under the extension CSP
+ok   extension pages expose pthread prerequisites
+ok   chrome.offscreen.createDocument produced exactly one offscreen document
+
+=== recommended dictionaries > a Settings-started batch survives a reload
+  ✔ the offscreen document compiles the wasm (3.314646ms)
+ok   a Settings-started recommended batch survives reloading its page without duplicate downloads
+
+=== recommended dictionaries > the installer continues after a mocked download failure
+  ✔ a Settings-started batch survives a reload (134.163461ms)
+ok   the recommended installer continues after a mocked download failure
+
+=== recommended dictionaries > missing dictionaries stay available after a reload
+  ✔ the installer continues after a mocked download failure (808.289243ms)
+ok   missing recommended dictionaries stay available after a settings reload
+
+=== recommended dictionaries > Retry downloads only the missing dictionary
+  ✔ missing dictionaries stay available after a reload (130.334503ms)
+ok   recommended retry downloads only the missing trusted dictionary
+
+=== import > the .zip file input
+  ✔ Retry downloads only the missing dictionary (436.359056ms)
+✔ recommended dictionaries (1545.380309ms)
+ok   settings page exposes a .zip file input
+ok   the .zip file input accepts multiple .zip files
+
+=== import > importing a Yomitan .zip
+▶ import
+  ✔ the .zip file input (5.42913ms)
+ok   importing a Yomitan .zip from the settings page succeeds
+ok   the imported dictionary is persisted in OPFS
+ok   the imported dictionary is recorded in chrome.storage.local
+
+=== import > batch import and re-import
+  ✔ importing a Yomitan .zip (527.475778ms)
+ok   the import batch continues after failure and retains every archive outcome
+ok   batch re-import preserves presentation, source, and order while clearing stale check state
+
+=== import > the dictionary list renders alias, metadata and badges
+  ✔ batch import and re-import (549.838929ms)
+ok   the dictionary list renders its alias, metadata, and five capability badges
+
+=== Settings library > Settings navigation
+  ✔ the dictionary list renders alias, metadata and badges (16.39085ms)
+✔ import (1099.808357ms)
+ok   Library tabs keep their geometry when the page scrollbar appears or disappears
+ok   Library tabs keep each tab's position and width when the current tab changes
+ok   Sharing, Backup and Advanced keep the sidebar and main column in place when the page scrollbar disappears
+ok   Settings puts the library first and supports keyboard navigation at 320px
+
+=== Settings library > the Google Docs flag
+▶ Settings library
+  ✔ Settings navigation (2993.020708ms)
+ok   the Google Docs flag registers its document_start MAIN-world script only while on
+
+=== Settings library > Settings follows every popup theme
+  ✔ the Google Docs flag (459.264596ms)
+ok   Settings follows every popup theme and keeps each task view readable without horizontal overflow
+ok   Design names pitch dictionaries at 4.5:1 text contrast in every popup theme
+ok   Design draws definition and dictionary tags at 4.5:1 text contrast in every popup theme and 7:1 in High contrast
+
+=== Settings library > the first Settings frame
+  ✔ Settings follows every popup theme (2112.418277ms)
+FAIL Settings paints its first visible frame in the saved theme instead of the browser preference
+       {"scenarios":[{"name":"light under a dark preference","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"light","firstPaint":80,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[55,"light",false,"visible","interactive"],[83,"light",false,"visible","complete"],[92,"light",false,"visible","complete"],[105,"light",false,"visible","complete"],[121,"light",false,"visible","complete"],[137,"light",false,"visible","complete"],[154,"light",false,"visible","complete"],[170,"light",false,"visible","complete"]],"attributeSets":[[38,"light"],[88,"light"],[95,"light"],[96,"light"]],"painted":[[17,"before first paint",[255,255,255],[0,0,0]],[80,"saved theme",[251,251,251],[255,255,255]],[100,"saved theme",[251,251,251],[255,255,255]],[135,"saved theme",[251,251,251],[255,255,255]],[145,"saved theme",[251,251,251],[255,255,255]]]},{"name":"default under a light preference","expected":"default","settledInTime":true,"settledTheme":"default","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"default","firstPaint":70,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[44,"default",false,"visible","interactive"],[73,"default",false,"visible","interactive"],[79,"default",false,"visible","interactive"],[97,"default",false,"visible","complete"],[114,"default",false,"visible","complete"],[136,"default",false,"visible","complete"],[143,"default",false,"visible","complete"],[163,"default",false,"visible","complete"]],"attributeSets":[[40,"default"],[103,"default"],[111,"default"],[112,"default"]],"painted":[[26,"before first paint",[255,255,255],[255,255,255]],[70,"saved theme",[34,35,44],[43,43,54]],[112,"saved theme",[34,35,44],[43,43,54]],[153,"saved theme",[34,35,44],[43,43,54]],[171,"saved theme",[34,35,44],[43,43,54]]]},{"name":"auto under a dark preference","expected":"dark","settledInTime":true,"settledTheme":"dark","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"dark","firstPaint":80,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[54,"dark",false,"visible","interactive"],[59,"dark",false,"visible","interactive"],[80,"dark",false,"visible","interactive"],[93,"dark",false,"visible","complete"],[116,"dark",false,"visible","complete"],[124,"dark",false,"visible","complete"],[140,"dark",false,"visible","complete"],[157,"dark",false,"visible","complete"]],"attributeSets":[[38,"dark"],[96,"dark"],[105,"dark"],[106,"dark"]],"painted":[[22,"before first paint",[255,255,255],[255,255,255]],[79,"saved theme",[27,32,39],[29,35,42]],[105,"saved theme",[27,32,39],[29,35,42]],[134,"saved theme",[27,32,39],[29,35,42]],[153,"saved theme",[27,32,39],[29,35,42]],[166,"saved theme",[27,32,39],[29,35,42]]]},{"name":"miku under a light preference","expected":"miku","settledInTime":true,"settledTheme":"miku","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"miku","firstPaint":77,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[46,"miku",false,"visible","interactive"],[64,"miku",false,"visible","interactive"],[78,"miku",false,"visible","interactive"],[101,"miku",false,"visible","complete"],[120,"miku",false,"visible","complete"],[131,"miku",false,"visible","complete"],[144,"miku",false,"visible","complete"],[161,"miku",false,"visible","complete"]],"attributeSets":[[40,"miku"],[105,"miku"],[114,"miku"],[115,"miku"]],"painted":[[26,"before first paint",[255,255,255],[255,255,255]],[76,"saved theme",[32,43,47],[28,37,41]],[119,"saved theme",[32,43,47],[28,37,41]],[156,"saved theme",[32,43,47],[28,37,41]],[170,"saved theme",[32,43,47],[28,37,41]]]},{"name":"light under a dark preference, read held","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":false,"firstAttribute":"light","firstPaint":null,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":false,"rafFrames":[[51,null,true,"hidden","interactive"],[69,null,true,"hidden","interactive"],[86,null,true,"hidden","interactive"],[102,null,true,"hidden","interactive"],[118,null,true,"hidden","interactive"],[135,null,true,"hidden","interactive"],[151,null,true,"hidden","interactive"],[168,null,true,"hidden","interactive"]],"attributeSets":[[231,"light"],[234,"light"],[240,"light"],[241,"light"]],"painted":[[15,"browser canvas",[255,255,255],[255,255,255]],[66,"browser canvas",[18,18,18],[18,18,18]]],"held":{"pending":true,"theme":null,"attributeSets":0,"frames":11,"frameCount":2,"allHidden":true,"allBlank":true}},{"name":"light under a dark preference, read failed","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"light","firstPaint":62,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[38,null,false,"visible","interactive"],[42,null,false,"visible","interactive"],[65,null,false,"visible","interactive"],[72,null,false,"visible","interactive"],[92,null,false,"visible","complete"],[115,"light",false,"visible","complete"],[128,"light",false,"visible","complete"],[142,"light",false,"visible","complete"]],"attributeSets":[[96,"light"],[106,"light"],[108,"light"]],"painted":[[25,"before first paint",[255,255,255],[255,255,255]],[61,"browser preference",[21,23,27],[29,32,38]],[103,"browser preference",[21,23,27],[29,32,38]],[142,"saved theme",[251,251,251],[255,255,255]],[155,"saved theme",[251,251,251],[255,255,255]]]}]}
+
+=== Settings library > the position input on a narrow page
+  ✖ the first Settings frame (2534.326921ms)
+ok   the dictionary position input stays compact on a narrow Settings page
+
+=== Settings library > the enabled control and a term-only kanji import
+  ✔ the position input on a narrow page (62.733423ms)
+ok   the Settings enabled control re-enables the preserved package
+ok   importing a term-only single-kanji dictionary succeeds
+
+=== Settings library > filters and bulk updates
+  ✔ the enabled control and a term-only kanji import (120.260777ms)
+ok   dictionary management filters and bulk-updates visible stable selections
+
+=== Settings library > drag and keyboard positions
+  ✔ filters and bulk updates (240.664392ms)
+ok   drag and keyboard position controls share the persisted lookup order
+
+=== Settings library > an alias edit then a click
+  ✔ drag and keyboard positions (492.625065ms)
+ok   a delayed alias blur-then-click queues both dictionary edits
+
+=== Settings library > pointer reorder and confirmed bulk removal
+  ✔ an alias edit then a click (585.665851ms)
+ok   dictionary moves render before the engine reply and coalesce across rapid and in-flight edits
+ok   the unsaved-work guard covers debounced and in-flight dictionary moves and clears after saving
+ok   concurrent Settings reorders reject the stale CAS and restore the authoritative list
+PASS dictionary pointer reorder, boundaries, focus, selection, reload and confirmed bulk removal
+ok   dictionary pointer reorder and confirmed bulk removal persist across reload
+
+=== Settings library > dictionary rank layout
+  ✔ pointer reorder and confirmed bulk removal (3082.501916ms)
+PASS dictionary rank geometry {"before":[{"viewportWidth":1280,"count":120,"lastRank":"120","samples":[{"position":9,"rank":"9","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":6.875,"columns":"16px 44.5781px 644.609px 193.812px","rankRight":345.578125,"textRight":345.578125,"titleLeft":357.578125},{"position":99,"rank":"99","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":13.734375,"columns":"16px 44.5781px 644.609px 193.812px","rankRight":345.578125,"textRight":345.578125,"titleLeft":357.578125},{"position":120,"rank":"120","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5938px","rankWidth":20.59375,"textWidth":20.59375,"columns":"16px 44.5938px 644.594px 193.812px","rankRight":345.59375,"textRight":345.59375,"titleLeft":357.59375}]},{"viewportWidth":320,"count":120,"lastRank":"120","samples":[{"position":9,"rank":"9","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":6.875,"columns":"16px 44.5781px 168.422px","rankRight":98.578125,"textRight":98.578125,"titleLeft":108.578125},{"position":99,"rank":"99","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":13.734375,"columns":"16px 44.5781px 168.422px","rankRight":98.578125,"textRight":98.578125,"titleLeft":108.578125},{"position":120,"rank":"120","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5938px","rankWidth":20.59375,"textWidth":20.59375,"columns":"16px 44.5938px 168.406px","rankRight":98.59375,"textRight":98.59375,"titleLeft":108.59375}]}],"after":[{"viewportWidth":1280,"count":120,"lastRank":"120","samples":[{"position":9,"rank":"9","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":6.875,"columns":"16px 44.5781px 644.609px 193.812px","rankRight":345.578125,"textRight":345.578125,"titleLeft":357.578125},{"position":99,"rank":"99","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":13.734375,"columns":"16px 44.5781px 644.609px 193.812px","rankRight":345.578125,"textRight":345.578125,"titleLeft":357.578125},{"position":120,"rank":"120","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5938px","rankWidth":20.59375,"textWidth":20.59375,"columns":"16px 44.5938px 644.594px 193.812px","rankRight":345.59375,"textRight":345.59375,"titleLeft":357.59375}]},{"viewportWidth":320,"count":120,"lastRank":"120","samples":[{"position":9,"rank":"9","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":6.875,"columns":"16px 44.5781px 168.422px","rankRight":98.578125,"textRight":98.578125,"titleLeft":108.578125},{"position":99,"rank":"99","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5781px","rankWidth":20.578125,"textWidth":13.734375,"columns":"16px 44.5781px 168.422px","rankRight":98.578125,"textRight":98.578125,"titleLeft":108.578125},{"position":120,"rank":"120","fontFamily":"system-ui, sans-serif","fontSize":"12px","minWidth":"20.5921px","width":"20.5938px","rankWidth":20.59375,"textWidth":20.59375,"columns":"16px 44.5938px 168.406px","rankRight":98.59375,"textRight":98.59375,"titleLeft":108.59375}]}],"reused":true}
+ok   three-digit dictionary ranks keep an aligned title gutter after row reuse
+
+=== Settings library > named groups
+  ✔ dictionary rank layout (1260.805655ms)
+ok   named groups normalize unique names and keep stable dictionary memberships
+ok   group and member order controls persist their shared state order
+
+=== Settings library > a group edit then a click
+  ✔ named groups (738.049416ms)
+ok   a real blur-then-click queues both group edits and retains focus
+
+=== Settings library > a newer external focus survives a group rerender
+  ✔ a group edit then a click (211.829609ms)
+ok   a newer external focus survives a group rerender
+
+=== Settings library > the kanji dictionary chooser
+  ✔ a newer external focus survives a group rerender (105.458789ms)
+ok   the kanji dictionary chooser lists imported term and kanji dictionaries
+ok   a combined archive exposes separate term and native kanji choices
+
+=== Settings library > stale kanji selections are pruned
+  ✔ the kanji dictionary chooser (13.700224ms)
+ok   stale title-only kanji selections are pruned
+
+=== Settings library > a legacy kanji selection migrates
+  ✔ stale kanji selections are pruned (12.606872ms)
+ok   a legacy title-only kanji selection migrates to and persists its native capability
+
+=== Settings library > the selected kanji dictionary is saved
+  ✔ a legacy kanji selection migrates (22.18776ms)
+ok   the selected kanji dictionary is saved
+
+=== personal dictionary > Settings saves a personal source through the real importer
+  ✔ the selected kanji dictionary is saved (217.66977ms)
+✖ Settings library (15267.833777ms)
+ok   custom Settings lazily saves a source through the real WASM importer
+
+=== reader > the reading tab and popup resizing
+▶ personal dictionary
+  ✔ Settings saves a personal source through the real importer (331.198465ms)
+✔ personal dictionary (331.344795ms)
+popup resize: physical drag, selection isolation, containment, reopen, storage, reload passed
+ok   mouse resizing retains session dimensions without changing Design settings
+
+=== reader > hover hit testing
+▶ reader
+  ✔ the reading tab and popup resizing (5002.741045ms)
+ok   hover hits glyphs and rejects padded tiles and transparent covering elements
+ok   vertical hover hits glyphs and rejects the surrounding padding
+
+=== reader > a multiline match
+  ✔ hover hit testing (3092.63634ms)
+ok   a multiline match anchors the popup to the scanned line fragment
+
+=== reader > browser zoom
+  ✔ a multiline match (321.364077ms)
+ok   browser zoom keeps the popup at its configured on-screen size inside the viewport
+
+=== reader > per-glyph boxes
+  ✔ browser zoom (310.327968ms)
+ok   hovering positioned per-glyph boxes looks up and highlights the whole word
+
+=== reader > wheel over the popup
+  ✔ per-glyph boxes (306.166361ms)
+ok   wheel over the popup scrolls neither the page nor its body wheel listeners
+
+=== reader > Alt+wheel
+  ✔ wheel over the popup (769.018242ms)
+ok   Alt+wheel over the popup moves one entry per step without scrolling the pane or the page
+
+=== reader > hovering an inflected verb
+  ✔ Alt+wheel (706.797952ms)
+ok   hovering an inflected verb shows a popup
+ok   the content script isolates its popup in a closed shadow root
+ok   the popup deinflects 食べたかった to 食べる
+ok   the popup renders the glossary
+ok   the popup renders the frequency tag from term_meta_bank
+ok   a grouped favourite uses only its group tab
+
+=== reader > Dark Reader popup isolation
+  ✔ hovering an inflected verb (298.941008ms)
+PASS Dark Reader: default, page darkened, popup colours unchanged
+PASS Dark Reader: light, page darkened, popup colours unchanged
+PASS Dark Reader: dark, page darkened, popup colours unchanged
+PASS Dark Reader: high-contrast, page darkened, popup colours unchanged
+PASS Dark Reader: custom-css, page darkened, popup colours unchanged
+PASS Dark Reader: custom-javascript, page darkened, popup colours unchanged
+ok   Dark Reader darkens the page without recolouring the popup, with or without Custom JavaScript, and saved scripts reach the popup's closed root
+
+=== lookup counts, blur and word highlights > lookup statistics
+  ✔ Dark Reader popup isolation (3003.003051ms)
+✔ reader (13812.018499ms)
+ok   accepted reader lookups persist canonical counts without delaying definitions
+ok   live lookup-count Settings pause recording and preserve the displayed reader view
+ok   local count and blur settings belong to Reading without external corpus controls
+ok   Reset lookup counts refreshes the open popup to zero without recording and the next lookup counts 1
+
+=== lookup counts, blur and word highlights > definition blur
+▶ lookup counts, blur and word highlights
+  ✔ lookup statistics (1676.227945ms)
+ok   definition blur follows real lookup counts and settings and holds autoplay until blurred results are revealed
+ok   frequency blur uses native fixture values without recording counts or waiting for another signal
+ok   blurred definitions reveal on hover, at the timed deadline and at once when blur is disabled
+ok   definitions blurred until clicked ignore hover and the delay and reveal on Enter through a labelled button and on a click
+
+=== lookup counts, blur and word highlights > Anki maturity blur
+  ✔ definition blur (6169.299029ms)
+ok   the Anki maturity blur condition persists independently of lookup counts
+ok   a cold Anki duplicate index leaves the popup responsive while its first refresh is held
+ok   cached mature definitions hold pronunciation until revealed and repeated lookups make no Anki requests
+ok   a scheduled index refresh preserves the current popup and updates only new lookups
+ok   the duplicate index keeps refreshing while maturity blur is disabled and re-enabling uses it without Anki
+ok   worker restart restores indexed maturity and the missing thirty-minute alarm without fetching
+ok   an unavailable Anki refresh retains cached maturity and independent count blur
+
+=== lookup counts, blur and word highlights > word highlighting
+  ✔ Anki maturity blur (4498.911403ms)
+ok   word highlights mark visible words by Anki status, and text scrolled to or added later, without changing the page's DOM
+ok   adding a word to Anki from the popup moves its marks from unknown to learning
+ok   Ignore and Mark as known in the popup, and the Mark as known keybind, set a word's status over Anki's, re-mark the page and clear again
+ok   turning word highlighting off removes every mark and keeps its settings
+
+=== popup > frames and fullscreen
+  ✔ word highlighting (2009.185005ms)
+✔ lookup counts, blur and word highlights (14354.122404ms)
+ok   the reader opens a popup for Japanese text inside a same-origin iframe
+ok   the popup paints above a fullscreen player and returns to body on exit
+
+=== popup > the popup stays in place
+▶ popup
+  ✔ frames and fullscreen (784.677361ms)
+ok   the popup stays in place while a chat feed or the page scrolls and after its source is removed
+
+=== popup > switching tabs keeps the popup
+  ✔ the popup stays in place (766.297469ms)
+ok   switching to another tab and back keeps the popup, its Note draft and keyboard focus until Escape
+ok   a click into one of the page's frames, same-origin or cross-site, still closes the popup
+
+=== popup > deinflection disclosure
+  ✔ switching tabs keeps the popup (2131.510695ms)
+ok   deinflection disclosure exposes the real ordered trace and remains keyboard reachable
+
+=== popup > glossary cards open
+  ✔ deinflection disclosure (411.506329ms)
+ok   dictionary cards render open with their dictionary's tag, in Yomitan's colours, and no disclosure control
+
+=== popup > external links
+  ✔ glossary cards open (346.438574ms)
+ok   external dictionary Enter activation creates one safe browser tab through the extension
+
+=== popup > a custom link's sentence
+  ✔ external links (921.746959ms)
+ok   a custom link's %s is the hovered or selected word's sentence without ruby readings
+
+=== popup > kanji reading furigana
+  ✔ a custom link's sentence (894.810759ms)
+ok   an ambiguous headword's furigana is split by its kanji's KANJIDIC readings in the engine worker and the popup
+ok   a kanji compound's furigana is read one kanji at a time by its KANJIDIC readings in the engine worker and the popup
+ok   a compound that KANJIDIC's readings cannot split is read one kanji at a time by Jitendex kanwa's readings in the engine worker and the popup
+
+=== nested lookups > nested links
+  ✔ kanji reading furigana (871.71175ms)
+✔ popup (7129.640148ms)
+ok   nested source highlights retain ancestor ownership when children close in native and fallback modes
+ok   plain definition text opens nested child lookups with native hover, activation, miss and depth behavior
+ok   definition text can wait for the activation key or a click in Hover mode
+ok   nested definition lookups use an accessible close control that dismisses the child popup
+ok   nested kanji navigation keeps Back and restores the term lookup close control
+ok   repeated keyboard activation returns focus to an existing child lookup close control
+ok   focused popup controls allow inherited definition pointer lookups
+ok   internal links open a positioned popup chain with level-local Note and Back and live depth limits
+ok   hide popup on cursor exit closes a sticky child after its own delay once the pointer returns to the parent
+ok   linked and hovered children open beside their source text and follow parent scroll, popup scale and narrow viewports
+ok   a child too tall for either side of its link hangs from it shortened, and sticky lookups keep it through a return to its parent until a parent click
+ok   a primary click in an ancestor popup dismisses focused, hovered and pending descendants at once while keeping the ancestor and protected drafts
+
+=== dictionary tabs and kanji groups > dictionary tabs and columns
+▶ nested lookups
+  ✔ nested links (11228.684163ms)
+✔ nested lookups (11228.848393ms)
+ok   Back restores complete linked results, exact tab, scroll, highlight and toolbar without lookup
+ok   Popup tabs project ordered groups and ungrouped favourites without another lookup
+ok   Live dictionary presentation preserves pending replies, focused Note drafts and child anchors
+ok   Saved popup columns reflow complete cards after expansion, media load and resize
+ok   live appearance changes preserve reader Notes and resources while applying the selected page highlight
+ok   live toolbar overrides apply to root and child and survive resize without focus or resource loss
+ok   live custom CSS updates root and child without losing Notes, Back or making engine requests
+
+=== dictionary tabs and kanji groups > clicked-kanji groups
+▶ dictionary tabs and kanji groups
+  ✔ dictionary tabs and columns (4263.90147ms)
+ok   a clicked-kanji group shows each member with an entry as its own tab in group order
+ok   the clicked-kanji chooser saves a group by its stable ID and resets when the group is removed
+ok   a clicked-kanji group's native kanji card keeps a ready Anki mining control and mines as the character
+
+=== popup layout > compact summary layout
+  ✔ clicked-kanji groups (1673.597333ms)
+✔ dictionary tabs and kanji groups (5937.762074ms)
+PASS compact summary wrapping and toolbar access [{"width":560,"fontSize":32,"height":34,"contentHeight":34,"summaryHeight":34,"summaryContentHeight":34,"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"button":{"x":539,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":571,"bottom":124.390625,"left":539},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":true,"chromeHeight":70.390625},{"width":560,"fontSize":48,"height":34,"contentHeight":34,"summaryHeight":34,"summaryContentHeight":34,"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"button":{"x":539,"y":112.59375,"width":32,"height":32,"top":112.59375,"right":571,"bottom":144.59375,"left":539},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":true,"chromeHeight":90.59375},{"width":440,"fontSize":32,"height":51,"contentHeight":51,"summaryHeight":51,"summaryContentHeight":51,"popup":{"x":20,"y":60,"width":440,"height":420,"top":60,"right":460,"bottom":480,"left":20},"button":{"x":419,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":451,"bottom":124.390625,"left":419},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":true,"chromeHeight":70.390625},{"width":440,"fontSize":48,"height":34,"contentHeight":34,"summaryHeight":34,"summaryContentHeight":34,"popup":{"x":20,"y":60,"width":440,"height":420,"top":60,"right":460,"bottom":480,"left":20},"button":{"x":419,"y":148.375,"width":32,"height":32,"top":148.375,"right":451,"bottom":180.375,"left":419},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":false,"chromeHeight":126.375},{"width":320,"fontSize":32,"height":34,"contentHeight":34,"summaryHeight":34,"summaryContentHeight":34,"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"button":{"x":299,"y":128.171875,"width":32,"height":32,"top":128.171875,"right":331,"bottom":160.171875,"left":299},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":false,"chromeHeight":106.171875},{"width":320,"fontSize":48,"height":34,"contentHeight":34,"summaryHeight":34,"summaryContentHeight":34,"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"button":{"x":299,"y":148.375,"width":32,"height":32,"top":148.375,"right":331,"bottom":180.375,"left":299},"hit":true,"text":"kanji representationrepresentation in Chinese characters","beside":false,"chromeHeight":126.375}]
+ok   Compact summaries wrap without clipping and retain narrow toolbar access
+
+=== popup layout > compact glossaries
+▶ popup layout
+  ✔ compact summary layout (142.160645ms)
+PASS compact glossaries {"before":[114.9375,234.9375],"compact":[43.953125,186.9375],"contrasts":{"default":4.41,"miku":4.81,"catppuccin-mocha":4.33,"solarized-dark":3.56,"dark":5.43,"synthwave":3.44,"halloween":4.32,"forest":4.1,"aqua":3.74,"black":4.48,"luxury":3.25,"dracula":5.04,"business":4.03,"night":4.12,"coffee":4.33,"dim":3.47,"sunset":3.45,"abyss":4.46,"girlypop":3.25,"solarized-light":3.01,"light":3.99,"cupcake":3.81,"bumblebee":4.02,"emerald":5.09,"corporate":3.78,"retro":4.17,"cyberpunk":4.61,"valentine":3.08,"garden":3.94,"lofi":4.83,"pastel":4.09,"fantasy":3.43,"wireframe":4.02,"cmyk":3.99,"autumn":5,"acid":4.78,"lemonade":3.89,"winter":4.42,"nord":3.11,"caramellatte":4.93,"silk":4.43,"high-contrast":12.56}}
+ok   Compact glossaries share a sense's glosses on one barred line that screen readers skip and Default restores exactly
+
+=== popup layout > structured tables
+  ✔ compact glossaries (2442.740273ms)
+ok   Indented dictionary tables show their complete first column and retain horizontal scrolling
+
+=== popup layout > the action row
+  ✔ structured tables (153.392706ms)
+PASS action row geometry {"width":560,"name":"resound","variant":"browser-parent","actions":{"x":266,"y":109.28125,"width":307,"height":36,"top":109.28125,"right":573,"bottom":145.28125,"left":266},"controls":[{"bounds":{"x":268,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":300,"bottom":143.28125,"left":268},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":304,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":336,"bottom":143.28125,"left":304},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":340,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":372,"bottom":143.28125,"left":340},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":376,"y":111.28125,"width":71.828125,"height":32,"top":111.28125,"right":447.828125,"bottom":143.28125,"left":376},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":54,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":451.828125,"y":111.28125,"width":60.875,"height":32,"top":111.28125,"right":512.703125,"bottom":143.28125,"left":451.828125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":43,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":516.703125,"y":111.28125,"width":54.296875,"height":32,"top":111.28125,"right":571,"bottom":143.28125,"left":516.703125},"kind":"external","name":"Jisho search","label":{"clientWidth":36,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":88.28125,"top":61,"right":579,"bottom":149.28125,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":76.28125,"top":67,"right":258,"bottom":143.28125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":560,"name":"resound","variant":"browser-nested-close","actions":{"x":266,"y":109.28125,"width":307,"height":36,"top":109.28125,"right":573,"bottom":145.28125,"left":266},"controls":[{"bounds":{"x":268,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":300,"bottom":143.28125,"left":268},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":304,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":336,"bottom":143.28125,"left":304},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":340,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":372,"bottom":143.28125,"left":340},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":376,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":408,"bottom":143.28125,"left":376},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":412,"y":111.28125,"width":57.25,"height":32,"top":111.28125,"right":469.25,"bottom":143.28125,"left":412},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":39,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":473.25,"y":111.28125,"width":49.265625,"height":32,"top":111.28125,"right":522.515625,"bottom":143.28125,"left":473.25},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":31,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":526.515625,"y":111.28125,"width":44.484375,"height":32,"top":111.28125,"right":571,"bottom":143.28125,"left":526.515625},"kind":"external","name":"Jisho search","label":{"clientWidth":26,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":88.28125,"top":61,"right":579,"bottom":149.28125,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":76.28125,"top":67,"right":258,"bottom":143.28125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":560,"name":"resound","variant":"browser-nested-back-large","actions":{"x":399,"y":192.734375,"width":461,"height":54,"top":192.734375,"right":860,"bottom":246.734375,"left":399},"controls":[{"bounds":{"x":402,"y":195.734375,"width":79.40625,"height":48,"top":195.734375,"right":481.40625,"bottom":243.734375,"left":402},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":487.40625,"y":195.734375,"width":48,"height":48,"top":195.734375,"right":535.40625,"bottom":243.734375,"left":487.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":541.40625,"y":195.734375,"width":48,"height":48,"top":195.734375,"right":589.40625,"bottom":243.734375,"left":541.40625},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":595.40625,"y":195.734375,"width":48,"height":48,"top":195.734375,"right":643.40625,"bottom":243.734375,"left":595.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":649.40625,"y":195.734375,"width":73.59375,"height":48,"top":195.734375,"right":723,"bottom":243.734375,"left":649.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":32,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":729,"y":195.734375,"width":63.90625,"height":48,"top":195.734375,"right":792.90625,"bottom":243.734375,"left":729},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":25,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":798.90625,"y":195.734375,"width":58.09375,"height":48,"top":195.734375,"right":857,"bottom":243.734375,"left":798.90625},"kind":"external","name":"Jisho search","label":{"clientWidth":21,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":30,"y":90,"width":840,"height":630,"top":90,"right":870,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":838,"height":161.734375,"top":91,"right":869,"bottom":252.734375,"left":31},"controlSize":32,"heading":{"x":43,"y":100,"width":344,"height":143.734375,"top":100,"right":387,"bottom":243.734375,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":560,"name":"resound","variant":"overlay-parent","actions":{"x":266,"y":109.28125,"width":307,"height":36,"top":109.28125,"right":573,"bottom":145.28125,"left":266},"controls":[{"bounds":{"x":362.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":394.453125,"bottom":143.28125,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":430.453125,"bottom":143.28125,"left":398.453125},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":434.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":466.453125,"bottom":143.28125,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":111.28125,"width":100.546875,"height":32,"top":111.28125,"right":571,"bottom":143.28125,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":88.28125,"top":61,"right":579,"bottom":149.28125,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":76.28125,"top":67,"right":258,"bottom":143.28125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":560,"name":"resound","variant":"overlay-nested-close","actions":{"x":266,"y":109.28125,"width":307,"height":36,"top":109.28125,"right":573,"bottom":145.28125,"left":266},"controls":[{"bounds":{"x":326.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":358.453125,"bottom":143.28125,"left":326.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":362.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":394.453125,"bottom":143.28125,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":430.453125,"bottom":143.28125,"left":398.453125},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":434.453125,"y":111.28125,"width":32,"height":32,"top":111.28125,"right":466.453125,"bottom":143.28125,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":111.28125,"width":100.546875,"height":32,"top":111.28125,"right":571,"bottom":143.28125,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":88.28125,"top":61,"right":579,"bottom":149.28125,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":76.28125,"top":67,"right":258,"bottom":143.28125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":560,"name":"resound","variant":"kanji-nested-back","actions":{"x":266,"y":90.59375,"width":307,"height":36,"top":90.59375,"right":573,"bottom":126.59375,"left":266},"controls":[{"bounds":{"x":268,"y":92.59375,"width":53.609375,"height":32,"top":92.59375,"right":321.609375,"bottom":124.59375,"left":268},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":325.609375,"y":92.59375,"width":32,"height":32,"top":92.59375,"right":357.609375,"bottom":124.59375,"left":325.609375},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":361.609375,"y":92.59375,"width":77.640625,"height":32,"top":92.59375,"right":439.25,"bottom":124.59375,"left":361.609375},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":60,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":443.25,"y":92.59375,"width":65.515625,"height":32,"top":92.59375,"right":508.765625,"bottom":124.59375,"left":443.25},"kind":"custom-anki","name":"Send to Anki with Sentence card","label":{"clientWidth":48,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":512.765625,"y":92.59375,"width":58.234375,"height":32,"top":92.59375,"right":571,"bottom":124.59375,"left":512.765625},"kind":"external","name":"Jisho search","label":{"clientWidth":40,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":69.59375,"top":61,"right":579,"bottom":130.59375,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":57.59375,"top":67,"right":258,"bottom":124.59375,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":202,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":560,"name":"resound","variant":"plain-parent","actions":{"x":465,"y":90.390625,"width":108,"height":36,"top":90.390625,"right":573,"bottom":126.390625,"left":465},"controls":[{"bounds":{"x":467,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":499,"bottom":124.390625,"left":467},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":503,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":535,"bottom":124.390625,"left":503},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":539,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":571,"bottom":124.390625,"left":539},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":69.390625,"top":61,"right":579,"bottom":130.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":428,"height":57.390625,"top":67,"right":457,"bottom":124.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":560,"name":"particle","variant":"browser-parent","actions":{"x":266,"y":100.5625,"width":307,"height":36,"top":100.5625,"right":573,"bottom":136.5625,"left":266},"controls":[{"bounds":{"x":268,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":300,"bottom":134.5625,"left":268},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":304,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":336,"bottom":134.5625,"left":304},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":340,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":372,"bottom":134.5625,"left":340},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":376,"y":102.5625,"width":71.828125,"height":32,"top":102.5625,"right":447.828125,"bottom":134.5625,"left":376},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":54,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":451.828125,"y":102.5625,"width":60.875,"height":32,"top":102.5625,"right":512.703125,"bottom":134.5625,"left":451.828125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":43,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":516.703125,"y":102.5625,"width":54.296875,"height":32,"top":102.5625,"right":571,"bottom":134.5625,"left":516.703125},"kind":"external","name":"Jisho search","label":{"clientWidth":36,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":79.5625,"top":61,"right":579,"bottom":140.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":67.5625,"top":67,"right":258,"bottom":134.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":560,"name":"particle","variant":"browser-nested-close","actions":{"x":266,"y":100.5625,"width":307,"height":36,"top":100.5625,"right":573,"bottom":136.5625,"left":266},"controls":[{"bounds":{"x":268,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":300,"bottom":134.5625,"left":268},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":304,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":336,"bottom":134.5625,"left":304},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":340,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":372,"bottom":134.5625,"left":340},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":376,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":408,"bottom":134.5625,"left":376},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":412,"y":102.5625,"width":57.25,"height":32,"top":102.5625,"right":469.25,"bottom":134.5625,"left":412},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":39,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":473.25,"y":102.5625,"width":49.265625,"height":32,"top":102.5625,"right":522.515625,"bottom":134.5625,"left":473.25},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":31,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":526.515625,"y":102.5625,"width":44.484375,"height":32,"top":102.5625,"right":571,"bottom":134.5625,"left":526.515625},"kind":"external","name":"Jisho search","label":{"clientWidth":26,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":79.5625,"top":61,"right":579,"bottom":140.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":67.5625,"top":67,"right":258,"bottom":134.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":560,"name":"particle","variant":"browser-nested-back-large","actions":{"x":399,"y":214.421875,"width":461,"height":54,"top":214.421875,"right":860,"bottom":268.421875,"left":399},"controls":[{"bounds":{"x":402,"y":217.421875,"width":79.40625,"height":48,"top":217.421875,"right":481.40625,"bottom":265.421875,"left":402},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":487.40625,"y":217.421875,"width":48,"height":48,"top":217.421875,"right":535.40625,"bottom":265.421875,"left":487.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":541.40625,"y":217.421875,"width":48,"height":48,"top":217.421875,"right":589.40625,"bottom":265.421875,"left":541.40625},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":595.40625,"y":217.421875,"width":48,"height":48,"top":217.421875,"right":643.40625,"bottom":265.421875,"left":595.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":649.40625,"y":217.421875,"width":73.59375,"height":48,"top":217.421875,"right":723,"bottom":265.421875,"left":649.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":32,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":729,"y":217.421875,"width":63.90625,"height":48,"top":217.421875,"right":792.90625,"bottom":265.421875,"left":729},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":25,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":798.90625,"y":217.421875,"width":58.09375,"height":48,"top":217.421875,"right":857,"bottom":265.421875,"left":798.90625},"kind":"external","name":"Jisho search","label":{"clientWidth":21,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":30,"y":90,"width":840,"height":630,"top":90,"right":870,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":838,"height":183.421875,"top":91,"right":869,"bottom":274.421875,"left":31},"controlSize":32,"heading":{"x":43,"y":100,"width":344,"height":165.421875,"top":100,"right":387,"bottom":265.421875,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":560,"name":"particle","variant":"overlay-parent","actions":{"x":266,"y":100.5625,"width":307,"height":36,"top":100.5625,"right":573,"bottom":136.5625,"left":266},"controls":[{"bounds":{"x":362.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":394.453125,"bottom":134.5625,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":430.453125,"bottom":134.5625,"left":398.453125},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":434.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":466.453125,"bottom":134.5625,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":102.5625,"width":100.546875,"height":32,"top":102.5625,"right":571,"bottom":134.5625,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":79.5625,"top":61,"right":579,"bottom":140.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":67.5625,"top":67,"right":258,"bottom":134.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":560,"name":"particle","variant":"overlay-nested-close","actions":{"x":266,"y":100.5625,"width":307,"height":36,"top":100.5625,"right":573,"bottom":136.5625,"left":266},"controls":[{"bounds":{"x":326.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":358.453125,"bottom":134.5625,"left":326.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":362.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":394.453125,"bottom":134.5625,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":430.453125,"bottom":134.5625,"left":398.453125},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":434.453125,"y":102.5625,"width":32,"height":32,"top":102.5625,"right":466.453125,"bottom":134.5625,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":102.5625,"width":100.546875,"height":32,"top":102.5625,"right":571,"bottom":134.5625,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":79.5625,"top":61,"right":579,"bottom":140.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":67.5625,"top":67,"right":258,"bottom":134.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":560,"name":"particle","variant":"plain-parent","actions":{"x":465,"y":71.390625,"width":108,"height":36,"top":71.390625,"right":573,"bottom":107.390625,"left":465},"controls":[{"bounds":{"x":467,"y":73.390625,"width":32,"height":32,"top":73.390625,"right":499,"bottom":105.390625,"left":467},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":503,"y":73.390625,"width":32,"height":32,"top":73.390625,"right":535,"bottom":105.390625,"left":503},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":539,"y":73.390625,"width":32,"height":32,"top":73.390625,"right":571,"bottom":105.390625,"left":539},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":50.390625,"top":61,"right":579,"bottom":111.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":428,"height":38.390625,"top":67,"right":457,"bottom":105.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":560,"name":"long","variant":"browser-parent","actions":{"x":266,"y":183.5625,"width":307,"height":36,"top":183.5625,"right":573,"bottom":219.5625,"left":266},"controls":[{"bounds":{"x":268,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":300,"bottom":217.5625,"left":268},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":304,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":336,"bottom":217.5625,"left":304},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":340,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":372,"bottom":217.5625,"left":340},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":376,"y":185.5625,"width":71.828125,"height":32,"top":185.5625,"right":447.828125,"bottom":217.5625,"left":376},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":54,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":451.828125,"y":185.5625,"width":60.875,"height":32,"top":185.5625,"right":512.703125,"bottom":217.5625,"left":451.828125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":43,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":516.703125,"y":185.5625,"width":54.296875,"height":32,"top":185.5625,"right":571,"bottom":217.5625,"left":516.703125},"kind":"external","name":"Jisho search","label":{"clientWidth":36,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":162.5625,"top":61,"right":579,"bottom":223.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":150.5625,"top":67,"right":258,"bottom":217.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":560,"name":"long","variant":"browser-nested-close","actions":{"x":266,"y":183.5625,"width":307,"height":36,"top":183.5625,"right":573,"bottom":219.5625,"left":266},"controls":[{"bounds":{"x":268,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":300,"bottom":217.5625,"left":268},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":304,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":336,"bottom":217.5625,"left":304},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":340,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":372,"bottom":217.5625,"left":340},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":376,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":408,"bottom":217.5625,"left":376},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":412,"y":185.5625,"width":57.25,"height":32,"top":185.5625,"right":469.25,"bottom":217.5625,"left":412},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":39,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":473.25,"y":185.5625,"width":49.265625,"height":32,"top":185.5625,"right":522.515625,"bottom":217.5625,"left":473.25},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":31,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":526.515625,"y":185.5625,"width":44.484375,"height":32,"top":185.5625,"right":571,"bottom":217.5625,"left":526.515625},"kind":"external","name":"Jisho search","label":{"clientWidth":26,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":162.5625,"top":61,"right":579,"bottom":223.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":150.5625,"top":67,"right":258,"bottom":217.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":560,"name":"long","variant":"browser-nested-back-large","actions":{"x":399,"y":448.859375,"width":461,"height":54,"top":448.859375,"right":860,"bottom":502.859375,"left":399},"controls":[{"bounds":{"x":402,"y":451.859375,"width":79.40625,"height":48,"top":451.859375,"right":481.40625,"bottom":499.859375,"left":402},"kind":"back","name":"Back to previous results","label":null,"hit":false},{"bounds":{"x":487.40625,"y":451.859375,"width":48,"height":48,"top":451.859375,"right":535.40625,"bottom":499.859375,"left":487.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":false},{"bounds":{"x":541.40625,"y":451.859375,"width":48,"height":48,"top":451.859375,"right":589.40625,"bottom":499.859375,"left":541.40625},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":false},{"bounds":{"x":595.40625,"y":451.859375,"width":48,"height":48,"top":451.859375,"right":643.40625,"bottom":499.859375,"left":595.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":false},{"bounds":{"x":649.40625,"y":451.859375,"width":73.59375,"height":48,"top":451.859375,"right":723,"bottom":499.859375,"left":649.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":32,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":729,"y":451.859375,"width":63.90625,"height":48,"top":451.859375,"right":792.90625,"bottom":499.859375,"left":729},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":25,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":798.90625,"y":451.859375,"width":58.09375,"height":48,"top":451.859375,"right":857,"bottom":499.859375,"left":798.90625},"kind":"external","name":"Jisho search","label":{"clientWidth":21,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":30,"y":90,"width":840,"height":630,"top":90,"right":870,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":838,"height":417.859375,"top":91,"right":869,"bottom":508.859375,"left":31},"controlSize":32,"heading":{"x":43,"y":100,"width":344,"height":399.859375,"top":100,"right":387,"bottom":499.859375,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":560,"name":"long","variant":"overlay-parent","actions":{"x":266,"y":183.5625,"width":307,"height":36,"top":183.5625,"right":573,"bottom":219.5625,"left":266},"controls":[{"bounds":{"x":362.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":394.453125,"bottom":217.5625,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":430.453125,"bottom":217.5625,"left":398.453125},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":434.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":466.453125,"bottom":217.5625,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":185.5625,"width":100.546875,"height":32,"top":185.5625,"right":571,"bottom":217.5625,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":162.5625,"top":61,"right":579,"bottom":223.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":150.5625,"top":67,"right":258,"bottom":217.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":560,"name":"long","variant":"overlay-nested-close","actions":{"x":266,"y":183.5625,"width":307,"height":36,"top":183.5625,"right":573,"bottom":219.5625,"left":266},"controls":[{"bounds":{"x":326.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":358.453125,"bottom":217.5625,"left":326.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":362.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":394.453125,"bottom":217.5625,"left":362.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":398.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":430.453125,"bottom":217.5625,"left":398.453125},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":434.453125,"y":185.5625,"width":32,"height":32,"top":185.5625,"right":466.453125,"bottom":217.5625,"left":434.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":470.453125,"y":185.5625,"width":100.546875,"height":32,"top":185.5625,"right":571,"bottom":217.5625,"left":470.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":162.5625,"top":61,"right":579,"bottom":223.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":229,"height":150.5625,"top":67,"right":258,"bottom":217.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":307,"actionClientWidth":307,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":560,"name":"long","variant":"plain-parent","actions":{"x":465,"y":90.390625,"width":108,"height":36,"top":90.390625,"right":573,"bottom":126.390625,"left":465},"controls":[{"bounds":{"x":467,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":499,"bottom":124.390625,"left":467},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":503,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":535,"bottom":124.390625,"left":503},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":539,"y":92.390625,"width":32,"height":32,"top":92.390625,"right":571,"bottom":124.390625,"left":539},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":560,"height":420,"top":60,"right":580,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":558,"height":69.390625,"top":61,"right":579,"bottom":130.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":67,"width":428,"height":57.390625,"top":67,"right":457,"bottom":124.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":320,"name":"resound","variant":"browser-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":69.796875,"height":32,"top":67,"right":210.796875,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":52,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":214.796875,"y":67,"width":59.265625,"height":32,"top":67,"right":274.0625,"bottom":99,"left":214.796875},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":41,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":278.0625,"y":67,"width":52.9375,"height":32,"top":67,"right":331,"bottom":99,"left":278.0625},"kind":"external","name":"Jisho search","label":{"clientWidth":35,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.390625,"top":61,"right":339,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.390625,"top":107,"right":331,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":320,"name":"resound","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":55.234375,"height":32,"top":67,"right":232.234375,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":37,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":236.234375,"y":67,"width":47.65625,"height":32,"top":67,"right":283.890625,"bottom":99,"left":236.234375},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":30,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":287.890625,"y":67,"width":43.109375,"height":32,"top":67,"right":331,"bottom":99,"left":287.890625},"kind":"external","name":"Jisho search","label":{"clientWidth":25,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.390625,"top":61,"right":339,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.390625,"top":107,"right":331,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":320,"name":"resound","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":454,"height":54,"top":97,"right":500,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":70.75,"height":48,"top":100,"right":367.15625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":30,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":373.15625,"y":100,"width":61.65625,"height":48,"top":100,"right":434.8125,"bottom":148,"left":373.15625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":24,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":440.8125,"y":100,"width":56.1875,"height":48,"top":100,"right":497,"bottom":148,"left":440.8125},"kind":"external","name":"Jisho search","label":{"clientWidth":20,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":30,"y":90,"width":480,"height":630,"top":90,"right":510,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":478,"height":193.390625,"top":91,"right":509,"bottom":284.390625,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":454,"height":115.390625,"top":160,"right":497,"bottom":275.390625,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":303,"actionClientWidth":303,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":320,"name":"resound","variant":"overlay-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.390625,"top":61,"right":339,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.390625,"top":107,"right":331,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":320,"name":"resound","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":86.453125,"y":67,"width":32,"height":32,"top":67,"right":118.453125,"bottom":99,"left":86.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.390625,"top":61,"right":339,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.390625,"top":107,"right":331,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":320,"name":"resound","variant":"kanji-nested-back","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":53.609375,"height":32,"top":67,"right":86.609375,"bottom":99,"left":33},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":90.609375,"y":67,"width":32,"height":32,"top":67,"right":122.609375,"bottom":99,"left":90.609375},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":126.609375,"y":67,"width":75.625,"height":32,"top":67,"right":202.234375,"bottom":99,"left":126.609375},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":58,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":206.234375,"y":67,"width":63.90625,"height":32,"top":67,"right":270.140625,"bottom":99,"left":206.234375},"kind":"custom-anki","name":"Send to Anki with Sentence card","label":{"clientWidth":46,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":274.140625,"y":67,"width":56.859375,"height":32,"top":67,"right":331,"bottom":99,"left":274.140625},"kind":"external","name":"Jisho search","label":{"clientWidth":39,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.59375,"top":61,"right":339,"bottom":170.59375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.59375,"top":107,"right":331,"bottom":164.59375,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":202,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":320,"name":"resound","variant":"plain-parent","actions":{"x":225,"y":65,"width":108,"height":36,"top":65,"right":333,"bottom":101,"left":225},"controls":[{"bounds":{"x":227,"y":67,"width":32,"height":32,"top":67,"right":259,"bottom":99,"left":227},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":263,"y":67,"width":32,"height":32,"top":67,"right":295,"bottom":99,"left":263},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":299,"y":67,"width":32,"height":32,"top":67,"right":331,"bottom":99,"left":299},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":109.390625,"top":61,"right":339,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":57.390625,"top":107,"right":331,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":320,"name":"particle","variant":"browser-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":69.796875,"height":32,"top":67,"right":210.796875,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":52,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":214.796875,"y":67,"width":59.265625,"height":32,"top":67,"right":274.0625,"bottom":99,"left":214.796875},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":41,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":278.0625,"y":67,"width":52.9375,"height":32,"top":67,"right":331,"bottom":99,"left":278.0625},"kind":"external","name":"Jisho search","label":{"clientWidth":35,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":102.671875,"top":61,"right":339,"bottom":163.671875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":50.671875,"top":107,"right":331,"bottom":157.671875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":320,"name":"particle","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":55.234375,"height":32,"top":67,"right":232.234375,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":37,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":236.234375,"y":67,"width":47.65625,"height":32,"top":67,"right":283.890625,"bottom":99,"left":236.234375},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":30,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":287.890625,"y":67,"width":43.109375,"height":32,"top":67,"right":331,"bottom":99,"left":287.890625},"kind":"external","name":"Jisho search","label":{"clientWidth":25,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":102.671875,"top":61,"right":339,"bottom":163.671875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":50.671875,"top":107,"right":331,"bottom":157.671875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":320,"name":"particle","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":454,"height":54,"top":97,"right":500,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":70.75,"height":48,"top":100,"right":367.15625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":30,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":373.15625,"y":100,"width":61.65625,"height":48,"top":100,"right":434.8125,"bottom":148,"left":373.15625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":24,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":440.8125,"y":100,"width":56.1875,"height":48,"top":100,"right":497,"bottom":148,"left":440.8125},"kind":"external","name":"Jisho search","label":{"clientWidth":20,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":30,"y":90,"width":480,"height":630,"top":90,"right":510,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":478,"height":164.390625,"top":91,"right":509,"bottom":255.390625,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":454,"height":86.390625,"top":160,"right":497,"bottom":246.390625,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":303,"actionClientWidth":303,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":320,"name":"particle","variant":"overlay-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":102.671875,"top":61,"right":339,"bottom":163.671875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":50.671875,"top":107,"right":331,"bottom":157.671875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":320,"name":"particle","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":86.453125,"y":67,"width":32,"height":32,"top":67,"right":118.453125,"bottom":99,"left":86.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":102.671875,"top":61,"right":339,"bottom":163.671875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":50.671875,"top":107,"right":331,"bottom":157.671875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":320,"name":"particle","variant":"plain-parent","actions":{"x":225,"y":65,"width":108,"height":36,"top":65,"right":333,"bottom":101,"left":225},"controls":[{"bounds":{"x":227,"y":67,"width":32,"height":32,"top":67,"right":259,"bottom":99,"left":227},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":263,"y":67,"width":32,"height":32,"top":67,"right":295,"bottom":99,"left":263},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":299,"y":67,"width":32,"height":32,"top":67,"right":331,"bottom":99,"left":299},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":90.390625,"top":61,"right":339,"bottom":151.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":38.390625,"top":107,"right":331,"bottom":145.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":320,"name":"long","variant":"browser-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":69.796875,"height":32,"top":67,"right":210.796875,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":52,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":214.796875,"y":67,"width":59.265625,"height":32,"top":67,"right":274.0625,"bottom":99,"left":214.796875},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":41,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":278.0625,"y":67,"width":52.9375,"height":32,"top":67,"right":331,"bottom":99,"left":278.0625},"kind":"external","name":"Jisho search","label":{"clientWidth":35,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":202.5625,"top":61,"right":339,"bottom":263.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":150.5625,"top":107,"right":331,"bottom":257.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":320,"name":"long","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":55.234375,"height":32,"top":67,"right":232.234375,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":37,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":236.234375,"y":67,"width":47.65625,"height":32,"top":67,"right":283.890625,"bottom":99,"left":236.234375},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":30,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":287.890625,"y":67,"width":43.109375,"height":32,"top":67,"right":331,"bottom":99,"left":287.890625},"kind":"external","name":"Jisho search","label":{"clientWidth":25,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":202.5625,"top":61,"right":339,"bottom":263.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":150.5625,"top":107,"right":331,"bottom":257.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":320,"name":"long","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":454,"height":54,"top":97,"right":500,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":70.75,"height":48,"top":100,"right":367.15625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":30,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":373.15625,"y":100,"width":61.65625,"height":48,"top":100,"right":434.8125,"bottom":148,"left":373.15625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":24,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":440.8125,"y":100,"width":56.1875,"height":48,"top":100,"right":497,"bottom":148,"left":440.8125},"kind":"external","name":"Jisho search","label":{"clientWidth":20,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":30,"y":90,"width":480,"height":630,"top":90,"right":510,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":478,"height":362.46875,"top":91,"right":509,"bottom":453.46875,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":454,"height":284.46875,"top":160,"right":497,"bottom":444.46875,"left":43},"overflow":false,"actionOverflow":false,"actionScrollWidth":303,"actionClientWidth":303,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":320,"name":"long","variant":"overlay-parent","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":202.5625,"top":61,"right":339,"bottom":263.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":150.5625,"top":107,"right":331,"bottom":257.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":320,"name":"long","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":302,"height":36,"top":65,"right":333,"bottom":101,"left":31},"controls":[{"bounds":{"x":86.453125,"y":67,"width":32,"height":32,"top":67,"right":118.453125,"bottom":99,"left":86.453125},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":122.453125,"y":67,"width":32,"height":32,"top":67,"right":154.453125,"bottom":99,"left":122.453125},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":158.453125,"y":67,"width":32,"height":32,"top":67,"right":190.453125,"bottom":99,"left":158.453125},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":194.453125,"y":67,"width":32,"height":32,"top":67,"right":226.453125,"bottom":99,"left":194.453125},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":230.453125,"y":67,"width":100.546875,"height":32,"top":67,"right":331,"bottom":99,"left":230.453125},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":83,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":202.5625,"top":61,"right":339,"bottom":263.5625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":150.5625,"top":107,"right":331,"bottom":257.5625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":302,"actionClientWidth":302,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":320,"name":"long","variant":"plain-parent","actions":{"x":225,"y":65,"width":108,"height":36,"top":65,"right":333,"bottom":101,"left":225},"controls":[{"bounds":{"x":227,"y":67,"width":32,"height":32,"top":67,"right":259,"bottom":99,"left":227},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":263,"y":67,"width":32,"height":32,"top":67,"right":295,"bottom":99,"left":263},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":299,"y":67,"width":32,"height":32,"top":67,"right":331,"bottom":99,"left":299},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":320,"height":420,"top":60,"right":340,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":318,"height":166.78125,"top":61,"right":339,"bottom":227.78125,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":302,"height":114.78125,"top":107,"right":331,"bottom":221.78125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":200,"name":"resound","variant":"browser-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":145.171875,"top":61,"right":219,"bottom":206.171875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":93.171875,"top":107,"right":211,"bottom":200.171875,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":216,"actionClientWidth":182,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":200,"name":"resound","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":249,"y":67,"width":32,"height":32,"top":67,"right":281,"bottom":99,"left":249},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":145.171875,"top":61,"right":219,"bottom":206.171875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":93.171875,"top":107,"right":211,"bottom":200.171875,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":252,"actionClientWidth":182,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":200,"name":"resound","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":274,"height":54,"top":97,"right":320,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":48,"height":48,"top":100,"right":344.40625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":15,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":350.40625,"y":100,"width":48,"height":48,"top":100,"right":398.40625,"bottom":148,"left":350.40625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":15,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":404.40625,"y":100,"width":48,"height":48,"top":100,"right":452.40625,"bottom":148,"left":404.40625},"kind":"external","name":"Jisho search","label":{"clientWidth":15,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":30,"y":90,"width":300,"height":630,"top":90,"right":330,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":298,"height":247.078125,"top":91,"right":329,"bottom":338.078125,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":274,"height":169.078125,"top":160,"right":317,"bottom":329.078125,"left":43},"overflow":false,"actionOverflow":true,"actionScrollWidth":273,"actionClientWidth":183,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":200,"name":"resound","variant":"overlay-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":70,"height":32,"top":67,"right":211,"bottom":99,"left":141},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":52,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":145.171875,"top":61,"right":219,"bottom":206.171875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":93.171875,"top":107,"right":211,"bottom":200.171875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":200,"name":"resound","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":34,"height":32,"top":67,"right":211,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":16,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":145.171875,"top":61,"right":219,"bottom":206.171875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":93.171875,"top":107,"right":211,"bottom":200.171875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"to resoundto be heard far away"}
+PASS action row geometry {"width":200,"name":"resound","variant":"kanji-nested-back","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":53.609375,"height":32,"top":67,"right":86.609375,"bottom":99,"left":33},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":90.609375,"y":67,"width":32,"height":32,"top":67,"right":122.609375,"bottom":99,"left":90.609375},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":126.609375,"y":67,"width":32,"height":32,"top":67,"right":158.609375,"bottom":99,"left":126.609375},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":162.609375,"y":67,"width":32,"height":32,"top":67,"right":194.609375,"bottom":99,"left":162.609375},"kind":"custom-anki","name":"Send to Anki with Sentence card","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":198.609375,"y":67,"width":32,"height":32,"top":67,"right":230.609375,"bottom":99,"left":198.609375},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":109.59375,"top":61,"right":219,"bottom":170.59375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":57.59375,"top":107,"right":211,"bottom":164.59375,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":202,"actionClientWidth":182,"minimumActionWidth":202,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":200,"name":"resound","variant":"plain-parent","actions":{"x":105,"y":65,"width":108,"height":36,"top":65,"right":213,"bottom":101,"left":105},"controls":[{"bounds":{"x":107,"y":67,"width":32,"height":32,"top":67,"right":139,"bottom":99,"left":107},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":143,"y":67,"width":32,"height":32,"top":67,"right":175,"bottom":99,"left":143},"kind":"audio","name":"Play pronunciation for 響く","label":null,"hit":true},{"bounds":{"x":179,"y":67,"width":32,"height":32,"top":67,"right":211,"bottom":99,"left":179},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":109.390625,"top":61,"right":219,"bottom":170.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":57.390625,"top":107,"right":211,"bottom":164.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":200,"name":"particle","variant":"browser-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":159.953125,"top":61,"right":219,"bottom":220.953125,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":107.953125,"top":107,"right":211,"bottom":214.953125,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":216,"actionClientWidth":182,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":200,"name":"particle","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":249,"y":67,"width":32,"height":32,"top":67,"right":281,"bottom":99,"left":249},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":159.953125,"top":61,"right":219,"bottom":220.953125,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":107.953125,"top":107,"right":211,"bottom":214.953125,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":252,"actionClientWidth":182,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":200,"name":"particle","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":274,"height":54,"top":97,"right":320,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":48,"height":48,"top":100,"right":344.40625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":15,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":350.40625,"y":100,"width":48,"height":48,"top":100,"right":398.40625,"bottom":148,"left":350.40625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":15,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":404.40625,"y":100,"width":48,"height":48,"top":100,"right":452.40625,"bottom":148,"left":404.40625},"kind":"external","name":"Jisho search","label":{"clientWidth":15,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":30,"y":90,"width":300,"height":630,"top":90,"right":330,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":298,"height":268.765625,"top":91,"right":329,"bottom":359.765625,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":274,"height":190.765625,"top":160,"right":317,"bottom":350.765625,"left":43},"overflow":false,"actionOverflow":true,"actionScrollWidth":273,"actionClientWidth":183,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":200,"name":"particle","variant":"overlay-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":70,"height":32,"top":67,"right":211,"bottom":99,"left":141},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":52,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":159.953125,"top":61,"right":219,"bottom":220.953125,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":107.953125,"top":107,"right":211,"bottom":214.953125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":200,"name":"particle","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":34,"height":32,"top":67,"right":211,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":16,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":159.953125,"top":61,"right":219,"bottom":220.953125,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":107.953125,"top":107,"right":211,"bottom":214.953125,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"partial equivalent of the \"no\" particle in standard Japaneseindicates the subject of a sentence"}
+PASS action row geometry {"width":200,"name":"particle","variant":"plain-parent","actions":{"x":105,"y":65,"width":108,"height":36,"top":65,"right":213,"bottom":101,"left":105},"controls":[{"bounds":{"x":107,"y":67,"width":32,"height":32,"top":67,"right":139,"bottom":99,"left":107},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":143,"y":67,"width":32,"height":32,"top":67,"right":175,"bottom":99,"left":143},"kind":"audio","name":"Play pronunciation for が","label":null,"hit":true},{"bounds":{"x":179,"y":67,"width":32,"height":32,"top":67,"right":211,"bottom":99,"left":179},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":90.390625,"top":61,"right":219,"bottom":151.390625,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":38.390625,"top":107,"right":211,"bottom":145.390625,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+PASS action row geometry {"width":200,"name":"long","variant":"browser-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":276.84375,"top":61,"right":219,"bottom":337.84375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":224.84375,"top":107,"right":211,"bottom":331.84375,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":216,"actionClientWidth":182,"minimumActionWidth":216,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":200,"name":"long","variant":"browser-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":32,"height":32,"top":67,"right":209,"bottom":99,"left":177},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":14,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":213,"y":67,"width":32,"height":32,"top":67,"right":245,"bottom":99,"left":213},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":14,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":249,"y":67,"width":32,"height":32,"top":67,"right":281,"bottom":99,"left":249},"kind":"external","name":"Jisho search","label":{"clientWidth":14,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":276.84375,"top":61,"right":219,"bottom":337.84375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":224.84375,"top":107,"right":211,"bottom":331.84375,"left":29},"overflow":false,"actionOverflow":true,"actionScrollWidth":252,"actionClientWidth":182,"minimumActionWidth":252,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":200,"name":"long","variant":"browser-nested-back-large","actions":{"x":46,"y":97,"width":274,"height":54,"top":97,"right":320,"bottom":151,"left":46},"controls":[{"bounds":{"x":49,"y":100,"width":79.40625,"height":48,"top":100,"right":128.40625,"bottom":148,"left":49},"kind":"back","name":"Back to previous results","label":null,"hit":true},{"bounds":{"x":134.40625,"y":100,"width":48,"height":48,"top":100,"right":182.40625,"bottom":148,"left":134.40625},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":188.40625,"y":100,"width":48,"height":48,"top":100,"right":236.40625,"bottom":148,"left":188.40625},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":242.40625,"y":100,"width":48,"height":48,"top":100,"right":290.40625,"bottom":148,"left":242.40625},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":296.40625,"y":100,"width":48,"height":48,"top":100,"right":344.40625,"bottom":148,"left":296.40625},"kind":"external","name":"JMirror dictionary","label":{"clientWidth":15,"scrollWidth":104,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true},{"bounds":{"x":350.40625,"y":100,"width":48,"height":48,"top":100,"right":398.40625,"bottom":148,"left":350.40625},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":15,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false},{"bounds":{"x":404.40625,"y":100,"width":48,"height":48,"top":100,"right":452.40625,"bottom":148,"left":404.40625},"kind":"external","name":"Jisho search","label":{"clientWidth":15,"scrollWidth":70,"overflow":"hidden","textOverflow":"ellipsis"},"hit":false}],"popup":{"x":30,"y":90,"width":300,"height":630,"top":90,"right":330,"bottom":720,"left":30},"header":{"x":31,"y":91,"width":298,"height":618.59375,"top":91,"right":329,"bottom":709.59375,"left":31},"controlSize":32,"heading":{"x":43,"y":160,"width":274,"height":540.59375,"top":160,"right":317,"bottom":700.59375,"left":43},"overflow":false,"actionOverflow":true,"actionScrollWidth":273,"actionClientWidth":183,"minimumActionWidth":273,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":200,"name":"long","variant":"overlay-parent","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":70,"height":32,"top":67,"right":211,"bottom":99,"left":141},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":52,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":276.84375,"top":61,"right":219,"bottom":337.84375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":224.84375,"top":107,"right":211,"bottom":331.84375,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":144,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":200,"name":"long","variant":"overlay-nested-close","actions":{"x":31,"y":65,"width":182,"height":36,"top":65,"right":213,"bottom":101,"left":31},"controls":[{"bounds":{"x":33,"y":67,"width":32,"height":32,"top":67,"right":65,"bottom":99,"left":33},"kind":"close","name":"Close lookup","label":null,"hit":true},{"bounds":{"x":69,"y":67,"width":32,"height":32,"top":67,"right":101,"bottom":99,"left":69},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":105,"y":67,"width":32,"height":32,"top":67,"right":137,"bottom":99,"left":105},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":141,"y":67,"width":32,"height":32,"top":67,"right":173,"bottom":99,"left":141},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true},{"bounds":{"x":177,"y":67,"width":34,"height":32,"top":67,"right":211,"bottom":99,"left":177},"kind":"custom-anki","name":"Sentence card: Mine to Anki","label":{"clientWidth":16,"scrollWidth":83,"overflow":"hidden","textOverflow":"ellipsis"},"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":276.84375,"top":61,"right":219,"bottom":337.84375,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":224.84375,"top":107,"right":211,"bottom":331.84375,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":182,"actionClientWidth":182,"minimumActionWidth":180,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions","summary":"United Nations Educational, Scientific and Cultural OrganizationUNESCO"}
+PASS action row geometry {"width":200,"name":"long","variant":"plain-parent","actions":{"x":105,"y":65,"width":108,"height":36,"top":65,"right":213,"bottom":101,"left":105},"controls":[{"bounds":{"x":107,"y":67,"width":32,"height":32,"top":67,"right":139,"bottom":99,"left":107},"kind":"anki","name":"Mine to Anki","label":null,"hit":true},{"bounds":{"x":143,"y":67,"width":32,"height":32,"top":67,"right":175,"bottom":99,"left":143},"kind":"audio","name":"Play pronunciation for 国際連合教育科学文化機関","label":null,"hit":true},{"bounds":{"x":179,"y":67,"width":32,"height":32,"top":67,"right":211,"bottom":99,"left":179},"kind":"note","name":"Edit personal dictionary","label":null,"hit":true}],"popup":{"x":20,"y":60,"width":200,"height":420,"top":60,"right":220,"bottom":480,"left":20},"header":{"x":21,"y":61,"width":198,"height":224.171875,"top":61,"right":219,"bottom":285.171875,"left":21},"controlSize":32,"heading":{"x":29,"y":107,"width":182,"height":172.171875,"top":107,"right":211,"bottom":279.171875,"left":29},"overflow":false,"actionOverflow":false,"actionScrollWidth":108,"actionClientWidth":108,"minimumActionWidth":108,"actionOverflowX":"auto","actionRole":"group","actionLabel":"Lookup actions"}
+ok   Popup toolbar actions stay in one ordered row with deliberate narrow overflow
+
+=== popup layout > the dynamic headword
+  ✔ the action row (549.594805ms)
+PASS dynamic headword [{"toolbar":"top 100%","index":1,"expected":"あす","swapped":true,"before":[-255,2.53125,260.0625,517.59375],"after":[-255,2.53125,260.0625,517.59375],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[88,88,88,88,88,88],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":-1,"focusedWordStatus":null,"pinnedBelow":false}},{"toolbar":"bottom 100%","index":1,"expected":"あす","swapped":true,"before":[-255,2.53125,260.0625,517.59375],"after":[-255,2.53125,260.0625,517.59375],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[441,441,441,441,441,441],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":-1,"focusedWordStatus":null,"pinnedBelow":true}},{"toolbar":"top 125%","index":1,"expected":"あす","swapped":true,"before":[-253,3.3375,259.675,516.0125],"after":[-253,3.3375,259.675,516.0125],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[109,109,109,109,109,109],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":-1,"focusedWordStatus":null,"pinnedBelow":false}},{"toolbar":"mining","index":1,"expected":"あす","swapped":true,"before":[-255,2.53125,260.0625,517.59375],"after":[-255,2.53125,260.0625,517.59375],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[88,88,88,88,88,88],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":-1,"focusedWordStatus":null,"pinnedBelow":false}},{"toolbar":"focus","index":1,"expected":"あす","swapped":true,"before":[-255,2.53125,260.0625,517.59375],"after":[-255,2.53125,260.0625,517.59375],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[88,88,88,88,88,88],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":1,"focusedWordStatus":null,"pinnedBelow":false}},{"toolbar":"word status focus","index":1,"expected":"あす","swapped":true,"before":[-255,2.53125,260.0625,517.59375],"after":[-255,2.53125,260.0625,517.59375],"state":{"readings":["あす"],"kinds":["mine-button","audio-control","known","ignored","note-button","custom-anki-button"],"tops":[88,88,88,88,88,88],"audio":["Play pronunciation for 明日"],"states":["ready","ready"],"focusedAudio":-1,"focusedWordStatus":["ignored",1],"pinnedBelow":false}}]
+ok   the pinned header shows the result being read without moving definitions, and mines and plays that result
+
+=== popup layout > the headword pitch
+  ✔ the dynamic headword (491.210471ms)
+ok   a kanji headword's pitch is on its reading beside unchanged furigana, a kana headword carries its own, and blur hides both until the reveal
+
+=== popup layout > the lookup count layout
+  ✔ the headword pitch (3933.716527ms)
+PASS lookup count layout {"widths":161,"comparisons":3381,"painted":["Looked up 12 times","Looked up 12 times","Entry metadata","JMdict: 142 (142位)","142位","142位","JPDB: 1234","1234","1234","BCCWJ: 5678","5678","5678","Innocent Ranked: 910","910","910","v1","v1","JMdict","JMdict","◦ ","to eat","to eat","◦ ","to live on (e.g. a salary)","to live on (e.g. a salary)"]}
+ok   A late lookup count arrives in its kept place after the frequency tags without moving them or the definitions
+
+=== popup layout > the audio chooser
+  ✔ the lookup count layout (792.30629ms)
+PASS audio chooser {"evidence":[{"label":"1-dark-right-click","menu":{"x":297,"y":88,"width":280,"height":304,"top":88,"right":577,"bottom":392,"left":297},"button":{"x":507,"y":51.59375,"width":32,"height":32,"top":51.59375,"right":539,"bottom":83.59375,"left":507}},{"label":"2-light-bottom-toolbar-shift-click","menu":{"x":297,"y":97,"width":280,"height":304,"top":97,"right":577,"bottom":401,"left":297},"button":{"x":507,"y":405,"width":32,"height":32,"top":405,"right":539,"bottom":437,"left":507}},{"label":"3-high-contrast-scale-125-keyboard","menu":{"x":371,"y":108.5,"width":350,"height":379.9375,"top":108.5,"right":721,"bottom":488.4375,"left":371},"button":{"x":634,"y":63.5,"width":40,"height":40,"top":63.5,"right":674,"bottom":103.5,"left":634}},{"label":"4-dark-browser-zoom-125-scale-80","menu":{"x":189.796875,"y":56.671875,"width":179.1875,"height":195.5625,"top":56.671875,"right":368.984375,"bottom":252.234375,"left":189.796875},"button":{"x":324.15625,"y":34.21875,"width":20.46875,"height":20.46875,"top":34.21875,"right":344.625,"bottom":54.6875,"left":324.15625}},{"label":"long list","menu":{"x":38.5,"y":83.25,"width":333,"height":187.75,"top":83.25,"right":371.5,"bottom":271,"left":38.5},"overflow":774}],"focused":[{"scheme":"dark","forced":false,"name":"Pronunciation 1","focusVisible":true,"outline":["solid","rgba(0, 0, 0, 0)","2px"],"background":"color(srgb 0.110739 0.133774 0.160732)"},{"scheme":"dark","forced":true,"name":"Pronunciation 1","focusVisible":true,"outline":["solid","rgba(0, 230, 255, 0.8)","2px"],"background":"rgb(0, 0, 0)"},{"scheme":"light","forced":true,"name":"Pronunciation 1","focusVisible":true,"outline":["solid","rgba(5, 0, 73, 0.8)","2px"],"background":"rgb(255, 255, 255)"}]}
+ok   the pronunciation chooser opens beside its audio button from every gesture, stays inside the popup at every scale and edge, follows or closes with its scrolled button and moves no definition
+
+=== popup layout > compact summaries
+  ✔ the audio chooser (594.133246ms)
+ok   Compact summaries persist Settings, share leading media and update live without replacing definitions or Note drafts
+ok   compact definition text opens a nested lookup with the same close contract
+ok   Live image sources recover missing thumbnails, preserve owners and resolve groups per path with accurate aliases
+
+=== activation and selection > reader activation
+  ✔ compact summaries (3440.255311ms)
+✔ popup layout (12540.506086ms)
+ok   hover enablement closes active popups and changes already-open tabs without reloading the engine
+ok   configured activation keys open stationary lookups and release them using the saved delays
+ok   No key looks up on hover and keeps the remembered key, which returns with the popup staying open
+ok   a hover scan delay keeps a quick pass across a word from looking anything up and looks up the word the pointer rests on once
+ok   hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus
+ok   Press to set records the middle button, which opens a stationary lookup and releases it like a key
+ok   a middle scan press on a Japanese link looks it up without a new tab while other links still open
+ok   a Back scan press on a word, in page text or a text field, looks it up without going back, while one on an empty field still does
+
+=== activation and selection > reader selection
+▶ activation and selection
+  ✔ reader activation (15614.476567ms)
+ok   Japanese-only selections leave English text alone and the notice setting propagates to open readers
+ok   turning off the personal dictionary stops highlight lookups, the pencil and personal entries until it is on
+ok   plain selections cannot lookup, highlight or open personal definitions when Shift is required
+ok   ordinary selections follow hover and both activation modes for all four modifiers
+ok   source highlights reconcile selected text mutations without changing selection
+ok   matching activation preserves exact selections, cross-inline highlights and personal definitions
+ok   hover popups stay open while a drag selects text, prefill the highlight and close on a plain click
+ok   text fields look up their words without disturbing editing, while other editors suppress pointer and selection lookups
+ok   autofocused search fields allow hover and stationary Shift lookup of their own words and Japanese example links
+ok   Japanese-only preferences change automatic scanning in an already-open tab
+ok   Japanese-only mixed numeral lookups retain native matches and exact source highlights
+
+=== activation and selection > source fallback paint
+  ✔ reader selection (47383.776514ms)
+ok   fallback source paint tracks CSS transitions and animated ancestors
+ok   fallback source paint follows sibling layout changes inside fixed-size ancestors
+ok   fallback source paint stays beneath page headers and overlays
+ok   fallback source paint refreshes after stylesheet loading and CSSOM edits
+ok   fallback source paint stays exact through clipping, scrolling, visibility and cleanup
+
+=== frequency, metadata and audio > frequency direction
+  ✔ source fallback paint (16491.711266ms)
+✔ activation and selection (79490.339349ms)
+  frequency inference ascending: 205.6 ms including Settings autosave
+  frequency inference descending: 205.6 ms including Settings autosave
+ok   Settings persists frequency directions and applies them to real-WASM lookup results
+
+=== frequency, metadata and audio > popup metadata
+▶ frequency, metadata and audio
+  ✔ frequency direction (5104.214222ms)
+ok   Live metadata Settings preserve Note and dictionary content while independently controlling frequency pitch grammar and IPA
+
+=== frequency, metadata and audio > later entry pitch accents
+  ✔ popup metadata (3629.127308ms)
+ok   a later entry shows the pitch accent dictionaries it shows on its own after twelve frequency tags
+
+=== frequency, metadata and audio > words only frequency and pitch dictionaries have
+  ✔ later entry pitch accents (4482.085855ms)
+ok   a word only frequency and pitch dictionaries have is the first entry, without definitions, only while Settings asks for it
+ok   a reading only frequency and pitch dictionaries have follows the word a dictionary defines, only while Settings asks for it (#658)
+
+=== frequency, metadata and audio > popup audio
+  ✔ words only frequency and pitch dictionaries have (2119.420732ms)
+ok   Popup audio is silent by default and manually falls back through enabled sources and playable candidates
+ok   Popup pronunciation choices open beside Audio from a right-click and Down, preserve source identity and warm replay reuses native cached media
+ok   Popup autoplay is optional and does not replay after presentation updates or Back
+ok   Popup audio cancels obsolete discovery and playback on dismissal, source changes and navigation
+
+=== frequency, metadata and audio > pitch accent groups
+  ✔ popup audio (6551.301166ms)
+ok   Pitch accent colours give a dictionary's i-adjective class to 高い but not to the na-adjective 自由
+
+=== Anki mining > Anki submission
+  ✔ pitch accent groups (1076.048003ms)
+✔ frequency, metadata and audio (22962.911567ms)
+ok   Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media
+ok   Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps
+ok   Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings
+ok   Anki pitch dictionary variants export as self-contained SVG graphs in light, dark and styled cards
+ok   Anki first-field audio is checked without uploads or playback and the exact chosen recording survives submission
+ok   Anki {audio} in a non-first field uploads the selected pronunciation after the note is added
+     Anki readiness evidence: {"loading":{"hidden":false,"text":"","title":"Checking Anki card status — click to add anyway","icon":"arrow-clockwise","state":"checking","disabled":false,"ariaBusy":"true","ariaLabel":"Checking Anki card status — click to add anyway","focused":false,"color":"oklch(0.45 0.24 277.023)","borderColor":"oklch(0.45 0.24 277.023)","successColored":false,"output":"","action":"add","rect":{"x":535,"y":199.59375,"width":32,"height":32,"top":199.59375,"right":567,"bottom":231.59375,"left":535}},"loadingAccessibility":{"role":"button","name":"Checking Anki card status — click to add anyway","disabled":null,"busy":true,"focusable":true},"loadingFocused":true,"ready":{"hidden":false,"text":"","title":"Mine to Anki","icon":"add","state":"ready","disabled":false,"ariaBusy":"false","ariaLabel":"Mine to Anki","focused":true,"color":"oklch(0.45 0.24 277.023)","borderColor":"oklch(0.45 0.24 277.023)","successColored":false,"output":"","action":"add","rect":{"x":535,"y":199.59375,"width":32,"height":32,"top":199.59375,"right":567,"bottom":231.59375,"left":535}},"readyAccessibility":{"role":"button","name":"Mine to Anki","disabled":null,"busy":null,"focusable":true},"addFocused":true,"saved":{"hidden":false,"text":"","title":"Find added note in Anki","icon":"book-search","state":"success","disabled":false,"ariaBusy":"false","ariaLabel":"Find added note in Anki","focused":true,"color":"oklch(0.76 0.177 163.223)","borderColor":"oklch(0.76 0.177 163.223)","successColored":true,"output":"Added note 7.","action":"view","rect":{"x":535,"y":199.59375,"width":32,"height":32,"top":199.59375,"right":567,"bottom":231.59375,"left":535}},"savedFocused":true,"duplicate":{"hidden":false,"text":"","title":"View existing notes in Anki","icon":"book-search","state":"view-existing","disabled":false,"ariaBusy":"false","ariaLabel":"View existing notes in Anki","focused":false,"color":"oklch(0.76 0.177 163.223)","borderColor":"oklch(0.76 0.177 163.223)","successColored":true,"output":"","action":"view","rect":{"x":535,"y":199.59375,"width":32,"height":32,"top":199.59375,"right":567,"bottom":231.59375,"left":535}},"viewFocused":true}
+ok   Anki readiness uses an enabled accessible Arrow Clockwise before Add and View resolve
+ok   Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View
+ok   clicking the Anki spinner adds a duplicate before its pending preflight resolves
+ok   a keyboard Add keeps the popup open and returns focus to its action, and a mouse click does not
+     screenshot mining answered in 120 ms
+ok   Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL
+ok   a mined screenshot of a page with a paused MSE video contains that video's frame instead of a black region
+ok   a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note
+ok   a screenshot upload that Anki refuses is a warning on a note that is still added
+ok   a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word
+ok   a note mined from a selection takes the hover's sentence without the hidden text inside it
+ok   the native kanji view mines character, readings, strokes, glossary and source context, then opens the saved note
+
+=== clicked kanji > clicked-kanji navigation
+▶ Anki mining
+  ✔ Anki submission (5789.261139ms)
+✔ Anki mining (5789.425579ms)
+ok   selected term dictionary wins even when maximum results is one
+ok   Back preserves the complete clicked-kanji drill-down history
+ok   Back restores the term results after a generic kanji lookup
+ok   clicked-kanji navigation moves and restores keyboard focus
+
+=== clicked kanji > Forward reopens the view Back left
+▶ clicked kanji
+  ✔ clicked-kanji navigation (1333.961743ms)
+ok   Alt+F reopens the kanji view Back left with Back focused, and Alt+B returns from it
+ok   Alt+F is left to the page when nothing is ahead, as after a new kanji click
+
+=== clicked kanji > a duplicate clicked kanji
+  ✔ Forward reopens the view Back left (180.495215ms)
+ok   Back restores focus to the exact clicked duplicate kanji
+
+=== clicked kanji > a disabled term dictionary falls back to native kanji
+  ✔ a duplicate clicked kanji (407.197255ms)
+ok   the Settings enabled control disables one logical package
+ok   a disabled selected term dictionary falls back to native kanji
+
+=== clicked kanji > re-enabling a selected term-only kanji dictionary
+  ✔ a disabled term dictionary falls back to native kanji (418.176913ms)
+ok   re-enabling a selected term-only kanji dictionary restores its saved route
+
+=== clicked kanji > a combined archive's term entries
+  ✔ re-enabling a selected term-only kanji dictionary (824.149775ms)
+ok   a combined archive can use its term entries for clicked kanji
+
+=== clicked kanji > a kanji-bank dictionary keeps the native view
+  ✔ a combined archive's term entries (286.803537ms)
+ok   selecting a kanji-bank dictionary keeps the native kanji view
+
+=== highlights, structured content and Notes > the hovered word's highlight
+  ✔ a kanji-bank dictionary keeps the native view (485.177085ms)
+✔ clicked kanji (3936.920423ms)
+ok   the hovered word is highlighted under CSS.highlights["gsm-hoshidicts-match"]
+
+=== highlights, structured content and Notes > Escape hides the popup and its highlight
+▶ highlights, structured content and Notes
+  ✔ the hovered word's highlight (3.387686ms)
+ok   Escape hides the popup
+ok   dismissing the popup clears the extension's highlight
+
+=== highlights, structured content and Notes > structured content
+  ✔ Escape hides the popup and its highlight (9.596058ms)
+ok   hovering 漢字 shows a popup
+ok   structured content renders a bold span element
+ok   structured content renders a ul with its two li
+ok   structured content renders a table with the on and kun rows
+ok   a structured-content image resolves through hd_media to a data: URL
+
+=== highlights, structured content and Notes > non-Japanese text
+  ✔ structured content (298.412827ms)
+ok   the popup is showing immediately before the non-Japanese hover
+ok   hovering non-Japanese text shows no popup
+ok   the same hover shows a popup again after the non-Japanese one
+
+=== highlights, structured content and Notes > an open Note draft
+  ✔ non-Japanese text (4969.732544ms)
+ok   an open Note draft survives hover and consumes Escape before popup dismissal
+
+=== personal dictionary Notes > term and kanji Note forms
+  ✔ an open Note draft (474.639184ms)
+✔ highlights, structured content and Notes (5756.32787ms)
+ok   term and kanji Note forms append and refresh the managed custom dictionary
+
+=== search page > the search page shortcuts, the toolbar menu's Search and the popup window
+▶ personal dictionary Notes
+  ✔ term and kanji Note forms (986.842222ms)
+✔ personal dictionary Notes (987.145453ms)
+ok   Chrome registers Yomitan's three search page shortcuts, Alt+Insert opening it in a new tab
+ok   the toolbar menu's Search beside Settings opens one search page, then brings it forward, and Reading's switch hides it
+ok   the popup window shortcut opens one search page in a popup window, then brings it forward
+
+=== search page > searching on the search page
+▶ search page
+  ✔ the search page shortcuts, the toolbar menu's Search and the popup window (909.100466ms)
+ok   the search page's Clipboard monitor is off by default and Hachidori reads nothing from the clipboard until it is switched on
+ok   the search page opens with its box focused and shows a typed word's real results under it in the popup theme, kept through an outside click and Escape, which selects the box
+ok   a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area
+ok   the search page and its results follow a popup theme change at once
+ok   keys typed, Ctrl+U and text pasted in the docked result's Note form stay in the form
+
+=== search page > Custom JavaScript on the search page
+  ✔ searching on the search page (1672.946717ms)
+ok   Custom JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages
+
+=== managed updates > scoped managed checks and updates
+  ✔ Custom JavaScript on the search page (3586.072468ms)
+✔ search page (6168.483441ms)
+ok   a row check fetches only its managed index and reports availability without installing
+ok   a row Update installs only the checked package
+
+=== managed updates > Check now
+▶ managed updates
+  ✔ scoped managed checks and updates (371.051942ms)
+ok   Check now checks every managed dictionary including disabled packages without downloading
+
+=== managed updates > persisted update controls
+  ✔ Check now (214.159537ms)
+ok   managed update controls render persisted availability and last-checked state
+
+=== managed updates > lookups while a managed download is held
+  ✔ persisted update controls (177.308971ms)
+ok   lookups stay available while a managed archive download is held
+
+=== managed updates > Update all
+  ✔ lookups while a managed download is held (35.187183ms)
+ok   Update all atomically replaces a managed generation and preserves presentation
+
+=== managed updates > management autosave
+  ✔ Update all (209.298549ms)
+ok   Settings schedule drafts preserve newer commits and retry lost replies without duplicate writes or alarms
+ok   Settings name autosave merges unrelated edits, rejects external renames and paints one completion
+
+=== managed updates > one aggregate browser alarm
+  ✔ management autosave (1505.920805ms)
+ok   one aggregate browser alarm follows the next dictionary due time
+
+=== managed updates > per-dictionary schedules
+  ✔ one aggregate browser alarm (210.347951ms)
+ok   per-dictionary schedules persist without engine reload and override global Off
+
+=== managed updates > a real browser alarm installs updates
+  ✔ per-dictionary schedules (486.177299ms)
+ok   a real browser alarm installs updates for disabled managed dictionaries
+
+=== managed updates > a failed scheduled update
+  ✔ a real browser alarm installs updates (1321.806631ms)
+ok   a failed scheduled update preserves the working generation without OPFS debris
+
+=== managed updates > hovering through a scheduled update
+  ✔ a failed scheduled update (1225.502876ms)
+ok   hovering through a scheduled update never sees an update notice and ends on the new revision
+
+=== managed updates > worker restart recreates the update alarm
+  ✔ hovering through a scheduled update (2518.875037ms)
+ok   worker restart recreates the configured managed-update alarm
+
+=== browser restart > backups in Chrome
+  ✔ worker restart recreates the update alarm (285.239567ms)
+✔ managed updates (8562.198943ms)
+ok   automatic backup list shows three actual relative ages and requires explicit restore confirmation
+ok   a corrupt newest automatic backup leaves the oldest retained browser snapshot restorable with its saved retention
+ok   Settings exports a complete ZIP through Chrome downloads and releases its engine-owned URL
+ok   backup preview preserves the working generation and refuses a concurrent Settings edit
+ok   confirmed restore atomically replaces browser generations and retains the complete saved state
+ok   a large binary payload survives restore and re-export through the browser engine
+ok   a backup's unreadable settings are skipped while its dictionaries and readable settings restore in Chrome
+ok   corrupt backup preparation preserves the working browser state and leaves no fresh generations
+ok   closing Settings during backup preparation cancels staged generations without waiting for its reply
+
+=== browser restart > atomic replacement in Chrome
+▶ browser restart
+  ✔ backups in Chrome (5227.677962ms)
+ok   matching local imports show an accessible named revision decision before engine mutation
+ok   Escape and explicit Cancel leave the package untouched and continue a multi-file batch
+ok   keyboard Replace preserves package identity and excludes dialog dwell from import timing
+ok   metadata mismatch and corrupt replacement leave no OPFS generation roots
+ok   same, lower, missing, malformed, and nonnumeric revisions are described without automatic replacement
+ok   Add separately persists a collision-safe title that native lookup reports
+
+=== browser restart > settings and lookup counts survive a browser restart
+  ✔ atomic replacement in Chrome (6748.148451ms)
+ok   reader settings and their revision survive a full browser restart
+ok   lookup counts survive a full browser restart
+
+=== browser restart > setup stays closed after a restart
+  ✔ settings and lookup counts survive a browser restart (1052.198053ms)
+ok   a browser restart keeps completed setup closed and the edited first-install preference
+
+=== browser restart > separate copies survive a restart
+  ✔ setup stays closed after a restart (2.614875ms)
+ok   separate copies survive a browser restart, stay retained by automatic backups, and retire after release
+
+=== browser restart > the library after a restart
+  ✔ separate copies survive a restart (652.146964ms)
+ok   the settings page lists the dictionary again after a restart
+ok   local-only libraries can install recommended dictionaries after a browser restart
+
+=== browser restart > the dictionary survives in OPFS
+  ✔ the library after a restart (31.584217ms)
+ok   the dictionary survives a browser restart via OPFS
+
+=== browser restart > lookups after a restart
+  ✔ the dictionary survives in OPFS (8.285685ms)
+ok   lookups work after a restart with no re-import
+
+=== browser restart > removing the dictionary
+  ✔ lookups after a restart (182.470478ms)
+ok   removing the dictionary clears its settings rows
+ok   removing the dictionary deletes its OPFS directory
+ok   lookups miss after the dictionary is removed
+
+=== memory > low memory mode recycles the worker
+  ✔ removing the dictionary (71.756889ms)
+✔ browser restart (13978.039865ms)
+ok   low memory mode recycles the engine worker and reports memory in Settings
+
+=== memory > low memory mode imports
+▶ memory
+  ✔ low memory mode recycles the worker (36694.800669ms)
+ok   low memory mode imports single-threaded and recycles the import high-water mark
+
+=== memory > low memory mode heap
+  ✔ low memory mode imports (2635.42374ms)
+ok   low memory mode keeps only each dictionary's index in the heap
+
+=== memory > turning low memory mode off
+  ✔ low memory mode heap (4.451438ms)
+ok   turning low memory mode off restarts the full-pool worker
+
+=== memory > Use less ram by default
+  ✔ turning low memory mode off (2521.110223ms)
+ok   Use less ram by default applies a 65 MiB hash budget with the full import pool
+ok   changing the RAM default restarts the idle engine and preserves lookups and entry storage
+
+=== memory > entry and hash storage
+  ✔ Use less ram by default (7743.132525ms)
+ok   resident entry storage restores mapped entries independently of low memory mode
+ok   paged hash storage uses the shared cache independently of entry residency
+ok   resident hash storage returns after an idle policy restart
+
+=== bounds and media > lookup bounds
+  ✔ entry and hash storage (7594.834707ms)
+✔ memory (57194.454765ms)
+ok   real-WASM lookup bounds fail one request without poisoning the OPFS engine
+ok   an oversized hover clears the previous popup and the next healthy hover recovers
+
+=== bounds and media > deep structured content
+▶ bounds and media
+  ✔ lookup bounds (1144.390359ms)
+ok   deep structured content renders while node-limit failures omit only their definition
+
+=== bounds and media > a 大辞泉-shaped entry
+  ✔ deep structured content (1112.586243ms)
+ok   a 大辞泉-shaped entry nested beyond the former depth limit renders with a real compact summary
+
+=== bounds and media > large media
+  ✔ a 大辞泉-shaped entry (585.114993ms)
+ok   large media imports through OPFS while oversized and malformed fetches fail without poisoning the engine
+
+=== bounds and media > media ownership
+  ✔ large media (587.233967ms)
+ok   a late real media reply cannot replace a current generation image
+ok   failed media exposes its failure state and text while a later hover retries
+
+=== bounds and media > bounded media
+  ✔ media ownership (1700.152018ms)
+ok   media cache deduplicates and bounds a real browser image burst
+ok   obsolete queued images never dispatch while started images stay reusable
+
+=== bounds and media > image previews
+  ✔ bounded media (841.535784ms)
+ok   dictionary AVIF and SVG decode through real WASM without extra preview fetches
+ok   image hover and keyboard previews stay larger, viewport-clamped and motion-aware
+ok   image previews close on leave, blur, scrolling and pending navigation
+
+=== bounds and media > image sizing
+  ✔ image previews (573.458312ms)
+ok   dictionary image sizing preserves ordinary geometry and enforces its existing aspect bound
+
+=== bounds and media > gaiji sizing
+  ✔ image sizing (239.537391ms)
+ok   Meikyo-compatible gaiji use natural inline geometry and dictionary CSS hooks without overflow
+ok   dictionary CSS hides a converter head tail through a Japanese-keyed data attribute
+
+=== bounds and media > monochrome images
+  ✔ gaiji sizing (503.605385ms)
+ok   monochrome dictionary images paint in the palette text colour in the card and its preview
+
+=== saved pages > saved-page setup
+  ✔ monochrome images (816.69559ms)
+✔ bounds and media (8105.439056ms)
+ok   saved-page setup rechecks Chrome file access and a local HTML file uses the real reader
+
+=== debug log > a Settings button press that fails is in Get debug info after a reload
+▶ saved pages
+  ✔ saved-page setup (2804.769446ms)
+✔ saved pages (2804.915217ms)
+ok   Copy error details copies the shown error with the failures and actions before it
+ok   a Settings button press that fails is in Get debug info after Settings reloads, with the actions before it
+
+=== debug log > the debug log redacts what it keeps
+▶ debug log
+  ✔ a Settings button press that fails is in Get debug info after a reload (19737.399796ms)
+ok   the debug log keeps credentials, sign-ins, address queries and Japanese text out of IndexedDB and the report
+
+=== debug log > the debug log ring stays within its limits
+  ✔ the debug log redacts what it keeps (15126.454622ms)
+ok   the debug log ring keeps its newest entries within 5,000 entries and 2 MiB
+
+=== debug log > errors from before a browser crash are in the next session's report
+  ✔ the debug log ring stays within its limits (1396.11577ms)
+ok   errors from before a browser crash are in the next session's Get debug info
+  ✔ errors from before a browser crash are in the next session's report (21944.451425ms)
+✔ debug log (58204.931203ms)
+
+333/334 checks passed
+profile kept for inspection: /tmp/hachidori-e2e-profile-1423062
+
+failures:
+  - Settings paints its first visible frame in the saved theme instead of the browser preference
+      {"scenarios":[{"name":"light under a dark preference","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"light","firstPaint":80,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[55,"light",false,"visible","interactive"],[83,"light",false,"visible","complete"],[92,"light",false,"visible","complete"],[105,"light",false,"visible","complete"],[121,"light",false,"visible","complete"],[137,"light",false,"visible","complete"],[154,"light",false,"visible","complete"],[170,"light",false,"visible","complete"]],"attributeSets":[[38,"light"],[88,"light"],[95,"light"],[96,"light"]],"painted":[[17,"before first paint",[255,255,255],[0,0,0]],[80,"saved theme",[251,251,251],[255,255,255]],[100,"saved theme",[251,251,251],[255,255,255]],[135,"saved theme",[251,251,251],[255,255,255]],[145,"saved theme",[251,251,251],[255,255,255]]]},{"name":"default under a light preference","expected":"default","settledInTime":true,"settledTheme":"default","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"default","firstPaint":70,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[44,"default",false,"visible","interactive"],[73,"default",false,"visible","interactive"],[79,"default",false,"visible","interactive"],[97,"default",false,"visible","complete"],[114,"default",false,"visible","complete"],[136,"default",false,"visible","complete"],[143,"default",false,"visible","complete"],[163,"default",false,"visible","complete"]],"attributeSets":[[40,"default"],[103,"default"],[111,"default"],[112,"default"]],"painted":[[26,"before first paint",[255,255,255],[255,255,255]],[70,"saved theme",[34,35,44],[43,43,54]],[112,"saved theme",[34,35,44],[43,43,54]],[153,"saved theme",[34,35,44],[43,43,54]],[171,"saved theme",[34,35,44],[43,43,54]]]},{"name":"auto under a dark preference","expected":"dark","settledInTime":true,"settledTheme":"dark","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"dark","firstPaint":80,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[54,"dark",false,"visible","interactive"],[59,"dark",false,"visible","interactive"],[80,"dark",false,"visible","interactive"],[93,"dark",false,"visible","complete"],[116,"dark",false,"visible","complete"],[124,"dark",false,"visible","complete"],[140,"dark",false,"visible","complete"],[157,"dark",false,"visible","complete"]],"attributeSets":[[38,"dark"],[96,"dark"],[105,"dark"],[106,"dark"]],"painted":[[22,"before first paint",[255,255,255],[255,255,255]],[79,"saved theme",[27,32,39],[29,35,42]],[105,"saved theme",[27,32,39],[29,35,42]],[134,"saved theme",[27,32,39],[29,35,42]],[153,"saved theme",[27,32,39],[29,35,42]],[166,"saved theme",[27,32,39],[29,35,42]]]},{"name":"miku under a light preference","expected":"miku","settledInTime":true,"settledTheme":"miku","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"miku","firstPaint":77,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[46,"miku",false,"visible","interactive"],[64,"miku",false,"visible","interactive"],[78,"miku",false,"visible","interactive"],[101,"miku",false,"visible","complete"],[120,"miku",false,"visible","complete"],[131,"miku",false,"visible","complete"],[144,"miku",false,"visible","complete"],[161,"miku",false,"visible","complete"]],"attributeSets":[[40,"miku"],[105,"miku"],[114,"miku"],[115,"miku"]],"painted":[[26,"before first paint",[255,255,255],[255,255,255]],[76,"saved theme",[32,43,47],[28,37,41]],[119,"saved theme",[32,43,47],[28,37,41]],[156,"saved theme",[32,43,47],[28,37,41]],[170,"saved theme",[32,43,47],[28,37,41]]]},{"name":"light under a dark preference, read held","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":false,"firstAttribute":"light","firstPaint":null,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":false,"rafFrames":[[51,null,true,"hidden","interactive"],[69,null,true,"hidden","interactive"],[86,null,true,"hidden","interactive"],[102,null,true,"hidden","interactive"],[118,null,true,"hidden","interactive"],[135,null,true,"hidden","interactive"],[151,null,true,"hidden","interactive"],[168,null,true,"hidden","interactive"]],"attributeSets":[[231,"light"],[234,"light"],[240,"light"],[241,"light"]],"painted":[[15,"browser canvas",[255,255,255],[255,255,255]],[66,"browser canvas",[18,18,18],[18,18,18]]],"held":{"pending":true,"theme":null,"attributeSets":0,"frames":11,"frameCount":2,"allHidden":true,"allBlank":true}},{"name":"light under a dark preference, read failed","expected":"light","settledInTime":true,"settledTheme":"light","settledPending":false,"settledVisible":true,"referenceDistinct":true,"firstAttribute":"light","firstPaint":62,"pendingFramesHidden":true,"releasedFramesThemed":true,"releasedFrameSeen":true,"paintedFramesClean":true,"themedFrameSeen":true,"rafFrames":[[38,null,false,"visible","interactive"],[42,null,false,"visible","interactive"],[65,null,false,"visible","interactive"],[72,null,false,"visible","interactive"],[92,null,false,"visible","complete"],[115,"light",false,"visible","complete"],[128,"light",false,"visible","complete"],[142,"light",false,"visible","complete"]],"attributeSets":[[96,"light"],[106,"light"],[108,"light"]],"painted":[[25,"before first paint",[255,255,255],[255,255,255]],[61,"browser preference",[21,23,27],[29,32,38]],[103,"browser preference",[21,23,27],[29,32,38]],[142,"saved theme",[251,251,251],[255,255,255]],[155,"saved theme",[251,251,251],[255,255,255]]]}]}
+
+browser diagnostics (last 60):
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [settings] warn: @import rules are not allowed here. See https://github.com/WICG/construct-stylesheets/issues/119#issuecomment-588352418.
+  [sw] hachidori: Anki index refresh failed: Error: AnkiConnect returned HTTP 503.
+  [page] verbose: [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq)
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [sw] hachidori: Anki index refresh failed: Error: Open Anki with the AnkiConnect add-on installed, check its URL in Settings, then retry.
+  [page] warn: Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
+  [sw] hachidori: automatic backup metadata was committed; deferred generation cleanup failed: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+  [debug-log] warn: debug-log redaction probe [object Object] GET https://reader:pw@audio.example/clip?term=猫#x Authorization: Bearer e2e-bearer-token 食べたかった
+✖ /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/chrome-e2e/session.mjs (130.599704ms)
+ℹ tests 156
+ℹ suites 26
+ℹ pass 155
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 450761.090626
+
+✖ failing tests:
+
+test at test/chrome-e2e/harness.mjs:65:10
+✖ the first Settings frame (2534.326921ms)
+  Error: failed: Settings paints its first visible frame in the saved theme instead of the browser preference
+      at TestContext.<anonymous> (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/chrome-e2e/harness.mjs:94:39)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at test/chrome-e2e/session.mjs:1014:1
+✖ /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/chrome-e2e/session.mjs (130.599704ms)
+  Error: 1 check(s) failed
+      at report (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/chrome-e2e/harness.mjs:496:21)
+      at TestContext.<anonymous> (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/chrome-e2e/session.mjs:1018:5)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async TestHook.run (node:internal/test_runner/test:1054:7)
+      at async Test.runHook (node:internal/test_runner/test:965:9)
+      at async after (node:internal/test_runner/test:1005:9)
+      at async Test.run (node:internal/test_runner/test:1070:7)
+Error: chrome-e2e failed (exit 1); see test/tmp/ci/chrome-e2e.log
+    at run (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/run.mjs:47:27)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/run.mjs:98:5

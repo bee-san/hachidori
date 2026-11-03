@@ -1,0 +1,139 @@
+
+$ python3 scripts/build-firefox.py --output-dir /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/firefox-extension
+/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/firefox-extension
+
+$ node /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tooling/node_modules/web-ext/bin/web-ext.js lint --source-dir /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/firefox-extension --no-config-discovery
+Validation Summary:
+
+errors          0              
+notices         0              
+warnings        14             
+
+WARNINGS:
+
+Code                                  Message       Description              F
+MANIFEST_CSP_UNSAFE_EVAL              "content_s…   In most cases the same   m
+                                      ecurity_po…   result can be achieved   s
+                                      licy.sandb…   differently, therefore    
+                                      ox" allows    it is generally           
+                                      'eval',       prohibited                
+                                      which has                               
+                                      strong                                  
+                                      security                                
+                                      and                                     
+                                      performance                             
+                                      implicatio…                             
+                                      ns.                                     
+MANIFEST_CSP                          "content_s…   A custom                 m
+                                      ecurity_po…   "content_security_pol…   s
+                                      licy.sandb…   icy.sandbox" needs        
+                                      ox" allows    additional review.        
+                                      remote code                             
+                                      execution                               
+                                      in                                      
+                                      manifest.j…                             
+                                      son                                     
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VER…   Manifest      "strict_min_version"     m
+SION                                  key not       requires Firefox 153,    s
+                                      supported     which was released        
+                                      by the        before version 154        
+                                      specified     introduced support for    
+                                      minimum       "content_security_pol…    
+                                      Firefox       icy.sandbox".             
+                                      version                                 
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY…   Manifest      "strict_min_version"     m
+_MIN_VERSION                          key not       requires Firefox for     s
+                                      supported     Android 153, which was    
+                                      by the        released before           
+                                      specified     version 154 introduced    
+                                      minimum       support for               
+                                      Firefox for   "content_security_pol…    
+                                      Android       icy.sandbox".             
+                                      version                                 
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VER…   Manifest      "strict_min_version"     m
+SION                                  key not       requires Firefox 153,    s
+                                      supported     which was released        
+                                      by the        before version 154        
+                                      specified     introduced support for    
+                                      minimum       "sandbox".                
+                                      Firefox                                 
+                                      version                                 
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY…   Manifest      "strict_min_version"     m
+_MIN_VERSION                          key not       requires Firefox for     s
+                                      supported     Android 153, which was    
+                                      by the        released before           
+                                      specified     version 154 introduced    
+                                      minimum       support for "sandbox".    
+                                      Firefox for                             
+                                      Android                                 
+                                      version                                 
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VER…   Manifest      "strict_min_version"     m
+SION                                  key not       requires Firefox 153,    s
+                                      supported     which was released        
+                                      by the        before version 154        
+                                      specified     introduced support for    
+                                      minimum       "sandbox.pages".          
+                                      Firefox                                 
+                                      version                                 
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY…   Manifest      "strict_min_version"     m
+_MIN_VERSION                          key not       requires Firefox for     s
+                                      supported     Android 153, which was    
+                                      by the        released before           
+                                      specified     version 154 introduced    
+                                      minimum       support for               
+                                      Firefox for   "sandbox.pages".          
+                                      Android                                 
+                                      version                                 
+UNSAFE_VAR_ASSIGNMENT                 Unsafe        Due to both security     a
+                                      assignment    and performance          a
+                                      to            concerns, this may not    
+                                      innerHTML     be set using dynamic      
+                                                    values which have not     
+                                                    been adequately           
+                                                    sanitized. This can       
+                                                    lead to security          
+                                                    issues or fairly          
+                                                    serious performance       
+                                                    degradation.              
+UNSUPPORTED_API                       offscreen.…   This API has not been    c
+                                      createDocu…   implemented by           s
+                                      ment is not   Firefox.                  
+                                      supported                               
+UNSUPPORTED_API                       offscreen.…   This API has not been    c
+                                      createDocu…   implemented by           s
+                                      ment is not   Firefox.                  
+                                      supported                               
+DANGEROUS_EVAL                        eval can be   Evaluation of strings    s
+                                      harmful.      as code can lead to       
+                                                    security                  
+                                                    vulnerabilities and       
+                                                    performance issues,       
+                                                    even in the most          
+                                                    innocuous of              
+                                                    circumstances. Please     
+                                                    avoid using `eval` and    
+                                                    the `Function`            
+                                                    constructor when at       
+                                                    all possible.             
+UNSAFE_VAR_ASSIGNMENT                 Unsafe call   Due to both security     t
+                                      to import     and performance          .
+                                      for           concerns, this may not    
+                                      argument 0    be set using dynamic      
+                                                    values which have not     
+                                                    been adequately           
+                                                    sanitized. This can       
+                                                    lead to security          
+                                                    issues or fairly          
+                                                    serious performance       
+                                                    degradation.              
+UNSAFE_VAR_ASSIGNMENT                 Unsafe call   Due to both security     v
+                                      to import     and performance          .
+                                      for           concerns, this may not    
+                                      argument 0    be set using dynamic      
+                                                    values which have not     
+                                                    been adequately           
+                                                    sanitized. This can       
+                                                    lead to security          
+                                                    issues or fairly          
+                                                    serious performance       
+                                                    degradation.              

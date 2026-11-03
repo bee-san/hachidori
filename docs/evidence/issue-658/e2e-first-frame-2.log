@@ -1,0 +1,175 @@
+[gate-1 waited]
+
+=== Settings library > the first Settings frame
+
+=== Settings library > the first Settings frame: first the earlier step "the extension loads and its service worker starts"
+     profile: /tmp/hachidori-e2e-profile-1585568
+ok   extension loads and its service worker starts
+     extension id: hnhcjemdmiapogcmkhmdjddhiljfphme
+
+=== Settings library > the first Settings frame: first the earlier step "the manifest and settings page are branded as Hachidori"
+ok   manifest and settings page are branded as Hachidori
+
+=== Settings library > the first Settings frame: first the earlier step "a fresh profile shares by default once it has dictionaries"
+ok   a fresh profile shares by default and waits for dictionaries before it takes the host slot
+
+=== Settings library > the first Settings frame: first the earlier step "Chrome registers the browser shortcuts that Keybinds lists"
+ok   Chrome registers Hachidori's browser shortcuts and Keybinds lists them
+
+=== Settings library > the first Settings frame: first the earlier step "a clean profile offers one recommended install beside local import"
+ok   a clean profile shows one recommended install action beside local import
+
+=== Settings library > the first Settings frame: first the earlier step "a fresh install waits for Start setup"
+ok   a fresh install uses AUTO in startup and Settings before Start setup and waits for work
+
+=== Settings library > the first Settings frame: first the earlier step "Start setup begins automatic installation"
+ok   Start setup begins automatic dictionary installation with first-install preferences
+
+=== Settings library > the first Settings frame: first the earlier step "Settings offers Resume setup while setup is incomplete"
+ok   Settings shows Resume setup while first-run setup is incomplete
+
+=== Settings library > the first Settings frame: first the earlier step "a reconnecting startup page rejoins the running installer"
+ok   a reconnecting startup page rejoins the running installer whose held download stays indeterminate
+
+=== Settings library > the first Settings frame: first the earlier step "the installer continues after a mocked failure"
+ok   the automatic installer continues after a mocked failure through real download and installation phases
+
+=== Settings library > the first Settings frame: first the earlier step "Retry installs only the missing dictionary"
+ok   Retry installs only the missing dictionary and the committed entries settle their selections once
+
+=== Settings library > the first Settings frame: first the earlier step "the all-installed result advances to the Anki check"
+ok   the all-installed result advances immediately before setup checks for Anki
+
+=== Settings library > the first Settings frame: first the earlier step "startup practice"
+ok   startup practice waits for reader storage before its automatic lookup
+ok   startup screenshot capture resolves its own live extension document
+ok   startup practice immediately demonstrates the installed dictionaries and retains keyboard and hover lookup
+ok   the startup reader exception keeps Settings and the static preview excluded
+
+=== Settings library > the first Settings frame: first the earlier step "the practice scene looks a word up through the real reader"
+     practice lookup answered in 30 ms
+ok   the practice visual novel scene fits narrow screens and looks a word up through the real reader and installed dictionaries
+
+=== Settings library > the first Settings frame: first the earlier step "an absent Anki settles and setup finishes"
+ok   an absent Anki settles by itself and the startup page finishes setup, closes its tab and hides Resume setup
+
+=== Settings library > the first Settings frame: first the earlier step "the reader refuses to run on Settings"
+ok   the reader refuses to run on Settings even when its own scripts are loaded there
+
+=== Settings library > the first Settings frame: first the earlier step "Remove all imported dictionaries"
+ok   Remove all imported dictionaries clears disabled and search-hidden packages through the real engine after one confirmation
+
+=== Settings library > the first Settings frame: first the earlier step "first-run Anki detection"
+ok   startup practice without a usable dictionary retains recovery and completion controls
+ok   first-run detection configures an existing Kiku mining setup read-only from the startup page
+ok   first-run setup automatically prepends detected local audio as source 1
+ok   Settings recovers Anki setup after onboarding and preserves a verified saved mapping
+
+=== Settings library > the first Settings frame: first the earlier step "Settings autosave"
+ok   Settings autosaves one revisioned patch and surfaces cross-page conflicts without losing drafts
+
+=== Settings library > the first Settings frame: first the earlier step "Settings save feedback"
+ok   Settings size steppers keep quiet, stable feedback through autosave and expose failures
+
+=== Settings library > the first Settings frame: first the earlier step "Settings option transport"
+ok   Settings rejects malformed and oversized option frames before commit and still autosaves without reload
+
+=== Settings library > the first Settings frame: first the earlier step "the Design preview"
+ok   Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup
+ok   Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries
+ok   Design fits the popup without changing its actual dimensions and keeps narrow Settings scrollable
+ok   Design exposes AUTO, 42 grouped palettes and five layouts and applies live browser preference changes
+ok   Design previews opacity and dimensions immediately and resets only Design settings
+ok   toolbar preferences persist and move the preview without detaching focused Notes or rebuilding cards
+ok   low-opacity popup content scrolls in a clipped viewport without overlapping either toolbar position
+ok   custom CSS editor previews unsaved text, persists its count and resets only its stylesheet
+ok   custom CSS overrides built-in and late dictionary styles only inside the popup shadow tree and tolerates invalid CSS
+
+=== Settings library > the first Settings frame: first the earlier step "Audio Settings"
+ok   Audio Settings preserve ordered source edits and disabled rows through revisioned save and reload
+ok   Audio source Tests use encoded URLs and ordered JSON candidates with quiet success and visible errors
+ok   Audio Tests cancel stale playback and preserve the dictionary engine after audio becomes idle
+
+=== Settings library > the first Settings frame: first the earlier step "Anki Settings"
+ok   Anki discovery is lazy and refresh recovers an offline connection through the real service worker
+ok   Anki Settings reject stale model replies and preserve unavailable mappings without discovery writes
+ok   Anki configuration persists through reload without reloading the dictionary engine
+ok   Anki field mappings expose accessible editable combobox behavior without replacing free-form text
+ok   Anki presets expose editable field templates and persist overwrite modes with visible marker errors
+ok   Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged
+ok   Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape
+ok   Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads
+
+=== Settings library > the first Settings frame: first the earlier step "dictionary CSS"
+ok   dictionary CSS stays scoped with malformed braces, escaped titles, and nested rules
+ok   dictionary CSS keeps its own custom properties, so grammar card disclosures draw their chevron
+ok   dictionary CSS cannot load remote resources or inherit resource-valued variables
+ok   dictionary CSS cannot paint or intercept input outside its glossary card
+
+=== Settings library > the first Settings frame: first the earlier step "recommended dictionaries on a desktop page"
+ok   settings page renders exactly five safe recommended dictionary links
+ok   recommended dictionaries form a readable list on desktop
+
+=== Settings library > the first Settings frame: first the earlier step "recommended dictionaries on a narrow page"
+ok   recommended dictionaries stack without overflow on narrow screens
+
+=== Settings library > the first Settings frame: first the earlier step "the offscreen document compiles the wasm"
+ok   offscreen document compiles the wasm under the extension CSP
+ok   extension pages expose pthread prerequisites
+ok   chrome.offscreen.createDocument produced exactly one offscreen document
+
+=== Settings library > the first Settings frame: first the earlier step "a Settings-started batch survives a reload"
+ok   a Settings-started recommended batch survives reloading its page without duplicate downloads
+
+=== Settings library > the first Settings frame: first the earlier step "the installer continues after a mocked download failure"
+ok   the recommended installer continues after a mocked download failure
+
+=== Settings library > the first Settings frame: first the earlier step "missing dictionaries stay available after a reload"
+ok   missing recommended dictionaries stay available after a settings reload
+
+=== Settings library > the first Settings frame: first the earlier step "Retry downloads only the missing dictionary"
+ok   recommended retry downloads only the missing trusted dictionary
+
+=== Settings library > the first Settings frame: first the earlier step "the .zip file input"
+ok   settings page exposes a .zip file input
+ok   the .zip file input accepts multiple .zip files
+
+=== Settings library > the first Settings frame: first the earlier step "importing a Yomitan .zip"
+ok   importing a Yomitan .zip from the settings page succeeds
+ok   the imported dictionary is persisted in OPFS
+ok   the imported dictionary is recorded in chrome.storage.local
+
+=== Settings library > the first Settings frame: first the earlier step "batch import and re-import"
+ok   the import batch continues after failure and retains every archive outcome
+ok   batch re-import preserves presentation, source, and order while clearing stale check state
+
+=== Settings library > the first Settings frame: first the earlier step "the dictionary list renders alias, metadata and badges"
+ok   the dictionary list renders its alias, metadata, and five capability badges
+
+=== Settings library > the first Settings frame: first the earlier step "Settings navigation"
+ok   Library tabs keep their geometry when the page scrollbar appears or disappears
+ok   Library tabs keep each tab's position and width when the current tab changes
+ok   Sharing, Backup and Advanced keep the sidebar and main column in place when the page scrollbar disappears
+ok   Settings puts the library first and supports keyboard navigation at 320px
+
+=== Settings library > the first Settings frame: first the earlier step "the Google Docs flag"
+ok   the Google Docs flag registers its document_start MAIN-world script only while on
+
+=== Settings library > the first Settings frame: first the earlier step "Settings follows every popup theme"
+ok   Settings follows every popup theme and keeps each task view readable without horizontal overflow
+ok   Design names pitch dictionaries at 4.5:1 text contrast in every popup theme
+ok   Design draws definition and dictionary tags at 4.5:1 text contrast in every popup theme and 7:1 in High contrast
+ok   Settings paints its first visible frame in the saved theme instead of the browser preference
+▶ Settings library
+  ✔ the first Settings frame (103593.132903ms)
+✔ Settings library (103594.595485ms)
+
+78/78 checks passed
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 103767.445064

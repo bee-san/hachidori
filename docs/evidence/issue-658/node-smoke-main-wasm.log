@@ -1,0 +1,290 @@
+writing fixtures:
+     2309  test/fixtures/hachidori-fixture.zip
+     1652  test/fixtures/hachidori-fixture-trained.zip
+     4747  test/fixtures/hachidori-fixture-many-banks.zip
+      569  test/fixtures/hachidori-generic-kanji-fixture.zip
+      340  test/fixtures/parent-title.zip
+      127  test/fixtures/malformed-index.zip
+      644  test/fixtures/no-index.zip
+      147  test/fixtures/not-a-zip.txt
+      536  test/fixtures/atomic-replacement-v1.zip
+      536  test/fixtures/atomic-replacement-v2.zip
+      538  test/fixtures/atomic-replacement-v3.zip
+      528  test/fixtures/atomic-replacement-same-v2.zip
+      529  test/fixtures/atomic-replacement-lower-v1.zip
+      515  test/fixtures/atomic-replacement-missing-version.zip
+      528  test/fixtures/atomic-replacement-malformed-version.zip
+      531  test/fixtures/atomic-replacement-nonnumeric-version.zip
+      457  test/fixtures/atomic-replacement-corrupt.zip
+
+# hdw_init_storage
+  PASS  native import exceptions keep their decoding and release helpers
+  PASS  memory storage initializes /dicts
+
+# hdw_import
+  actual counts: {"success":true,"title":"hachidori-fixture","termCount":6,"metaCount":4,"frequencyCount":2,"pitchCount":2,"kanjiCount":1,"mediaCount":1,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  report conforms to ImportReport
+  PASS  success
+  PASS  error is empty on success
+  PASS  title
+  PASS  termCount
+  PASS  metaCount
+  PASS  frequencyCount
+  PASS  pitchCount
+  PASS  kanjiCount
+  PASS  mediaCount
+  PASS  a Yomitan archive reports no MDX import losses
+  PASS  last_error cleared after a successful import
+  PASS  output directory laid out as add_dict expects
+  PASS  the primary fixture stays under the zstd training floor
+  PASS  the untrained import is a .hoshidicts_5 directory with no dict.zstd
+
+# mmap output files (Emscripten fd regression)
+  PASS  hash.table is non-empty
+  PASS  bloom.filter is non-empty
+        capacity=16 occupied slots=9
+  PASS  hash.table content is not zero-filled
+        num_bits=128 non-zero payload bytes=16
+  PASS  bloom.filter content is not zero-filled
+
+# hdw_add_dict
+  PASS  kind 0 (term) accepted
+  PASS  kind 1 (freq) accepted
+  PASS  kind 2 (pitch) accepted
+  PASS  kind 3 (kanji) accepted
+
+# memory (one heap copy per package; media, and paged entries, read from disk)
+  heap after import + 4 adds: 89522176
+  PASS  the fixture carries every file the loader reads
+  PASS  paged hashes avoid the padded index allocation
+  PASS  paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results
+  PASS  entry and hash pages use one cache and unload together
+  four kinds, blobs.bin padded: resident 16778967, heap growth 16842752
+  PASS  four kinds of one package hold one copy of its files
+  media.bin padded to 16777376: heap growth 0
+  PASS  media.bin stays on disk
+  paged, blobs.bin padded to 16778663: heap growth 0, page cache after lookups 4096
+  PASS  a paged package keeps blobs.bin on disk
+  PASS  paged and mapped entries answer with byte-identical JSON
+  PASS  a mapped engine reports no page cache
+
+# hdw_lookup
+  PASS  response conforms to the lookup contract
+  PASS  dictionaryCount counts every successful add_dict
+  PASS  exact match
+  PASS  glossaries arrive raw, in term-bank order, one per bank row
+  PASS  structured-content glossary is not pre-parsed
+  PASS  deinflected match records the transform chain
+  PASS  deinflection survives a five-step chain
+  PASS  Yomitan historical kana and emphatic negative chains reach dictionary forms
+  PASS  kana-only entry (empty reading in the bank)
+  PASS  reading-only query reaches the kanji headword
+  PASS  text preprocessing preserves raw matched kana, width, decomposition, and kanji variants
+  PASS  miss returns an empty result set, not an error
+  PASS  maxResults 0 and empty text are treated as no-ops
+
+# frequencies and pitches
+  PASS  nested {"frequency":{...}} meta shape
+  PASS  flat {"value":...} meta shape
+  PASS  pitch positions, patterns, nasal and devoice
+  PASS  ipa transcriptions merge into the same pitch entry
+
+# text frequencies
+  PASS  a frequency-only archive of text values imports
+  PASS  a bare text frequency shows its text, with its first number as the value
+  PASS  a text frequency under a reading applies to that reading only
+
+# hdw_kanji / hdw_styles / hdw_tags / hdw_media
+  PASS  kanji hit conforms and carries sorted stats
+  PASS  kanji miss returns the documented empty sentinel
+  PASS  a kanji_meta_bank-only archive imports as a frequency dictionary
+  PASS  a kanji lookup carries the kanji frequencies
+  PASS  a term spelled like the kanji gets no kanji frequency
+  PASS  styles come from the imported index.json
+  PASS  tag banks come from the imported index.json, every row in bank order
+  PASS  media returns the byte length and the real file bytes
+  PASS  media absence returns 0 without setting an error
+  PASS  media with a null argument is rejected, not crashed
+
+# error paths (none may abort the module)
+  PASS  importing a plain text file fails cleanly
+  PASS  importing a zip with no index.json fails cleanly
+  PASS  an unreadable index is rejected by the preflight before import
+  PASS  importing a path that does not exist fails cleanly
+  PASS  a failed import leaves the already-imported dictionary alone
+  PASS  add_dict rejects an empty path
+  PASS  add_dict rejects a directory with no version marker
+  PASS  add_dict rejects a directory that does not exist
+  PASS  add_dict rejects out-of-range kinds
+  PASS  malformed options_json falls back instead of throwing
+  PASS  unset options are accepted in every documented spelling
+  PASS  the module is still alive after every error path
+
+# archive parsing without fixed resource caps
+  PASS  entry counts above the former cap are not rejected by a fixed limit
+  PASS  expanded entries above the former cap are not rejected by a fixed limit
+  PASS  aggregate expanded bytes above the former cap are not rejected by a fixed limit
+  PASS  compression ratios above the former cap are not rejected by a fixed limit
+  PASS  a forged local/central size disagreement is refused
+  PASS  entries that defer their sizes to data descriptors import like the fixture (#491)
+  PASS  data-descriptor entries whose local headers keep the uncompressed size import (#512)
+  PASS  entries whose sizes and offsets are in Zip64 extra fields import like the fixture
+  PASS  Zip64 entries whose local headers keep only the sentinel, as zip.js writes them, import
+  PASS  a data-descriptor entry whose local header records other sizes is refused
+  PASS  a deflate entry with no compressed data for its declared size is refused
+  PASS  a failed malformed import leaves the already-imported dictionary alone
+  PASS  the module is still alive after malformed-archive rejection
+
+# hdw_reset
+  PASS  reset drops every dictionary
+  PASS  dictionaries can be reloaded from the same MEMFS directory
+  heap after reset + 1 add: 107479040 (after import: 89522176)
+  PASS  the heap keeps the import high-water mark after a reset
+
+# hdw_import staging
+  PASS  a title of ".." imports into its own folder and escapes nothing
+  PASS  a title of "../../.." imports into its own folder and escapes nothing
+  PASS  a title of "../escaped" imports into its own folder and escapes nothing
+  PASS  a title of "sub/dir" imports into its own folder and escapes nothing
+  PASS  a title of "." imports into its own folder and escapes nothing
+  PASS  a title of "Nico/Pixiv" imports into its own folder and escapes nothing
+  PASS  a title of "back\\slash" imports into its own folder and escapes nothing
+  PASS  a title of "Japanese-Mongolian/日・モ辞典" imports into its own folder and escapes nothing
+  PASS  a title of "" is refused and destroys nothing
+  PASS  a title of ".hdw-import" is refused and destroys nothing
+  PASS  a title of ".hdw-remove" is refused and destroys nothing
+  PASS  a failed re-import leaves the installed dictionary loadable
+  PASS  a successful re-import replaces the dictionary in place
+
+# trained zstd dictionary (.hoshidicts_6) and the previous engine's layouts beside it
+  trained import: {"success":true,"title":"hachidori-fixture-trained","termCount":49,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":0,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  the trained import succeeds
+  PASS  a trained import is a .hoshidicts_6 directory with a dict.zstd
+  PASS  add_dict accepts the .hoshidicts_6 directory
+  PASS  glossaries compressed against the trained dictionary decompress
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is missing
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is zero length
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is invalid
+  PASS  the restored trained dictionary remains loadable
+  PASS  a .hoshidicts_3 directory from the previous engine still loads beside a fresh import
+  PASS  a .hoshidicts_4 directory from the previous engine still decompresses its glossaries
+  PASS  a _3 and a _4 dictionary load together and both answer
+
+# multi-bank pthread scheduler
+  PASS  twenty term banks import through the bounded worker pool
+  PASS  the last scheduled bank is indexed and loadable
+
+# interrupted install recovery
+  PASS  storage initialization recovers interrupted installs
+  PASS  a partially moved backup is merged back without deleting the files left in place
+  PASS  a committed backup replaces a partial new destination
+  PASS  a complete but uncommitted new destination is rolled back
+  PASS  a committed new destination wins over a partially deleted backup
+  PASS  a corrupt destination cannot displace the last valid backup
+  PASS  every interrupted backup-cleanup prefix preserves the committed replacement
+  PASS  a partial first install is removed
+  PASS  recovery removes transaction debris
+
+# hdw_lookup_dictionary
+  PASS  a dictionary-scoped lookup rejects a path that is not loaded
+  PASS  a dictionary-scoped lookup conforms to the lookup contract
+  PASS  a dictionary-scoped lookup returns only the requested term dictionary
+  PASS  a dictionary-scoped lookup retains shared frequency and pitch metadata
+
+# definition score order (#472)
+  PASS  definitions sort by score within each dictionary, keeping ties, tags and dictionary priority
+
+# dictionary priority breaks a reading tie (#575)
+  PASS  a surface frequency that ties two readings yields to the caller dictionary order
+  PASS  a frequency that separates the readings still outranks dictionary order
+  FAIL  words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)
+        銃五, metadataOnlyTerms true
+          expected: ["銃五/銃五","銃五/じゅうご*"]
+          actual:   ["銃五/銃五"]
+
+# long keys beyond the scan length
+  PASS  the importer writes a long-key scan index
+  PASS  fractional and beyond-int32 scores survive import, lookup and the JSON boundary
+  PASS  scanLength 16 still finds a 27-code-point key when the text begins like it
+  PASS  an inflected long phrase is found through deinflection
+  PASS  text that does not begin like a long key keeps the ordinary scan
+  PASS  a scan shorter than eight code points never extends
+  PASS  a dictionary-scoped lookup extends through its own index
+
+# MDX import
+  mdx import: {"success":true,"title":"HTML Fixture","termCount":8,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":3,"skippedRecordCount":0,"unresolvedRedirectCount":1,"missingResourceCount":1,"unreadableResourceCount":0,"error":""}
+  PASS  an .mdx with its .mdd imports through hdw_import
+  PASS  the MDX import report counts what it left out
+  PASS  an .mdx chosen without its .mdd reports its images and styles missing
+  PASS  the MDX dictionary loads and answers like a Yomitan one
+  PASS  MDD stylesheets and media come through hdw_styles and hdw_media
+  PASS  an .mdd on its own is refused and leaves no debris
+  PASS  @@@LINK aliases follow MDict's default key rules and chains
+  PASS  KeyCaseSensitive="Yes" StripKey="No" resolve only exact targets
+  PASS  Shift_JIS and windows-1252 MDD stylesheets import as UTF-8
+  PASS  <font size> becomes a CSS keyword and inline style wins
+
+# production custom dictionary ZIP
+  PASS  production parser retains all 1001 valid rows
+  PASS  production ZIP imports through the real WASM importer
+  PASS  imported custom metadata retains the semantic revision
+  PASS  the real importer writes a complete custom dictionary generation
+  PASS  a term in the second 1000-row bank is searchable
+  PASS  definition newline and literal backslash-n remain distinct
+  PASS  ordered duplicate custom rows retain both definitions
+
+# bounded lookup responses
+  PASS  lookup response limits do not reject the imported archive
+  PASS  both lookup endpoints retain exact 8 MiB ASCII and multibyte glossaries
+  PASS  both lookup endpoints refuse a glossary one UTF-8 byte over 8 MiB
+  PASS  both lookup endpoints refuse the aggregate native copy budget
+  PASS  both lookup endpoints independently bound JSON escape expansion
+  PASS  lookup text and option strings use a 4 KiB UTF-8 boundary
+  PASS  native lookup JSON escapes control bytes without truncating the C string
+  PASS  refused lookup responses leave the loaded dictionary usable
+
+# media request and response bounds
+  PASS  media reference limits count UTF-8 bytes and preserve well-formed misses
+  PASS  large media imports and loads but only fetches up to 4 MiB
+
+# hdw_segment (word segmentation, #520)
+  PASS  the reference dictionaries import and load
+  PASS  segment conforms to the response contract
+  PASS  empty text and non-positive scan length are no-ops
+  PASS  spans cover the line in order, with UTF-16 offsets inside the text
+  PASS  punctuation and whitespace produce no spans
+  PASS  a conjugated word is one span taking its dictionary form
+  PASS  function words are flagged and left for the page to leave unmarked
+  PASS  a phrase of known words carries its alternative split
+  PASS  a single word has no alternative split
+        reference set: 47 lines, 278 words
+        best split : 266/278 words (95.7%), 266/278 boundaries (95.7%), 41/47 lines exact
+        greedy     : 264/278 words (95.0%), 264/278 boundaries (95.0%), 40/47 lines exact
+        function-word flag: 265/278 correct
+        conjugated lines fully recovered: 36/37
+  PASS  the best split scores at least as well as the greedy parse
+  PASS  the best split fixes at least one boundary the greedy parse gets wrong
+  PASS  most conjugated reference lines recover their dictionary forms
+  PASS  frequency breaks a tie between two-word splits in the selected order
+  PASS  the copula forms and conjunctions a dictionary lists whole are function words
+  PASS  segment leaves out the words only an excluded dictionary has
+  PASS  segment rejects text above the 4 KiB lookup limit
+
+# low-memory pool (HACHIDORI_PTHREAD_POOL_SIZE = 2)
+  PASS  the built glue sizes its pool from the runtime override
+  PASS  storage initializes in the small pool
+  PASS  a low-RAM import completes with two pool threads
+  PASS  twenty term banks import single-threaded in the small pool
+  PASS  the small-pool module loads and answers lookups
+
+# Yomitan engine dependency parity
+  PASS  rebuilt WASM recognizes historical u-verbs, one-character stems and whole-word honorifics
+  PASS  historical conjugations compose with kanji variants, also in a selected dictionary, and skip excluded spellings
+
+191 passed, 1 failed
+
+failures:
+  dictionary priority breaks a reading tie (#575) :: words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)
+    銃五, metadataOnlyTerms true
+      expected: ["銃五/銃五","銃五/じゅうご*"]
+      actual:   ["銃五/銃五"]

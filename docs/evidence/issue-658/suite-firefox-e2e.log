@@ -1,0 +1,178 @@
+[gate-6]
+
+$ node test/make-fixture.mjs
+   2309  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture.zip
+   1652  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-trained.zip
+   4747  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-many-banks.zip
+    569  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-generic-kanji-fixture.zip
+    340  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/parent-title.zip
+    127  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/malformed-index.zip
+    644  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/no-index.zip
+    147  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/not-a-zip.txt
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v1.zip
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v2.zip
+    538  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v3.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-same-v2.zip
+    529  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-lower-v1.zip
+    515  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-missing-version.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-malformed-version.zip
+    531  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-nonnumeric-version.zip
+    457  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-corrupt.zip
+
+expected import counts:
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ python3 scripts/build-firefox.py --output-dir /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/firefox-extension
+/local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tmp/firefox-extension
+
+$ node --test-force-exit --test-reporter=spec test/firefox-e2e.mjs
+profile: /tmp/hachidori-firefox-profile-1633472
+browser: firefox/159.0
+ok   Firefox installs the Firefox build with its gecko ID
+ok   the background page runs background.js and holds the engine, with no offscreen document
+ok   the engine runs single-threaded on IndexedDB in Firefox
+ok   a first install opens one startup page
+▶ session
+  ✔ Firefox loads the Firefox build (4354.929206ms)
+✔ session (4356.007078ms)
+ok   Start setup downloads and installs the five recommended dictionaries in the background page
+ok   a download that fails is retried by Retry missing dictionaries
+▶ first run
+  ✔ Start setup installs the recommended dictionaries (560.215693ms)
+ok   the Anki step reports Anki as not connected and setup reaches practice
+ok   the practice step looks up its word with the installed dictionaries
+  ✔ the Anki step and practice (3123.261711ms)
+ok   Finish completes setup and Settings no longer offers Resume setup
+  ✔ Finish completes setup (239.253419ms)
+ok   Remove all imported dictionaries empties the library
+  ✔ Remove all imported dictionaries (440.633629ms)
+✔ first run (4363.973272ms)
+ok   settings page exposes a .zip file input
+ok   importing a Yomitan .zip from the settings page succeeds
+ok   the imported dictionary is recorded in chrome.storage.local
+ok   the imported dictionary is persisted in IndexedDB
+▶ import
+  ✔ importing a Yomitan .zip (283.395987ms)
+ok   a batch of archives imports in one selection
+ok   a malformed archive fails with its reason and leaves the library unchanged
+ok   re-importing an installed dictionary replaces its generation
+  ✔ batch import and re-import (490.611188ms)
+✔ import (774.470716ms)
+ok   an alias renames the dictionary in Settings
+ok   disabling a dictionary keeps its row and removes its results from lookups
+ok   a dictionary group is saved with its member
+▶ library
+  ✔ aliases, enabling and groups (541.658989ms)
+✔ library (541.919189ms)
+ok   hovering 食べたかった with Shift shows a popup
+ok   the popup shows the deinflected headword 食べる with its furigana
+ok   the extension's highlight marks the source word
+ok   the popup shows the fixture's frequency and pitch accents
+ok   hovering 漢字 shows its structured content: bold span, list and table
+ok   a structured-content image resolves through hd_media to a data: URL
+ok   the dictionary's styles.css reaches the popup as a scoped stylesheet
+ok   the popup is showing immediately before the non-Japanese hover
+ok   hovering non-Japanese text shows no popup
+ok   the same hover shows a popup again after the non-Japanese one
+ok   Escape hides the popup and clears the highlight
+▶ reader
+  ✔ hovering words (2162.723849ms)
+ok   a page loaded in a frame gets its own reader
+ok   hovering a word in the definitions opens a nested popup
+ok   clicking a headword kanji opens its kanji entry and Back returns to the word
+ok   an Alt+ArrowDown keybind moves to the next entry
+  ✔ frames, nested lookups, kanji and keybinds (1534.339575ms)
+ok   selecting text with Shift held looks up exactly the selection
+ok   lookup counts are recorded and shown in the popup
+ok   definition blur hides definitions for a word looked up enough times and a click reveals them
+  ✔ selections, counts and blur (591.248448ms)
+ok   each bundled popup theme renders the lookup
+ok   custom popup CSS applies to the popup
+ok   the toolbar switch turns lookups off and on
+  ✔ themes, custom CSS and the toolbar (5390.481144ms)
+✔ reader (9679.444639ms)
+ok   the Note form appends a personal entry and the popup shows it
+▶ notes
+  ✔ the Note form (535.129277ms)
+✔ notes (535.300017ms)
+ok   Settings autosaves a Reading option and the reader follows it
+ok   the Design preview renders its sample popup
+ok   Keybinds list Yomitan's default keybinds
+ok   browser shortcuts list Firefox's commands and open Firefox's shortcut manager
+▶ settings
+  ✔ autosave, Design and keybinds (2233.483976ms)
+ok   Custom JavaScript runs on pages once Firefox grants user scripts
+ok   Custom JavaScript reaches the popup through host.shadowRoot while the page sees no root
+ok   Get debug info reports Firefox and its IndexedDB engine
+  ✔ Custom JavaScript and debug info (3392.300134ms)
+✔ settings (5626.12268ms)
+ok   the popup window opens one search page and brings it forward instead of opening another
+ok   the search page looks up a typed word and docks the reader's popup under its box
+ok   Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts
+▶ search page
+  ✔ the search page in a popup window (984.916003ms)
+ok   the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead
+ok   the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it
+  ✔ the search page's clipboard monitor (2553.824524ms)
+✔ search page (3539.082438ms)
+ok   pronunciation audio plays from a URL source
+▶ audio and Anki
+  ✔ pronunciation audio (2502.186322ms)
+ok   Anki settings list AnkiConnect's decks and note types
+ok   Add to Anki creates a note with the configured fields and a page screenshot
+ok   the added note turns the button into View in Anki
+  ✔ Anki settings and mining (819.842534ms)
+ok   word highlighting marks words by their Anki status
+  ✔ word highlighting (1424.375554ms)
+✔ audio and Anki (4746.809541ms)
+ok   Check now records an available update from the dictionary's update index
+ok   Update installs the newer revision
+▶ updates
+  ✔ Check now and Update (527.611218ms)
+✔ updates (527.795679ms)
+ok   Export backup asks where to save the backup and Firefox saves the ZIP there
+▶ backups
+  ✔ export a backup (531.357327ms)
+ok   a backup exported by Hachidori 0.1.1 for Chrome restores in Firefox
+ok   a backup exported by Hachidori 0.3.0 for Chrome restores in Firefox
+ok   the restored library answers lookups and shows the personal entry
+  ✔ restore backups the Chrome releases exported (465.503288ms)
+ok   the Firefox backup restores into a fresh Firefox profile
+  ✔ restore the Firefox backup into a fresh profile (3922.817038ms)
+✔ backups (4920.071153ms)
+ok   Settings downloads the pinned Hachidori Relay add-on
+ok   the Firefox Hachidori shares through the relay
+ok   a second Firefox links to it and looks up words with its dictionaries
+▶ sharing
+  ✔ sharing through the relay (14326.354321ms)
+✔ sharing (14326.592832ms)
+ok   the engine keeps its dictionaries through Firefox's 30-second idle limit
+▶ idle and restart
+  ✔ Firefox's idle limit (75307.888168ms)
+ok   dictionaries, settings and counts survive a Firefox restart
+ok   lookups work after the restart without re-importing
+  ✔ a Firefox restart (2876.680441ms)
+ok   removing a dictionary deletes its IndexedDB files and its lookups
+  ✔ removing a dictionary (154.273038ms)
+✔ idle and restart (78339.299968ms)
+ok   Settings says where Firefox's local-file switch is
+ok   turning on Access local files in about:addons lets the reader run on file: pages
+▶ local files
+  ✔ Firefox's local-file permission (743.981318ms)
+✔ local files (744.180928ms)
+
+75/75 checks passed
+ℹ tests 29
+ℹ suites 14
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133501.660853

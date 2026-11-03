@@ -1,0 +1,4 @@
+FAIL: lookup [metadata only, scan 16] 食べささない: 4 results, legacy 5
+FAIL: lookup [metadata only, scan 24] 食べささない: 4 results, legacy 5
+ja-lookup-parity: 490194 lookups compared on the default path, 1150 failures
+ja-lookup-parity: 276522 kanji and selection comparisons (9 selections), 2268 failures

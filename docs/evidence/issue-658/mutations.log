@@ -1,0 +1,28 @@
+== M2-no-defined_as
+FAIL: 日本語, on: expected [日本語/にほんご, 日本/にほん, 日本/にっぽん*, 日/ひ], got [日本語/にほんご, 日本/にほん, 日本/にっぽん*, 日/ひ, 日/日*]
+1 failure(s)
+exit 1
+== M3-merge-by_rank
+FAIL: こと, on: expected [事/こと, こと/こと*], got [こと/こと*, 事/こと]
+FAIL: トウキョウ, on: expected [東京/とうきょう, トウキョウ/トウキョウ*], got [トウキョウ/トウキョウ*, 東京/とうきょう]
+FAIL: 銃五, on, ascending: expected [銃五/銃五, 銃五/じゅうご*], got [銃五/じゅうご*, 銃五/銃五]
+3 failure(s)
+exit 1
+== M5-no-primary
+FAIL: 銃五, on, primary じゅうご: expected [銃五/じゅうご*, 銃五/銃五], got [銃五/銃五, 銃五/じゅうご*]
+1 failure(s)
+exit 1
+== M6-metadata-first
+FAIL: こと, on: expected [事/こと, こと/こと*], got [こと/こと*, 事/こと]
+FAIL: トウキョウ, on: expected [東京/とうきょう, トウキョウ/トウキョウ*], got [トウキョウ/トウキョウ*, 東京/とうきょう]
+FAIL: 銃五, on: expected [銃五/銃五, 銃五/じゅうご*], got [銃五/じゅうご*, 銃五/銃五]
+FAIL: 銃五, on: expected the defined 銃五 to have no rows, since they name じゅうご
+FAIL: 銃五, on: expected じゅうご with meta-frequency's 12000 and meta-pitch's [1]
+FAIL: 銃五, on, ascending: expected [銃五/銃五, 銃五/じゅうご*], got [銃五/じゅうご*, 銃五/銃五]
+FAIL: 銃五, on, max_results 1: expected [銃五/銃五], got [銃五/じゅうご*]
+FAIL: 日本語, on: expected [日本語/にほんご, 日本/にほん, 日本/にっぽん*, 日/ひ], got [日本語/にほんご, 日本/にっぽん*, 日本/にほん, 日/ひ]
+FAIL: 日本/にほん, on: expected its own rows, got [meta-frequency:4000, meta-frequency:300]
+FAIL: 日本/にっぽん, on: expected にっぽん's row and the one without a reading, got [meta-frequency:200, meta-frequency:300]
+FAIL: 日本語, on, max_results 2: expected [日本語/にほんご, 日本/にほん], got [日本語/にほんご, 日本/にっぽん*]
+11 failure(s)
+exit 1

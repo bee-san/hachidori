@@ -1,0 +1,2785 @@
+[gate-2]
+
+> hachidori-test-tooling@1.0.0 test:smoke
+> node ../run.mjs smoke
+
+
+$ node test/make-fixture.mjs
+   2309  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture.zip
+   1652  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-trained.zip
+   4747  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-fixture-many-banks.zip
+    569  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/hachidori-generic-kanji-fixture.zip
+    340  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/parent-title.zip
+    127  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/malformed-index.zip
+    644  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/no-index.zip
+    147  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/not-a-zip.txt
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v1.zip
+    536  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v2.zip
+    538  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-v3.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-same-v2.zip
+    529  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-lower-v1.zip
+    515  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-missing-version.zip
+    528  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-malformed-version.zip
+    531  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-nonnumeric-version.zip
+    457  /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/fixtures/atomic-replacement-corrupt.zip
+
+expected import counts:
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ node test/node-smoke.mjs
+writing fixtures:
+     2309  test/fixtures/hachidori-fixture.zip
+     1652  test/fixtures/hachidori-fixture-trained.zip
+     4747  test/fixtures/hachidori-fixture-many-banks.zip
+      569  test/fixtures/hachidori-generic-kanji-fixture.zip
+      340  test/fixtures/parent-title.zip
+      127  test/fixtures/malformed-index.zip
+      644  test/fixtures/no-index.zip
+      147  test/fixtures/not-a-zip.txt
+      536  test/fixtures/atomic-replacement-v1.zip
+      536  test/fixtures/atomic-replacement-v2.zip
+      538  test/fixtures/atomic-replacement-v3.zip
+      528  test/fixtures/atomic-replacement-same-v2.zip
+      529  test/fixtures/atomic-replacement-lower-v1.zip
+      515  test/fixtures/atomic-replacement-missing-version.zip
+      528  test/fixtures/atomic-replacement-malformed-version.zip
+      531  test/fixtures/atomic-replacement-nonnumeric-version.zip
+      457  test/fixtures/atomic-replacement-corrupt.zip
+
+# hdw_init_storage
+  PASS  native import exceptions keep their decoding and release helpers
+  PASS  memory storage initializes /dicts
+
+# hdw_import
+  actual counts: {"success":true,"title":"hachidori-fixture","termCount":6,"metaCount":4,"frequencyCount":2,"pitchCount":2,"kanjiCount":1,"mediaCount":1,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  report conforms to ImportReport
+  PASS  success
+  PASS  error is empty on success
+  PASS  title
+  PASS  termCount
+  PASS  metaCount
+  PASS  frequencyCount
+  PASS  pitchCount
+  PASS  kanjiCount
+  PASS  mediaCount
+  PASS  a Yomitan archive reports no MDX import losses
+  PASS  last_error cleared after a successful import
+  PASS  output directory laid out as add_dict expects
+  PASS  the primary fixture stays under the zstd training floor
+  PASS  the untrained import is a .hoshidicts_5 directory with no dict.zstd
+
+# mmap output files (Emscripten fd regression)
+  PASS  hash.table is non-empty
+  PASS  bloom.filter is non-empty
+        capacity=16 occupied slots=9
+  PASS  hash.table content is not zero-filled
+        num_bits=128 non-zero payload bytes=16
+  PASS  bloom.filter content is not zero-filled
+
+# hdw_add_dict
+  PASS  kind 0 (term) accepted
+  PASS  kind 1 (freq) accepted
+  PASS  kind 2 (pitch) accepted
+  PASS  kind 3 (kanji) accepted
+
+# memory (one heap copy per package; media, and paged entries, read from disk)
+  heap after import + 4 adds: 89522176
+  PASS  the fixture carries every file the loader reads
+  PASS  paged hashes avoid the padded index allocation
+  PASS  paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results
+  PASS  entry and hash pages use one cache and unload together
+  four kinds, blobs.bin padded: resident 16778967, heap growth 16842752
+  PASS  four kinds of one package hold one copy of its files
+  media.bin padded to 16777376: heap growth 0
+  PASS  media.bin stays on disk
+  paged, blobs.bin padded to 16778663: heap growth 0, page cache after lookups 4096
+  PASS  a paged package keeps blobs.bin on disk
+  PASS  paged and mapped entries answer with byte-identical JSON
+  PASS  a mapped engine reports no page cache
+
+# hdw_lookup
+  PASS  response conforms to the lookup contract
+  PASS  dictionaryCount counts every successful add_dict
+  PASS  exact match
+  PASS  glossaries arrive raw, in term-bank order, one per bank row
+  PASS  structured-content glossary is not pre-parsed
+  PASS  deinflected match records the transform chain
+  PASS  deinflection survives a five-step chain
+  PASS  Yomitan historical kana and emphatic negative chains reach dictionary forms
+  PASS  kana-only entry (empty reading in the bank)
+  PASS  reading-only query reaches the kanji headword
+  PASS  text preprocessing preserves raw matched kana, width, decomposition, and kanji variants
+  PASS  miss returns an empty result set, not an error
+  PASS  maxResults 0 and empty text are treated as no-ops
+
+# frequencies and pitches
+  PASS  nested {"frequency":{...}} meta shape
+  PASS  flat {"value":...} meta shape
+  PASS  pitch positions, patterns, nasal and devoice
+  PASS  ipa transcriptions merge into the same pitch entry
+
+# text frequencies
+  PASS  a frequency-only archive of text values imports
+  PASS  a bare text frequency shows its text, with its first number as the value
+  PASS  a text frequency under a reading applies to that reading only
+
+# hdw_kanji / hdw_styles / hdw_tags / hdw_media
+  PASS  kanji hit conforms and carries sorted stats
+  PASS  kanji miss returns the documented empty sentinel
+  PASS  a kanji_meta_bank-only archive imports as a frequency dictionary
+  PASS  a kanji lookup carries the kanji frequencies
+  PASS  a term spelled like the kanji gets no kanji frequency
+  PASS  styles come from the imported index.json
+  PASS  tag banks come from the imported index.json, every row in bank order
+  PASS  media returns the byte length and the real file bytes
+  PASS  media absence returns 0 without setting an error
+  PASS  media with a null argument is rejected, not crashed
+
+# error paths (none may abort the module)
+  PASS  importing a plain text file fails cleanly
+  PASS  importing a zip with no index.json fails cleanly
+  PASS  an unreadable index is rejected by the preflight before import
+  PASS  importing a path that does not exist fails cleanly
+  PASS  a failed import leaves the already-imported dictionary alone
+  PASS  add_dict rejects an empty path
+  PASS  add_dict rejects a directory with no version marker
+  PASS  add_dict rejects a directory that does not exist
+  PASS  add_dict rejects out-of-range kinds
+  PASS  malformed options_json falls back instead of throwing
+  PASS  unset options are accepted in every documented spelling
+  PASS  the module is still alive after every error path
+
+# archive parsing without fixed resource caps
+  PASS  entry counts above the former cap are not rejected by a fixed limit
+  PASS  expanded entries above the former cap are not rejected by a fixed limit
+  PASS  aggregate expanded bytes above the former cap are not rejected by a fixed limit
+  PASS  compression ratios above the former cap are not rejected by a fixed limit
+  PASS  a forged local/central size disagreement is refused
+  PASS  entries that defer their sizes to data descriptors import like the fixture (#491)
+  PASS  data-descriptor entries whose local headers keep the uncompressed size import (#512)
+  PASS  entries whose sizes and offsets are in Zip64 extra fields import like the fixture
+  PASS  Zip64 entries whose local headers keep only the sentinel, as zip.js writes them, import
+  PASS  a data-descriptor entry whose local header records other sizes is refused
+  PASS  a deflate entry with no compressed data for its declared size is refused
+  PASS  a failed malformed import leaves the already-imported dictionary alone
+  PASS  the module is still alive after malformed-archive rejection
+
+# hdw_reset
+  PASS  reset drops every dictionary
+  PASS  dictionaries can be reloaded from the same MEMFS directory
+  heap after reset + 1 add: 107479040 (after import: 89522176)
+  PASS  the heap keeps the import high-water mark after a reset
+
+# hdw_import staging
+  PASS  a title of ".." imports into its own folder and escapes nothing
+  PASS  a title of "../../.." imports into its own folder and escapes nothing
+  PASS  a title of "../escaped" imports into its own folder and escapes nothing
+  PASS  a title of "sub/dir" imports into its own folder and escapes nothing
+  PASS  a title of "." imports into its own folder and escapes nothing
+  PASS  a title of "Nico/Pixiv" imports into its own folder and escapes nothing
+  PASS  a title of "back\\slash" imports into its own folder and escapes nothing
+  PASS  a title of "Japanese-Mongolian/日・モ辞典" imports into its own folder and escapes nothing
+  PASS  a title of "" is refused and destroys nothing
+  PASS  a title of ".hdw-import" is refused and destroys nothing
+  PASS  a title of ".hdw-remove" is refused and destroys nothing
+  PASS  a failed re-import leaves the installed dictionary loadable
+  PASS  a successful re-import replaces the dictionary in place
+
+# trained zstd dictionary (.hoshidicts_6) and the previous engine's layouts beside it
+  trained import: {"success":true,"title":"hachidori-fixture-trained","termCount":49,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":0,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  the trained import succeeds
+  PASS  a trained import is a .hoshidicts_6 directory with a dict.zstd
+  PASS  add_dict accepts the .hoshidicts_6 directory
+  PASS  glossaries compressed against the trained dictionary decompress
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is missing
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is zero length
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is invalid
+  PASS  the restored trained dictionary remains loadable
+  PASS  a .hoshidicts_3 directory from the previous engine still loads beside a fresh import
+  PASS  a .hoshidicts_4 directory from the previous engine still decompresses its glossaries
+  PASS  a _3 and a _4 dictionary load together and both answer
+
+# multi-bank pthread scheduler
+  PASS  twenty term banks import through the bounded worker pool
+  PASS  the last scheduled bank is indexed and loadable
+
+# interrupted install recovery
+  PASS  storage initialization recovers interrupted installs
+  PASS  a partially moved backup is merged back without deleting the files left in place
+  PASS  a committed backup replaces a partial new destination
+  PASS  a complete but uncommitted new destination is rolled back
+  PASS  a committed new destination wins over a partially deleted backup
+  PASS  a corrupt destination cannot displace the last valid backup
+  PASS  every interrupted backup-cleanup prefix preserves the committed replacement
+  PASS  a partial first install is removed
+  PASS  recovery removes transaction debris
+
+# hdw_lookup_dictionary
+  PASS  a dictionary-scoped lookup rejects a path that is not loaded
+  PASS  a dictionary-scoped lookup conforms to the lookup contract
+  PASS  a dictionary-scoped lookup returns only the requested term dictionary
+  PASS  a dictionary-scoped lookup retains shared frequency and pitch metadata
+
+# definition score order (#472)
+  PASS  definitions sort by score within each dictionary, keeping ties, tags and dictionary priority
+
+# dictionary priority breaks a reading tie (#575)
+  PASS  a surface frequency that ties two readings yields to the caller dictionary order
+  PASS  a frequency that separates the readings still outranks dictionary order
+  PASS  words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)
+
+# long keys beyond the scan length
+  PASS  the importer writes a long-key scan index
+  PASS  fractional and beyond-int32 scores survive import, lookup and the JSON boundary
+  PASS  scanLength 16 still finds a 27-code-point key when the text begins like it
+  PASS  an inflected long phrase is found through deinflection
+  PASS  text that does not begin like a long key keeps the ordinary scan
+  PASS  a scan shorter than eight code points never extends
+  PASS  a dictionary-scoped lookup extends through its own index
+
+# MDX import
+  mdx import: {"success":true,"title":"HTML Fixture","termCount":8,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":3,"skippedRecordCount":0,"unresolvedRedirectCount":1,"missingResourceCount":1,"unreadableResourceCount":0,"error":""}
+  PASS  an .mdx with its .mdd imports through hdw_import
+  PASS  the MDX import report counts what it left out
+  PASS  an .mdx chosen without its .mdd reports its images and styles missing
+  PASS  the MDX dictionary loads and answers like a Yomitan one
+  PASS  MDD stylesheets and media come through hdw_styles and hdw_media
+  PASS  an .mdd on its own is refused and leaves no debris
+  PASS  @@@LINK aliases follow MDict's default key rules and chains
+  PASS  KeyCaseSensitive="Yes" StripKey="No" resolve only exact targets
+  PASS  Shift_JIS and windows-1252 MDD stylesheets import as UTF-8
+  PASS  <font size> becomes a CSS keyword and inline style wins
+
+# production custom dictionary ZIP
+  PASS  production parser retains all 1001 valid rows
+  PASS  production ZIP imports through the real WASM importer
+  PASS  imported custom metadata retains the semantic revision
+  PASS  the real importer writes a complete custom dictionary generation
+  PASS  a term in the second 1000-row bank is searchable
+  PASS  definition newline and literal backslash-n remain distinct
+  PASS  ordered duplicate custom rows retain both definitions
+
+# bounded lookup responses
+  PASS  lookup response limits do not reject the imported archive
+  PASS  both lookup endpoints retain exact 8 MiB ASCII and multibyte glossaries
+  PASS  both lookup endpoints refuse a glossary one UTF-8 byte over 8 MiB
+  PASS  both lookup endpoints refuse the aggregate native copy budget
+  PASS  both lookup endpoints independently bound JSON escape expansion
+  PASS  lookup text and option strings use a 4 KiB UTF-8 boundary
+  PASS  native lookup JSON escapes control bytes without truncating the C string
+  PASS  refused lookup responses leave the loaded dictionary usable
+
+# media request and response bounds
+  PASS  media reference limits count UTF-8 bytes and preserve well-formed misses
+  PASS  large media imports and loads but only fetches up to 4 MiB
+
+# hdw_segment (word segmentation, #520)
+  PASS  the reference dictionaries import and load
+  PASS  segment conforms to the response contract
+  PASS  empty text and non-positive scan length are no-ops
+  PASS  spans cover the line in order, with UTF-16 offsets inside the text
+  PASS  punctuation and whitespace produce no spans
+  PASS  a conjugated word is one span taking its dictionary form
+  PASS  function words are flagged and left for the page to leave unmarked
+  PASS  a phrase of known words carries its alternative split
+  PASS  a single word has no alternative split
+        reference set: 47 lines, 278 words
+        best split : 266/278 words (95.7%), 266/278 boundaries (95.7%), 41/47 lines exact
+        greedy     : 264/278 words (95.0%), 264/278 boundaries (95.0%), 40/47 lines exact
+        function-word flag: 265/278 correct
+        conjugated lines fully recovered: 36/37
+  PASS  the best split scores at least as well as the greedy parse
+  PASS  the best split fixes at least one boundary the greedy parse gets wrong
+  PASS  most conjugated reference lines recover their dictionary forms
+  PASS  frequency breaks a tie between two-word splits in the selected order
+  PASS  the copula forms and conjunctions a dictionary lists whole are function words
+  PASS  segment leaves out the words only an excluded dictionary has
+  PASS  segment rejects text above the 4 KiB lookup limit
+
+# low-memory pool (HACHIDORI_PTHREAD_POOL_SIZE = 2)
+  PASS  the built glue sizes its pool from the runtime override
+  PASS  storage initializes in the small pool
+  PASS  a low-RAM import completes with two pool threads
+  PASS  twenty term banks import single-threaded in the small pool
+  PASS  the small-pool module loads and answers lookups
+
+# Yomitan engine dependency parity
+  PASS  rebuilt WASM recognizes historical u-verbs, one-character stems and whole-word honorifics
+  PASS  historical conjugations compose with kanji variants, also in a selected dictionary, and skip excluded spellings
+
+192 passed, 0 failed
+
+fixture counts (use these as the expectation baseline):
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ HACHIDORI_WASM_VARIANT="threaded-idbfs" node test/node-smoke.mjs
+writing fixtures:
+     2309  test/fixtures/hachidori-fixture.zip
+     1652  test/fixtures/hachidori-fixture-trained.zip
+     4747  test/fixtures/hachidori-fixture-many-banks.zip
+      569  test/fixtures/hachidori-generic-kanji-fixture.zip
+      340  test/fixtures/parent-title.zip
+      127  test/fixtures/malformed-index.zip
+      644  test/fixtures/no-index.zip
+      147  test/fixtures/not-a-zip.txt
+      536  test/fixtures/atomic-replacement-v1.zip
+      536  test/fixtures/atomic-replacement-v2.zip
+      538  test/fixtures/atomic-replacement-v3.zip
+      528  test/fixtures/atomic-replacement-same-v2.zip
+      529  test/fixtures/atomic-replacement-lower-v1.zip
+      515  test/fixtures/atomic-replacement-missing-version.zip
+      528  test/fixtures/atomic-replacement-malformed-version.zip
+      531  test/fixtures/atomic-replacement-nonnumeric-version.zip
+      457  test/fixtures/atomic-replacement-corrupt.zip
+
+# hdw_init_storage
+  PASS  native import exceptions keep their decoding and release helpers
+  PASS  memory storage initializes /dicts
+
+# hdw_import
+  actual counts: {"success":true,"title":"hachidori-fixture","termCount":6,"metaCount":4,"frequencyCount":2,"pitchCount":2,"kanjiCount":1,"mediaCount":1,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  report conforms to ImportReport
+  PASS  success
+  PASS  error is empty on success
+  PASS  title
+  PASS  termCount
+  PASS  metaCount
+  PASS  frequencyCount
+  PASS  pitchCount
+  PASS  kanjiCount
+  PASS  mediaCount
+  PASS  a Yomitan archive reports no MDX import losses
+  PASS  last_error cleared after a successful import
+  PASS  output directory laid out as add_dict expects
+  PASS  the primary fixture stays under the zstd training floor
+  PASS  the untrained import is a .hoshidicts_5 directory with no dict.zstd
+
+# mmap output files (Emscripten fd regression)
+  PASS  hash.table is non-empty
+  PASS  bloom.filter is non-empty
+        capacity=16 occupied slots=9
+  PASS  hash.table content is not zero-filled
+        num_bits=128 non-zero payload bytes=16
+  PASS  bloom.filter content is not zero-filled
+
+# hdw_add_dict
+  PASS  kind 0 (term) accepted
+  PASS  kind 1 (freq) accepted
+  PASS  kind 2 (pitch) accepted
+  PASS  kind 3 (kanji) accepted
+
+# memory (one heap copy per package; media, and paged entries, read from disk)
+  heap after import + 4 adds: 89522176
+  PASS  the fixture carries every file the loader reads
+  PASS  paged hashes avoid the padded index allocation
+  PASS  paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results
+  PASS  entry and hash pages use one cache and unload together
+  four kinds, blobs.bin padded: resident 16778967, heap growth 15335424
+  PASS  four kinds of one package hold one copy of its files
+  media.bin padded to 16777376: heap growth 0
+  PASS  media.bin stays on disk
+  paged, blobs.bin padded to 16778663: heap growth 0, page cache after lookups 4096
+  PASS  a paged package keeps blobs.bin on disk
+  PASS  paged and mapped entries answer with byte-identical JSON
+  PASS  a mapped engine reports no page cache
+
+# hdw_lookup
+  PASS  response conforms to the lookup contract
+  PASS  dictionaryCount counts every successful add_dict
+  PASS  exact match
+  PASS  glossaries arrive raw, in term-bank order, one per bank row
+  PASS  structured-content glossary is not pre-parsed
+  PASS  deinflected match records the transform chain
+  PASS  deinflection survives a five-step chain
+  PASS  Yomitan historical kana and emphatic negative chains reach dictionary forms
+  PASS  kana-only entry (empty reading in the bank)
+  PASS  reading-only query reaches the kanji headword
+  PASS  text preprocessing preserves raw matched kana, width, decomposition, and kanji variants
+  PASS  miss returns an empty result set, not an error
+  PASS  maxResults 0 and empty text are treated as no-ops
+
+# frequencies and pitches
+  PASS  nested {"frequency":{...}} meta shape
+  PASS  flat {"value":...} meta shape
+  PASS  pitch positions, patterns, nasal and devoice
+  PASS  ipa transcriptions merge into the same pitch entry
+
+# text frequencies
+  PASS  a frequency-only archive of text values imports
+  PASS  a bare text frequency shows its text, with its first number as the value
+  PASS  a text frequency under a reading applies to that reading only
+
+# hdw_kanji / hdw_styles / hdw_tags / hdw_media
+  PASS  kanji hit conforms and carries sorted stats
+  PASS  kanji miss returns the documented empty sentinel
+  PASS  a kanji_meta_bank-only archive imports as a frequency dictionary
+  PASS  a kanji lookup carries the kanji frequencies
+  PASS  a term spelled like the kanji gets no kanji frequency
+  PASS  styles come from the imported index.json
+  PASS  tag banks come from the imported index.json, every row in bank order
+  PASS  media returns the byte length and the real file bytes
+  PASS  media absence returns 0 without setting an error
+  PASS  media with a null argument is rejected, not crashed
+
+# error paths (none may abort the module)
+  PASS  importing a plain text file fails cleanly
+  PASS  importing a zip with no index.json fails cleanly
+  PASS  an unreadable index is rejected by the preflight before import
+  PASS  importing a path that does not exist fails cleanly
+  PASS  a failed import leaves the already-imported dictionary alone
+  PASS  add_dict rejects an empty path
+  PASS  add_dict rejects a directory with no version marker
+  PASS  add_dict rejects a directory that does not exist
+  PASS  add_dict rejects out-of-range kinds
+  PASS  malformed options_json falls back instead of throwing
+  PASS  unset options are accepted in every documented spelling
+  PASS  the module is still alive after every error path
+
+# archive parsing without fixed resource caps
+  PASS  entry counts above the former cap are not rejected by a fixed limit
+  PASS  expanded entries above the former cap are not rejected by a fixed limit
+  PASS  aggregate expanded bytes above the former cap are not rejected by a fixed limit
+  PASS  compression ratios above the former cap are not rejected by a fixed limit
+  PASS  a forged local/central size disagreement is refused
+  PASS  entries that defer their sizes to data descriptors import like the fixture (#491)
+  PASS  data-descriptor entries whose local headers keep the uncompressed size import (#512)
+  PASS  entries whose sizes and offsets are in Zip64 extra fields import like the fixture
+  PASS  Zip64 entries whose local headers keep only the sentinel, as zip.js writes them, import
+  PASS  a data-descriptor entry whose local header records other sizes is refused
+  PASS  a deflate entry with no compressed data for its declared size is refused
+  PASS  a failed malformed import leaves the already-imported dictionary alone
+  PASS  the module is still alive after malformed-archive rejection
+
+# hdw_reset
+  PASS  reset drops every dictionary
+  PASS  dictionaries can be reloaded from the same MEMFS directory
+  heap after reset + 1 add: 89522176 (after import: 89522176)
+  PASS  the heap keeps the import high-water mark after a reset
+
+# hdw_import staging
+  PASS  a title of ".." imports into its own folder and escapes nothing
+  PASS  a title of "../../.." imports into its own folder and escapes nothing
+  PASS  a title of "../escaped" imports into its own folder and escapes nothing
+  PASS  a title of "sub/dir" imports into its own folder and escapes nothing
+  PASS  a title of "." imports into its own folder and escapes nothing
+  PASS  a title of "Nico/Pixiv" imports into its own folder and escapes nothing
+  PASS  a title of "back\\slash" imports into its own folder and escapes nothing
+  PASS  a title of "Japanese-Mongolian/日・モ辞典" imports into its own folder and escapes nothing
+  PASS  a title of "" is refused and destroys nothing
+  PASS  a title of ".hdw-import" is refused and destroys nothing
+  PASS  a title of ".hdw-remove" is refused and destroys nothing
+  PASS  a failed re-import leaves the installed dictionary loadable
+  PASS  a successful re-import replaces the dictionary in place
+
+# trained zstd dictionary (.hoshidicts_6) and the previous engine's layouts beside it
+  trained import: {"success":true,"title":"hachidori-fixture-trained","termCount":49,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":0,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  the trained import succeeds
+  PASS  a trained import is a .hoshidicts_6 directory with a dict.zstd
+  PASS  add_dict accepts the .hoshidicts_6 directory
+  PASS  glossaries compressed against the trained dictionary decompress
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is missing
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is zero length
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is invalid
+  PASS  the restored trained dictionary remains loadable
+  PASS  a .hoshidicts_3 directory from the previous engine still loads beside a fresh import
+  PASS  a .hoshidicts_4 directory from the previous engine still decompresses its glossaries
+  PASS  a _3 and a _4 dictionary load together and both answer
+
+# multi-bank pthread scheduler
+  PASS  twenty term banks import through the bounded worker pool
+  PASS  the last scheduled bank is indexed and loadable
+
+# interrupted install recovery
+  PASS  storage initialization recovers interrupted installs
+  PASS  a partially moved backup is merged back without deleting the files left in place
+  PASS  a committed backup replaces a partial new destination
+  PASS  a complete but uncommitted new destination is rolled back
+  PASS  a committed new destination wins over a partially deleted backup
+  PASS  a corrupt destination cannot displace the last valid backup
+  PASS  every interrupted backup-cleanup prefix preserves the committed replacement
+  PASS  a partial first install is removed
+  PASS  recovery removes transaction debris
+
+# hdw_lookup_dictionary
+  PASS  a dictionary-scoped lookup rejects a path that is not loaded
+  PASS  a dictionary-scoped lookup conforms to the lookup contract
+  PASS  a dictionary-scoped lookup returns only the requested term dictionary
+  PASS  a dictionary-scoped lookup retains shared frequency and pitch metadata
+
+# definition score order (#472)
+  PASS  definitions sort by score within each dictionary, keeping ties, tags and dictionary priority
+
+# dictionary priority breaks a reading tie (#575)
+  PASS  a surface frequency that ties two readings yields to the caller dictionary order
+  PASS  a frequency that separates the readings still outranks dictionary order
+  PASS  words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)
+
+# long keys beyond the scan length
+  PASS  the importer writes a long-key scan index
+  PASS  fractional and beyond-int32 scores survive import, lookup and the JSON boundary
+  PASS  scanLength 16 still finds a 27-code-point key when the text begins like it
+  PASS  an inflected long phrase is found through deinflection
+  PASS  text that does not begin like a long key keeps the ordinary scan
+  PASS  a scan shorter than eight code points never extends
+  PASS  a dictionary-scoped lookup extends through its own index
+
+# MDX import
+  mdx import: {"success":true,"title":"HTML Fixture","termCount":8,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":3,"skippedRecordCount":0,"unresolvedRedirectCount":1,"missingResourceCount":1,"unreadableResourceCount":0,"error":""}
+  PASS  an .mdx with its .mdd imports through hdw_import
+  PASS  the MDX import report counts what it left out
+  PASS  an .mdx chosen without its .mdd reports its images and styles missing
+  PASS  the MDX dictionary loads and answers like a Yomitan one
+  PASS  MDD stylesheets and media come through hdw_styles and hdw_media
+  PASS  an .mdd on its own is refused and leaves no debris
+  PASS  @@@LINK aliases follow MDict's default key rules and chains
+  PASS  KeyCaseSensitive="Yes" StripKey="No" resolve only exact targets
+  PASS  Shift_JIS and windows-1252 MDD stylesheets import as UTF-8
+  PASS  <font size> becomes a CSS keyword and inline style wins
+
+# production custom dictionary ZIP
+  PASS  production parser retains all 1001 valid rows
+  PASS  production ZIP imports through the real WASM importer
+  PASS  imported custom metadata retains the semantic revision
+  PASS  the real importer writes a complete custom dictionary generation
+  PASS  a term in the second 1000-row bank is searchable
+  PASS  definition newline and literal backslash-n remain distinct
+  PASS  ordered duplicate custom rows retain both definitions
+
+# bounded lookup responses
+  PASS  lookup response limits do not reject the imported archive
+  PASS  both lookup endpoints retain exact 8 MiB ASCII and multibyte glossaries
+  PASS  both lookup endpoints refuse a glossary one UTF-8 byte over 8 MiB
+  PASS  both lookup endpoints refuse the aggregate native copy budget
+  PASS  both lookup endpoints independently bound JSON escape expansion
+  PASS  lookup text and option strings use a 4 KiB UTF-8 boundary
+  PASS  native lookup JSON escapes control bytes without truncating the C string
+  PASS  refused lookup responses leave the loaded dictionary usable
+
+# media request and response bounds
+  PASS  media reference limits count UTF-8 bytes and preserve well-formed misses
+  PASS  large media imports and loads but only fetches up to 4 MiB
+
+# hdw_segment (word segmentation, #520)
+  PASS  the reference dictionaries import and load
+  PASS  segment conforms to the response contract
+  PASS  empty text and non-positive scan length are no-ops
+  PASS  spans cover the line in order, with UTF-16 offsets inside the text
+  PASS  punctuation and whitespace produce no spans
+  PASS  a conjugated word is one span taking its dictionary form
+  PASS  function words are flagged and left for the page to leave unmarked
+  PASS  a phrase of known words carries its alternative split
+  PASS  a single word has no alternative split
+        reference set: 47 lines, 278 words
+        best split : 266/278 words (95.7%), 266/278 boundaries (95.7%), 41/47 lines exact
+        greedy     : 264/278 words (95.0%), 264/278 boundaries (95.0%), 40/47 lines exact
+        function-word flag: 265/278 correct
+        conjugated lines fully recovered: 36/37
+  PASS  the best split scores at least as well as the greedy parse
+  PASS  the best split fixes at least one boundary the greedy parse gets wrong
+  PASS  most conjugated reference lines recover their dictionary forms
+  PASS  frequency breaks a tie between two-word splits in the selected order
+  PASS  the copula forms and conjunctions a dictionary lists whole are function words
+  PASS  segment leaves out the words only an excluded dictionary has
+  PASS  segment rejects text above the 4 KiB lookup limit
+
+# low-memory pool (HACHIDORI_PTHREAD_POOL_SIZE = 2)
+  PASS  the built glue sizes its pool from the runtime override
+  PASS  storage initializes in the small pool
+  PASS  a low-RAM import completes with two pool threads
+  PASS  twenty term banks import single-threaded in the small pool
+  PASS  the small-pool module loads and answers lookups
+
+# Yomitan engine dependency parity
+  PASS  rebuilt WASM recognizes historical u-verbs, one-character stems and whole-word honorifics
+  PASS  historical conjugations compose with kanji variants, also in a selected dictionary, and skip excluded spellings
+
+192 passed, 0 failed
+
+fixture counts (use these as the expectation baseline):
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ HACHIDORI_WASM_VARIANT="fallback" node test/node-smoke.mjs
+writing fixtures:
+     2309  test/fixtures/hachidori-fixture.zip
+     1652  test/fixtures/hachidori-fixture-trained.zip
+     4747  test/fixtures/hachidori-fixture-many-banks.zip
+      569  test/fixtures/hachidori-generic-kanji-fixture.zip
+      340  test/fixtures/parent-title.zip
+      127  test/fixtures/malformed-index.zip
+      644  test/fixtures/no-index.zip
+      147  test/fixtures/not-a-zip.txt
+      536  test/fixtures/atomic-replacement-v1.zip
+      536  test/fixtures/atomic-replacement-v2.zip
+      538  test/fixtures/atomic-replacement-v3.zip
+      528  test/fixtures/atomic-replacement-same-v2.zip
+      529  test/fixtures/atomic-replacement-lower-v1.zip
+      515  test/fixtures/atomic-replacement-missing-version.zip
+      528  test/fixtures/atomic-replacement-malformed-version.zip
+      531  test/fixtures/atomic-replacement-nonnumeric-version.zip
+      457  test/fixtures/atomic-replacement-corrupt.zip
+
+# hdw_init_storage
+  PASS  native import exceptions keep their decoding and release helpers
+  PASS  memory storage initializes /dicts
+
+# hdw_import
+  actual counts: {"success":true,"title":"hachidori-fixture","termCount":6,"metaCount":4,"frequencyCount":2,"pitchCount":2,"kanjiCount":1,"mediaCount":1,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  report conforms to ImportReport
+  PASS  success
+  PASS  error is empty on success
+  PASS  title
+  PASS  termCount
+  PASS  metaCount
+  PASS  frequencyCount
+  PASS  pitchCount
+  PASS  kanjiCount
+  PASS  mediaCount
+  PASS  a Yomitan archive reports no MDX import losses
+  PASS  last_error cleared after a successful import
+  PASS  output directory laid out as add_dict expects
+  PASS  the primary fixture stays under the zstd training floor
+  PASS  the untrained import is a .hoshidicts_5 directory with no dict.zstd
+
+# mmap output files (Emscripten fd regression)
+  PASS  hash.table is non-empty
+  PASS  bloom.filter is non-empty
+        capacity=16 occupied slots=9
+  PASS  hash.table content is not zero-filled
+        num_bits=128 non-zero payload bytes=16
+  PASS  bloom.filter content is not zero-filled
+
+# hdw_add_dict
+  PASS  kind 0 (term) accepted
+  PASS  kind 1 (freq) accepted
+  PASS  kind 2 (pitch) accepted
+  PASS  kind 3 (kanji) accepted
+
+# memory (one heap copy per package; media, and paged entries, read from disk)
+  heap after import + 4 adds: 16777216
+  PASS  the fixture carries every file the loader reads
+  PASS  paged hashes avoid the padded index allocation
+  PASS  paged hashes preserve complete term, inflection, frequency, pitch, kanji and media results
+  PASS  entry and hash pages use one cache and unload together
+  four kinds, blobs.bin padded: resident 16778967, heap growth 15335424
+  PASS  four kinds of one package hold one copy of its files
+  media.bin padded to 16777376: heap growth 0
+  PASS  media.bin stays on disk
+  paged, blobs.bin padded to 16778663: heap growth 0, page cache after lookups 4096
+  PASS  a paged package keeps blobs.bin on disk
+  PASS  paged and mapped entries answer with byte-identical JSON
+  PASS  a mapped engine reports no page cache
+
+# hdw_lookup
+  PASS  response conforms to the lookup contract
+  PASS  dictionaryCount counts every successful add_dict
+  PASS  exact match
+  PASS  glossaries arrive raw, in term-bank order, one per bank row
+  PASS  structured-content glossary is not pre-parsed
+  PASS  deinflected match records the transform chain
+  PASS  deinflection survives a five-step chain
+  PASS  Yomitan historical kana and emphatic negative chains reach dictionary forms
+  PASS  kana-only entry (empty reading in the bank)
+  PASS  reading-only query reaches the kanji headword
+  PASS  text preprocessing preserves raw matched kana, width, decomposition, and kanji variants
+  PASS  miss returns an empty result set, not an error
+  PASS  maxResults 0 and empty text are treated as no-ops
+
+# frequencies and pitches
+  PASS  nested {"frequency":{...}} meta shape
+  PASS  flat {"value":...} meta shape
+  PASS  pitch positions, patterns, nasal and devoice
+  PASS  ipa transcriptions merge into the same pitch entry
+
+# text frequencies
+  PASS  a frequency-only archive of text values imports
+  PASS  a bare text frequency shows its text, with its first number as the value
+  PASS  a text frequency under a reading applies to that reading only
+
+# hdw_kanji / hdw_styles / hdw_tags / hdw_media
+  PASS  kanji hit conforms and carries sorted stats
+  PASS  kanji miss returns the documented empty sentinel
+  PASS  a kanji_meta_bank-only archive imports as a frequency dictionary
+  PASS  a kanji lookup carries the kanji frequencies
+  PASS  a term spelled like the kanji gets no kanji frequency
+  PASS  styles come from the imported index.json
+  PASS  tag banks come from the imported index.json, every row in bank order
+  PASS  media returns the byte length and the real file bytes
+  PASS  media absence returns 0 without setting an error
+  PASS  media with a null argument is rejected, not crashed
+
+# error paths (none may abort the module)
+  PASS  importing a plain text file fails cleanly
+  PASS  importing a zip with no index.json fails cleanly
+  PASS  an unreadable index is rejected by the preflight before import
+  PASS  importing a path that does not exist fails cleanly
+  PASS  a failed import leaves the already-imported dictionary alone
+  PASS  add_dict rejects an empty path
+  PASS  add_dict rejects a directory with no version marker
+  PASS  add_dict rejects a directory that does not exist
+  PASS  add_dict rejects out-of-range kinds
+  PASS  malformed options_json falls back instead of throwing
+  PASS  unset options are accepted in every documented spelling
+  PASS  the module is still alive after every error path
+
+# archive parsing without fixed resource caps
+  PASS  entry counts above the former cap are not rejected by a fixed limit
+  PASS  expanded entries above the former cap are not rejected by a fixed limit
+  PASS  aggregate expanded bytes above the former cap are not rejected by a fixed limit
+  PASS  compression ratios above the former cap are not rejected by a fixed limit
+  PASS  a forged local/central size disagreement is refused
+  PASS  entries that defer their sizes to data descriptors import like the fixture (#491)
+  PASS  data-descriptor entries whose local headers keep the uncompressed size import (#512)
+  PASS  entries whose sizes and offsets are in Zip64 extra fields import like the fixture
+  PASS  Zip64 entries whose local headers keep only the sentinel, as zip.js writes them, import
+  PASS  a data-descriptor entry whose local header records other sizes is refused
+  PASS  a deflate entry with no compressed data for its declared size is refused
+  PASS  a failed malformed import leaves the already-imported dictionary alone
+  PASS  the module is still alive after malformed-archive rejection
+
+# hdw_reset
+  PASS  reset drops every dictionary
+  PASS  dictionaries can be reloaded from the same MEMFS directory
+  heap after reset + 1 add: 20185088 (after import: 16777216)
+  PASS  the heap keeps the import high-water mark after a reset
+
+# hdw_import staging
+  PASS  a title of ".." imports into its own folder and escapes nothing
+  PASS  a title of "../../.." imports into its own folder and escapes nothing
+  PASS  a title of "../escaped" imports into its own folder and escapes nothing
+  PASS  a title of "sub/dir" imports into its own folder and escapes nothing
+  PASS  a title of "." imports into its own folder and escapes nothing
+  PASS  a title of "Nico/Pixiv" imports into its own folder and escapes nothing
+  PASS  a title of "back\\slash" imports into its own folder and escapes nothing
+  PASS  a title of "Japanese-Mongolian/日・モ辞典" imports into its own folder and escapes nothing
+  PASS  a title of "" is refused and destroys nothing
+  PASS  a title of ".hdw-import" is refused and destroys nothing
+  PASS  a title of ".hdw-remove" is refused and destroys nothing
+  PASS  a failed re-import leaves the installed dictionary loadable
+  PASS  a successful re-import replaces the dictionary in place
+
+# trained zstd dictionary (.hoshidicts_6) and the previous engine's layouts beside it
+  trained import: {"success":true,"title":"hachidori-fixture-trained","termCount":49,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":0,"skippedRecordCount":0,"unresolvedRedirectCount":0,"missingResourceCount":0,"unreadableResourceCount":0,"error":""}
+  PASS  the trained import succeeds
+  PASS  a trained import is a .hoshidicts_6 directory with a dict.zstd
+  PASS  add_dict accepts the .hoshidicts_6 directory
+  PASS  glossaries compressed against the trained dictionary decompress
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is missing
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is zero length
+  PASS  add_dict refuses a .hoshidicts_6 directory whose dict.zstd is invalid
+  PASS  the restored trained dictionary remains loadable
+  PASS  a .hoshidicts_3 directory from the previous engine still loads beside a fresh import
+  PASS  a .hoshidicts_4 directory from the previous engine still decompresses its glossaries
+  PASS  a _3 and a _4 dictionary load together and both answer
+
+# multi-bank pthread scheduler
+  PASS  twenty term banks import through the bounded worker pool
+  PASS  the last scheduled bank is indexed and loadable
+
+# interrupted install recovery
+  PASS  storage initialization recovers interrupted installs
+  PASS  a partially moved backup is merged back without deleting the files left in place
+  PASS  a committed backup replaces a partial new destination
+  PASS  a complete but uncommitted new destination is rolled back
+  PASS  a committed new destination wins over a partially deleted backup
+  PASS  a corrupt destination cannot displace the last valid backup
+  PASS  every interrupted backup-cleanup prefix preserves the committed replacement
+  PASS  a partial first install is removed
+  PASS  recovery removes transaction debris
+
+# hdw_lookup_dictionary
+  PASS  a dictionary-scoped lookup rejects a path that is not loaded
+  PASS  a dictionary-scoped lookup conforms to the lookup contract
+  PASS  a dictionary-scoped lookup returns only the requested term dictionary
+  PASS  a dictionary-scoped lookup retains shared frequency and pitch metadata
+
+# definition score order (#472)
+  PASS  definitions sort by score within each dictionary, keeping ties, tags and dictionary priority
+
+# dictionary priority breaks a reading tie (#575)
+  PASS  a surface frequency that ties two readings yields to the caller dictionary order
+  PASS  a frequency that separates the readings still outranks dictionary order
+  PASS  words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)
+
+# long keys beyond the scan length
+  PASS  the importer writes a long-key scan index
+  PASS  fractional and beyond-int32 scores survive import, lookup and the JSON boundary
+  PASS  scanLength 16 still finds a 27-code-point key when the text begins like it
+  PASS  an inflected long phrase is found through deinflection
+  PASS  text that does not begin like a long key keeps the ordinary scan
+  PASS  a scan shorter than eight code points never extends
+  PASS  a dictionary-scoped lookup extends through its own index
+
+# MDX import
+  mdx import: {"success":true,"title":"HTML Fixture","termCount":8,"metaCount":0,"frequencyCount":0,"pitchCount":0,"kanjiCount":0,"mediaCount":3,"skippedRecordCount":0,"unresolvedRedirectCount":1,"missingResourceCount":1,"unreadableResourceCount":0,"error":""}
+  PASS  an .mdx with its .mdd imports through hdw_import
+  PASS  the MDX import report counts what it left out
+  PASS  an .mdx chosen without its .mdd reports its images and styles missing
+  PASS  the MDX dictionary loads and answers like a Yomitan one
+  PASS  MDD stylesheets and media come through hdw_styles and hdw_media
+  PASS  an .mdd on its own is refused and leaves no debris
+  PASS  @@@LINK aliases follow MDict's default key rules and chains
+  PASS  KeyCaseSensitive="Yes" StripKey="No" resolve only exact targets
+  PASS  Shift_JIS and windows-1252 MDD stylesheets import as UTF-8
+  PASS  <font size> becomes a CSS keyword and inline style wins
+
+# production custom dictionary ZIP
+  PASS  production parser retains all 1001 valid rows
+  PASS  production ZIP imports through the real WASM importer
+  PASS  imported custom metadata retains the semantic revision
+  PASS  the real importer writes a complete custom dictionary generation
+  PASS  a term in the second 1000-row bank is searchable
+  PASS  definition newline and literal backslash-n remain distinct
+  PASS  ordered duplicate custom rows retain both definitions
+
+# bounded lookup responses
+  PASS  lookup response limits do not reject the imported archive
+  PASS  both lookup endpoints retain exact 8 MiB ASCII and multibyte glossaries
+  PASS  both lookup endpoints refuse a glossary one UTF-8 byte over 8 MiB
+  PASS  both lookup endpoints refuse the aggregate native copy budget
+  PASS  both lookup endpoints independently bound JSON escape expansion
+  PASS  lookup text and option strings use a 4 KiB UTF-8 boundary
+  PASS  native lookup JSON escapes control bytes without truncating the C string
+  PASS  refused lookup responses leave the loaded dictionary usable
+
+# media request and response bounds
+  PASS  media reference limits count UTF-8 bytes and preserve well-formed misses
+  PASS  large media imports and loads but only fetches up to 4 MiB
+
+# hdw_segment (word segmentation, #520)
+  PASS  the reference dictionaries import and load
+  PASS  segment conforms to the response contract
+  PASS  empty text and non-positive scan length are no-ops
+  PASS  spans cover the line in order, with UTF-16 offsets inside the text
+  PASS  punctuation and whitespace produce no spans
+  PASS  a conjugated word is one span taking its dictionary form
+  PASS  function words are flagged and left for the page to leave unmarked
+  PASS  a phrase of known words carries its alternative split
+  PASS  a single word has no alternative split
+        reference set: 47 lines, 278 words
+        best split : 266/278 words (95.7%), 266/278 boundaries (95.7%), 41/47 lines exact
+        greedy     : 264/278 words (95.0%), 264/278 boundaries (95.0%), 40/47 lines exact
+        function-word flag: 265/278 correct
+        conjugated lines fully recovered: 36/37
+  PASS  the best split scores at least as well as the greedy parse
+  PASS  the best split fixes at least one boundary the greedy parse gets wrong
+  PASS  most conjugated reference lines recover their dictionary forms
+  PASS  frequency breaks a tie between two-word splits in the selected order
+  PASS  the copula forms and conjunctions a dictionary lists whole are function words
+  PASS  segment leaves out the words only an excluded dictionary has
+  PASS  segment rejects text above the 4 KiB lookup limit
+
+# low-memory pool (HACHIDORI_PTHREAD_POOL_SIZE = 2)
+  single-thread runtime has no pool; the low-RAM import path is covered above
+
+# Yomitan engine dependency parity
+  PASS  rebuilt WASM recognizes historical u-verbs, one-character stems and whole-word honorifics
+  PASS  historical conjugations compose with kanji variants, also in a selected dictionary, and skip excluded spellings
+
+187 passed, 0 failed
+
+fixture counts (use these as the expectation baseline):
+  title: hachidori-fixture
+  termCount: 6
+  metaCount: 4
+  frequencyCount: 2
+  pitchCount: 2
+  kanjiCount: 1
+  mediaCount: 1
+
+$ node test/threaded-bridge-smoke.mjs
+hoshidicts: engine failed: the engine worker sent an unreadable message
+hoshidicts: engine failed: test engine selection failure
+hoshidicts: direct OPFS is unavailable, using threaded IDBFS: createSyncAccessHandle refused
+(node:1396557) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+offscreen bridge caps startup and both backends, preserves status, and releases failed requests
+
+$ node --test-force-exit --test-reporter=spec test/extension-smoke.mjs
+
+=== reader options > option ranges match the HTML inputs and the engine bounds
+
+# option ranges
+  PASS  every layer clamps maxResults to the same range
+  PASS  every layer clamps scanLength to the same range
+
+=== service worker > a hosted extension background relays nothing and creates no engine
+
+# external dictionary links
+  PASS  a host-owned engine works without offscreen, alarm or download APIs
+
+=== service worker > timer alarms with an overlay host and the alarms API
+▶ reader options
+  ✔ option ranges match the HTML inputs and the engine bounds (4.281718ms)
+✔ reader options (4.771949ms)
+▶ service worker
+  ✔ a hosted extension background relays nothing and creates no engine (24.635184ms)
+  PASS  an overlay host's inert chrome.alarms is bypassed: a worker timer fires the index alarm handler at its scheduled time, not before
+
+=== service worker > timer alarms without an overlay host or the alarms API
+  ✔ timer alarms with an overlay host and the alarms API (153.204516ms)
+  PASS  without chrome.alarms a worker timer fires the index alarm handler at its scheduled time, not before
+
+=== service worker > external dictionary links
+  PASS  external links validate HTTP URLs and sender identity before creating one browser-owned tab
+  ✔ timer alarms without an overlay host or the alarms API (141.575123ms)
+  PASS  external tab creation bypasses storage and engine queues and reports a failure without retry
+
+=== service worker > first-run background setup
+  ✔ external dictionary links (14.485476ms)
+  PASS  a fresh installation opens one startup tab and seeds first-install preferences exactly once
+  PASS  the worker refuses starter downloads until the welcome stage has been accepted
+  PASS  startup-page setup writes are revision-checked, forward-only and refused from other senders
+  PASS  installer outcomes are recorded from the engine host only and settle each dictionary selection once without overwriting edits
+  PASS  recommended installation selects Bee's term route without onboarding and consumes the default once
+
+=== service worker > overlay mode background
+  ✔ first-run background setup (182.316969ms)
+  PASS  overlay mode seeds hover lookups without a highlight or mining screenshot once and never opens setup
+  PASS  overlay mode never takes a mining screenshot, even when the stored option is on
+
+=== sharing > sharing host
+  ✔ overlay mode background (377.493546ms)
+✔ service worker (894.879606ms)
+  PASS  a probe of this computer uses the port Settings shows, or this install's own when it shows none or a bad one
+  PASS  a browser install shares by default once it has dictionaries, connects to the relay on the chosen port, asks for the network it was set to, and answers a linked browser's hello with the shared snapshot
+  PASS  a forwarded lookup reaches the engine once and returns its exact reply
+  PASS  the relay's API requests are answered by the host with the contract's objects
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+  PASS  the host accepts only forwardable linked requests, commits shared writes and keeps local-only actions home
+  PASS  a legacy linked reader can edit its first Anki setup and link list without erasing newer Templates or Anki buttons
+  PASS  linked Anki Settings and mining use the host configuration and singleton while page-local screenshots are refused
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at process.processTimers (node:internal/timers:518:9)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+  PASS  a relay that goes away is waited for and retried by alarm, a refusal is reported, a restarted worker reconnects to the stored port, and turning sharing off closes the socket
+
+=== sharing > sharing client
+▶ sharing
+  ✔ sharing host (1255.383673ms)
+  PASS  a link that finds nothing puts this install's own sharing back
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+  PASS  linking keeps this install's shared state aside and mirrors the host's snapshot in one write
+  PASS  a linked page's writes, lookups and lookup counts go to the host, whose storage batches land locally as single writes
+  PASS  a linked browser forwards a popup batch to its host as single preflights and keeps each reply with its entry
+  PASS  linked Anki preparation and writes go to the host while screenshot bytes and confirmed cleanup stay in the reading browser
+  PASS  linked Anki Settings checks run on the host without forwarding the reading browser's endpoint, key or mapping
+  PASS  a linked install's engine reads and commits the state it had before linking, never the mirror
+  PASS  losing the host fails reads, reports sent mutations as uncertain, and restores the linked role before local work
+  PASS  unlinking restores this install's own state with newer revisions and removes the host's lookup rows
+
+=== sharing > sharing transitions
+  ✔ sharing client (667.025457ms)
+  PASS  concurrent Links keep the original personal state including edits made while the probe waits
+  PASS  an old host keeps linked dictionaries available but reports host-owned Anki mining unavailable without sending a request
+  PASS  a repeated Link returns the current link without probing or replacing its saved state
+  PASS  concurrent and repeated Unlinks restore personal entries and settings once without erasing them
+  PASS  an automatic backup queued behind Link rechecks linked ownership before it can snapshot the host mirror
+  PASS  Link suppresses local automatic snapshots and Unlink resumes from the restored local snapshot store
+  PASS  Link drains an in-flight local automatic run before fresh linked suppression
+  PASS  Unlink drains an in-flight linked suppression before fresh local scheduling
+  PASS  an index alarm during Link cannot resume the reading browser's local Anki behind the suspended transition
+  PASS  a refused restoration keeps the saved state and linked routing available for retry
+  PASS  a partial restoration retains its snapshot until removals succeed and the retry restores personal entries
+  PASS  a linked install with no saved snapshot unlinks without deleting its current user data
+  PASS  host batches queued during Unlink and late frames from its retired socket cannot overwrite the restoration
+  PASS  switching hosts drains a linked submission before publishing the new route
+  PASS  Unlink from another Settings tab waits for an already pending Link and then restores local state
+  PASS  a linked overlay keeps activation, highlighting and geometry local through host option batches
+  PASS  overlay saves translate host revisions, split mixed patches and reject stale local edits
+  PASS  host conflicts and concurrent local edits preserve the overlay draft boundary
+  PASS  a local installer settling after Link updates its kept selections rather than the host mirror
+  PASS  an existing linked overlay restores its kept preferences before the host reconnects
+  PASS  a linked overlay whose local record chose no lookup mode composes and unlinks on hover
+  PASS  overlay-local edits survive worker restart, work while disconnected and remain after Unlink
+  PASS  Unlink can complete during an overlay shared save and its late reply cannot overwrite local preferences
+
+=== Anki > first-run Anki detection
+  PASS  the worker refuses first-run Anki discovery before Start setup without contacting Anki
+  PASS  first-run Anki detection is startup-only, records absence or a specific refusal once, and reports an existing setup without any call
+  ✔ sharing transitions (274.339993ms)
+✔ sharing (2197.425145ms)
+  PASS  first-run Anki detection ranks note types and decks read-only and saves the exact names with the preset once
+  PASS  first-run setup prepends detected local audio once and leaves existing, racing and linked sources alone
+  PASS  a note type chosen while first-run Anki detection runs is reported as already configured and never overwritten
+  PASS  Settings Anki recovery retries read-only detection without onboarding and saves only through revision-checked options
+
+=== Anki > Anki in the worker
+  PASS  Anki discovery uses only fixed read-only calls from Settings in one batch and never holds the storage queue
+▶ Anki
+  ✔ first-run Anki detection (128.5843ms)
+  PASS  Anki model and mappings commit together through the existing options CAS and reject stale edits
+  PASS  Anki index source invalidation commits atomically while blur-only changes retain the same rows
+
+=== Anki > Anki word status
+  ✔ Anki in the worker (22.81983ms)
+  PASS  word status answers a page's batch from the first Template's cached rows without contacting Anki
+  PASS  a changed index row revision is broadcast to every reading tab so the page can re-read word status
+  PASS  the host answers a linked browser's word status batch from its own index
+  PASS  another Template source is announced to every reading tab and linked browser without a revision
+  PASS  a linked page's word status crosses the link as one batch and takes the host's reply
+  PASS  a linked browser's pages re-read word status when the link's hello completes, on each host revision and after unlinking
+
+=== Anki > word status overrides
+  PASS  Mark as known and Ignore write one headword in the worker's storage queue, compose across tabs, skip a repeat and refuse malformed changes
+  ✔ Anki word status (46.776364ms)
+  PASS  the host's hello carries its word status overrides, and a linked browser's Ignore is committed there and pushed back
+  PASS  a linked page's Mark as known crosses the link once and its record arrives through the mirror
+
+=== Anki > Anki screenshots
+  PASS  a mining screenshot accepts a current SPA route despite its stale script URL and rejects a route change during capture
+  ✔ word status overrides (29.079432ms)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at listOnTimeout (node:internal/timers:547:9)
+    at process.processTimers (node:internal/timers:521:7)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at listOnTimeout (node:internal/timers:547:9)
+    at process.processTimers (node:internal/timers:521:7)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at listOnTimeout (node:internal/timers:547:9)
+    at process.processTimers (node:internal/timers:521:7)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+    at async applyAnkiIndexRole (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8433:8)
+    at async reconcileAnkiIndex (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:8441:3)
+hachidori: Anki index refresh failed: Error: offscreen document sent no reply
+    at relay (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7361:17)
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at listOnTimeout (node:internal/timers:547:9)
+    at process.processTimers (node:internal/timers:521:7)
+    at async fetchRows (/local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/background.js:7632:21)
+    at async pull (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/extension/anki-index-cache.js:172:39)
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+  PASS  a mining screenshot captures the asking page once it is still the window's own, and never any other page
+  PASS  Netflix screenshots keep the viewport capture until preview screenshots are enabled
+  PASS  enabled Netflix previews target the exact top-frame document in MAIN world without viewport capture
+  PASS  unavailable or invalid Netflix previews report an error without substituting a viewport screenshot
+  PASS  Netflix previews preserve the active tab, document, route and window ownership checks
+  PASS  the preview flag leaves non-Netflix pages and subframes on the ordinary screenshot path
+
+=== Anki > linked Anki Settings discovery and setup checks
+  ✔ Anki screenshots (1823.400383ms)
+  PASS  linked Anki Settings saves endpoint drafts on the host before running host-owned discovery or setup checks
+
+=== backups > backup relay
+  PASS  manual and automatic backup cancellation retire delayed startup and lost-reply retries before they can recreate staging
+
+=== backups > backup lifecycle port
+  PASS  Settings backup ownership cleans prepared files on port disconnect and refuses other extension pages
+
+=== backups > automatic backups in the worker
+  ✔ linked Anki Settings discovery and setup checks (1069.011688ms)
+✔ Anki (3120.45509ms)
+▶ backups
+  ✔ backup relay (28.366421ms)
+  ✔ backup lifecycle port (7.603724ms)
+  PASS  an absent automatic-backup store is created as v1 on worker initialization
+  PASS  automatic backups timestamp serialized creation after queue delay and retain only the default two payloads
+  PASS  an unsupported future automatic-backup schema fails closed without overwrite or generation cleanup
+  PASS  a refused automatic-backup metadata write retains the authoritative index and skips generation cleanup
+  PASS  a lost automatic-backup metadata reply is recovered by exact readback without a duplicate snapshot
+  PASS  a rejected automatic-backup alarm creation leaves scheduling retryable until a later create succeeds
+  PASS  a corrupt newest automatic backup leaves the valid older snapshot visible and blocks unsafe cleanup
+  PASS  worker restart recreates the automatic-backup alarm from retained metadata without another write
+  PASS  worker restart retries an initial snapshot when the previous no-store attempt was not ready
+  PASS  automatic backups retain the configured number of daily snapshots and prune to a lowered count on the next snapshot
+
+=== backups > Settings backup retention
+  ✔ automatic backups in the worker (47.392756ms)
+  PASS  the Backup section saves the automatic snapshot retention, says so and clamps it to the shared option range
+
+=== Netflix > Netflix recorder port
+  PASS  the Netflix recorder port is kept only for the recorder page framed in a watch tab while the switch is on
+
+=== Netflix > Netflix line audio
+  PASS  the Netflix line audio is held only for the watch page's own top-frame document, with the switch on
+
+=== Netflix > Netflix scripts for an open page
+  PASS  a Netflix page open before the switch went on gets the Netflix scripts in its own document, with the switch on
+  ✔ Settings backup retention (522.717668ms)
+✔ backups (606.591419ms)
+▶ Netflix
+  ✔ Netflix recorder port (7.615594ms)
+  ✔ Netflix line audio (9.437107ms)
+  PASS  a Netflix page open before the switch went on asks once for the Netflix scripts and follows the switch with them
+  PASS  a page opened with the switch on asks at once, and other sites never ask
+
+=== managed updates > Settings update list and partial failures
+  ✔ Netflix scripts for an open page (205.295048ms)
+✔ Netflix (222.7101ms)
+  PASS  Updates lists available dictionaries and failed checks with names, revisions and scoped actions
+  PASS  update list refreshes retain keyboard focus on existing controls
+  PASS  Update all selects only available updates, including disabled dictionaries, and blocks repeat actions
+  PASS  partial update failures name the dictionary and error, keep retry available and remove successful updates
+  PASS  Updates restores persisted failures when Settings reopens
+  PASS  an individual retry updates only that dictionary and clears its failure
+  PASS  Check again retries only the failed index without installing
+  PASS  Updates has an empty state and disables Update all when no updates remain
+
+=== managed updates > managed update schedule
+▶ managed updates
+  ✔ Settings update list and partial failures (1176.262522ms)
+  PASS  an overdue scheduled package creates an immediate alarm
+  PASS  reconciling an already-due alarm does not postpone its browser delivery
+  PASS  per-dictionary schedules check only due managed packages including disabled overrides
+  PASS  an early scheduled wake does not fetch or write state
+  PASS  manual Check now still checks Off and not-yet-due dictionary policies
+  PASS  explicit schedules survive global Off and failed checks advance their due time
+  PASS  scheduled work rechecks a later package policy before fetching
+  PASS  worker startup restores the same next-due alarm without a periodic polling interval
+  PASS  global schedule saves and no-op retries each reconcile exactly once
+  PASS  backup schedule-only publication reconciles without relying on a settings storage event
+  PASS  manual Check now records completion even when no managed dictionary is installed
+
+=== managed updates > managed update checks
+  ✔ managed update schedule (59.222856ms)
+  PASS  a scoped check requests one index and changes only that package's check status without importing
+  PASS  Check now checks all managed indexes but never imports or changes installed revisions when newer indexes exist
+  PASS  scoped checks accept an empty selection and reject non-array selections before fetching
+
+=== managed updates > Settings managed update controls
+  ✔ managed update checks (11.694451ms)
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+  PASS  settings expose one global schedule and per-package managed update actions
+  PASS  managed schedule autosave coalesces edits, serializes requests and ignores an older saved reply
+  PASS  managed schedule conflicts retain drafts, retry a lost reply without another write, and discard explicitly
+  PASS  managed schedule waits for its initial revision and exposes queued work outside Updates
+  PASS  dictionary schedule controls persist only metadata, retain focus and refuse stale policy edits
+
+=== lookup statistics > lookup statistics in the worker
+  PASS  concurrent lookups increment one canonical row without scanning or rewriting the statistics collection
+  PASS  lookup counts survive worker restart and distinguish empty readings
+  PASS  disabled lookup statistics do not record or erase existing counts
+  PASS  lookup statistics read scalar option defaults without normalizing unrelated settings
+  ✔ Settings managed update controls (2456.873946ms)
+✔ managed updates (3704.673707ms)
+  PASS  Settings resets lookup counts to a new empty generation that orders lookups before or after it
+  PASS  legacy corpus settings cannot contact another app and local counts still persist
+
+=== audio > audio relay
+  PASS  Audio Stop and newer Tests retire startup retries before stale playback can begin
+▶ lookup statistics
+  ✔ lookup statistics in the worker (36.011155ms)
+✔ lookup statistics (36.229106ms)
+  PASS  popup audio uses authoritative enabled sources and routes progress only to its newest owning document
+  PASS  Stop retires popup audio awaiting source storage and malformed choices never reach the offscreen player
+
+=== personal dictionary > custom dictionary storage ownership
+
+# custom dictionary storage ownership
+▶ audio
+  ✔ audio relay (17.170401ms)
+✔ audio (17.389111ms)
+  PASS  an absent custom source reads as revision zero
+  PASS  ordinary state reads leave the lazy custom source off the hot path
+  PASS  custom source and dictionary state commit in one storage write
+  PASS  custom CAS binds changed source semantics to the fixed package state
+  PASS  ordinary state CAS cannot remove or disable the fixed custom package
+  PASS  a stale custom document write is refused without merging
+  PASS  the dedicated custom CAS can atomically save a zero-row source and remove its package
+
+=== personal dictionary > managed custom dictionary engine transaction
+
+# managed custom dictionary engine transaction
+▶ personal dictionary
+  ✔ custom dictionary storage ownership (12.150572ms)
+  PASS  public ZIP import cannot claim the reserved custom title
+  PASS  custom save compiles with real WASM and publishes the fixed package first and enabled
+  PASS  public removal and ordinary state writes cannot mutate the fixed package
+  PASS  source-only and exact semantic no-ops do not rebuild or bump dictionary state
+  PASS  a stale Settings save is refused before compilation
+  PASS  queued Note append reads the latest source, preserves CRLF, and recompiles once
+  PASS  custom state CAS retries preserve concurrent presentation edits
+  PASS  an exact source and state readback recovers a lost custom CAS reply
+  PASS  a failed custom commit restores the working generation without debris
+  PASS  a lookup with the personal dictionary off leaves out only its glossaries without reloading the engine
+  PASS  segmentation with the personal dictionary off leaves out only the words it alone has
+  PASS  a semantic no-op rebuilds a committed package that violates fixed invariants
+  PASS  a pre-existing reserved-title package is a removable collision, not the managed package
+  PASS  a non-exact lost-reply readback retains both generations until authoritative reload
+  PASS  zero valid rows save the source and atomically remove the managed package
+
+=== personal dictionary > Settings personal dictionary
+  ✔ managed custom dictionary engine transaction (179.635154ms)
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: offscreen document sent no reply
+  PASS  settings coalesces source validation while saving the exact current draft
+  PASS  settings lazily loads the newest custom source across event and reply ordering
+  PASS  settings refuses stale custom drafts and reports every malformed line
+  PASS  settings pins the managed custom package while leaving presentation editable
+
+=== recommended dictionaries > the catalogue names five trusted recommendations and Settings has their entry points
+
+# recommended dictionaries
+  PASS  the recommended catalogue exists
+  PASS  the extension requests the browser alarm permission for managed updates
+  PASS  the page-injected overlay module exposes its browser API dependency
+  PASS  the popup exposes the shared Fluent stylesheet to content-script shadow roots
+  PASS  the catalogue names exactly five trusted recommendations and their publishers
+  PASS  settings has library and import entry points with a distinct partial retry action
+  PASS  settings keeps local import outside the hideable starter card
+
+=== recommended dictionaries > the dictionary group module is shared by Settings and the worker
+  PASS  settings imports its dictionary-group module
+
+=== recommended dictionaries > the Settings recommended installer
+  ✔ Settings personal dictionary (1524.028379ms)
+✔ personal dictionary (1716.295535ms)
+▶ recommended dictionaries
+  ✔ the catalogue names five trusted recommendations and Settings has their entry points (1.420363ms)
+  ✔ the dictionary group module is shared by Settings and the worker (1.644583ms)
+  PASS  settings install the trusted catalogue sequentially and retry only missing entries
+
+=== engine: boot and import > offscreen and engine sources
+  PASS  offscreen.js uses no chrome API beyond chrome.runtime
+  PASS  dictionary storage relies on unlimitedStorage without a redundant persistence request
+  PASS  runtime selection depends on capabilities rather than stored dictionaries
+  PASS  the offscreen bridge places a hard bound on pending engine requests
+  PASS  threaded selection probes the exact OPFS primitives WasmFS needs
+  PASS  the OPFS probe uses collision-resistant temporary names
+  PASS  fallback imports keep scratch archives outside the dictionary-title namespace
+  PASS  the OPFS durability barrier opens writable sync-access handles before fsync
+  PASS  replacement commit state remains outside the backup being deleted
+
+=== engine: boot and import > reader options use serialized revision-checked patches
+  PASS  reader options use serialized revision-checked patches and preserve unchanged revisions
+
+=== engine: boot and import > reader options transport
+  PASS  selection notices and the personal dictionary default on and use strict boolean options CAS
+  PASS  custom popup CSS preserves exact strings without a source-specific cap and uses idempotent options CAS
+  PASS  toolbar preferences default to Automatic and accept only the three persisted idempotent choices
+  PASS  appearance preferences preserve audited defaults, ranges and strict idempotent CAS
+  PASS  AUTO plus the grouped 42-palette catalogue validates every persisted ID
+  PASS  transparent popup backgrounds keep their opacity while the frame clips independently scrolling content and controls
+  PASS  pronunciation and frequency values use the theme foreground while filled definition tags keep Yomitan's label colour
+  PASS  metadata preferences preserve current defaults and use strict sparse idempotent options CAS
+  PASS  reader activation options migrate legacy modes without competing policies and validate new fields
+  PASS  nested lookup depth defaults to ten children and accepts zero through the safe-integer range via options CAS
+  PASS  definition columns default to one and accept only integers one through four via options CAS
+  PASS  compact summaries default off with three snippets and preserve a soft source preference through strict options CAS
+  PASS  popup images default to Automatic and preserve canonical dictionary or stable group selection through strict idempotent CAS
+  PASS  reader options reject malformed known fields without committing and accept a healthy follow-up
+  PASS  reader options project unknown fields and repair legacy values at one newer revision
+  PASS  reader option projection preserves sparse no-ops and repairs options inside dictionary CAS
+  PASS  a clicked-kanji group reference passes strict options CAS, survives group edits and resets with the group's removal
+  PASS  reader option request framing counts the complete UTF-8 envelope and bounds failure correlation
+  PASS  reader options preflight exact success and conflict frames before any storage commit
+
+=== engine: boot and import > an actual streamed body crosses the former fixed byte cap
+  PASS  an actual streamed body crosses the former fixed byte cap
+
+=== engine: boot and import > boot and relay
+
+# boot and relay
+  PASS  hd_status replies with the contract-C envelope
+  PASS  hd_status echoes the requestId
+  PASS  the fallback reports single-thread IDBFS with dictionary entries in memory
+  ✔ the Settings recommended installer (816.458388ms)
+✔ recommended dictionaries (819.900554ms)
+▶ engine: boot and import
+  ✔ offscreen and engine sources (3.182865ms)
+  ✔ reader options use serialized revision-checked patches (7.992214ms)
+  ✔ reader options transport (196.040113ms)
+  ✔ an actual streamed body crosses the former fixed byte cap (296.975603ms)
+  PASS  the engine reaches ready
+  PASS  the offscreen document was created exactly once
+  PASS  createDocument was never called concurrently
+  PASS  background.js stamps relayed on the forwarded copy only
+  PASS  service-worker relay failures use the shared bounded lookup and media correlation rule
+
+=== engine: boot and import > storage ownership: an empty profile has revisioned dictionary state
+
+# storage ownership and hd_import
+  PASS  an empty profile has revisioned dictionary state
+  PASS  the service worker answers hd_state_read without relaying it
+
+=== engine: boot and import > hd_engine_config: the engine's own options and their pushes
+  ✔ boot and relay (1447.475902ms)
+  ✔ storage ownership: an empty profile has revisioned dictionary state (0.886542ms)
+  PASS  hd_engine_config is read by the engine host only and pushed when the option changes
+  PASS  changing only the RAM default pushes the engine configuration
+
+=== engine: boot and import > hd_import of the fixture
+  ✔ hd_engine_config: the engine's own options and their pushes (27.80124ms)
+  PASS  hd_import succeeds
+  PASS  hd_import forwards its request-level lowRam override
+  PASS  hd_import_result carries the full ImportReport
+  PASS  the report counts match the fixture baseline
+
+=== engine: boot and import > the import writes one logical package; hd_memory
+  PASS  the import writes one logical dictionary package with complete metadata
+  PASS  one logical package loads all four native capabilities
+  PASS  syncfs(false) wrote the dictionary to IndexedDB
+  PASS  hd_memory reports the heap and each loaded package's resident bytes once
+
+=== engine: boot and import > long keys and hd_segment
+  ✔ hd_import of the fixture (22.773801ms)
+  ✔ the import writes one logical package; hd_memory (1.711133ms)
+  PASS  an import records its longest indexed key and scanLength 16 lookups reach keys longer than 16
+  PASS  hd_segment splits a batch of chunks into spans, keyed by chunk id
+  PASS  a hover that arrives during a segment chunk runs before the batch's next chunk
+  PASS  hd_segment keeps a lone surrogate's offsets and refuses an oversized chunk before any engine turn
+
+=== engine: boot and import > MDict imports
+  ✔ long keys and hd_segment (59.694897ms)
+  PASS  an .mdx with its .mdd imports through hd_import as a package with MDD media and styles
+  PASS  the hd_import reply reports what an MDX import left out, and the package does not store it
+
+=== engine: atomic replacement > an interactive replacement keeps its package and presentation
+
+# interactive atomic replacement
+  ✔ MDict imports (76.394938ms)
+✔ engine: boot and import (2142.438661ms)
+  PASS  explicit local replacement preserves the stable package and every target-owned field
+     I04 replacement transaction accounting: {"nativeImports":1,"stateReads":2,"stateCasAttempts":1,"durableFilesystemWrites":2,"stateRevisionWrites":1,"generationRootsBefore":2,"generationRootsAfter":2,"obsoleteGenerationRetired":true,"candidateGenerationPublished":true}
+
+=== engine: atomic replacement > Add separately persists a suffixed canonical title
+▶ engine: atomic replacement
+  ✔ an interactive replacement keeps its package and presentation (81.605477ms)
+  PASS  Add separately persists and reports its suffixed canonical title through native lookup
+
+=== engine: atomic replacement > an existing Title (2) makes Add separately persist Title (3)
+  ✔ Add separately persists a suffixed canonical title (54.519338ms)
+  PASS  an existing Title (2) makes Add separately persist native Title (3)
+
+=== engine: atomic replacement > failed replacements clean their generation roots
+  ✔ an existing Title (2) makes Add separately persist Title (3) (72.76388ms)
+  PASS  metadata mismatch and post-preflight native failure clean their generation roots
+
+=== engine: atomic replacement > replacement retries a CAS conflict
+  ✔ failed replacements clean their generation roots (132.780099ms)
+  PASS  replacement retries a CAS conflict and preserves the latest presentation fields
+     I04 CAS-conflict transaction accounting: {"nativeImports":1,"stateReads":3,"stateCasAttempts":2,"durableFilesystemWrites":2,"stateRevisionWrites":2,"generationRootsBefore":4,"generationRootsAfter":4,"obsoleteGenerationRetired":true,"candidateGenerationPublished":true}
+
+=== engine: atomic replacement > a changed target generation refuses stale replacement
+  ✔ replacement retries a CAS conflict (90.844403ms)
+  PASS  a changed target generation refuses stale replacement without staged debris
+
+=== engine: atomic replacement > a removed target refuses stale replacement; selector replacement
+  ✔ a changed target generation refuses stale replacement (189.746591ms)
+  PASS  a removed target refuses stale replacement without recreating or staging it
+  PASS  stable-ID replacement preserves groups and migrates every dictionary selector
+
+=== engine: recommended imports and managed updates > trusted recommended imports
+
+# trusted recommended imports
+  PASS  recommended import rejects an unknown catalogue source before publication
+  PASS  recommended import rejects a final URL outside its catalogue entry
+  PASS  recommended import rejects a release asset from another repository
+  ✔ a removed target refuses stale replacement; selector replacement (332.512347ms)
+✔ engine: atomic replacement (955.847598ms)
+  PASS  recommended import rejects a mismatched title before publication
+  PASS  recommended import rejects mismatched capabilities before publication
+  PASS  recommended import publishes its revision and catalogue-owned source atomically
+  PASS  a dated recommended update preserves package identity, order, and presentation
+  PASS  a local managed reimport matches its index URL and preserves catalogue identity
+  PASS  a source-target decision cannot bypass an exact canonical-title match
+  PASS  managed package identity survives dictionary reconciliation
+  PASS  stable single-glossary aliases and package IDs survive dated update and restart without rewriting templates
+
+=== engine: recommended imports and managed updates > managed dictionary updates
+
+# managed dictionary updates
+  PASS  managed update fixture adds a stable-id group
+  PASS  recommended update indexes stay pinned to their catalogue repository
+
+=== engine: recommended imports and managed updates > Check now records a disabled managed package without downloading
+  PASS  Check now records a disabled managed package without downloading and skips local archives
+▶ engine: recommended imports and managed updates
+  ✔ trusted recommended imports (299.355349ms)
+  ✔ managed dictionary updates (1.764673ms)
+  PASS  manual Update rechecks and atomically replaces through the existing import transaction
+
+=== engine: recommended imports and managed updates > generation cleanup follows a group-only state advance
+  ✔ Check now records a disabled managed package without downloading (64.686386ms)
+  PASS  generation cleanup follows an authoritative group-only state advance
+
+=== engine: recommended imports and managed updates > one global schedule creates one browser alarm
+  PASS  one global schedule creates one browser alarm
+  PASS  managed update preferences reject stale schedule writes with the current revision and preserve the alarm
+  ✔ generation cleanup follows a group-only state advance (66.67637ms)
+  PASS  the scheduled alarm auto-installs available updates without deadlocking storage
+
+=== engine: recommended imports and managed updates > service-worker startup recreates a missing configured alarm
+  ✔ one global schedule creates one browser alarm (52.957245ms)
+  PASS  service-worker startup recreates a missing configured alarm
+  PASS  a failed scheduled replacement retains the old generation and reports the available revision
+
+=== engine: recommended imports and managed updates > an index failure is recorded per item
+  PASS  an index failure is recorded per item without changing the installed revision
+  PASS  turning periodic checks off clears the one managed-update alarm
+  ✔ service-worker startup recreates a missing configured alarm (97.052513ms)
+  PASS  a generic managed source can select a rotating HTTPS archive from its remote index
+
+=== engine: recommended imports and managed updates > generic updates reject non-HTTPS redirects and remote download URLs
+  PASS  generic updates reject non-HTTPS index redirects, archive redirects, and remote download URLs
+
+=== engine: recommended imports and managed updates > a managed replacement cannot take another package's title or ID
+  ✔ an index failure is recorded per item (113.238074ms)
+  ✔ generic updates reject non-HTTPS redirects and remote download URLs (2.839105ms)
+  PASS  a managed replacement cannot take another installed package's title or logical ID
+  PASS  a same-revision reimport invalidates a managed check captured from the old path
+
+=== engine: recommended imports and managed updates > a stale check cannot downgrade a changed managed source
+  PASS  a stale check cannot downgrade a dictionary whose managed source changed before import
+
+=== engine: recommended imports and managed updates > a managed replacement revalidates after staging
+  PASS  a managed replacement revalidates after staging before unloading the working generation
+
+=== engine: recommended imports and managed updates > a failed archive body leaves the committed generation loaded
+  PASS  a failed archive body leaves the committed generation loaded and searchable
+
+=== engine: recommended imports and managed updates > a successful replacement commits its up-to-date status
+  ✔ a managed replacement cannot take another package's title or ID (226.401287ms)
+  ✔ a stale check cannot downgrade a changed managed source (1.613062ms)
+  ✔ a managed replacement revalidates after staging (2.570734ms)
+  ✔ a failed archive body leaves the committed generation loaded (2.166804ms)
+  PASS  a successful replacement commits its up-to-date status before a later settings write
+  PASS  a managed title change migrates its image selection and rejects the old options revision
+
+=== engine: recommended imports and managed updates > the managed import protocol rejects an injected blob archive
+  PASS  the managed import protocol rejects an injected blob archive
+  ✔ a successful replacement commits its up-to-date status (84.439272ms)
+
+=== engine: recommended imports and managed updates > retired recommended source
+
+# retired recommended source
+  ✔ the managed import protocol rejects an injected blob archive (58.728595ms)
+  PASS  a package from a retired recommended source stays local-only through update checks and keeps answering lookups
+
+=== engine: library state > legacy rows migrate to one logical package
+  PASS  an options write preserves valid dictionary selections before legacy state migrates
+  ✔ retired recommended source (43.118107ms)
+✔ engine: recommended imports and managed updates (1119.428104ms)
+  PASS  legacy capability rows migrate once into the generated logical package
+
+=== engine: library state > dictionary state has one serialized compare-and-swap owner
+  PASS  dictionary state has one serialized compare-and-swap owner
+  PASS  state commits atomically prune invalid selectors and stale pages cannot restore them
+  PASS  selector pruning advances the options revision in the dictionary commit
+▶ engine: library state
+  ✔ legacy rows migrate to one logical package (17.917552ms)
+  PASS  reconciliation restores package capabilities without changing its identity or presentation
+
+=== engine: library state > a package-wide state change survives a lost CAS reply
+  PASS  a package-wide state change survives a lost CAS reply without splitting storage and native state
+  PASS  a stale package change restores the committed native load set
+  PASS  an enabled logical package restores every native capability
+  ✔ dictionary state has one serialized compare-and-swap owner (4.096028ms)
+  PASS  a fallback scratch archive cannot collide with an accepted dictionary title
+  PASS  the scratch-title regression dictionary can be removed normally
+
+=== engine: library state > distinct on-disk titles have distinct stable package IDs
+  ✔ a package-wide state change survives a lost CAS reply (40.672433ms)
+  PASS  the "Café" dictionary imports
+  PASS  the "Café" dictionary imports
+  PASS  distinct on-disk titles have distinct stable package IDs
+  PASS  reordering loaded packages reorders the engine in place instead of reloading every package
+  PASS  disabling and re-enabling packages this session already loaded drops and re-adds only them
+
+=== engine: library state > staging roots cannot be imported as dictionary titles
+  PASS  the removal staging root cannot be imported as a dictionary title
+  ✔ distinct on-disk titles have distinct stable package IDs (98.668796ms)
+  PASS  removal recovery preserves a legacy .hdw-remove dictionary and restores its staged child
+  PASS  the preserved .hdw-remove dictionary remains removable
+
+=== engine: library state > reload skips and reports an unloadable committed package
+  ✔ staging roots cannot be imported as dictionary titles (41.488405ms)
+  PASS  reload skips and reports an unloadable committed package while the others keep working
+  PASS  reordering beside an unloadable committed package neither reloads nor loses its diagnostic
+  PASS  a disabled package that never loaded this session is still validated and reported
+  PASS  an unchanged disabled failed package does not force order-only edits to rebuild
+  PASS  reload stops reporting the invalid package once it is explicitly removed
+
+=== engine: library state > frequency sorting precedes result limits
+  ✔ reload skips and reports an unloadable committed package (16.408359ms)
+  PASS  frequency sorting precedes result limits and preserves manifest-ordered dictionary identity
+  PASS  real WASM frequency modes reach package metadata and recover from old committed generations
+
+=== engine: library state > a term-only kanji source survives disabling and re-enabling
+  ✔ frequency sorting precedes result limits (100.537191ms)
+  PASS  the term-only kanji toggle fixture imports
+  PASS  a term-only kanji source keeps its route and returns entries again after re-enabling
+
+=== engine: lookups and errors > lookup, kanji, styles, media
+
+# lookup, kanji, styles, media
+  PASS  hd_lookup succeeds
+  PASS  hd_lookup_result payload keys
+  PASS  hd_lookup returns results
+  PASS  the deinflection trace survives the round trip
+  PASS  glossary stays a raw structured-content string
+  PASS  frequencies came through
+  PASS  pitches came through
+  PASS  each glossary carries its dictionary's tag-bank tags beside definitionTags
+
+=== engine: lookups and errors > hd_lookup_dictionary, no-match counts and hd_kanji
+  PASS  hd_lookup_dictionary returns only the selected enabled term dictionary
+  PASS  hd_lookup_dictionary refuses a title that is not enabled and stored
+  PASS  a no-match lookup still reports the real dictionaryCount
+  PASS  hd_kanji returns a LookupKanji
+  PASS  kanji onyomi/kunyomi/tags are strings, as contract B says
+  PASS  an unmatched kanji maps to null
+
+=== engine: lookups and errors > lookup inputs and replies are bounded
+  PASS  lookup inputs reject oversized UTF-8 and C-string NUL without truncation
+  PASS  malformed native lookup shapes fail instead of becoming successful misses
+  PASS  hd_lookup accepts exactly 32 MiB and rejects one extra envelope byte
+  PASS  hd_lookup_dictionary accepts exactly 32 MiB and rejects one extra envelope byte
+  PASS  hd_kanji accepts exactly 32 MiB and rejects one extra envelope byte
+  PASS  lookup correlation IDs fail closed when invalid or unable to fit an error reply
+  PASS  an oversized native error retains correlation when the bounded error frame fits
+  PASS  a healthy lookup after boundary errors keeps its generation and complete result
+
+=== engine: lookups and errors > hd_styles and hd_media
+  PASS  hd_styles returns the dictionary's CSS
+  PASS  hd_media returns a data: URL glossary.js will accept
+  PASS  absent media is dataUrl null, not an error
+  PASS  media references use exact UTF-8 bounds and never truncate embedded NUL
+  PASS  media accepts exactly 6 MiB and rejects one extra complete frame byte
+  PASS  invalid or impossible media correlation IDs receive bounded null-ID errors
+
+=== engine: lookups and errors > media imports stay uncapped while oversized fetches fail
+  ✔ a term-only kanji source survives disabling and re-enabling (43.031137ms)
+✔ engine: library state (364.199934ms)
+▶ engine: lookups and errors
+  ✔ lookup, kanji, styles, media (1.058702ms)
+  ✔ hd_lookup_dictionary, no-match counts and hd_kanji (2.604805ms)
+  ✔ lookup inputs and replies are bounded (3715.218528ms)
+  ✔ hd_styles and hd_media (145.637372ms)
+  PASS  media imports stay uncapped while oversized native fetches propagate real errors
+
+=== engine: lookups and errors > media paths resolve their decomposed and percent-encoded spellings
+  ✔ media imports stay uncapped while oversized fetches fail (108.912766ms)
+  PASS  media paths resolve their decomposed and percent-encoded spellings of the same archive entry
+  PASS  queued media rejects stale or invalid generations before native extraction
+
+=== engine: lookups and errors > error paths
+
+# error paths
+  PASS  an unknown type is answered, not dropped
+  PASS  the unknown-type reply names the type
+  ✔ media paths resolve their decomposed and percent-encoded spellings (54.178167ms)
+  PASS  importing a non-zip fails cleanly
+  PASS  the failed import still carries a report
+  PASS  a failed import restores the previously loaded set
+  PASS  an import with no blob URL is rejected, not thrown
+  PASS  a valid archive with a declared length above the former cap imports successfully
+  PASS  a failed empty import restores the previously loaded set
+  PASS  a failed reimport state CAS preserves the prior stored path and data
+
+=== engine: lookups and errors > real WASM imports AVIF and SVG
+  ✔ error paths (84.120631ms)
+  PASS  real WASM imports AVIF and SVG and returns their exact bytes with the correct MIME types
+
+=== renderer > frequency averages over real WASM frequency lists
+
+# frequency averages over real WASM frequency lists
+  ✔ real WASM imports AVIF and SVG (84.026292ms)
+✔ engine: lookups and errors (4196.836715ms)
+  PASS  real WASM lookups keep each frequency row's reading scope, value and display value
+  PASS  the popup averages one, two and three rank lists, counting lists without a mode as ranks
+  PASS  the Anki {frequency-harmonic-rank} marker equals the popup's rank average
+
+=== renderer > renderer against real engine output
+
+# renderer against real engine output
+  PASS  hd_lookup finds the structured-content entry
+  PASS  Automatic toolbar placement follows above/below while explicit edges win and side panes stay stable
+  PASS  calculatePopupPosition prefers above for roots and below for nested panes, shortening a pane on the roomier side rather than covering its word
+  PASS  render/glossary.js publishes HDGlossary
+  PASS  render/popup.js publishes HDPopup
+  PASS  compact summaries preserve ordered text, split nonempty bullets and select only a leading image without changing full glossaries
+  PASS  compact summaries skip Jitendex ⟶ redirects
+  PASS  compact summaries keep only the English gloss of Sanseido-style senses
+  PASS  frequency aggregates read each dictionary's first value as Yomitan does, count undeclared modes as ranks and keep occurrences separate
+  PASS  renderResults accepts the engine's LookupResult verbatim
+  PASS  renderResults asked the caller to position the popup
+  PASS  renderResults returned its lookupStats slot
+  PASS  pronunciation buttons render as named icons without visible text
+  PASS  the headword renders the deinflected expression
+  PASS  the real deinflection endpoints and ordered native trace render in a collapsed disclosure
+  PASS  the raw structured-content glossary was parsed and rendered
+  PASS  the fixture's first glossary carries more than one sense
+  PASS  every element of the glossary array renders as its own item
+  PASS  the gloss list counts its items as Yomitan's data-count does
+  PASS  the glossary card is tagged with its dictionary for @scope
+  PASS  frequency metadata rendered
+▶ renderer
+  ✔ frequency averages over real WASM frequency lists (384.718291ms)
+  PASS  live metadata keeps IPA independent and preserves Note cards and focused ruby without redundant work
+  PASS  IPA overflow is lazy and reveals every ordered transcription with current aliases only once
+  PASS  the lookup count slot renders hidden on All only and its owner paints it without rerendering
+  PASS  keybind entry navigation expands Show more, clamps, follows clicks and moves instantly between dictionary cards
+  PASS  the pinned header moves the shown result's own headword and actions in, holds for a Note draft and restores them
+  PASS  dictionary tabs include ordered nonempty groups and only ungrouped favourites
+  PASS  a new lookup and every tab projection show each dictionary card open under its dictionary's tag
+  PASS  favourite and group tabs project locally in native order without mutating results
+  PASS  term and native-kanji destinations adopt favourite or group context and otherwise fall back to All
+  PASS  a clicked-kanji group renders each contributing member as an ordered tab and native entries as structured cards
+  PASS  the bottom Note form stays outside scrolling definitions and opens without moving their viewport
+  PASS  toolbar edge changes preserve deliberate tab and Note focus with draft selection
+  PASS  the shared Note form uses the currently projected primary term
+  PASS  a rejected Note append retains its draft and an accepted retry closes immediately
+  PASS  the Note controller consumes Escape only while its form is open
+  PASS  the structured-content image asked for media with a dictionary and a path
+  PASS  the resolved data: URL reached the <img>
+  PASS  a structured-content glossary tags its container
+  PASS  renderKanji accepts contract-B string onyomi/kunyomi/tags
+  PASS  the kanji view renders the readings without splitting them per character
+  PASS  the kanji view uses the same Note form with a glyph-only prefill
+  PASS  a compact lookup failure retains the rendered definition and Note draft while offering retry
+  PASS  a first-lookup failure replaces stale definitions with one actionable state
+  PASS  renderNotice replaces the view
+  PASS  clear empties hidden popups without scrolling and every visible view resets scroll
+  PASS  image preview is lazy, shadow-owned and reuses the exact source without another media request
+  PASS  image previews clamp both viewport corners and close only their current hover or focus owner
+  PASS  a tab change or pending newer request prevents obsolete connected images from reopening a preview
+  PASS  late image loads cannot steal newer preview intent or revive a dismissed preview
+  PASS  clearing or destroying the popup removes its preview and invalidates its image listeners
+  PASS  image hover preview skips inline glyphs by default, opens nothing when off and previews every image with all
+  PASS  structured content renders beyond the former depth limit and preserves ordinary fallback text
+  PASS  structured node accounting reports the exact limit across containers wrappers and ignored values
+  PASS  deep node-limit diagnostics keep a bounded structural path without exposing content
+hachidori: omitted dictionary definition after render failure RangeError: Dictionary "Invalid" (stable ID "invalid-id") could not render entry 2, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+    at structuredContentRenderError (render/popup.js:285:24)
+    at fillContent (render/popup.js:3782:36)
+    at run (render/popup.js:3835:13)
+    ... 6 lines matching cause stack trace ...
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5 {
+  code: 'dictionary-structured-content-limit',
+  definitionIndex: 0,
+  dictionaryId: 'invalid-id',
+  dictionaryTitle: 'Invalid',
+  entryIndex: 1,
+  originalStack: 'RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]\n' +
+    '    at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)\n' +
+    '    at fillContent (render/popup.js:3761:17)\n' +
+    '    at run (render/popup.js:3835:13)\n' +
+    '    at runRenderAction (render/popup.js:2899:16)\n' +
+    '    at render/popup.js:3841:38\n' +
+    '    at drain (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2874:13)\n' +
+    '    at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2880:21)\n' +
+    '    at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3)\n' +
+    '    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:3124:22\n' +
+    '    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5',
+  termExpression: '食べる',
+  termReading: 'たべる',
+  userDetail: 'Dictionary "Invalid" (stable ID "invalid-id") could not render entry 2, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]',
+  userTitle: 'Dictionary content could not be rendered.',
+  [cause]: RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+      at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)
+      at fillContent (render/popup.js:3761:17)
+      at run (render/popup.js:3835:13)
+      at runRenderAction (render/popup.js:2899:16)
+      at render/popup.js:3841:38
+      at drain (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2874:13)
+      at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2880:21)
+      at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3)
+      at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:3124:22
+      at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5 {
+    code: 'structured-content-limit',
+    structuredContentActual: 1048577,
+    structuredContentLimit: 1048576,
+    structuredContentLimitKind: 'node count',
+    structuredContentLocation: 'glossary[0]'
+  }
+}
+hachidori: omitted dictionary definition after render failure RangeError: Dictionary "Invalid" (stable ID "invalid-id") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+    at structuredContentRenderError (render/popup.js:285:24)
+    at fillContent (render/popup.js:3782:36)
+    at appendResult (render/popup.js:3804:15)
+    ... 6 lines matching cause stack trace ...
+    at activateTabFromEvent (render/popup.js:4373:9) {
+  code: 'dictionary-structured-content-limit',
+  definitionIndex: 0,
+  dictionaryId: 'invalid-id',
+  dictionaryTitle: 'Invalid',
+  entryIndex: 0,
+  originalStack: 'RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]\n' +
+    '    at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)\n' +
+    '    at fillContent (render/popup.js:3761:17)\n' +
+    '    at appendResult (render/popup.js:3804:15)\n' +
+    '    at Array.forEach (<anonymous>)\n' +
+    '    at renderResultPanel (render/popup.js:3848:38)\n' +
+    '    at renderProjection (render/popup.js:4343:20)\n' +
+    '    at activateTab (render/popup.js:4330:9)\n' +
+    '    at render/popup.js:4373:94\n' +
+    '    at runRenderAction (render/popup.js:2899:16)\n' +
+    '    at activateTabFromEvent (render/popup.js:4373:9)',
+  termExpression: '食べる',
+  termReading: 'たべる',
+  userDetail: 'Dictionary "Invalid" (stable ID "invalid-id") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]',
+  userTitle: 'Dictionary content could not be rendered.',
+  [cause]: RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+      at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)
+      at fillContent (render/popup.js:3761:17)
+      at appendResult (render/popup.js:3804:15)
+      at Array.forEach (<anonymous>)
+      at renderResultPanel (render/popup.js:3848:38)
+      at renderProjection (render/popup.js:4343:20)
+      at activateTab (render/popup.js:4330:9)
+      at render/popup.js:4373:94
+      at runRenderAction (render/popup.js:2899:16)
+      at activateTabFromEvent (render/popup.js:4373:9) {
+    code: 'structured-content-limit',
+    structuredContentActual: 1048577,
+    structuredContentLimit: 1048576,
+    structuredContentLimitKind: 'node count',
+    structuredContentLocation: 'glossary[0]'
+  }
+}
+hachidori: omitted dictionary definition after render failure RangeError: Dictionary "Invalid" (stable ID "invalid-id") could not render entry 3, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+    at structuredContentRenderError (render/popup.js:285:24)
+    at fillContent (render/popup.js:3782:36)
+    at run (render/popup.js:3835:13)
+    ... 6 lines matching cause stack trace ...
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5 {
+  code: 'dictionary-structured-content-limit',
+  definitionIndex: 0,
+  dictionaryId: 'invalid-id',
+  dictionaryTitle: 'Invalid',
+  entryIndex: 2,
+  originalStack: 'RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]\n' +
+    '    at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)\n' +
+    '    at fillContent (render/popup.js:3761:17)\n' +
+    '    at run (render/popup.js:3835:13)\n' +
+    '    at runRenderAction (render/popup.js:2899:16)\n' +
+    '    at render/popup.js:3841:38\n' +
+    '    at drain (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2874:13)\n' +
+    '    at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2892:25)\n' +
+    '    at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3)\n' +
+    '    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:3124:22\n' +
+    '    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5',
+  termExpression: '食べる',
+  termReading: 'たべる',
+  userDetail: 'Dictionary "Invalid" (stable ID "invalid-id") could not render entry 3, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]',
+  userTitle: 'Dictionary content could not be rendered.',
+  [cause]: RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+      at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)
+      at fillContent (render/popup.js:3761:17)
+      at run (render/popup.js:3835:13)
+      at runRenderAction (render/popup.js:2899:16)
+      at render/popup.js:3841:38
+      at drain (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2874:13)
+      at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2892:25)
+      at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3)
+      at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:3124:22
+      at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:68:5 {
+    code: 'structured-content-limit',
+    structuredContentActual: 1048577,
+    structuredContentLimit: 1048576,
+    structuredContentLimitKind: 'node count',
+    structuredContentLocation: 'glossary[0]'
+  }
+}
+  PASS  deferred, tab and expanded structured-limit failures omit only their glossary body
+hachidori: omitted dictionary definition after render failure RangeError: Dictionary "Invalid" (stable ID "invalid-id") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+    at structuredContentRenderError (render/popup.js:285:24)
+    at fillContent (render/popup.js:3782:36)
+    at appendResult (render/popup.js:3804:15)
+    ... 6 lines matching cause stack trace ...
+    at flushDictionaryPresentation (render/popup.js:2883:13) {
+  code: 'dictionary-structured-content-limit',
+  definitionIndex: 0,
+  dictionaryId: 'invalid-id',
+  dictionaryTitle: 'Invalid',
+  entryIndex: 0,
+  originalStack: 'RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]\n' +
+    '    at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)\n' +
+    '    at fillContent (render/popup.js:3761:17)\n' +
+    '    at appendResult (render/popup.js:3804:15)\n' +
+    '    at Array.forEach (<anonymous>)\n' +
+    '    at renderResultPanel (render/popup.js:3848:38)\n' +
+    '    at renderProjection (render/popup.js:4343:20)\n' +
+    '    at render/popup.js:4511:13\n' +
+    '    at runRenderAction (render/popup.js:2899:16)\n' +
+    '    at currentPresentationUpdate (render/popup.js:4462:48)\n' +
+    '    at flushDictionaryPresentation (render/popup.js:2883:13)',
+  termExpression: '食べる',
+  termReading: 'たべる',
+  userDetail: 'Dictionary "Invalid" (stable ID "invalid-id") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]',
+  userTitle: 'Dictionary content could not be rendered.',
+  [cause]: RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+      at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)
+      at fillContent (render/popup.js:3761:17)
+      at appendResult (render/popup.js:3804:15)
+      at Array.forEach (<anonymous>)
+      at renderResultPanel (render/popup.js:3848:38)
+      at renderProjection (render/popup.js:4343:20)
+      at render/popup.js:4511:13
+      at runRenderAction (render/popup.js:2899:16)
+      at currentPresentationUpdate (render/popup.js:4462:48)
+      at flushDictionaryPresentation (render/popup.js:2883:13) {
+    code: 'structured-content-limit',
+    structuredContentActual: 1048577,
+    structuredContentLimit: 1048576,
+    structuredContentLimitKind: 'node count',
+    structuredContentLocation: 'glossary[0]'
+  }
+}
+  PASS  storage-driven projection failures omit only the affected glossary body
+hachidori: omitted dictionary definition after render failure RangeError: Dictionary "Dictionary 50" (stable ID "dictionary-Dictionary 50") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+    at structuredContentRenderError (render/popup.js:285:24)
+    at fillContent (render/popup.js:3782:36)
+    at appendResult (render/popup.js:3804:15)
+    ... 6 lines matching cause stack trace ...
+    at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3) {
+  code: 'dictionary-structured-content-limit',
+  definitionIndex: 0,
+  dictionaryId: 'dictionary-Dictionary 50',
+  dictionaryTitle: 'Dictionary 50',
+  entryIndex: 0,
+  originalStack: 'RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]\n' +
+    '    at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)\n' +
+    '    at fillContent (render/popup.js:3761:17)\n' +
+    '    at appendResult (render/popup.js:3804:15)\n' +
+    '    at Array.forEach (<anonymous>)\n' +
+    '    at renderResultPanel (render/popup.js:3848:38)\n' +
+    '    at renderProjection (render/popup.js:4343:20)\n' +
+    '    at activateTab (render/popup.js:4330:9)\n' +
+    '    at Object.renderResults (render/popup.js:4461:7)\n' +
+    '    at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2922:10)\n' +
+    '    at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3)',
+  termExpression: '食べる',
+  termReading: 'たべる',
+  userDetail: 'Dictionary "Dictionary 50" (stable ID "dictionary-Dictionary 50") could not render entry 1, definition 1, term "食べる", reading "たべる": Structured content node count 1048577 exceeds limit 1048576 at glossary[0]',
+  userTitle: 'Dictionary content could not be rendered.',
+  [cause]: RangeError: Structured content node count 1048577 exceeds limit 1048576 at glossary[0]
+      at appendTextOnlyGlossary (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2841:23)
+      at fillContent (render/popup.js:3761:17)
+      at appendResult (render/popup.js:3804:15)
+      at Array.forEach (<anonymous>)
+      at renderResultPanel (render/popup.js:3848:38)
+      at renderProjection (render/popup.js:4343:20)
+      at activateTab (render/popup.js:4330:9)
+      at Object.renderResults (render/popup.js:4461:7)
+      at structuredRenderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:2922:10)
+      at renderStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/renderer.mjs:954:3) {
+    code: 'structured-content-limit',
+    structuredContentActual: 1048577,
+    structuredContentLimit: 1048576,
+    structuredContentLimitKind: 'node count',
+    structuredContentLocation: 'glossary[0]'
+  }
+}
+  PASS  one failed glossary does not cap a large dictionary result set
+  PASS  unexpected glossary renderer failures still use the current view error boundary
+  PASS  superseded glossary tasks do no rendering, media or layout work
+  PASS  a 大辞泉-shaped glossary nested beyond the former depth limit renders its deepest gloss
+  PASS  the compact summary of that glossary is every gloss in order without labels or examples
+  PASS  Anki glossary and glossary-plain fields contain that glossary's deepest gloss
+  PASS  rendering, compact summaries and Anki fields never fail on depth alone
+  PASS  external anchors keep safe native links and route primary, keyboard and middle activation exactly once
+  PASS  obsolete external anchors cancel native navigation without dispatching a new tab
+  PASS  nested structured links dispatch only the handled inner action
+  PASS  internal links retain exact query and reading while rejecting stale, detached and enclosing actions
+  PASS  retained displayed links and stale-tab handoff never reenable obsolete glossary work
+  PASS  same-view refresh preserves mounted Note drafts and response-time focus
+  PASS  stale Show more replays fresh results while current expansion remains lookup-free
+  PASS  live presentation keeps keyed tabs and protected views coherent until local projection is safe
+  PASS  native kanji presentation refreshes its original entries without replacing Note controls or term history
+  PASS  Back captures the current projected tab's expansion and scroll, not the initial panel
+  PASS  Back restores scroll after deferred bodies and masonry only once
+  PASS  a newer tab or deliberate scroll cancels deferred Back viewport restoration
+  PASS  Back restores open and closed structured details and complete lazy IPA before layout
+  PASS  Back does not apply saved disclosures to changed dictionary content
+  PASS  Back and ordinary retained renders do not force scroll layout while their replacement panel is empty
+  PASS  deinflection disclosure preserves raw duplicate steps and localized literal text without empty explanations
+  PASS  oversized deinflection traces keep bounded nodes and UTF-8 text with a locale-neutral fallback
+  PASS  deinflection headers stay lazy and only current projected disclosures can request positioning
+  PASS  structured gaiji hooks preserve dictionary selectors while decoded natural sizing leaves explicit geometry unchanged
+  PASS  structured data keys become the attribute names Yomitan's dataset setter produces, including Japanese keys
+  PASS  image aspect sizing uses the existing bounded sizer without a competing raw ratio
+  PASS  image width arithmetic recovers intermediate overflow and underflow without changing valid sizes
+  PASS  obsolete connected image callbacks cannot mutate or reposition their old panel
+  PASS  missing and failed images expose an accessible failure state without losing glossary text
+  PASS  supplier labels share the image completion layout while alias changes and failures retain their layout path
+  PASS  live compact summaries preserve Note and cards while retiring only their own media and falling back within projected results
+  PASS  live image-source changes retain mounted cards and Note selection while rejecting old Automatic replies and relabelling the actual supplier
+  PASS  image route refresh retains keyboard focus and ignores retired load/error callbacks without reviving a dismissed preview
+  PASS  a failed refreshed image drops its temporary tab stop when keyboard focus leaves
+  PASS  a failed compact thumbnail recovers under a new image source without reparsing or replacing its summary, full image or Note draft
+  PASS  retained image labels may refresh without admitting media for an obsolete request
+  PASS  clearing the projection retires all image refresh handles and their pending completions
+  PASS  image-source admission compares the applied route while protected tab membership still awaits projection
+  PASS  local tab projection retains the latest image route and aliases without reloading again on deferred presentation flush
+  PASS  group membership and image-route changes load only the replacement projection's images
+  PASS  combined summary and image-route changes load only retained or replacement images
+
+=== Settings > Settings navigation
+  ✔ renderer against real engine output (1905.865362ms)
+✔ renderer (2291.031585ms)
+  PASS  Settings navigation loads personal source on first visit and preserves mounted drafts
+  PASS  dictionary details retain their stable identity and focus across rerenders and filtering
+  PASS  Design lazily previews unsaved presentation edits and retains the shared save feedback across sections
+  PASS  Settings shows Resume setup only while the first-run setup record is incomplete
+  PASS  Unlink refreshes retained automatic backups and a concurrent storage change cannot be erased by a stale list
+
+=== Settings > Settings reader controls
+▶ Settings
+  ✔ Settings navigation (1053.161819ms)
+  PASS  Audio Settings start with reading TTS, add ordered custom URLs and retain revision-bound drafts and explicit removal
+  PASS  the CSS editor counts unsaved text, preserves revision-bound drafts and resets only custom CSS
+  PASS  Audio → Sources detects local audio and its added source joins the list above it at once
+  PASS  Settings toolbar choices save sparsely, retain focused drafts and refresh on storage events and reset
+  PASS  Settings applies the selected popup theme live across local edits and storage events
+  PASS  Design resets only its shared appearance and content keys through one sparse options write
+  PASS  Settings derives frequency direction only on dictionary selection or explicit Auto
+  PASS  Auto direction infers undeclared frequency modes and retires sampling when a manual direction supersedes it
+  PASS  frequency controls preserve unavailable selections and revision-bound native drafts
+  PASS  compact-summary Settings preserve count, soft canonical source and focused revision-bound drafts
+  PASS  image-source Settings preserve canonical dictionary and group choices through availability changes and focused conflicts
+  PASS  metadata Settings save independent fields and preserve a focused preferred-pitch draft
+
+=== Settings > Settings autosave
+  ✔ Settings reader controls (14200.211896ms)
+  PASS  Settings coalesces edited fields and queues only one revisioned save at a time
+  PASS  Settings keeps newer committed state and local drafts across old replies and explicit conflicts
+  PASS  Settings retains failed drafts and retries against the current committed revision
+
+=== Settings library > Settings library management, groups and removal
+  ✔ Settings autosave (1225.419515ms)
+✔ Settings (16479.291741ms)
+  PASS  settings refuse a conflicting alias draft, queue its next action, and restore a rejected edit
+  PASS  settings search, visible selection, bulk changes, and every reorder path share stable package state
+  PASS  Remove all removes every ordinary package after one confirmation, keeps the personal dictionary unless chosen, and reports failures by title
+  PASS  erasing the personal source uses the confirmed revision, so a later Note keeps it until a fresh confirmation
+  PASS  Reset lookup counts confirms once, asks the worker, and both resets are unavailable while linked
+  PASS  settings manage normalized global groups and stable ordered memberships
+  PASS  queued group creates and renames revalidate normalized unique names
+  PASS  group rerenders preserve newer focus outside the management lists
+
+=== Settings library > Settings batch import
+▶ Settings library
+  ✔ Settings library management, groups and removal (5848.957418ms)
+  PASS  settings imports dropped archives sequentially through the shared progress rows and retains each timed outcome
+  PASS  an archive that meets another change waits for it, saying so, instead of failing (#578)
+
+=== Settings library > Settings batch import cancel
+  ✔ Settings batch import (2578.191316ms)
+  PASS  Cancel lets the import in progress finish and starts no later archive
+  PASS  Cancel ends a wait for the engine at once and imports nothing
+
+=== Settings library > Settings MDX import
+  ✔ Settings batch import cancel (253.623266ms)
+  PASS  settings groups an .mdx with its .mdd files into one resourced import and reports an orphan .mdd
+  PASS  settings lists what an MDX import left out under its Imported line, which stays a success
+
+=== startup page > first-run setup waits for a saved Start
+  ✔ Settings MDX import (250.758152ms)
+✔ Settings library (8932.156603ms)
+  PASS  first-run setup waits for a saved Start, resumes it and permits manual setup
+
+=== startup page > the startup page mirrors its installer run
+▶ startup page
+  ✔ first-run setup waits for a saved Start (265.887417ms)
+  PASS  the startup page mirrors its own installer run, keeps focus, retries only missing dictionaries and advances immediately
+
+=== startup page > a silent run is observed again
+  ✔ the startup page mirrors its installer run (11339.477901ms)
+  PASS  a startup page whose run went silent observes the installer again and restarts the unrecorded sources
+
+=== startup page > a failed source installed from Settings is reconciled
+  PASS  a failed source the user installed from Settings is reconciled once while a missing failure waits for Retry
+
+=== startup page > a refused immediate advance leaves Continue
+  ✔ a silent run is observed again (8033.934256ms)
+  ✔ a failed source installed from Settings is reconciled (46.540093ms)
+  PASS  a refused immediate advance leaves an explicit Continue without saving again
+
+=== startup page > the practice step
+  ✔ a refused immediate advance leaves Continue (315.182197ms)
+  PASS  the practice step invites a lookup only when a dictionary can answer one and loads the reader once with that step
+
+=== startup page > visual novel scenes
+  PASS  visual novel scenes start randomly and cycle all six backgrounds without replacing the dialogue
+
+=== Design > the Design preview
+  ✔ the practice step (3507.571216ms)
+  ✔ visual novel scenes (100.16401ms)
+✔ startup page (23609.801944ms)
+  PASS  custom CSS owns only its final shadow sheet and skips unchanged parses and attachment work
+  PASS  preview initialization before its first update is safe and CSS edits retain mounted Notes and cards
+  PASS  Design uses production term, kanji, media and metadata views without saving sample Notes
+  PASS  Design updates presentation without rebuilding cards and skips unchanged option echoes
+  PASS  Design repaints its sample count line on the count switch without rebuilding cards or the Note draft
+  PASS  Design blurs its sample by the shared count rule, reveals on hover and restarts on blur edits without rerendering
+  PASS  live preview appearance preserves cards and drafts while term and kanji highlights toggle exactly
+  PASS  the live clicked-kanji preview switches source and kind without losing its Note or Back snapshot
+  PASS  Design gives an installed frequency list without a mode the rank sample and an occurrence list the count
+
+=== source highlighting > source highlighting
+▶ Design
+  ✔ the Design preview (1858.632111ms)
+✔ Design (1858.931102ms)
+  PASS  source highlighting reuses unchanged scoped ranges without traversing other owners
+  PASS  source mutations rebuild only valid owners and clear stale or detached ranges without changing selection
+  PASS  source fallback paints exact Range bounds in its own layer without editing page text, classes or selection
+  PASS  a suspended source highlight publishes nothing, ignores matches meanwhile and repaints its exact ranges
+  PASS  source highlighting paints text-node sources one range per glyph box and clears when a box goes
+
+=== content script > a stale kanji reply after a storage change
+  PASS  a storage change invalidates an in-flight clicked-kanji lookup
+
+=== content script > a stale kanji reply after a group-only storage change
+  PASS  a group-only state change leaves an in-flight clicked-kanji lookup alone
+
+=== content script > a stale kanji reply after Back
+  PASS  Back invalidates an in-flight clicked-kanji lookup
+
+=== content script > a stale kanji reply before the initial storage read
+  PASS  initial dictionary hydration invalidates the lookup and hides its stale popup
+
+=== content script: popup > popup style isolation and custom JavaScript access
+▶ source highlighting
+  ✔ source highlighting (1257.551771ms)
+✔ source highlighting (1257.776041ms)
+▶ content script
+  ✔ a stale kanji reply after a storage change (24.378024ms)
+  ✔ a stale kanji reply after a group-only storage change (24.724115ms)
+  ✔ a stale kanji reply after Back (15.847708ms)
+  ✔ a stale kanji reply before the initial storage read (16.74781ms)
+✔ content script (82.301368ms)
+  PASS  normal popups keep their styles in a closed shadow root and never ask for another
+  PASS  saved Custom JavaScript reaches the popup through the closed root its bridge attached
+  PASS  saved Custom JavaScript where user scripts do not run still gets a closed root
+  PASS  the search page's frame gives saved Custom JavaScript an open root without asking a bridge
+  PASS  the search page's frame keeps a closed root while no Custom JavaScript is saved
+  PASS  the startup page keeps a closed root while Custom JavaScript is saved
+  PASS  a lookup before the stored options arrive builds the popup in the bridge's root
+
+=== content script: popup > popup visibility events
+hachidori: content script stopped (popup-visibility-test)
+  PASS  the root popup publishes one shown/hidden event for each visibility transition
+
+=== content script: popup > fullscreen hosts
+  PASS  fullscreen player hosts the visible popup and returns it to body on exit
+
+=== content script: popup > clicked-kanji navigation and groups
+hachidori: lookup failed Error: kanji lookup returned no usable result
+    at executeKanjiRequest (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:3135:41)
+    at async kanjiNavigationCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:97:7)
+    at async kanjiNavigation (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:502:42)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:501:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+▶ content script: popup
+  ✔ popup style isolation and custom JavaScript access (164.522196ms)
+  ✔ popup visibility events (23.913183ms)
+  ✔ fullscreen hosts (30.954416ms)
+hachidori: lookup failed Error: kanji lookup returned no usable result
+    at executeKanjiRequest (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:3135:41)
+  PASS  selected native kanji misses fall back to automatic without another request
+  PASS  selected native kanji hits exclude other native sources
+  PASS  automatic kanji navigation keeps its view through tab-switch blurs during and after the request
+  PASS  automatic kanji navigation closes when focus moves into a page frame mid-request
+  PASS  automatic kanji terminal miss preserves the old popup
+  PASS  automatic kanji stale miss cannot retire a newer view
+  PASS  selected term fallback navigation keeps its view through tab-switch blurs during and after the request
+  PASS  selected term fallback navigation closes when focus moves into a page frame mid-request
+  PASS  selected term fallback terminal miss preserves the old popup
+  PASS  selected term fallback stale miss cannot retire a newer view
+  PASS  cached and changed-generation Back preserve the exact request, selected tab and saved viewport
+  PASS  a clicked-kanji group asks every member at once and renders merged results as ordered member tabs
+  PASS  a clicked-kanji group's native card is a complete term result that builds Anki fields
+  PASS  a clicked-kanji group that misses everywhere falls back to automatic native kanji without another request
+  PASS  a term-only clicked-kanji group asks for native kanji only after every member misses
+
+=== content script: popup > external links
+  ✔ clicked-kanji navigation and groups (183.61527ms)
+hachidori: external link could not be opened Error: tab creation failed
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at externalLinksCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:410:20)
+    at async externalLinks (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:511:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:510:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+hachidori: external link could not be opened Error: unexpected reply for hd_open_external
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1134:20)
+    at externalLinksCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:409:39)
+    at async externalLinks (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:511:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:510:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+hachidori: external link could not be opened Error: tab creation failed
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at externalLinksCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:410:20)
+    at async externalLinks (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:511:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:510:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+hachidori: external link could not be opened Error: unexpected reply for hd_open_external
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1134:20)
+    at externalLinksCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:409:39)
+    at async externalLinks (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:511:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:510:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+  PASS  content routes external links to the worker without retrying or changing the current Note view
+
+=== content script: popup > render failures
+hachidori: could not render results Error: current render
+    at renderFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:278:13)
+    at async renderFailure (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:519:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:518:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+hachidori: lookup failed Error: current render
+    at renderFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:278:13)
+    at async renderFailure (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:519:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:518:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7)
+  PASS  only the current render failure clears the content popup
+
+=== content script: popup > lookup failures
+hachidori: lookup failed Error: the dictionary engine is busy mutating
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:313:15)
+    at async lookupFailures (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:530:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:529:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+hachidori: lookup failed Error: The linked Hachidori is not reachable.
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:313:15)
+    at async lookupFailures (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:530:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:529:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true,
+  code: 'sharing-disconnected'
+}
+hachidori: lookup failed Error: WebAssembly compilation failed
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:313:15)
+    at async lookupFailures (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:530:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:529:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true,
+  code: 'engine-start-failed'
+}
+hachidori: lookup failed Error: the dictionary engine is busy mutating
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:347:14)
+    at async lookupFailures (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:530:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:529:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true,
+  code: 'engine-mutating'
+}
+hachidori: lookup failed Error: an unrelated lookup failure
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:377:16)
+    at async lookupFailures (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:530:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-popup.mjs:529:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+  PASS  lookup failures explain updates, disconnections and engine startup failures with a retry
+  PASS  a failed same-view refresh retains its definition and open Note until retry succeeds
+  PASS  ordinary misses and unrelated errors remain quiet
+
+=== content script: popup > option revisions
+  PASS  content readers ignore older and repeated option revisions before their next lookup
+
+=== content script: lookup counts and blur > lookup statistics
+  ✔ external links (37.125326ms)
+  ✔ render failures (35.611442ms)
+  ✔ lookup failures (129.375203ms)
+  ✔ option revisions (0.217791ms)
+✔ content script: popup (606.35352ms)
+hachidori: lookup statistics unavailable Error: lost committed reply
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupStatisticsCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:95:13)
+    at async lookupStatistics (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:801:43)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:800:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+hachidori: lookup statistics unavailable Error: lost reply
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at lookupStatisticsRaceCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:192:20)
+    at async lookupStatistics (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:801:76)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:800:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+  PASS  accepted primary views record once across tabs, expansion, Note refresh and Back
+  PASS  internal links and clicked-kanji terms record independently while misses and stale replies do not
+  PASS  statistics reject obsolete namespace replies and never retry a failed increment
+  PASS  a count on its way keeps its slot until it paints, and a count that will not arrive hides it
+  PASS  matching row events outrank old count replies without refreshing unrelated terms
+  PASS  delayed matching rows survive newer unrelated global revisions
+  PASS  expanding results keeps the count element for later row events
+  PASS  turning counts off hides the existing line even in a retained Note view
+  PASS  an Off reply arriving after On repairs with one read and never another increment
+  PASS  obsolete external-count options do not refresh the retained local count
+  PASS  matching row events update the local count without another read
+  PASS  enabling counts paints the open popup's hidden slot with one read and no rerender
+
+=== content script: lookup counts and blur > definition blur
+▶ content script: lookup counts and blur
+  ✔ lookup statistics (143.015978ms)
+hachidori: lookup statistics unavailable Error: lost committed reply
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at definitionBlurCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:539:13)
+    at async definitionBlur (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:810:41)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-blur.mjs:809:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+  PASS  a qualifying count blurs pending definitions and keeps autoplay held
+  PASS  a blurred lookup stays silent across dictionary tabs and a hover reveal plays the current tab once
+  PASS  hovering definitions reveals and a later count never reblurs or plays again
+  PASS  a non-qualifying count reveals and releases one held autoplay
+  PASS  an unavailable count fails open and releases autoplay
+  PASS  Below blurs a zero count and disabling blur reveals and plays the held result
+  PASS  retiring a held view before its replay keeps the first visit for the decision
+  PASS  a stale lookup's late qualifying count leaves the current lookup's autoplay to its own count
+  PASS  timed reveal keeps one deadline from first display across Back
+  PASS  a lookup before stored settings arrive waits, then blurs and stays silent
+  PASS  a BFCache return reveals a timed blur whose deadline passed while hidden
+  PASS  Anki maturity blurs without counts, plays the held result on hover reveal and never replays it on rebind
+  PASS  nonmature and unavailable Anki fail open and release autoplay once
+  PASS  a retired lookup's Anki result cannot settle the current lookup's blur or autoplay
+  PASS  changing the Anki mapping releases a pending visit and rejects its late mature result
+  PASS  either the first count or Anki maturity qualifies without waiting for the other signal
+  PASS  waiting for Anki preserves the first count's autoplay decision despite later row events
+  PASS  a lookup before initial options waits for its Anki maturity setting
+  PASS  Back keeps the visit but rejects completed Anki evidence after a parked mapping edit
+  PASS  Back keeps the visit but rejects pending Anki evidence after a parked mapping edit
+  PASS  a qualifying native rank blurs immediately and introduces no statistics, Anki or frequency request
+  PASS  a nonqualifying frequency fails open and releases autoplay without pending evidence
+  PASS  occurrence auto order uses the inclusive maximum and live edits start pending evidence without reblurring a revealed visit
+  PASS  a nonqualifying frequency retains the existing pending count decision and either condition can qualify
+  PASS  Note refresh and dictionary tabs reuse the request's frequency snapshot without a new evidence request
+  PASS  native kanji stays unblurred and Back restores the same frequency-qualified visit without another lookup
+  PASS  click reveal ignores hover and the delay, and a click reveals once and plays the held result
+  PASS  words in definitions blurred until clicked are not scanned until the reveal
+  PASS  Enter and Space on the focused blurred definitions reveal them and keep focus
+  PASS  switching to hover reveal removes the button and hover reveals again
+  PASS  definitions blurred before they render are the labelled button and their content is inert
+  PASS  lookups ask for words without definitions only while the option is on, and turning it on retires a lookup on its way
+  PASS  a first result without definitions is never blurred and plays at once, whatever follows it
+  PASS  a defined first result is still blurred when a word without definitions follows it
+  PASS  with JL, Bee's Theme, Plain or Crystal a lookup asks for words with definitions only
+
+=== content script: scanning and selections > scanning and selections
+  ✔ definition blur (4315.782429ms)
+✔ content script: lookup counts and blur (4459.121807ms)
+hachidori: lookup failed Error: hd_lookup failed
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at pendingScanCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-scanning.mjs:1656:73)
+    at async scanning (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-scanning.mjs:2067:35)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-scanning.mjs:2066:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+  PASS  pending pointer candidates deduplicate by node and query without losing retries or newer ownership
+  PASS  definition text uses native closed-shadow caret scanning and preserves its parent popup
+  PASS  definition text inherits Japanese gating, depth limits and stationary activation
+  PASS  definition text can require the activation key in Hover mode
+  PASS  definition text can open child popups on click only
+  PASS  changing the child popup trigger cancels a pending definition hover
+  PASS  pointer scans cross ordinary inline text and apply the live Japanese-only preference
+  PASS  Japanese-only scanning accepts mixed numeral compounds from Japanese or numeral characters
+  PASS  editing controls and contenteditable text stop forward pointer scanning, and only a textarea's value scans directly
+  PASS  pointer scans cross positioned per-glyph boxes and take the sentence from the block's text nodes
+  PASS  a texthooker line is its own sentence, whether a newline node or only a block edge separates it from its neighbours
+  PASS  one sentence of a text node is cut at its terminators while collapsed line wraps stay inside it
+  PASS  the engine reply refines the sentence around the whole matched word
+  PASS  the reader hands the engine the longest indexed key plus eight while requesting its own scan length
+  PASS  hover requires the pointed glyph within two pixels and rejects occluding elements
+  PASS  hover in the trailing half of a supplementary glyph starts at its complete code point
+  PASS  Google Docs annotation rects scan through an SVG imposter while the flag is on
+  PASS  the Docs path is inert while its flag is off and on other hosts
+  PASS  text inputs and textareas scan their value through one imposter laid over the hovered field
+  PASS  padding, password, masked and empty fields are not read and page scans never reach the imposter
+  PASS  a field's imposter shares its pending lookup and is removed when the popup closes or the pointer leaves
+  PASS  term lookup expands popup placement from the hovered glyph to the complete matched word
+  PASS  popup wheel never reaches the page and cannot chain past a pane with no room left
+  PASS  text moved outside the source during lookup keeps the original popup anchor
+  PASS  autofocused search fields allow hover and stationary modifier lookup of inline Japanese links
+  PASS  focused editing suppresses stationary activation and Japanese gating cancels prior pending scans
+  PASS  nested open-shadow editors suppress activation and cancel delayed and pending candidate work
+  PASS  matching activation preserves exact reverse inline selection context while rejecting prefix results
+  PASS  explicit selections preserve whitespace and full queries beyond the engine scan window
+  PASS  an exact selection's sentence is read like a hover over its first glyph, while its highlight keeps the anchor
+  PASS  selected missing words remain editable and refresh after one personal save with zero or existing dictionaries
+  PASS  automatic selections follow hover and both activation modes for every modifier
+  PASS  explicit selected-text commands still bypass the automatic selection gate
+  PASS  pending selections cannot reopen after dismissal, replacement or selected-text mutation
+  PASS  dismissed selections can be looked up again after Escape, enablement, a frame-focus blur and dictionary changes
+  PASS  a tab-switch blur keeps a selection's popup without looking it up again
+  PASS  an explicit selection survives automatic scanning policy changes, key release and pointer motion
+  PASS  selection drags remain quiet while held and recover on re-entry after an outside release
+  PASS  selection lookup uses visible text, raw highlight offsets and text-aware unchanged detection
+  PASS  Note and kanji Back preserve exact selection descriptors while linked queries retain their own matching mode
+  PASS  pending selections and resolved hits or misses retry only after dictionary or result-option invalidation
+  PASS  both selection resolvers apply the Japanese gate to the selected text
+  PASS  selection miss notices are optional while the no-dictionaries notice stays visible
+  PASS  with the personal dictionary off, selections, drag releases and activation-key selections never look up
+  PASS  with the personal dictionary off, the pointer ignores live selections, the pencil hides and lookups carry the flag
+  PASS  with the personal dictionary off, Scan selected text stays exact and its miss closes without retaining the selection
+  PASS  with the personal dictionary off, the setup notice has no pencil and turning it on restores selection notices
+  PASS  selections spanning editing controls are ignored without falling back to pointer prefixes
+  PASS  selecting popup glossary text preserves the current page-selection view
+
+=== content script: activation and keybinds > activation, scan delays and departures
+▶ content script: scanning and selections
+  ✔ scanning and selections (2896.217855ms)
+✔ content script: scanning and selections (2896.460466ms)
+  PASS  activation release cancels immediate scans and a first pending reply without pointer motion
+  PASS  sticky activation keeps the popup through key release and pointer departure until a click
+  PASS  configured printable activation keys release by physical code and ignore repeats
+  PASS  Escape activation respects Note dismissal, retained selection misses and auto-repeat
+  PASS  pointer departure, click, Escape, blur and scroll cancel the first pending popup
+  PASS  configured transfer delays preserve popup entry and Note editing and allow immediate hide
+  PASS  a new pointer candidate retains an inert old view while an open Note prevents replacement
+  PASS  settings invalidate a pending replacement without stranding an inert visible view
+  PASS  keyboard-focused popup controls suppress incidental pointer replacements
+  PASS  master disable stops scans and closes drafts without cancelling or refreshing a committed Note
+  PASS  No key lookups wait for the pointer to rest: crossing words sends none and resting on one sends one
+  PASS  changing or leaving the word restarts or cancels its dwell, even by way of the shown word
+  PASS  scroll, window exit, Escape, a page press and a key mode change cancel a dwell without a lookup or count
+  PASS  an edited delay restarts the dwell, while 0 and a held activation key look up at once
+  PASS  opening a Note cancels a dwell and keeps the draft's popup through later hovers
+  PASS  teardown cancels a dwell
+  PASS  page lookups stay immediate while definition text waits for its own delay
+  PASS  the definition delay holds at depth two and the depth limit still stops scanning
+  PASS  Same as page delay follows later page edits and a custom 0 looks up at once
+  PASS  dictionary links, clicked words and a held activation key open their child at once
+  PASS  leaving the pane, Note editing, a key mode change, a redraw and an ancestor press cancel a definition dwell
+  PASS  hide popup on cursor exit hides a sticky popup the pointer left, after its own delay, and keeps one never entered
+  PASS  hide popup on cursor exit spares drafts, audio menus and resizing but not a mouse-focused button, and applies live
+  PASS  a held middle button scans in activation mode and its release follows the mode
+  PASS  a held middle button scans in activationSticky mode and its release follows the mode
+  PASS  a lost release ends a button's activation at the next move and releases the host window
+  PASS  a scan press cancels autoscroll over text and a new tab only for a word it looks up
+  PASS  a Back scan press looks up beside a focused editor without navigating over text
+  PASS  a held scan button looks up popup definitions and leaves a popup link its middle click
+  PASS  hover mode and keyboard activation keep a middle press closing the popup without cancelling it
+  PASS  child popups set to hold the key wait for a scan button in No key mode, and Click ignores it
+  PASS  overlay blur and window-exit keep a rendered popup in every lookup mode until Escape
+  PASS  overlay window-exit cancels a pending scan; outside click and a new lookup still dismiss
+  PASS  overlay blur keeps a selection drag and a held scan button without publishing popup-hidden
+  PASS  leaving the tab or the window keeps a popup and its Note draft in every lookup mode until Escape
+  PASS  a blur that moves focus into one of the page's frames still closes the popup
+  PASS  mouse audio focus allows the next page word lookup after playback
+  PASS  mouse audio focus does not block ordinary hover dismissal
+  PASS  mouse audio focus still allows outside-click dismissal
+  PASS  keyboard audio focus protects the popup from incidental hover
+  PASS  keyboard audio focus keeps ordinary hover dismissal from closing the popup
+  PASS  keyboard audio focus still allows outside-click dismissal
+
+=== content script: activation and keybinds > keybinds
+▶ content script: activation and keybinds
+  ✔ activation, scan delays and departures (409.384087ms)
+  PASS  browser shortcut commands run popup keybind actions
+  PASS  default keybinds navigate entries, mine, play and close through Yomitan's keys
+  PASS  custom keybinds follow scope, enablement, text fields, option writes and selection scans
+  PASS  holding an entry or dictionary move repeats it like Yomitan; other keybinds act once per press
+  PASS  Alt+wheel keybinds press once per notch, gather touchpad steps and act on the popup under the pointer
+  PASS  custom wheel keybinds follow their modifiers and enablement, and unbound wheels keep scrolling
+  PASS  Alt+F reopens the exact request Back left without counting it again, and Back steps back from it
+  PASS  Forward reopens a new kanji click's view, also as a browser command, and leaves the key to the page with nothing ahead
+  PASS  Forward reopens the kanji view after a Back that replays its term request for a dictionary change
+  PASS  Forward leaves the key alone on the no-result notice Back can leave after a dictionary change
+
+=== content script: nested popups and media > media ownership and nested popups
+  ✔ keybinds (208.449524ms)
+✔ content script: activation and keybinds (618.213251ms)
+hachidori: lookup failed Error: hd_lookup failed
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at nestedNotesCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1054:34)
+    at async mediaOwnership (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1910:166)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1908:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+hachidori: lookup failed Error: held replay failure
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at retainedParentNavigationCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1305:13)
+    at async mediaOwnership (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1911:12)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-nested.mjs:1908:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+  PASS  late media cannot roll back generation or evict a newer cached image
+  PASS  a current view adopts one pending media fetch without a stale subscriber stealing ownership
+  PASS  dictionary invalidation prevents old same-generation jobs from poisoning or deleting replacements
+  PASS  failed and missing media retry while successful images survive repeat hovers
+  PASS  valid media completed while hidden stays reusable without touching an obsolete view
+  PASS  alias and favorite changes preserve successful media and styles without re-fetching
+  PASS  a mismatched style reply cannot adopt generation and remains retryable
+  PASS  Back refreshes an old result snapshot before requesting current-generation media
+  PASS  explicit image sources resolve another dictionary's path without changing its text or lookup owner
+  PASS  image groups fall through separately for each path and unavailable or exhausted sources fail normally
+  PASS  routed media shares pending candidates without a retired consumer publishing provenance or cancelling its peer
+  PASS  changing the effective image route stops stale success and further fallback without invalidating the lookup
+  PASS  image-source aliases retain pending ownership and cached bytes without additional content requests
+  PASS  image provenance callback errors do not trigger another supplier lookup
+  PASS  media admits 128 total jobs, dispatches four, and deduplicates even at capacity
+  PASS  media timeout starts at dispatch and a late reply cannot free capacity twice or poison retry
+  PASS  new views reattach matching queued media and prune obsolete work before capacity rejection
+  PASS  a retired child cannot cancel queued media still owned by its parent
+  PASS  resource invalidation and teardown settle all media without dispatching obsolete queued work
+  PASS  media LRU accepts exactly 64 entries and promotes hits before evicting the oldest
+  PASS  media LRU measures decoded bytes, accepts exactly 16 MiB, and resets accounting on invalidation
+  PASS  new term or kanji requests and settings invalidation dismiss previews before their replies
+  PASS  popup keyboard focus cancels hover dismissal and leaving focus rearms it
+  PASS  replacing focused popup content does not schedule dismissal of its refreshed view
+  PASS  linked levels preserve independent Back and render owners, deduplicate, and prune only descendants
+  PASS  child popup depth is live and child geometry is clamped to the viewport
+  PASS  presentation-only state adopts newest labels without invalidating requests or pending child anchors
+  PASS  internal links show all dictionaries while clicked-kanji and Back retain independently selected tabs
+  PASS  viewport and observer layout place a popup chain linearly and retire queued owners
+  PASS  live column preferences relayout each visible owner without lookup, retirement or Note loss
+  PASS  live toolbar overrides update root and child without lookup, masonry or Note loss
+  PASS  live geometry precedes masonry while colour and highlight edits preserve every request and Note
+  PASS  live glossary layout relayouts each visible owner without lookup, rendering or Note loss
+  PASS  parent Note replay waits for a child draft and accepted explicit navigation consumes obsolete deferred state
+  PASS  ancestor pointer return prunes descendants but preserves drafts and a stationary departure resumes scanning
+  PASS  sticky lookups keep a rendered child through parent entry, empty scans, plain links, page and window departure and a tab switch until a parent press or Escape
+  PASS  hide popup on cursor exit prunes children on return in sticky mode and hides the chain it leaves
+  PASS  child popups anchor to their own source text below or above it, shortened rather than covering it, and read no pane rectangles
+  PASS  an ancestor press dismisses focused, hovered and pending descendants at once while drafts and link presses are left alone
+  PASS  an open pronunciation chooser closes the child pane over it unless a draft holds it, and pauses definition scans
+  PASS  retired child replies and older parent replies cannot replace a new level or roll back engine generation
+  PASS  retained parent navigation stays usable while stale tabs replay current dictionaries without reviving old resources
+
+=== content script: Notes > Note callbacks replay requests with newer state
+▶ content script: nested popups and media
+  ✔ media ownership and nested popups (2539.212755ms)
+✔ content script: nested popups and media (2539.453625ms)
+  PASS  content Note callbacks replay exact ordinary and internal-link requests with newer state
+
+=== content script: Notes > Note refresh keeps clicked-kanji intent and Back
+▶ content script: Notes
+  ✔ Note callbacks replay requests with newer state (58.551436ms)
+  PASS  content Note refresh preserves clicked-kanji dictionary intent and Back context
+
+=== content script: Notes > a successful append survives a failed refresh
+  ✔ Note refresh keeps clicked-kanji intent and Back (58.630815ms)
+hachidori: lookup failed Error: injected refresh failure
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at refreshFailureCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-notes.mjs:213:11)
+    at async refreshFailure (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-notes.mjs:434:36)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-notes.mjs:433:25
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Suite.processPendingSubtests (node:internal/test_runner/test:744:7) {
+  responseReceived: true
+}
+  PASS  a successful Note append cannot become retryable when lookup refresh fails
+
+=== content script: Notes > Note refresh of replaced and detached views
+  ✔ a successful append survives a failed refresh (22.20375ms)
+  PASS  Note refresh skips a replaced view but still refreshes a popup whose page source was removed (#402)
+
+=== content script: Notes > Note editing guards
+  PASS  Note editing cancels hover dismissal and consumes Escape before popup capture
+
+=== content search page > docked search results
+  ✔ Note refresh of replaced and detached views (109.056766ms)
+  ✔ Note editing guards (53.365796ms)
+✔ content script: Notes (302.544565ms)
+hachidori: lookup failed Error: the engine went away
+    at Object.eval [as callback] (eval at createHarness (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:313:10), <anonymous>:1138:27)
+    at Object.reply (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:356:10)
+    at answer (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-search.mjs:40:11)
+    at dockedCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-search.mjs:131:11)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-search.mjs:262:19
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7) {
+  responseReceived: true
+}
+hachidori: lookup failed Error: a deferred kanji step failed
+    at dockedKanjiCase (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-search.mjs:223:44)
+    at async contentNoteStage (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-harness.mjs:547:65)
+    at async file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/content-search.mjs:262:19
+    at async runBlock (file:///local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/extension-smoke/harness.mjs:32:5)
+    at async Test.run (node:internal/test_runner/test:1054:7)
+    at async Promise.all (index 0)
+    at async Suite.run (node:internal/test_runner/test:1442:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  PASS  the content harness loaded
+  PASS  the docked root popup has no resize grip, as its size is the search page's
+  PASS  a search looks its text up from the first character and fills the results area, through Escape and a dictionary change while it is out
+  PASS  the docked popup's host sits in the results area
+  PASS  a search skips a line's opening brackets, spaces and wave dashes, and looks up punctuation alone as it is
+  PASS  a press outside it and Escape keep the docked result, and Escape goes on to the page
+  PASS  Escape closes a child popup of the docked result first, then goes on to the page
+  PASS  a pending search survives the pointer and scroll cancelling scans
+  PASS  a search that finds nothing says so in the results area
+  PASS  a search that fails for an unclassified reason says so in the results area
+  PASS  a dictionary change looks the docked result up again instead of closing it
+  PASS  a lookup option change looks the docked result up again with the new options without counting it again
+  PASS  showing words without definitions looks the docked result up again asking for them
+  PASS  a search works while lookups are off and looks up text that is not Japanese
+  PASS  an option change during a Note draft looks the docked result up again once the draft closes
+  PASS  an option change while a Note is saved looks the docked result up again with it once the save commits
+  PASS  a child popup's Note draft holds the docked result's refresh until it closes
+  PASS  a docked kanji view that fails to render offers Try again, which looks the kanji up again
+  PASS  without a dock the popup keeps its resize grip, Escape and an outside press close it, and search does nothing
+
+=== engine: removal, trained dictionaries and restart > hd_remove
+
+# hd_remove
+  PASS  a remove whose storage write fails reports the failure
+  PASS  a failed remove reloads the dictionaries it unloaded
+
+=== engine: removal, trained dictionaries and restart > hd_remove of a path-like title and of a missing title
+  PASS  hd_remove of a title spelled like a path removes nothing
+▶ content search page
+  ✔ docked search results (152.304674ms)
+✔ content search page (152.530004ms)
+▶ engine: removal, trained dictionaries and restart
+  ✔ hd_remove (13.395864ms)
+  PASS  hd_remove succeeds
+  PASS  nothing is loaded after a remove
+  PASS  the logical dictionary inventory is empty
+  PASS  removing a dictionary prunes its stable group membership
+  PASS  removal atomically clears the selected image package and refuses a stale options write
+  PASS  removing an unknown title is a no-op that does not bump generation
+
+=== engine: removal, trained dictionaries and restart > a trained (.hoshidicts_6) dictionary through the extension layer
+
+# a trained (.hoshidicts_6) dictionary through the extension layer
+  ✔ hd_remove of a path-like title and of a missing title (22.837841ms)
+  PASS  hd_import accepts a dictionary over the zstd training floor
+  PASS  offscreen.js recognises the .hoshidicts_6 directory as a dictionary
+  PASS  the trained import writes one term-only logical package
+  PASS  syncfs(false) persisted the marker and dict.zstd, not just the banks
+  PASS  glossaries compressed against the trained dictionary survive the round trip
+
+=== engine: removal, trained dictionaries and restart > backup scenarios through the real engine
+  ✔ a trained (.hoshidicts_6) dictionary through the extension layer (21.648929ms)
+  PASS  two automatic snapshots share real dictionary generations without blob copies or filesystem writes
+  PASS  automatic restore rejects a tampered dictionary path before any filesystem read
+  PASS  ordinary generation cleanup retains every root referenced by both automatic snapshots
+  PASS  a refused automatic metadata replacement keeps both real generation roots and performs no cleanup write
+  PASS  lost automatic metadata reply uses exact readback before retiring the newly unreferenced generation
+  PASS  a corrupt newest automatic backup leaves the valid older snapshot selectable and restorable in place
+hachidori: automatic backup metadata was committed; deferred generation cleanup failed: injected interrupted automatic cleanup
+  PASS  a later reload reconciles interrupted cleanup from both retained snapshot roots
+  PASS  complete backup captures disabled files, trained data, custom source and one coherent settings snapshot
+  PASS  restore publishes all six values and statistics rows once before superseded-generation cleanup
+  PASS  manual and automatic restores import dictionaries and readable settings, skipping settings this version cannot read
+  PASS  restore refuses concurrent options, source, schedule, dictionary, statistics and word status edits without leaking staging
+  PASS  a corrupt disabled restore generation is rejected before publication and leaves no staging debris
+  PASS  lost complete-restore CAS reply is recovered by exact six-value readback without a duplicate commit
+  PASS  a refused complete-state write preserves the working lookup and removes all prepared generations
+  PASS  an uncertain restore retains both generation sets until authoritative reload recovery
+  PASS  a validated backup repairs missing live files and malformed source without requiring the broken generation to load
+  PASS  statistics cleanup is best effort and later confirmed restore prunes only inactive owned namespaces
+  PASS  an empty backup resets settings, custom source and schedule rather than retaining unrelated live values
+  PASS  backup preserves local-only source descriptors and complete managed sources without changing update eligibility
+  PASS  backups exported by 0.1.1 and 0.3.0 restore, then round-trip through this version's export
+
+=== engine: removal, trained dictionaries and restart > a restart and reload refuse an unreferenced on-disk dictionary
+  ✔ backup scenarios through the real engine (3977.27686ms)
+  PASS  a revisioned restart and reload refuse to auto-adopt an unreferenced on-disk dictionary
+
+=== engine: removal, trained dictionaries and restart > a recommended first install downloads in the engine
+  ✔ a restart and reload refuse an unreferenced on-disk dictionary (128.405539ms)
+  PASS  a recommended first install downloads its catalogue archive in the engine and reports download then installation phases
+        staged lookup 0.6 ms; serialized install 20.4 ms
+
+=== engine: isolated, paged and blob-backed storage > isolated import
+
+# isolated import: lookups keep answering, the generation swaps in place
+  ✔ a recommended first install downloads in the engine (23.915573ms)
+✔ engine: removal, trained dictionaries and restart (4188.413759ms)
+  PASS  an isolated first install adds the new generation without resetting or reloading the loaded set
+  PASS  lookups during an isolated update answer from the old generation, then the new one swaps in without a reset
+  PASS  a failed isolated import leaves the engine untouched and removes its generation root
+  PASS  an isolated update whose commit conflicts unloads the new generation and keeps the committed one
+  PASS  an isolated memory failure restages detached bytes and retries once before publishing one generation
+  PASS  a repeated memory failure stops after one retry with useful errors and keeps the committed dictionary
+  PASS  an in-place load validates a disabled package's new generation paged without a reset and leaves it unloaded
+  PASS  a title with a slash installs into its own folder, answers lookups by its title and survives a reload
+  PASS  a title with a slash can be removed with its files
+
+=== engine: isolated, paged and blob-backed storage > paged dictionaries
+
+# paged dictionaries: Low memory mode, and a package that does not fit
+▶ engine: isolated, paged and blob-backed storage
+  ✔ isolated import (668.444052ms)
+  PASS  Low memory mode's worker pages every package and answers as the mapped one does
+  PASS  a paged package's share leaves out its entries
+  PASS  a package the heap cannot hold is retried with its entries read from disk
+  PASS  a package that fails paged too is reported with the memory error while the others load
+  PASS  the paged fallback package is removed cleanly
+  PASS  startup validates a disabled package paged, drops it, and enabling it maps its entries
+  PASS  a full rebuild validates a disabled package's new generation paged and leaves it unloaded
+
+=== engine: isolated, paged and blob-backed storage > blob-backed IDBFS
+
+# blob-backed IDBFS: Blob records stay Blobs and are read by range
+  ✔ paged dictionaries (501.736303ms)
+  PASS  a persisted import releases its large arrays for the stored Blobs
+  PASS  restoring IDBFS backs large files with their Blobs while mapped lookups stay identical
+  PASS  paged reads of a Blob-backed file read pages, not the file
+  PASS  unloading a mapped Blob-backed package leaves its file a Blob
+  PASS  writing to a Blob-backed file materializes it and keeps the rest of its bytes
+  PASS  a Blob-backed package is removed from IndexedDB with its files
+
+800 passed, 0 failed
+  ✔ blob-backed IDBFS (975.088493ms)
+✔ engine: isolated, paged and blob-backed storage (2145.750628ms)
+ℹ tests 135
+ℹ suites 32
+ℹ pass 135
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 94575.023482

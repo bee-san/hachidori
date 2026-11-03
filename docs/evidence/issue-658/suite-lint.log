@@ -1,0 +1,6 @@
+
+> hachidori-test-tooling@1.0.0 lint
+> node ../run.mjs lint
+
+
+$ node /local/home/skerraut/herd-synth3/clones/hachi-issue-658/test/tooling/node_modules/eslint/bin/eslint.js --config test/tooling/eslint.config.mjs .
