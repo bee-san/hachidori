@@ -196,7 +196,7 @@ function renderLanguageMoves() {
     const item = document.createElement("li");
     const name = languageName(target.language);
     const text = document.createElement("span");
-    text.textContent = `${row.displayName || row.title} is a ${name} dictionary. It was added to ${languageName()}.`;
+    text.textContent = `${row.displayName || row.title} is for ${name}. It was added to ${languageName()}.`;
     const move = document.createElement("button");
     move.type = "button";
     move.className = "ghost";

@@ -171,7 +171,7 @@ test("an import joins the edited profile, and an archive of another profile's la
   assert.equal(request.profileId, "ar", "bound to the profile edited when the import started");
   const offer = el("import-language-moves");
   assert.ok(offer, el("import-state").textContent);
-  assert.match(offer.textContent, /^Kaikki English is a English dictionary\. It was added to Arabic\.Move to English$/u);
+  assert.match(offer.textContent, /^Kaikki English is for English\. It was added to Arabic\.Move to English$/u);
   offer.querySelector("button").click();
   await settle(100);
   const applies = sent(settings, "hd_apply_state");
