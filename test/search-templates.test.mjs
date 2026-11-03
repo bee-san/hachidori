@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import "../extension/reader-options.js";
+import { templateSwitch } from "../extension/search-shell.js";
 import { renderTemplateChoices, withBuiltinTemplate } from "../extension/search-templates.js";
 
 const require = createRequire(import.meta.url);
@@ -65,4 +66,81 @@ test("the switch lists the Templates by name under its heading, the built-in one
 
   renderTemplateChoices(select, normaliseAnki({ templates: [anki.templates[0]] }));
   assert.equal(select.hidden, true);
+});
+
+// search.html's switch (search-shell.js) against a worker that checks each
+// write's revision as hd_options_write does. `hold` keeps a write waiting, and
+// a written choice comes back as the storage change search.html adopts.
+function switchedWorker(stored, { conflictFirst = false, failing = false } = {}) {
+  const writes = [];
+  let hold = null;
+  let release = () => {};
+  let ui = null;
+  const api = {
+    storage: { local: { get: async () => ({ options: structuredClone(stored) }) } },
+    runtime: {
+      async sendMessage(message) {
+        writes.push(message.options.anki.templates[0].id);
+        if (hold) await hold;
+        if (failing) return { ok: false, error: "the worker went away" };
+        // Another page writes first, once.
+        if (conflictFirst && writes.length === 1) stored.revision += 1;
+        if (message.baseRevision !== stored.revision) return { ok: false, conflict: true, options: stored };
+        stored.anki = message.options.anki;
+        stored.revision += 1;
+        ui.show(normaliseAnki(stored.anki));
+        return { ok: true, options: stored };
+      },
+    },
+  };
+  const select = switchElement();
+  ui = templateSwitch(select, { focus() {} }, api);
+  ui.show(normaliseAnki(stored.anki));
+  const choose = (id) => {
+    select.value = id;
+    select.dispatchEvent(new select.ownerDocument.defaultView.Event("change"));
+  };
+  const holdWrites = () => { hold = new Promise((resolve) => { release = () => { hold = null; resolve(); }; }); };
+  return { select, writes, choose, holdWrites, release: () => release() };
+}
+
+const settle = () => new Promise(resolve => { setTimeout(resolve, 20); });
+
+test("the switch writes again after a conflict and saves only the last choice made while one is saved", async () => {
+  const stored = { revision: 4, audioAutoplay: true, anki };
+  const worker = switchedWorker(stored, { conflictFirst: true });
+  worker.holdWrites();
+  worker.choose("words");
+  await settle();
+  // Made while words is being saved.
+  worker.choose("kanji");
+  worker.choose("sentences");
+  assert.deepEqual(worker.writes, ["words"]);
+  assert.equal(worker.select.value, "sentences", "the last choice is shown while it waits");
+  worker.release();
+  await settle();
+  // words met the other page's write and went again; kanji was never saved.
+  assert.deepEqual(worker.writes, ["words", "words", "sentences"]);
+  assert.deepEqual(stored.anki.templates.map(({ id }) => id), ["sentences", "words", "kanji"]);
+  assert.equal(stored.anki.apiKey, "secret");
+  assert.equal(stored.anki.url, "http://127.0.0.1:8766");
+  assert.equal(stored.revision, 7);
+  assert.equal(worker.select.value, "sentences");
+});
+
+test("a failed write shows the stored Template again, and choosing the first Template writes nothing", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const stored = { revision: 1, anki };
+  const failing = switchedWorker(stored, { failing: true });
+  failing.choose("kanji");
+  await settle();
+  assert.deepEqual(failing.writes, ["kanji"]);
+  assert.equal(failing.select.value, "sentences");
+  assert.equal(console.error.mock.callCount(), 1);
+
+  const unchanged = switchedWorker(stored);
+  unchanged.choose("sentences");
+  await settle();
+  assert.deepEqual(unchanged.writes, []);
+  assert.equal(unchanged.select.value, "sentences");
 });

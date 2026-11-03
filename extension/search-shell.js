@@ -235,20 +235,22 @@ function clipboardMonitor(clipboardSwitch, search) {
 const WORKER_TARGET = "hoshidicts-worker";
 
 // Moves Template `id` first, and resolves whether that wrote the options.
-async function chooseTemplate(id) {
-  const { options: stored } = await chrome.storage.local.get("options");
+async function chooseTemplate(api, id) {
+  const { options: stored } = await api.storage.local.get("options");
   const current = globalThis.HDReaderOptions.normaliseOptions(stored).anki;
   const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
   if (next === null) return false;
-  const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
+  const reply = await api.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
     baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
     options: { anki: next } });
-  if (reply?.conflict === true) return chooseTemplate(id);
+  if (reply?.conflict === true) return chooseTemplate(api, id);
   if (!reply?.ok) throw new Error(reply?.error || "Hachidori did not reply.");
   return true;
 }
 
-function templateSwitch(select, frame) {
+// The switch `select` in this page's header, handing focus back to `frame`;
+// `show(anki)` lists the stored Templates.
+export function templateSwitch(select, frame, api = chrome) {
   let anki = null;
   let wanted = null;
   let saving = Promise.resolve();
@@ -263,7 +265,7 @@ function templateSwitch(select, frame) {
     if (id === null) return;
     let wrote = false;
     try {
-      wrote = await chooseTemplate(id);
+      wrote = await chooseTemplate(api, id);
     } catch (error) {
       console.error("hachidori: could not choose the Anki Template:", describeErrorMessage(error));
     }
@@ -272,7 +274,7 @@ function templateSwitch(select, frame) {
     if (!wrote || anki.templates[0].id === id) show();
   }
   let handBack = false;
-  select.addEventListener("pointerdown", () => { handBack = document.activeElement !== select; });
+  select.addEventListener("pointerdown", () => { handBack = select.ownerDocument.activeElement !== select; });
   select.addEventListener("keydown", () => { handBack = false; });
   select.addEventListener("change", () => {
     wanted = select.value;
