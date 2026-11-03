@@ -754,11 +754,18 @@ public-domain and everyday sentences and scans the next 16 characters, as a
 hover would. Every sample imports the archive into a fresh profile through
 Settings, then times five passes after one excluded warmup pass. Defaults are
 one excluded warmup install and five measured installs per reader
-(`--warmups`, `--samples`, `--passes`). A failed attempt is recorded in
-`failures.jsonl` and repeated in a fresh profile, up to six attempts. The run
-resumes from `raw.jsonl` and ends with `summary.json` and `summary.md`;
-`--summarize-only` rewrites them. `HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER`
-choose the browser and Puppeteer as for the other suites. The
+(`--warmups`, `--samples`, `--passes`). Each sample's lookups go through the
+lookup checks `compare.mjs` uses: 食べる and 食べたかった must find 食べる, 日本
+must find 日本 and the emoji nothing, and every pass must return the warmup
+pass's results.
+A failed attempt is recorded in `failures.jsonl` and repeated in a fresh
+profile, up to six attempts, and keeps its profile for diagnosis; a successful
+attempt's profile is deleted once its row is in `raw.jsonl`. The run resumes
+from `raw.jsonl` and ends with `summary.json` and `summary.md`;
+`--summarize-only` rewrites them. Resuming does not compare the checkout or
+the archives with `definition.json`, so resume only with the same ones.
+`HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER` choose the browser and Puppeteer
+as for the other suites. The
 [report](../docs/benchmarks/jmdict-lookup.md) uses the run kept in
 `results/jmdict-lookup/`.
 

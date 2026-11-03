@@ -20,11 +20,15 @@ Percentiles pool every measured lookup.
 | Lookup p95 | 6.14 ms | 17.20 ms | 2.8× |
 | Lookup p99 | 7.84 ms | 26.25 ms | 3.3× |
 | Mean lookup | 3.11 ms | 8.53 ms | 2.7× |
-| Slowest lookup | 13.12 ms | 87.8 ms | |
+| Slowest lookup | 13.12 ms | 87.80 ms | |
 | Lookups per second, back to back | 321 | 117 | 2.7× |
 | Per-install lookup p50 | 2.37–3.46 ms | 6.80–7.60 ms | |
 | Import to first lookup, per install | 0.9–1.5 s | 39.8–69.6 s | 36× (medians) |
 | First lookup after import, per install | 3.7–10.3 ms | 6.9–9.5 ms | |
+
+The 295 lookups that returned fewer than 32 entries returned the same
+headwords in both readers. In 22 of the 42 lookups that reached the 32-entry
+limit, the readers kept different entries.
 
 An earlier run of the same workload on the same laptop, then in a slower power
 state, measured 6.5 ms vs 17.0 ms at p50 (2.6×) and 16.5 ms vs 58.1 ms at p99
@@ -52,6 +56,8 @@ state, measured 6.5 ms vs 17.0 ms at p50 (2.6×) and 16.5 ms vs 58.1 ms at p99
   message: Hachidori's `hd_lookup` through the service worker and offscreen
   document to the threaded WebAssembly engine, Yomitan's `termsFind` through
   its own backend. Hover delay and popup rendering are excluded for both.
+  Yomitan's pages are not cross-origin isolated, so Chrome reports their clock
+  in 0.1 ms steps; Hachidori's get 5 µs steps.
 - Import time runs from choosing the file to the first successful lookup.
 - Intel Core Ultra 7 165U laptop (14 threads), Arch Linux, Chromium
   156.0.8078.79 headless, Puppeteer 25.10.0, Node 26.12.1. Profiles lived on
