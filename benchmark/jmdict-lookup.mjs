@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
-import { makeComparisonSchedule } from "./comparison-lib.mjs";
+import { makeComparisonSchedule, validateLookupEvidence } from "./comparison-lib.mjs";
 import { runHachidoriSample } from "./hachidori.mjs";
 import { normalizeConfig, sha256Canonical } from "./lib.mjs";
 import { directoryContentSha256, hostSnapshot, sha256File } from "./system.mjs";
@@ -229,7 +229,9 @@ async function main() {
       process.stdout.write(`run  ${item.runId} attempt ${attempt}\n`);
       try {
         const result = await run({ item: { ...item, attempt }, corpus: config.corpora[0], config, definition, output, launch });
-        appendFileSync(rawPath, `${JSON.stringify({ ...item, attempt, ...result, diagnostics: undefined })}\n`);
+        const row = { ...item, attempt, ...result, diagnostics: undefined };
+        validateLookupEvidence(row, config);
+        appendFileSync(rawPath, `${JSON.stringify(row)}\n`);
         process.stdout.write(`ok   ${item.runId} import=${(result.metrics.importUsableWallMs / 1000).toFixed(1)}s\n`);
         break;
       } catch (error) {
