@@ -195,16 +195,15 @@ test("a note in the Japanese profile keeps today's detection and turns nothing a
   assert.equal(withProfile.querySelector("[dir]"), null);
   assert.equal(withProfile.querySelector(".yomitan-glossary").getAttribute("style"),
     "text-align: left; contain: layout paint style; isolation: isolate;");
-  // Each Japanese string reads as Japanese, as today; a dictionary's target
-  // language is its body's default.
+  // Each Japanese string reads as Japanese and the bodies carry no target
+  // language, as today (design 12 keeps Japanese-profile notes' markup).
   for (const value of ["朝ごはんを食べる。", "See also 食う", "食物を口に入れて飲み込む。"]) {
     const find = root => [...root.querySelectorAll(".gsm-hoshidicts-glossary-content, .gsm-hoshidicts-glossary-content *")]
       .find(element => [...element.childNodes].some(node => node.nodeType === 3 && node.data === value));
     assert.equal(languageOf(find(withProfile)), "ja", value);
     assert.equal(languageOf(find(today)), "ja", value);
   }
-  assert.deepEqual([...withProfile.querySelectorAll(".gsm-hoshidicts-glossary-content")].map(body => body.getAttribute("lang")),
-    ["en", "en", "ja"]);
+  assert.equal(withProfile.querySelector(".yomitan-glossary").outerHTML, today.querySelector(".yomitan-glossary").outerHTML);
   assert.equal(fields.Kind, "Ichidan verb", "the Japanese pack carries today's table");
   assert.equal(fields.Furigana, "<ruby>食<rt>た</rt></ruby>べる");
   assert.equal(fields.Sentence, "朝ごはんを<b>食べたかった</b>。");

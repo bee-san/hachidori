@@ -14,10 +14,12 @@ const LANGUAGE_TAG = /^[A-Za-z0-9-]{1,35}$/u;
 
 // The language object of the profile a note is mined in (docs/languages.md
 // 12), knowing the target language each of the request's dictionaries
-// declares; null in the single-profile shape, whose notes are today's.
+// declares; null in the single-profile shape, whose notes are today's. A
+// Japanese-profile note keeps today's glossary markup, so it takes no
+// dictionary's target language as its body's default (12).
 function noteLanguage(profile, request) {
   if (!profile) return null;
-  const targets = request.dictionaryTargetLanguages;
+  const targets = profile.language === "ja" ? null : request.dictionaryTargetLanguages;
   const dictionaries = targets && typeof targets === "object" && !Array.isArray(targets)
     ? Object.entries(targets).filter(([, tag]) => typeof tag === "string" && LANGUAGE_TAG.test(tag))
       .map(([title, targetLanguage]) => ({ title, targetLanguage }))
