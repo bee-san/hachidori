@@ -81,6 +81,7 @@ const TOGGLE_CONTROLS = {
   showPitchAccentColors: "opt-pitch-colors",
   // Stored inverted: the checkbox is on while the tags are shown.
   hidePopupGrammarTags: "opt-grammar-tags",
+  searchClickLookup: "opt-search-click-lookup",
 };
 
 test("every keybind toggle is labelled with its Settings control's wording and polarity", () => {

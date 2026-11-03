@@ -623,7 +623,29 @@
               <span>Show Search in the toolbar menu</span>
               <input type="checkbox" id="opt-toolbar-search" aria-describedby="search-page-help" />
             </label>
-            <p class="field-hint" id="search-page-help">The <a href="search.html" target="_blank">search page</a> looks up a word you type or paste, such as one from an Anki card. Switch on its Clipboard monitor to search Japanese text as soon as you copy it, in any tab or program. Search sits beside Settings in the menu of Hachidori's toolbar button. Browser shortcuts open the page in a new tab, in the current tab or in a popup window; set them in <a href="#keybinds">Keybinds</a>.</p>
+            <p class="field-hint" id="search-page-help">The <a href="search.html" target="_blank">search page</a> looks up a word you type or paste, such as one from an Anki card. Switch on its Clipboard monitor to search Japanese text as soon as you copy it, in any tab or program. With more than one Anki Template, its Anki Template menu chooses the one the Anki button uses, as Set built-in does in <a href="#anki">Anki</a>. Search sits beside Settings in the menu of Hachidori's toolbar button. Browser shortcuts open the page in a new tab, in the current tab or in a popup window; set them in <a href="#keybinds">Keybinds</a>.</p>
+            <label class="lookup-enable">
+              <span>Look up words with a click</span>
+              <input type="checkbox" id="opt-search-click-lookup" aria-describedby="search-click-lookup-help" />
+            </label>
+            <p class="field-hint" id="search-click-lookup-help">On the search page, click a word of the text you searched to see its results, or a word in the results to open it in a child popup, without holding the activation key. Dragging still selects text.</p>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Popup window width</span>
+                <span class="input-suffix">
+                  <input id="opt-search-window-width" type="number" min="200" max="16384" step="1" aria-describedby="search-window-help" />
+                  <span class="suffix">px</span>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">Popup window height</span>
+                <span class="input-suffix">
+                  <input id="opt-search-window-height" type="number" min="200" max="16384" step="1" aria-describedby="search-window-help" />
+                  <span class="suffix">px</span>
+                </span>
+              </label>
+            </div>
+            <p class="field-hint" id="search-window-help">The size of the window that the shortcut to open the search page in a popup window opens.</p>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Frequency sorting</legend>

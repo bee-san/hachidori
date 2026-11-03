@@ -30,6 +30,7 @@ export const KEYBIND_OPTION_LABELS = {
   showPitchAccentColors: "Show pitch accent colours",
   // Stored inverted; named like the Settings checkbox it flips.
   hidePopupGrammarTags: "Show grammar tags",
+  searchClickLookup: "Look up words with a click on the search page",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
 const SCOPE_LABELS = { popup: "While a popup is open", web: "Anywhere on the page" };
