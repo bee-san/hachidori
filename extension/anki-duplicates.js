@@ -44,20 +44,31 @@ function overwriteValue(existing, incoming, mode) {
   return existing || incoming;
 }
 
-// The markers a template fills from the lookup's sentence.
+// The markers a template fills from the lookup's sentence, and the media that
+// go with a sentence: Senren's scene switching pairs each sentence with its
+// picture and line audio, in order.
 const SENTENCE_MARKERS = new Set(["sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix"]);
+const SCENE_MEDIA_MARKERS = new Set(["screenshot", "gif", "sentence-audio"]);
 
 // Whether updating a note from `request` leaves the field made by `template`
 // as it is. A lookup whose sentence is only the word it matched, with no cloze
-// prefix or suffix, has no sentence to give the note (#655). The search page
+// prefix or suffix, has no sentence to give the note (#655), so it adds no
+// sentence and none of the media that would pair with one. The search page
 // takes a word typed alone for its sentence, as Yomitan's does
 // (yomidevs/yomitan@ac1d839 search-display-controller.js, `sentence: {text:
 // query, offset: 0}`), where Append then adds the word to the note's sentences
-// (display-anki.js `_getOverwrittenField`). Here those fields stay as they are.
-export function keepsAnkiSentenceField(template, request) {
-  if (!ankiTemplateMarkerNames(template.value).some(name => SENTENCE_MARKERS.has(name))) return false;
+// (display-anki.js `_getOverwrittenField`). A Netflix cue is a line even when
+// it is one word: its own audio and GIF go with it.
+export function ankiUpdateKeepsField(template, request) {
+  const markers = ankiTemplateMarkerNames(template.value);
+  const scene = markers.some(name => SENTENCE_MARKERS.has(name))
+    || (markers.length > 0 && markers.every(name => SCENE_MEDIA_MARKERS.has(name)));
+  if (!scene || request.netflix?.cue) return false;
+  // Only the sentence markers need the request's sentence to render, so a
+  // request without one can still fill media fields: it follows the modes.
   const { sentence, matchOffset, matched } = request;
-  return sentence.slice(0, matchOffset) === "" && sentence.slice(matchOffset + matched.length) === "";
+  return typeof sentence === "string" && typeof matched === "string"
+    && sentence.slice(0, matchOffset) === "" && sentence.slice(matchOffset + matched.length) === "";
 }
 
 export function canonicalAnkiFields(fields, templates, existing) {
