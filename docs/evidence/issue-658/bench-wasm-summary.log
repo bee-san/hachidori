@@ -1,0 +1,5 @@
+main-off: pass-2 median 40,329 ms (+0.0% vs main off), range 38,896-43,898, n=6; pass-1 median 39,539 ms; reply characters [4572592560]
+fix-off: pass-2 median 40,774 ms (+1.1% vs main off), range 38,940-2,693,235, n=6; pass-1 median 39,850 ms; reply characters [4572592560]
+main-on: pass-2 median 41,927 ms (+4.0% vs main off), range 40,377-44,587, n=6; pass-1 median 42,861 ms; reply characters [4572439817]
+fix-on: pass-2 median 42,306 ms (+4.9% vs main off), range 39,090-43,427, n=6; pass-1 median 41,937 ms; reply characters [4568702195]
+fix-off vs main-off: +1.1%; fix-on vs main-on: +0.9%

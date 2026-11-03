@@ -41,9 +41,11 @@ distinct) and `neko-16.txt` (their first 16 code points).
 - `mutate.py`: the four mutations of `src/lookup.cpp` (`mutations.log`).
 - `bench-native.sh`, `bench-summary.py`: hoshidicts `benchmark-lookup`
   (`bench-native.log`, `bench-native-summary.log`).
-- `bench-wasm.mjs` (#620's harness), `bench-wasm.sh`: `hdw_lookup` through
-  main's committed threaded bundle and this branch's (`bench-wasm.log`,
-  `bench-wasm-summary.log`).
+- `bench-wasm.mjs` (#620's harness), `bench-wasm.sh`, `bench-wasm-summary.py`:
+  `hdw_lookup` through main's committed threaded bundle and this branch's
+  (`bench-wasm.log`, `bench-wasm-summary.log`). One pass, "fix-off round 4
+  pass 2", stalled on the shared host for 44.9 minutes; the medians are
+  unaffected.
 - `build-wasm.sh`: `wasm/build.sh` with 8 jobs. `wasm-main-sources.sha256`:
   the gitlink at `35e2dab`, equal to main's committed bundles;
   `wasm-fix-1.sha256`, `wasm-fix.sha256`: two builds of `a95758b`;
