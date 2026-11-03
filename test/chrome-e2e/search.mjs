@@ -16,8 +16,9 @@ import { resolve } from "node:path";
 import { describe } from "node:test";
 import { check, diagnostics, EXTENSION, step } from "./harness.mjs";
 import { popupRoot } from "../chrome-popup-root.mjs";
+import { nestedLinksFixture } from "../make-fixture.mjs";
 import { popupReader } from "./popup-reader.mjs";
-import { browser, editSettingsControls, extensionId, page, pageUrl } from "./session.mjs";
+import { browser, editSettingsControls, extensionId, installMediaArchive, page, pageUrl } from "./session.mjs";
 
 const READER_SCRIPTS = JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"))
   .content_scripts[0].js.filter(src => src !== "reader-options.js");
@@ -42,8 +43,11 @@ async function searchFrame(target) {
 
 // The open search pages, as the worker finds them: tabs hide extension URLs.
 const searchPages = () => page.evaluate(async url => Promise.all((await chrome.runtime.getContexts({
-  contextTypes: ["TAB"], documentUrls: [url] })).map(async ({ tabId, windowId }) => ({ tabId, windowId,
-  active: (await chrome.tabs.get(tabId)).active, type: (await chrome.windows.get(windowId)).type }))), searchUrl());
+  contextTypes: ["TAB"], documentUrls: [url] })).map(async ({ tabId, windowId }) => {
+  const window = await chrome.windows.get(windowId);
+  return { tabId, windowId, active: (await chrome.tabs.get(tabId)).active, type: window.type,
+    size: [window.width, window.height] };
+})), searchUrl());
 
 const writeOptions = patch => page.evaluate(async patch => {
   const { options } = await chrome.storage.local.get("options");
@@ -162,11 +166,14 @@ describe("search page", () => {
       const { openSearchPage } = await import(chrome.runtime.getURL("search-window.js"));
       await openSearchPage(chrome, "popup");
     });
+    // Reading → Search page sets the window's size (#656).
+    await editSettingsControls(page, { "opt-search-window-width": "520", "opt-search-window-height": "480" });
     const windowOpened = browser.waitForTarget(target => target.url() === searchUrl() && target !== searchTab.target(),
       { timeout: 15_000 });
     await openPopupWindow();
     searchPopup = await (await windowOpened).page();
     const once = await searchPages();
+    await editSettingsControls(page, { "opt-search-window-width": "600", "opt-search-window-height": "640" });
     await searchTab.bringToFront();
     await openPopupWindow();
     const twice = await searchPages();
@@ -176,6 +183,8 @@ describe("search page", () => {
         && popupWindows(twice)[0].tabId === popupWindows(once)[0].tabId
         && twice.some(entry => entry.tabId === first[0].tabId && entry.type === "normal"),
       JSON.stringify({ once, twice }));
+    check("the popup window opens at the size set in Reading → Search page",
+      JSON.stringify(popupWindows(once)[0]?.size) === "[520,480]", JSON.stringify(popupWindows(once)));
   });
 
   step("searching on the search page", async () => {
@@ -331,6 +340,184 @@ describe("search page", () => {
     }
     await searchPopup.close();
     await searchTab.close();
+  });
+
+  // Reading → Search page → Look up words with a click (#656), off as
+  // Yomitan's scanning.enablePopupSearch is: a click on a word of the echoed
+  // query shows that word's results, and a click on a word in them opens it in
+  // a child popup, without the activation key. The nested-links fixture's
+  // definitions hold its other words.
+  step("clicking words on the search page", async () => {
+    const fixture = nestedLinksFixture();
+    await installMediaArchive(page, fixture.archive);
+    const tab = await browser.newPage();
+    tab.on("pageerror", e => diagnostics.push(`[search] pageerror: ${e.message}`));
+    let evidence;
+    try {
+      // Page lookups wait for the activation key, which nothing here holds.
+      await writeOptions({ lookupMode: "activationSticky", definitionLookupMode: "inherit" });
+      await tab.setViewport({ width: 960, height: 760 });
+      await tab.goto(searchUrl(), { waitUntil: "load" });
+      const frame = await searchFrame(tab);
+      await frame.waitForFunction(() => !document.getElementById("search-submit").disabled,
+        { polling: 100, timeout: 15_000 });
+      const popup = await popupReader(tab, 0, frameUrl());
+      const child = await popupReader(tab, 1, frameUrl());
+      // Each entry's definition says which one is shown.
+      const [rootDefinition, childDefinition, grandchildDefinition] =
+        ["A linked definition.", "The referenced entry.", "The final entry."];
+      const shows = (state, definition) => popup.visible(state) && state.plain.includes(definition);
+      const text = `${fixture.query}と${fixture.child}`;
+      await searchFor(tab, text);
+      const searched = await popup.waitForVisible(15_000, state => state.plain.includes(rootDefinition));
+      // The centre of the query's character at `index`; the frame fills the page.
+      const queryPoint = index => frame.evaluate(offset => {
+        const range = document.createRange();
+        range.setStart(document.getElementById("search-query").firstChild, offset);
+        range.setEnd(document.getElementById("search-query").firstChild, offset + 1);
+        const { x, y, width, height } = range.getBoundingClientRect();
+        return { x: x + width / 2, y: y + height / 2 };
+      }, index);
+      const clickQuery = async (index) => {
+        const { x, y } = await queryPoint(index);
+        await tab.mouse.click(x, y);
+      };
+      const clickDefinition = async (word) => {
+        const hit = await popup.definitionTextRect(word);
+        if (!hit) return false;
+        await tab.mouse.click(hit.rect.x + hit.rect.width / 2, hit.rect.y + hit.rect.height / 2);
+        return true;
+      };
+      const pause = () => new Promise(resolveWait => { setTimeout(resolveWait, 1_000); });
+
+      await clickQuery(text.indexOf(fixture.child));
+      await pause();
+      const queryOff = await popup.state();
+      const definitionOff = await clickDefinition(fixture.child);
+      await pause();
+      const childOff = await child.state();
+
+      await editSettingsControls(page, { "opt-search-click-lookup": true });
+      // Once the frame reads the switch on, its reader has heard of it.
+      await frame.waitForFunction(async () => (await chrome.storage.local.get("options")).options.searchClickLookup === true,
+        { polling: 100, timeout: 10_000 });
+      await tab.bringToFront();
+      await clickQuery(text.indexOf(fixture.child));
+      const queryOn = await popup.waitForVisible(15_000, state => state.plain.includes(childDefinition));
+      const definitionOn = await clickDefinition(fixture.grandchild);
+      const childOn = await child.waitForVisible(15_000, state => state.plain.includes(grandchildDefinition));
+      // A drag across the query's first word selects it and looks nothing up.
+      const start = await queryPoint(0), end = await queryPoint(fixture.query.length - 1);
+      await tab.mouse.move(start.x, start.y);
+      await tab.mouse.down();
+      await tab.mouse.move(end.x + 4, end.y, { steps: 5 });
+      await tab.mouse.up();
+      await pause();
+      const dragged = await popup.state();
+      const selected = await frame.evaluate(() => getSelection().toString());
+      await screenshot(tab, "search-click-lookup");
+      // Off, neither click changed the result or opened a child; on, the
+      // query's word replaced the result and the result's word opened a child.
+      evidence = { searched: searched !== null, keptOff: shows(queryOff, rootDefinition), definitionOff,
+        childOff: child.visible(childOff), queryOn: queryOn !== null, definitionOn, childOn: childOn !== null,
+        keptDrag: shows(dragged, childDefinition), selected, shown: dragged?.plain.slice(0, 80) };
+    } finally {
+      await writeOptions({ searchClickLookup: false, lookupMode: originalOptions.lookupMode ?? "hover",
+        definitionLookupMode: originalOptions.definitionLookupMode ?? "inherit" });
+      const removed = await page.evaluate(title => chrome.runtime.sendMessage({
+        target: "hoshidicts-offscreen", type: "hd_remove", title }), fixture.title);
+      if (!removed.ok) throw new Error(removed.error);
+      await tab.close();
+    }
+    check("Look up words with a click is off by default; on, a click on a word of the search page's query shows its results, one in the results opens a child popup, and a drag still selects text",
+      evidence.searched && evidence.keptOff && evidence.definitionOff && !evidence.childOff
+        && evidence.queryOn && evidence.definitionOn && evidence.childOn && evidence.keptDrag
+        && evidence.selected.startsWith(fixture.query),
+      JSON.stringify(evidence));
+  });
+
+  // The Anki Template switch (#656), where Yomitan's search page has its
+  // profile switch: it chooses the Template the built-in Anki button uses, as
+  // Settings → Anki → Set built-in does. It is search.html's, over an
+  // invisible copy in the frame's header.
+  step("choosing the Anki Template on the search page", async () => {
+    const storedAnki = () => page.evaluate(async () => (await chrome.storage.local.get("options")).options.anki);
+    const original = await storedAnki();
+    const tab = await browser.newPage();
+    tab.on("pageerror", e => diagnostics.push(`[search] pageerror: ${e.message}`));
+    let evidence;
+    try {
+      const withTemplates = templates => page.evaluate((anki, list) => globalThis.HDReaderOptions.normaliseAnki({
+        url: anki.url, apiKey: anki.apiKey, templates: list.map(([id, name]) => ({ ...anki.templates[0], id: id ?? anki.templates[0].id, name })),
+      }), original, templates);
+      await writeOptions({ anki: await withTemplates([[null, "Sentences"]]) });
+      // The popup window's default size.
+      await tab.setViewport({ width: 600, height: 640 });
+      await tab.goto(searchUrl(), { waitUntil: "load" });
+      const frame = await searchFrame(tab);
+      await frame.waitForFunction(() => !document.getElementById("search-submit").disabled,
+        { polling: 100, timeout: 15_000 });
+      const state = async () => ({
+        shell: await tab.evaluate(() => {
+          const select = document.getElementById("search-template");
+          return { hidden: select.hidden, value: select.value, choices: [...select.options].map(option => option.text),
+            heading: select.querySelector("optgroup")?.label ?? null, name: select.getAttribute("aria-label"),
+            focused: document.activeElement === select, rect: select.getBoundingClientRect().toJSON() };
+        }),
+        copy: await frame.evaluate(() => {
+          const select = document.querySelector("select.search-template");
+          return { hidden: select.hidden, value: select.value, visibility: getComputedStyle(select).visibility,
+            rect: select.getBoundingClientRect().toJSON() };
+        }),
+        order: (await storedAnki()).templates.map(({ id }) => id),
+        frameFocused: await tab.evaluate(() => document.activeElement?.localName === "iframe"),
+      });
+      const settled = async (predicate) => {
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+          const current = await state();
+          if (predicate(current) || Date.now() >= deadline) return current;
+          await new Promise(resolveWait => { setTimeout(resolveWait, 100); });
+        }
+      };
+      const single = await state();
+      await writeOptions({ anki: await withTemplates([[null, "Sentences"], ["e2e-words", "Words"], ["e2e-kanji", "Kanji"]]) });
+      const id = original.templates[0].id;
+      const listed = await settled(current => !current.shell.hidden && !current.copy.hidden);
+      await screenshot(tab, "search-template-switch");
+      // The arrow keys walk the list, which stays put: Words after Sentences,
+      // then Sentences and Kanji before it.
+      await tab.focus("#search-template");
+      await tab.keyboard.press("ArrowDown");
+      const down = await settled(current => current.order[0] === "e2e-words" && current.copy.value === "e2e-words");
+      await tab.keyboard.press("ArrowUp");
+      await tab.keyboard.press("ArrowUp");
+      const up = await settled(current => current.order[0] === "e2e-kanji" && current.copy.value === "e2e-kanji");
+      // A pointer choice made from the frame hands focus back to it.
+      await frame.focus("#search-input");
+      await tab.click("#search-template");
+      await tab.select("#search-template", id);
+      const pointed = await settled(current => current.order[0] === id && current.copy.value === id && current.frameFocused);
+      const same = (left, right) => ["x", "y", "width", "height"].every(key => Math.abs(left[key] - right[key]) < 0.5);
+      evidence = { single, listed, down, up, pointed, apiKey: (await storedAnki()).apiKey === original.apiKey,
+        aligned: same(listed.shell.rect, listed.copy.rect) };
+    } finally {
+      await writeOptions({ anki: await page.evaluate(anki => globalThis.HDReaderOptions.normaliseAnki(anki), original) });
+      await tab.close();
+    }
+    const { single, listed, down, up, pointed } = evidence;
+    const id = original.templates[0].id;
+    check("the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
+      single.shell.hidden && single.copy.hidden
+        && !listed.shell.hidden && listed.shell.name === "Anki Template" && listed.shell.heading === "Anki Template"
+        && JSON.stringify(listed.shell.choices) === '["Kanji","Sentences","Words"]' && listed.shell.value === id
+        && listed.copy.visibility === "hidden" && listed.copy.value === id && evidence.aligned
+        && JSON.stringify(down.order) === JSON.stringify(["e2e-words", id, "e2e-kanji"]) && down.shell.focused
+        && down.copy.value === "e2e-words"
+        && JSON.stringify(up.order) === JSON.stringify(["e2e-kanji", id, "e2e-words"]) && up.shell.focused
+        && JSON.stringify(pointed.order) === JSON.stringify([id, "e2e-kanji", "e2e-words"]) && pointed.frameFocused
+        && pointed.copy.value === id && evidence.apiKey,
+      JSON.stringify(evidence));
   });
 
   // Design → Custom JavaScript on the search page (#644). Chrome runs no user
