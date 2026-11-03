@@ -987,9 +987,9 @@ URLs. The popup window is 600 × 640 by default, larger than Yomitan's
 Search page → Popup window width** and **Popup window height**
 (`searchWindowWidthPx`, `searchWindowHeightPx`, #656) set its size, as
 Yomitan's Popup window → Size does (`popupWindow.width` and `height`), from
-200 to 16,384 pixels: Chrome fits a larger window to the screen, while Firefox
-does not, makes one larger than 16,384 pixels that size and one of 2^31 - 1
-its 95-pixel minimum.
+200 to 16,384 pixels. Chrome fits a larger window to the screen. Firefox does
+not: it opens a window asked to be larger than 16,384 pixels at 16,384, and one
+asked to be 2^31 − 1 pixels wide at its 95-pixel minimum.
 
 **Appearance.** The page follows the popup theme as Settings does:
 `settings-theme.js` applies the saved theme before the first paint and

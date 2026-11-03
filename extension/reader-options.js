@@ -250,8 +250,9 @@
     // One snapshot per day, each a complete saved-state payload with lookup
     // statistics rows: the cap bounds how many copies the profile stores.
     automaticBackupDays: [1, 30],
-    // Chrome fits a larger window to the screen; Firefox makes one larger
-    // than 16,384 pixels that size, and one of 2^31 - 1 its 95-pixel minimum.
+    // Chrome fits a larger window to the screen. Firefox does not: it opens a
+    // window asked to be larger than 16,384 pixels at 16,384, and one asked to
+    // be 2^31 - 1 pixels wide at its 95-pixel minimum.
     searchWindowWidthPx: [200, 16384],
     searchWindowHeightPx: [200, 16384],
   };
