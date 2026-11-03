@@ -758,6 +758,13 @@ it chooses the profile in effect:
 The popup shows the profile in effect only when it differs from the active
 one, as a small language label beside the close button.
 
+Each popup renders with its own profile in effect: that profile's dictionary
+view (display names, favourites, frequency modes and tab groups), its custom
+buttons, its summary, metadata and image options, and its Anki Templates,
+decks and pronunciation sources. The popups share one shadow root and so one
+theme; the theme, its palette and the other look keys follow the root popup's
+profile in effect.
+
 ### 8.2 Text gate
 
 `onlyScanJapaneseText` stays one profile key; its predicate is the pack's

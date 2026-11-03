@@ -54,6 +54,7 @@ const PLANNED = [
   "Settings edits English while Japanese is active, and only English changes",
   "pitch accent, the clicked-kanji dictionary and Anki's note-type setup hide for English and show for Japanese",
   "the Arabic-English dictionary's block takes its targetLanguage as its default lang",
+  "a popup that automatic switching gives English shows English's display name, custom buttons and theme",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -332,8 +333,8 @@ try {
   reading.on("console", entry => { if (["error", "warn"].includes(entry.type())) errors.push(`[page] console: ${entry.text()}`); });
   await reading.setViewport({ width: 1280, height: 720 });
   const popup = await popupReader(reading);
-  // The language marks of the root popup's glossary blocks (docs/languages.md 10.1).
-  const popupBlocks = async page => {
+  // Runs `declaration` on the root popup, inside its closed shadow root.
+  const inPopup = async (page, declaration) => {
     const cdp = await page.createCDPSession();
     try {
       const { root } = await cdp.send("DOM.getDocument", { depth: -1, pierce: true });
@@ -351,15 +352,17 @@ try {
       if (nodeId === null) return [];
       const { object } = await cdp.send("DOM.resolveNode", { nodeId });
       const { result } = await cdp.send("Runtime.callFunctionOn", { objectId: object.objectId, returnByValue: true,
-        functionDeclaration: `function () {
-          return [...this.querySelectorAll("[data-hd-lang-default]")].map(node => ({
-            lang: node.getAttribute("lang"), default: node.hasAttribute("data-hd-lang-default") }));
-        }` });
-      return result.value ?? [];
+        functionDeclaration: declaration });
+      return result.value ?? null;
     } finally {
       await cdp.detach().catch(() => {});
     }
   };
+  // The language marks of the root popup's glossary blocks (docs/languages.md 10.1).
+  const popupBlocks = async page => (await inPopup(page, `function () {
+    return [...this.querySelectorAll("[data-hd-lang-default]")].map(node => ({
+      lang: node.getAttribute("lang"), default: node.hasAttribute("data-hd-lang-default") }));
+  }`)) ?? [];
 
   const hoverAt = async (path, selector, index, accept) => {
     await reading.bringToFront();
@@ -449,7 +452,34 @@ try {
     await message({ target: "hoshidicts-worker", type: "hd_language_selection_write", baseRevision: selection.revision,
       autoSwitch: true });
     await until(async () => (await storage(["languageSelection"])).languageSelection?.autoSwitch === true);
+    // English's dictionary gets a display name; only Japanese gets a link
+    // button and the Plain theme (docs/languages.md 3, 8.1).
+    let stored = await storage(["options", "dictionaryState"]);
+    const englishRow = stored.dictionaryState.dictionaries.find(row => row.title === ENGLISH.title);
+    const rows = new Map(stored.dictionaryState.dictionaries.map(row => [row.id, row]));
+    const englishView = stored.dictionaryState.profiles.en;
+    await message({ target: "hoshidicts-worker", type: "hd_state_cas", profileId: "en", baseRevision: stored.dictionaryState.revision,
+      dictionaries: englishView.dictionaries.map(entry => ({ ...rows.get(entry.id), enabled: entry.enabled !== false,
+        ...(entry.id === englishRow.id ? { displayName: "EN-ALIAS" } : {}) })),
+      groups: englishView.groups ?? [] });
+    await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision, profileId: "ja",
+      options: { popupTheme: "plain", customButtons: [{ id: "jaonly", type: "link", label: "JA-ONLY", url: "https://jisho.org/search/{term}" }] } });
+    await until(async () => {
+      stored = await storage(["options", "dictionaryState"]);
+      return stored.dictionaryState.dictionaries.find(row => row.id === englishRow.id)?.displayName === "EN-ALIAS"
+        && JSON.stringify(stored.options).includes("JA-ONLY");
+    });
     const english = await hoverAt("/mixed.html", "#english", 10, current => current.plain.includes("to move swiftly on foot"));
+    const own = await inPopup(reading, `function () {
+      return { alias: this.textContent.includes("EN-ALIAS"), jaOnly: this.innerHTML.includes("JA-ONLY"),
+        renderer: this.getRootNode().host?.dataset.hoshidictsRenderer ?? null };
+    }`);
+    check("a popup that automatic switching gives English shows English's display name, custom buttons and theme",
+      own?.alias === true && own.jaOnly === false && own.renderer === "default", JSON.stringify(own));
+    stored = await storage(["options"]);
+    await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision, profileId: "ja",
+      options: { popupTheme: "default", customButtons: [] } });
+    await until(async () => !JSON.stringify((await storage(["options"])).options).includes("JA-ONLY"));
     const active = (await storage(["languageSelection"])).languageSelection?.activeProfileId;
     const japanese = await hoverAt("/mixed.html", "#japanese", 0, current => current.plain.includes("食べる"));
     check(PLANNED[13], Boolean(english) && Boolean(japanese) && active === "ja",

@@ -133,12 +133,15 @@
   const levels = [rootLevel];
   let nextLevelId = 0;
   const themeHost = globalThis.HDThemeHost.createThemeHost({
-    getOptions: () => options,
+    // The popups' look follows the root view's profile in effect (8.1).
+    getOptions: () => controlsOptions(),
     onReady() {
       styleGeneration = -1;
       appearance?.refreshHighlight();
       wordHighlights?.refreshColors();
       if (shadow) ensureDictionaryStyles(currentGeneration);
+      // A rebuilt view lost the label naming its profile in effect.
+      if (readingProfiles !== null) for (const level of levels) syncProfileLabel(level);
     },
   });
   // The stored options record, whose `profiles` say whether the records have
@@ -186,7 +189,9 @@
   // holds every profile's projection, and each lookup uses the profile in
   // effect: the active profile or, with automatic switching, the one whose
   // language the hovered element's `lang` names. `options`, `dictionaries` and
-  // `dictionaryGroups` stay the active profile's. In the single-profile shape
+  // `dictionaryGroups` are the active profile's; each view renders with its
+  // own profile in effect (profileView), and the popups' look, one theme in
+  // one shadow root, follows the root view's. In the single-profile shape
   // there are no reading profiles and every path below is today's.
   // ---------------------------------------------------------------------------
   let storedDictionaryRecord = null;
@@ -296,6 +301,17 @@
     return readingProfiles?.get(request?.profileId) ?? activeReadingProfile();
   }
 
+  // The profile a level's view renders with: none in the single-profile shape.
+  function levelProfile(level) {
+    return readingProfiles === null ? null : requestProfile(level?.currentViewRequest);
+  }
+
+  // A profile's options and dictionary view; without one, the globals.
+  function profileView(profile) {
+    return profile ? { options: profile.options, dictionaries: profile.dictionaries, groups: profile.groups }
+      : { options, dictionaries, groups: dictionaryGroups };
+  }
+
   function primarySubtag(tag) {
     return typeof tag === "string" ? tag.trim().split(/[-_]/u)[0].toLowerCase() : "";
   }
@@ -327,9 +343,9 @@
     return profileForLang(labelled?.getAttribute?.("lang")) ?? active;
   }
 
-  // The profile the popups' Anki, pronunciation and word-status controls act
-  // for, and name in their requests: the root view's profile in effect, else
-  // the active profile (docs/languages.md 5.4, 8.1).
+  // The root view's profile in effect, else the active profile: the popups'
+  // look follows it, and so do the word-status controls' options. Anki and
+  // pronunciation have a controller per profile (perProfileControllers).
   let controlsProfileId = null;
 
   function controlsProfile() {
@@ -345,6 +361,42 @@
     audio?.update(next);
     mining?.update(next);
     wordStatusActions?.update(next);
+  }
+
+  // One controller per profile in effect, so a popup's notes and audio use
+  // its own profile's Templates, decks and sources (docs/languages.md 5.4,
+  // 8.1). `update` gives each its profile's options; without profiles there
+  // is one controller and it gets `next`, as today.
+  function perProfileControllers(create) {
+    const controllers = new Map();
+    return {
+      of(profile) {
+        const key = profile?.id ?? null;
+        if (!controllers.has(key)) {
+          const controller = create(profile);
+          controller.update(profileView(profile).options, optionsStorageRevision >= 0);
+          controllers.set(key, controller);
+        }
+        return controllers.get(key);
+      },
+      each(run) {
+        for (const controller of controllers.values()) run(controller);
+      },
+      update(next, ready) {
+        for (const [key, controller] of controllers) {
+          controller.update(key === null ? next : readingProfiles?.get(key)?.options ?? next, ready);
+        }
+      },
+    };
+  }
+
+  // The custom buttons of a level's view are its profile in effect's.
+  function syncCustomButtons(level) {
+    const buttons = profileView(levelProfile(level)).options.customButtons;
+    const key = JSON.stringify(buttons);
+    if (!level.view || level.customButtonsKey === key) return;
+    level.customButtonsKey = key;
+    level.view.setCustomButtons(buttons);
   }
 
   // The popup names the profile in effect when it is not the active one
@@ -373,13 +425,18 @@
     if (label.parentNode !== level.popup) level.popup.append(label);
   }
 
-  // A root view's profile becomes the controls' before it binds them.
+  // Before a view renders it takes its profile's custom buttons, and a root
+  // view's profile becomes the one the look and word-status controls follow.
   function adoptControlsProfile(request, level) {
-    if (readingProfiles === null || level !== rootLevel) return;
+    if (readingProfiles === null) return;
+    syncCustomButtons(level);
+    if (level !== rootLevel) return;
     const id = requestProfile(request)?.id ?? null;
     if (id === controlsProfileId) return;
     controlsProfileId = id;
     syncControls();
+    appearance?.update(controlsOptions());
+    void themeHost.sync();
   }
 
   // A lookup inside a popup uses its parent's profile, or with automatic
@@ -436,7 +493,9 @@
   let mediaCacheBytes = 0;
   let activeMediaRequests = 0;
   let mediaQueue = [];
-  let popupImageSources = null;
+  // Profile id (null without profiles) → its effective image route.
+  const popupImageSources = new Map();
+  const popupMediaResolvers = new Map();
 
   let lastPointer = null;
   let scanTimer = null;
@@ -523,8 +582,10 @@
       const customButtonsChanged = JSON.stringify(next.customButtons) !== JSON.stringify(options.customButtons);
       const miningChanged = customButtonsChanged;
       options = next;
+      // Each profile's options carry the host's capabilities too.
+      if (customButtonsChanged && readingProfiles !== null) rebuildReadingProfiles();
       if (customButtonsChanged) {
-        for (const level of levels) level.view?.setCustomButtons(options.customButtons);
+        for (const level of levels) syncCustomButtons(level);
       }
       if (miningChanged) mining?.update(options, optionsStorageRevision >= 0);
     } catch {
@@ -543,8 +604,8 @@
 
   const projectHostOptions = stored => applyHostCapabilities(projectContentOptions(stored));
 
-  function dictionaryPresentation() {
-    return dictionaries
+  function dictionaryPresentation(profile = null) {
+    return profileView(profile).dictionaries
       .filter((entry) => entry.enabled !== false)
       .map((entry) => ({
         id: entry.id,
@@ -555,10 +616,11 @@
       }));
   }
 
-  function dictionaryTabGroups() {
-    const titles = new Map(dictionaries.filter((entry) => entry.enabled)
+  function dictionaryTabGroups(profile = null) {
+    const view = profileView(profile);
+    const titles = new Map(view.dictionaries.filter((entry) => entry.enabled)
       .map((entry) => [entry.id, entry.title]));
-    return dictionaryGroups.map((group) => ({
+    return view.groups.map((group) => ({
       id: group.id,
       name: group.name,
       dictionaries: group.dictionaryIds.filter((id) => titles.has(id)).map((id) => titles.get(id)),
@@ -1613,17 +1675,22 @@
     return job.promise;
   }
 
-  function imageSourceContext() {
-    const next = globalThis.HDReaderOptions.resolvePopupImageSources(options.popupImageSource, dictionaries, dictionaryGroups);
+  function imageSourceContext(profile = null) {
+    const key = profile?.id ?? null;
+    const view = profileView(profile);
+    const next = globalThis.HDReaderOptions.resolvePopupImageSources(view.options.popupImageSource, view.dictionaries, view.groups);
     // Keep the effective route's identity through alias/name-only changes.
     // In-flight consumers capture it, independently of broad storage revisions.
-    if (next !== popupImageSources && !sameDictionaries(next, popupImageSources)) popupImageSources = next;
-    return { popupImageSources, resolveMedia: resolvePopupMedia };
+    const previous = popupImageSources.get(key) ?? null;
+    if (!popupImageSources.has(key) || (next !== previous && !sameDictionaries(next, previous))) popupImageSources.set(key, next);
+    if (!popupMediaResolvers.has(key)) popupMediaResolvers.set(key, request => resolvePopupMedia(request, key));
+    return { popupImageSources: popupImageSources.get(key), resolveMedia: popupMediaResolvers.get(key) };
   }
 
-  function resolvePopupMedia(request) {
-    const sources = popupImageSources;
-    const isCurrent = () => sources === popupImageSources && request.generation === currentGeneration && request.isCurrent();
+  function resolvePopupMedia(request, key = null) {
+    const sources = popupImageSources.get(key) ?? null;
+    const isCurrent = () => sources === (popupImageSources.get(key) ?? null) && request.generation === currentGeneration
+      && request.isCurrent();
     const ownedRequest = { ...request, isCurrent };
     if (sources !== null) return resolveRoutedMedia(ownedRequest, sources);
     // Automatic retains the direct cache/queue path without candidate scans.
@@ -2170,10 +2237,12 @@
     buildLevelUi(rootLevel);
   }
 
-  function buildLevelUi(level) {
-    mining ??= globalThis.HDAnki.createAnkiController({
+  // The popups' Anki controls: a controller per profile in effect, bound by
+  // each view's profile (perProfileControllers).
+  function ankiControllers() {
+    const set = perProfileControllers(profile => globalThis.HDAnki.createAnkiController({
       send: async (type, fields) => {
-        const reply = await sendRequest(type, { ...fields, ...profileFields(controlsProfile()) }, "hachidori-anki");
+        const reply = await sendRequest(type, { ...fields, ...profileFields(profile) }, "hachidori-anki");
         // The empty-deck hint is for a new profile's Templates (docs/languages.md
         // 6.3); without profiles the button stays as it is today (4.5).
         if (type !== "hd_anki_status" || readingProfiles !== null || reply?.emptyDeck === undefined) return reply;
@@ -2188,24 +2257,69 @@
       // effect (docs/languages.md 6.3); an overlay's host opens Settings itself.
       openSettings: overlayMode ? null : () => {
         // A lost reply may follow a successful open, so never retry it.
-        void sendRequest("hd_open_settings", { section: "anki", ...profileFields(controlsProfile()) }, WORKER_TARGET)
+        void sendRequest("hd_open_settings", { section: "anki", ...profileFields(profile) }, WORKER_TARGET)
           .catch(error => console.debug("hachidori: Settings could not be opened", error));
       },
+    }));
+    return {
+      bind: (items, context) => set.of(levelProfile(context.owner)).bind(items, context),
+      retire: owner => set.each(controller => controller.retire(owner)),
+      refresh: owner => set.each(controller => controller.refresh(owner)),
+      update: (next, ready) => set.update(next, ready),
+    };
+  }
+
+  // The popups' pronunciation controls, a controller per profile in effect;
+  // one chooser is open at a time.
+  function audioControllers() {
+    const set = perProfileControllers(profile => {
+      const controller = globalThis.HDAudio.createAudioController({ window, popupRect,
+        send: (type, fields) => sendRequest(type, { ...fields, ...profileFields(profile) }, "hachidori-audio"),
+        // The chooser places itself inside its pane. Open, it is that pane's
+        // interaction, so a child pane that would cover its choices closes.
+        onMenuChange(owner) {
+          if (controller.hasMenu()) set.each(other => { if (other !== controller) other.closeMenu(false); });
+          cancelCandidateScan();
+          clearHideTimer();
+          if (audio.hasMenu(owner) && levels.length > owner.depth + 1 && !hasProtectedNote(owner.depth + 1)) {
+            dismissLevels(owner.depth + 1, false);
+          }
+        },
+        onSelectionChange: owner => mining.refresh(owner),
+      });
+      return controller;
     });
-    mining.update(controlsOptions(), optionsStorageRevision >= 0);
-    audio ??= globalThis.HDAudio.createAudioController({ window, popupRect,
-      send: (type, fields) => sendRequest(type, { ...fields, ...profileFields(controlsProfile()) }, "hachidori-audio"),
-      // The chooser places itself inside its pane. Open, it is that pane's
-      // interaction, so a child pane that would cover its choices closes.
-      onMenuChange(owner) {
-        cancelCandidateScan();
-        clearHideTimer();
-        if (audio.hasMenu(owner) && levels.length > owner.depth + 1 && !hasProtectedNote(owner.depth + 1)) {
-          dismissLevels(owner.depth + 1, false);
-        }
+    const some = test => {
+      let found = false;
+      set.each(controller => { found ||= Boolean(test(controller)); });
+      return found;
+    };
+    return {
+      bind: (items, context) => set.of(levelProfile(context.owner)).bind(items, context),
+      retire: owner => set.each(controller => controller.retire(owner)),
+      dispose: () => set.each(controller => controller.dispose()),
+      closeMenu: (...args) => {
+        let closed = false;
+        set.each(controller => { closed = controller.closeMenu(...args) || closed; });
+        return closed;
       },
-      onSelectionChange: owner => mining.refresh(owner),
-    });
+      hasMenu: owner => some(controller => controller.hasMenu(owner)),
+      positionMenu: owner => set.each(controller => controller.positionMenu(owner)),
+      playButton: (...args) => some(controller => controller.playButton(...args)),
+      selectionFor(result) {
+        let selection = null;
+        set.each(controller => { selection ??= controller.selectionFor(result); });
+        return selection;
+      },
+      settleAutoplay: (owner, request) => set.each(controller => controller.settleAutoplay(owner, request)),
+      update: (next, ready) => set.update(next, ready),
+    };
+  }
+
+  function buildLevelUi(level) {
+    mining ??= ankiControllers();
+    mining.update(controlsOptions(), optionsStorageRevision >= 0);
+    audio ??= audioControllers();
     audio.update(controlsOptions(), optionsStorageRevision >= 0);
     wordStatusActions ??= globalThis.HDWordHighlights.createWordStatusActions({
       send: (type, fields) => sendRequest(type, fields, WORKER_TARGET),
@@ -2277,6 +2391,8 @@
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
+    const customButtons = profileView(levelProfile(level)).options.customButtons;
+    level.customButtonsKey = JSON.stringify(customButtons);
     level.view = themeHost.createView({
       onRendererRetired() {
         audio.retire(level);
@@ -2293,13 +2409,13 @@
       document,
       getPageZoom: () => pageZoom,
       getPopupScalePercent: () => options.popupScalePercent,
-      getPopupColumns: () => options.popupColumns,
-      getImageHoverPreview: () => options.imageHoverPreview,
+      getPopupColumns: () => profileView(levelProfile(level)).options.popupColumns,
+      getImageHoverPreview: () => profileView(levelProfile(level)).options.imageHoverPreview,
       // The docked root's size is the search page's results area.
       onResizeStart: level === rootLevel && dock ? null : event => startPopupResize(event, level),
       onResizeMove: movePopupResize,
       onResizeEnd: stopPopupResize,
-      customButtons: options.customButtons,
+      customButtons,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
@@ -2363,6 +2479,8 @@
     mining.bind(rendered.miningActions, { ...context, getRequest: result => {
       const candidate = level.activeCandidate;
       const selection = shadow.getSelection?.() ?? window.getSelection();
+      // The view's own profile's dictionaries (docs/languages.md 8.1).
+      const { dictionaries } = profileView(readingProfiles === null ? null : requestProfile(request));
       const frequencyModes = new Map(dictionaries.map(item => [item.title, item.frequencyMode]));
       const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
@@ -3050,10 +3168,18 @@
     else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
-  function compactSummaryOptions() {
-    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
-      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
-      compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
+  function compactSummaryOptions(source = options) {
+    return { showCompactDefinitionSummary: source.showCompactDefinitionSummary,
+      compactDefinitionSummaryCount: source.compactDefinitionSummaryCount,
+      compactDefinitionSummaryDictionary: source.compactDefinitionSummaryDictionary };
+  }
+
+  // What a view's dictionaries look like: its profile in effect's display
+  // names, favourites, frequency modes, tab groups, summary and metadata.
+  function presentationContext(profile = null) {
+    const own = profileView(profile).options;
+    return { dictionaryPresentation: dictionaryPresentation(profile), dictionaryTabGroups: dictionaryTabGroups(profile),
+      ...compactSummaryOptions(own), ...imageSourceContext(profile), ...globalThis.HDPopup.metadataOptions(own) };
   }
 
   function openExternalLink({ url, active }) {
@@ -3072,15 +3198,11 @@
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: level.currentViewRequest?.blur?.state ?? "revealed",
-      dictionaryPresentation: dictionaryPresentation(),
-      dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
       language: renderLanguage(level.currentViewRequest),
       onExternalLink: openExternalLink,
       onInternalLink: (link) => onInternalLink(link, level),
-      ...imageSourceContext(),
-      ...compactSummaryOptions(),
-      ...globalThis.HDPopup.metadataOptions(options),
+      ...presentationContext(levelProfile(level)),
     };
   }
 
@@ -4691,11 +4813,15 @@
 
   // A presentation update can replace a compact summary without a render.
   function updateDictionaryPresentation() {
-    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      ...compactSummaryOptions(), ...imageSourceContext(), ...globalThis.HDPopup.metadataOptions(options) };
+    const contexts = new Map();
+    const context = profile => {
+      if (!contexts.has(profile)) contexts.set(profile, presentationContext(profile));
+      return contexts.get(profile);
+    };
+    context(levelProfile(rootLevel));
     for (const level of levels) {
       if (!level.popup || level.popup.hidden) continue;
-      level.view.updateDictionaryPresentation(context);
+      level.view.updateDictionaryPresentation(context(levelProfile(level)));
       level.definitionReveal.sync();
     }
   }
@@ -4850,8 +4976,8 @@
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
     syncNetflix();
-    if (customButtonsChanged) {
-      for (const level of levels) level.view?.setCustomButtons(options.customButtons);
+    if (customButtonsChanged || readingProfiles !== null) {
+      for (const level of levels) syncCustomButtons(level);
     }
     if (countsChanged) {
       for (const level of levels) {
@@ -4886,7 +5012,7 @@
     // The reveal mode decides whether blurred definitions are buttons.
     if (optionsArrived || blurChanged) for (const level of levels) level.definitionReveal?.sync();
     syncControls();
-    appearance?.update(options);
+    appearance?.update(controlsOptions());
     void themeHost.sync();
     // After the appearance, so a changed theme's palette is on the host.
     syncWordHighlights();
