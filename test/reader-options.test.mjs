@@ -242,3 +242,34 @@ test("hover scan delays stay immediate by default and the definition delay follo
   assert.equal(normaliseOptions({ hoverDelayMs: 250 }).scanDelayMs, 0, "the retired hover delay is not revived");
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("scanDelayMs") && !KEYBIND_TOGGLE_OPTIONS.includes("definitionScanDelayMs"));
 });
+
+// Issue #656: Reading → Search page's click lookups, off as Yomitan's
+// scanning.enablePopupSearch is, and the popup window's size, 600 × 640 as
+// before the setting.
+test("the search page's click lookups stay off and its popup window keeps its size until set", () => {
+  const { DESIGN_OPTION_KEYS, NUMBER_RANGES } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.searchClickLookup, false);
+  assert.equal(normaliseOptions({}).searchClickLookup, false, "missing");
+  assert.deepEqual(validateOptionsPatch({ searchClickLookup: true }), { searchClickLookup: true });
+  for (const garbage of ["yes", 1, null]) {
+    assert.equal(normaliseOptions({ searchClickLookup: garbage }).searchClickLookup, false, `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ searchClickLookup: garbage }), /invalid reader option/);
+  }
+  assert.ok(KEYBIND_TOGGLE_OPTIONS.includes("searchClickLookup"), "Toggle option can flip it");
+
+  assert.deepEqual([DEFAULT_OPTIONS.searchWindowWidthPx, DEFAULT_OPTIONS.searchWindowHeightPx], [600, 640]);
+  assert.deepEqual(validateOptionsPatch({ searchWindowWidthPx: 900, searchWindowHeightPx: 300 }),
+    { searchWindowWidthPx: 900, searchWindowHeightPx: 300 });
+  // Firefox makes a larger window 16,384 pixels and one of 2^31 - 1 its 95-pixel minimum.
+  for (const key of ["searchWindowWidthPx", "searchWindowHeightPx"]) {
+    assert.deepEqual(NUMBER_RANGES[key], [200, 16384]);
+    for (const garbage of [199, 16385, 1.5, "600", null]) {
+      assert.throws(() => validateOptionsPatch({ [key]: garbage }), /invalid reader option/, `${key} ${JSON.stringify(garbage)}`);
+    }
+  }
+  assert.deepEqual(projectStoredOptions({ searchWindowWidthPx: 50, searchWindowHeightPx: 2147483647 }),
+    { searchWindowWidthPx: 200, searchWindowHeightPx: 16384 }, "stored values are clamped");
+  for (const key of ["searchClickLookup", "searchWindowWidthPx", "searchWindowHeightPx"]) {
+    assert.ok(!DESIGN_OPTION_KEYS.includes(key), `${key} is a Reading option, not reset with Design`);
+  }
+});
