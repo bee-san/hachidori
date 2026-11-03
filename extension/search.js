@@ -143,7 +143,8 @@ function show(shownLine) {
   before.hidden = !visit?.older;
   after.dataset.text = visit?.newer.text ?? "";
   after.hidden = !visit;
-  where.textContent = visit ? `Earlier line -${visit.depth}${visit.older ? " · ▲ earlier" : ""} · ▼ later` : "";
+  const earlier = visit?.older ? " · ▲ earlier" : "";
+  where.textContent = visit ? `Earlier line -${visit.depth}${earlier} · ▼ later` : "";
   where.hidden = !visit;
   lines.hidden = false;
   query.hidden = false;
@@ -201,10 +202,11 @@ function move(dx, dy, repeat) {
   const node = query.firstChild;
   if (!shownLine || !node) return false;
   const matchedEnd = shownLine.match?.at === shownLine.cursor ? shownLine.match.end : 0;
-  const { result, to } = rowKey(navigation, shownLine.text, textRows(node), shownLine.cursor, matchedEnd, dx, dy,
-    options.onlyScanJapaneseText);
+  const { result, to } = rowKey(navigation, { text: shownLine.text, rows: textRows(node),
+    japaneseOnly: options.onlyScanJapaneseText }, shownLine.cursor, matchedEnd, dx, dy);
   // A held Left/Right stops at the text's ends: only a fresh press goes round a one-row text's.
-  const cursor = repeat && dx && (dx > 0 ? to < shownLine.cursor : to > shownLine.cursor) ? shownLine.cursor : to;
+  const wentRound = dx > 0 ? to < shownLine.cursor : to > shownLine.cursor;
+  const cursor = repeat && dx && wentRound ? shownLine.cursor : to;
   if (result === ROW_STAY && dy && (dy < 0 || visit)) {
     void stepLine(dy);
   } else if (cursor !== shownLine.cursor) {

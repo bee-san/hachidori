@@ -187,7 +187,8 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `debug-log.js` the debug log every extension context writes to one
   IndexedDB ring: redacted warnings, errors and failed requests, the errors a
   page shows (with *Copy error details* beside them) and the page actions
-  before them;
+  before them, whose IndexedDB request and transaction promises the search
+  history (`search-history.js`) shares;
   `activation-settings.js` the Reading → Activation key or button picker and
   its *Press to set* recorder;
   `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`

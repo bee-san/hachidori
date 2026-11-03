@@ -50,82 +50,89 @@ export function firstSelectable(text, from, japaneseOnly) {
   return null;
 }
 
+// A line the cursor moves over: `text`, its layout `rows` (textRows, or null
+// while it is not laid out) and `japaneseOnly`, whether only Japanese letters
+// hold the cursor.
+
+// In reading order, without the layout (vjo_text_row_step's walk): the stop a
+// step goes to, null past the text's end that way, and for an end the text's
+// first and last stops and whether a line break lies between them.
+function readingOrder({ text, japaneseOnly }, cursor, from, direction) {
+  const found = { to: null, first: null, last: null, split: false };
+  let broken = false;
+  for (const { at, codePoint } of characters(text)) {
+    if (codePoint === 0x0a) {
+      broken = found.first !== null; // a line break after the first stop
+      continue;
+    }
+    if (!selectable(codePoint, japaneseOnly)) continue;
+    if (direction > 0 ? at >= from : at >= cursor && found.to !== null) {
+      if (direction > 0) found.to = at;
+      return found;
+    }
+    if (direction < 0 && at < cursor) found.to = at;
+    found.first ??= at;
+    found.split ||= broken; // a line break between the first stop and this one
+    found.last = at;
+  }
+  return found;
+}
+
+// Past the text's last (first) stop: round to its first (last) with `wrap`,
+// only on one displayed row, which the first's and the last's cells tell.
+// Without them, a line break between the two stands for a row.
+function roundTheEnd(rows, { first, last, split }, cursor, direction, wrap) {
+  const to = direction > 0 ? first : last;
+  if (!wrap || first === null || to === cursor) return stay(cursor);
+  const firstCell = rows?.cell(first);
+  const lastCell = rows?.cell(last);
+  if (firstCell && lastCell) return firstCell.line === lastCell.line ? { result: ROW_WRAPPED, to } : stay(cursor);
+  return { result: ROW_UNAVAILABLE, to: split ? cursor : to };
+}
+
 // Left/Right in reading order (vjo_text_row_step). direction > 0: the first
 // stop at or after `from` (past the cursor: the next character, or the end of
 // the matched word); direction < 0: the last stop before the cursor. Past the
 // text's last (first) stop the cursor stays, except that with `wrap` a text
 // whose stops are all on one row goes round to its first (last). Only that end
-// asks the layout, for the rows of the first and last stops; without one
-// (`rows` null), the line breaks stand for the rows. Returns { result, to }.
-export function rowStep(text, rows, cursor, from, direction, japaneseOnly, wrap) {
-  if (cursor >= text.length || !direction) return stay(cursor);
-  let first = null;
-  let last = null;
-  let to = null;
-  let broken = false;
-  let split = false;
-  for (const { at, codePoint } of characters(text)) {
-    if (codePoint === 0x0a) {
-      broken = first !== null; // a line break after the first stop
-      continue;
-    }
-    if (!selectable(codePoint, japaneseOnly)) continue;
-    if ((direction > 0 && at >= from) || (direction < 0 && at >= cursor && to !== null)) {
-      if (direction > 0) to = at;
-      break;
-    }
-    if (direction < 0 && at < cursor) to = at;
-    first ??= at;
-    split ||= broken; // a line break between the first stop and this one
-    last = at;
-  }
-  let result = ROW_MOVED;
-  if (to === null) {
-    if (!wrap || first === null || (direction > 0 ? first : last) === cursor) return stay(cursor);
-    const firstCell = rows?.cell(first);
-    const lastCell = rows?.cell(last);
-    if (firstCell && lastCell) {
-      if (firstCell.line !== lastCell.line) return stay(cursor);
-      result = ROW_WRAPPED;
-    } else {
-      result = ROW_UNAVAILABLE;
-      if (split) return { result, to: cursor };
-    }
-    to = direction > 0 ? first : last;
-  }
-  return to === cursor ? stay(cursor) : { result, to };
+// asks the layout. Returns { result, to }.
+export function rowStep(line, cursor, from, direction, wrap) {
+  if (cursor >= line.text.length || !direction) return stay(cursor);
+  const found = readingOrder(line, cursor, from, direction);
+  return found.to === null ? roundTheEnd(line.rows, found, cursor, direction, wrap) : { result: ROW_MOVED, to: found.to };
 }
 
-// Up (direction < 0) or Down (vjo_text_row_vertical): the nearest row above or
-// below with a stop, and on it the stop whose cell is nearest the column (in
-// it, else its nearest edge; the earlier on a tie). `goal` ({ x, at }) keeps
-// the column while the cursor stays where Up/Down left it (at is 1 + that
-// offset), so repeated moves keep it across a short row; otherwise the column
-// is the middle of the cursor's cell.
-export function rowVertical(text, rows, cursor, direction, japaneseOnly, goal) {
-  if (cursor >= text.length || !direction) return stay(cursor);
-  const here = rows?.cell(cursor);
-  if (!here) return { result: ROW_UNAVAILABLE, to: cursor };
-  const column = goal.at === cursor + 1 ? goal.x : (here.x + here.end) / 2;
+// On the nearest row above (direction < 0) or below the cursor's row with a
+// stop, the stop whose cell is nearest `column`: in it, else its nearest edge,
+// the earlier on a tie. In reading order the rows above end at the cursor's
+// row, and the row below at the next one after it; a nearer row starts the
+// choice again. Its offset, null for no such row, or ROW_UNAVAILABLE.
+function nearestOnRow({ text, rows, japaneseOnly }, row, direction, column) {
   let best = null;
-  let bestLine = 0;
-  let bestDistance = 0;
-  // In reading order: the rows above end at the cursor's row, the row below
-  // at the next one after it. A nearer row starts the choice again.
   for (const { at, codePoint } of characters(text)) {
     if (!selectable(codePoint, japaneseOnly)) continue;
     const cell = rows.cell(at);
-    if (!cell) return { result: ROW_UNAVAILABLE, to: cursor };
-    if (direction < 0 ? cell.line >= here.line : best !== null && cell.line > bestLine) break;
-    if (direction < 0 || cell.line > here.line) {
-      const distance = Math.max(cell.x - column, column - cell.end, 0);
-      if (best === null || cell.line > bestLine || distance < bestDistance) {
-        best = at;
-        bestLine = cell.line;
-        bestDistance = distance;
-      }
-    }
+    if (!cell) return ROW_UNAVAILABLE;
+    if (direction < 0 ? cell.line >= row : best !== null && cell.line > best.line) break;
+    if (direction > 0 && cell.line <= row) continue;
+    const distance = Math.max(cell.x - column, column - cell.end, 0);
+    if (best === null || cell.line > best.line || distance < best.distance) best = { at, line: cell.line, distance };
   }
+  return best?.at ?? null;
+}
+
+// Up (direction < 0) or Down (vjo_text_row_vertical): the nearest row above or
+// below with a stop, and on it the stop nearest the column. `goal` ({ x, at })
+// keeps the column while the cursor stays where Up/Down left it (at is 1 +
+// that offset), so repeated moves keep it across a short row; otherwise the
+// column is the middle of the cursor's cell.
+export function rowVertical(line, cursor, direction, goal) {
+  if (cursor >= line.text.length || !direction) return stay(cursor);
+  const here = line.rows?.cell(cursor);
+  if (!here) return { result: ROW_UNAVAILABLE, to: cursor };
+  const column = goal.at === cursor + 1 ? goal.x : (here.x + here.end) / 2;
+  const best = nearestOnRow(line, here.line, direction, column);
+  if (best === ROW_UNAVAILABLE) return { result: ROW_UNAVAILABLE, to: cursor };
   if (best === null) return stay(cursor);
   goal.x = column;
   goal.at = best + 1;
@@ -133,22 +140,22 @@ export function rowVertical(text, rows, cursor, direction, japaneseOnly, goal) {
 }
 
 // Whether `at` starts a character rather than splitting a surrogate pair.
-const boundary = (text, at) => at === text.length
-  || !((text.charCodeAt(at) & 0xfc00) === 0xdc00 && (text.charCodeAt(at - 1) & 0xfc00) === 0xd800);
+const boundary = (text, at) => at === 0 || at >= text.length || text.codePointAt(at - 1) <= 0xffff;
 
 // Left/Right by word (vjo_word_step). Right goes past the matched word
 // [cursor, matchedEnd), wherever it ends, and remembers where it started; Left
 // goes back to the last of those, else one stop back, and forgets them. A
 // pending or failed lookup passes matchedEnd 0: one character.
-export function wordStep(navigation, text, cursor, matchedEnd, direction, japaneseOnly, rows, wrap) {
+export function wordStep(navigation, line, cursor, matchedEnd, direction, wrap) {
   const { words } = navigation;
+  const { text } = line;
   if (cursor >= text.length || !direction) return stay(cursor);
   if (direction < 0 && words.length > 0 && words.at(-1) !== cursor && words.at(-1) < text.length) {
     return { result: ROW_MOVED, to: words.pop() };
   }
   const from = direction > 0 && matchedEnd > cursor && matchedEnd <= text.length && boundary(text, matchedEnd)
     ? matchedEnd : cursor + 1;
-  const step = rowStep(text, rows, cursor, from, direction, japaneseOnly, wrap);
+  const step = rowStep(line, cursor, from, direction, wrap);
   if (step.to !== cursor && direction < 0) words.length = 0;
   else if (step.to !== cursor) {
     if (words.length === WORD_HISTORY) words.shift();
@@ -160,15 +167,15 @@ export function wordStep(navigation, text, cursor, matchedEnd, direction, japane
 // One navigation per shown text: Right's history and Up/Down's column.
 export const createNavigation = () => ({ words: [], goal: { x: 0, at: 0 } });
 
-// The arrow keys over the text (vjo_text_row_key): Left/Right (dx) by word,
+// The arrow keys over the line (vjo_text_row_key): Left/Right (dx) by word,
 // which drops Up/Down's column, else Up/Down (dy) by row, which forgets
 // Right's history, so Left then retraces only the Rights made since.
-export function rowKey(navigation, text, rows, cursor, matchedEnd, dx, dy, japaneseOnly) {
+export function rowKey(navigation, line, cursor, matchedEnd, dx, dy) {
   if (dx) {
     navigation.goal.at = 0;
-    return wordStep(navigation, text, cursor, matchedEnd, dx, japaneseOnly, rows, true);
+    return wordStep(navigation, line, cursor, matchedEnd, dx, true);
   }
-  const step = rowVertical(text, rows, cursor, dy, japaneseOnly, navigation.goal);
+  const step = rowVertical(line, cursor, dy, navigation.goal);
   if (step.result > 0) navigation.words.length = 0;
   return step;
 }

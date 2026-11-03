@@ -36,10 +36,12 @@ function layout(text, width = 240) {
   return { cell: at => cells.get(at) ?? null };
 }
 
+// A line as search.js gives one: its text, its layout and the Japanese-only switch.
+const laidOut = (text, rows = layout(text), japaneseOnly = true) => ({ text, rows, japaneseOnly });
 const step = (text, cursor, direction, japaneseOnly = true, wrap = true, rows = layout(text)) =>
-  rowStep(text, rows, cursor, cursor + 1, direction, japaneseOnly, wrap);
+  rowStep(laidOut(text, rows, japaneseOnly), cursor, cursor + 1, direction, wrap);
 const vertical = (text, cursor, direction, japaneseOnly = true, goal = { x: 0, at: 0 }) =>
-  rowVertical(text, layout(text), cursor, direction, japaneseOnly, goal);
+  rowVertical(laidOut(text, layout(text), japaneseOnly), cursor, direction, goal);
 
 test("Up and Down go to the row above or below, soft wraps included, and keep the column across a short row", () => {
   // 14 kana: a soft wrap after the tenth.
@@ -100,12 +102,12 @@ test("Right goes past the matched word and Left goes back over the Rights, acros
   // Row 0: 猫が好きです。犬も好 | row 1: きです。 (好き crosses the wrap).
   const text = "猫が好きです。犬も好きです。";
   const words = [[0, 1], [1, 2], [2, 4], [4, 6], [7, 8], [8, 9], [9, 11], [11, 13]];
-  const rows = layout(text);
+  const line = laidOut(text);
   const navigation = createNavigation();
   let cursor = 0;
   for (const [index, [start, end]] of words.entries()) {
     assert.equal(cursor, start);
-    const moved = wordStep(navigation, text, cursor, end, 1, true, rows, true);
+    const moved = wordStep(navigation, line, cursor, end, 1, true);
     assert.equal(moved.result, index + 1 < words.length ? ROW_MOVED : ROW_STAY);
     cursor = moved.to;
   }
@@ -113,46 +115,45 @@ test("Right goes past the matched word and Left goes back over the Rights, acros
   assert.equal(cursor, 11);
   assert.equal(navigation.words.length, 7);
   for (let index = words.length - 1; index-- > 0;) {
-    const moved = wordStep(navigation, text, cursor, 0, -1, true, rows, true);
+    const moved = wordStep(navigation, line, cursor, 0, -1, true);
     assert.deepEqual(moved, { result: ROW_MOVED, to: words[index][0] });
     cursor = moved.to;
   }
   assert.equal(navigation.words.length, 0);
-  assert.deepEqual(wordStep(navigation, text, 0, 0, -1, true, rows, true), { result: ROW_STAY, to: 0 });
+  assert.deepEqual(wordStep(navigation, line, 0, 0, -1, true), { result: ROW_STAY, to: 0 });
   // A pending or failed lookup, or a match ending inside a character: one character.
-  assert.deepEqual(wordStep(navigation, text, 2, 0, 1, true, rows, true).to, 3);
-  assert.deepEqual(wordStep(navigation, "𠮟る𠮟る", 0, 1, 1, true, null, true).to, 2);
-  assert.deepEqual(wordStep(navigation, text, 2, text.length + 1, 1, true, rows, true).to, 3);
+  assert.deepEqual(wordStep(navigation, line, 2, 0, 1, true).to, 3);
+  assert.deepEqual(wordStep(navigation, laidOut("𠮟る𠮟る", null), 0, 1, 1, true).to, 2);
+  assert.deepEqual(wordStep(navigation, line, 2, text.length + 1, 1, true).to, 3);
   // Left from where a Right started forgets that Right and steps back.
   const left = { words: [0, 2], goal: { x: 0, at: 0 } };
-  assert.deepEqual(wordStep(left, "あいうえお", 2, 0, -1, true, layout("あいうえお"), true), { result: ROW_MOVED, to: 1 });
+  assert.deepEqual(wordStep(left, laidOut("あいうえお"), 2, 0, -1, true), { result: ROW_MOVED, to: 1 });
   assert.deepEqual(left.words, []);
   // Only the newest sixteen Rights are kept.
-  const long = "あ".repeat(40);
+  const long = laidOut("あ".repeat(40), layout("あ".repeat(40), 2400));
   const kept = createNavigation();
-  for (let at = 0; at < 20; at += 1) wordStep(kept, long, at, 0, 1, true, layout(long, 2400), true);
+  for (let at = 0; at < 20; at += 1) wordStep(kept, long, at, 0, 1, true);
   assert.equal(kept.words.length, WORD_HISTORY);
   assert.deepEqual(kept.words, Array.from({ length: WORD_HISTORY }, (_, index) => index + 4));
 });
 
 test("the arrow keys: Up and Down forget Right's history, and Left and Right take Up and Down's column afresh", () => {
   const text = "猫が好きです。犬も好きです。";
-  const rows = layout(text);
+  const line = laidOut(text);
   const navigation = createNavigation();
-  assert.deepEqual(rowKey(navigation, text, rows, 0, 1, 1, 0, true), { result: ROW_MOVED, to: 1 });
-  assert.deepEqual(rowKey(navigation, text, rows, 1, 2, 1, 0, true), { result: ROW_MOVED, to: 2 });
+  assert.deepEqual(rowKey(navigation, line, 0, 1, 1, 0), { result: ROW_MOVED, to: 1 });
+  assert.deepEqual(rowKey(navigation, line, 1, 2, 1, 0), { result: ROW_MOVED, to: 2 });
   assert.equal(navigation.words.length, 2);
-  assert.deepEqual(rowKey(navigation, text, rows, 2, 4, 0, 1, true), { result: ROW_MOVED, to: 12 }); // 好 -> す
+  assert.deepEqual(rowKey(navigation, line, 2, 4, 0, 1), { result: ROW_MOVED, to: 12 }); // 好 -> す
   assert.equal(navigation.words.length, 0);
-  assert.deepEqual(rowKey(navigation, text, rows, 12, 0, 0, 1, true), { result: ROW_STAY, to: 12 }); // no row below
-  assert.deepEqual(rowKey(navigation, text, null, 12, 0, 0, -1, true), { result: ROW_UNAVAILABLE, to: 12 });
+  assert.deepEqual(rowKey(navigation, line, 12, 0, 0, 1), { result: ROW_STAY, to: 12 }); // no row below
+  assert.deepEqual(rowKey(navigation, laidOut(text, null), 12, 0, 0, -1), { result: ROW_UNAVAILABLE, to: 12 });
   // け Down to し keeps 204; Right goes on to た, Left comes back to し; Down
   // then goes by し's own middle (36) to ち, not ね.
-  const short = "あいうえおかきくけこ\nさし\nたちつてとなにぬねの";
-  const shortRows = layout(short);
+  const short = laidOut("あいうえおかきくけこ\nさし\nたちつてとなにぬねの");
   const kept = createNavigation();
-  assert.deepEqual(rowKey(kept, short, shortRows, 8, 0, 0, 1, true), { result: ROW_MOVED, to: 12 });
-  assert.deepEqual(rowKey(kept, short, shortRows, 12, 0, 1, 0, true), { result: ROW_MOVED, to: 14 });
-  assert.deepEqual(rowKey(kept, short, shortRows, 14, 0, -1, 0, true), { result: ROW_MOVED, to: 12 });
-  assert.deepEqual(rowKey(kept, short, shortRows, 12, 0, 0, 1, true), { result: ROW_MOVED, to: 15 });
+  assert.deepEqual(rowKey(kept, short, 8, 0, 0, 1), { result: ROW_MOVED, to: 12 });
+  assert.deepEqual(rowKey(kept, short, 12, 0, 1, 0), { result: ROW_MOVED, to: 14 });
+  assert.deepEqual(rowKey(kept, short, 14, 0, -1, 0), { result: ROW_MOVED, to: 12 });
+  assert.deepEqual(rowKey(kept, short, 12, 0, 0, 1), { result: ROW_MOVED, to: 15 });
 });

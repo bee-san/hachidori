@@ -60,7 +60,8 @@ async function renderSearchHistory() {
       await store.prune(searchHistoryLimit);
     }
     const kept = await store.count();
-    count.textContent = kept === 0 ? "No lines kept." : `${numberFormat.format(kept)} ${kept === 1 ? "line" : "lines"} kept.`;
+    const lines = kept === 1 ? "line" : "lines";
+    count.textContent = kept === 0 ? "No lines kept." : `${numberFormat.format(kept)} ${lines} kept.`;
     clear.disabled = kept === 0;
   } catch (error) {
     count.textContent = `Could not read the search history: ${describeErrorOrJson(error)}`;

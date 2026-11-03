@@ -143,20 +143,25 @@ const EVENTS = "events";
 const META = "meta";
 const TOTALS = "totals";
 
-function settled(request) {
+// A request's result, or its error. A cursor's request settles once per call:
+// call again after continue() or advance() for the next position. The search
+// page's line history (search-history.js) waits on its requests with these too.
+export function settled(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-function committed(transaction) {
+// Resolves once `transaction` commits; rejects with its error, or names
+// `store` when it aborts without one.
+export function committed(transaction, store = "debug log") {
   const done = new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error ?? new Error("the debug log transaction was aborted"));
+    transaction.onabort = () => reject(transaction.error ?? new Error(`the ${store} transaction was aborted`));
   });
-  // A request that fails first is what write() reports.
+  // A request that fails first is what the operation reports.
   done.catch(() => {});
   return done;
 }

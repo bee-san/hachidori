@@ -10,6 +10,7 @@
 // each change. A profile key can be added later as a `profile` field with an
 // index, in version 2: lines without one are the Japanese profile's.
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { committed, settled } from "./debug-log.js";
 
 export const SEARCH_HISTORY_DATABASE = "hachidori-search-history";
 // How a line entered the box: searched from the box, pasted outside a text
@@ -19,22 +20,18 @@ export const LINE_SOURCES = Object.freeze(["typed", "paste", "clipboard"]);
 export const LINE_PAGES = Object.freeze(["tab", "popup"]);
 const LINES = "lines";
 
-function settled(request) {
+// The values a cursor walks over, up to `limit` of them.
+function collected(request, limit) {
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
+    const found = [];
     request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) found.push(cursor.value);
+      if (cursor && found.length < limit) cursor.continue();
+      else resolve(found);
+    };
   });
-}
-
-function committed(transaction) {
-  const done = new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error ?? new Error("the search history transaction was aborted"));
-  });
-  // A request that fails first is what the operation reports.
-  done.catch(() => {});
-  return done;
 }
 
 // A line's text, trimmed as the search box's text is searched.
@@ -95,7 +92,7 @@ export function openSearchHistory({ indexedDB, IDBKeyRange = globalThis.IDBKeyRa
 
   async function transaction(mode, work) {
     const opened = (await open()).transaction(LINES, mode);
-    const done = committed(opened);
+    const done = committed(opened, "search history");
     const result = await work(opened.objectStore(LINES));
     await done;
     return result;
@@ -144,14 +141,7 @@ export function openSearchHistory({ indexedDB, IDBKeyRange = globalThis.IDBKeyRa
       if (after !== undefined) return settled(lines.getAll(IDBKeyRange.lowerBound(after, true), limit));
       const range = before === undefined ? null : IDBKeyRange.upperBound(before, true);
       if (limit === undefined) return settled(lines.getAll(range));
-      const found = [];
-      const walk = lines.openCursor(range, "prev");
-      for (let cursor = await settled(walk); cursor; cursor = await settled(walk)) {
-        found.push(cursor.value);
-        if (found.length === limit) break;
-        cursor.continue();
-      }
-      return found.reverse();
+      return (await collected(lines.openCursor(range, "prev"), limit)).reverse();
     });
   }
 
