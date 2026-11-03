@@ -45,14 +45,14 @@ let reader = null;
 let options = normaliseOptions(undefined);
 
 // The history, which search.html keeps (search-shell.js).
-const history = (op, args) => bridge.history(op, args);
+const historyRequest = (op, args) => bridge.history(op, args);
 // The kept line before (direction -1; the newest when `id` is undefined) or
 // after (1) the line `id` whose text is not `unlike`, or null. A line from
 // `newest` on is not an earlier line.
 async function keptLine(id, direction, unlike, newest = null) {
   for (let from = id ?? undefined; ;) {
     if (direction > 0 && from === undefined) return null;
-    const [found] = await history("list", direction < 0 ? { before: from, limit: 1 } : { after: from, limit: 1 });
+    const [found] = await historyRequest("list", direction < 0 ? { before: from, limit: 1 } : { after: from, limit: 1 });
     if (!found || (newest !== null && found.id >= newest)) return null;
     if (found.text !== unlike) return found;
     from = found.id;
@@ -64,7 +64,7 @@ async function keptLine(id, direction, unlike, newest = null) {
 async function keep(text, source) {
   if (!options.searchHistoryEnabled) return null;
   try {
-    return (await history("add", { text, source }))?.id ?? null;
+    return (await historyRequest("add", { text, source }))?.id ?? null;
   } catch (error) {
     console.warn("hachidori: the search history could not keep a line:", error);
     return null;
@@ -164,7 +164,7 @@ async function stepLine(direction) {
   if (stepping || !options.searchHistoryEnabled || !shown || (direction > 0 && !visit)) return;
   stepping = true;
   const from = shown;
-  const earlier = found => found && line(found.text, found.id, opening(found.text));
+  const earlier = found => found && line(found.text, found.id, 0);
   try {
     let next = null;
     if (direction < 0) {
@@ -428,9 +428,9 @@ class SearchHistory extends EventTarget {
   get enabled() { return options.searchHistoryEnabled; }
   get clipboardPaused() { return clipboardPaused; }
   set clipboardPaused(paused) { clipboardPaused = paused === true; }
-  list({ before: older, after: newer, limit } = {}) { return history("list", { before: older, after: newer, limit }); }
-  edit(id, text) { return history("edit", { id, text }); }
-  remove(id) { return history("remove", { id }); }
+  list({ before: older, after: newer, limit } = {}) { return historyRequest("list", { before: older, after: newer, limit }); }
+  edit(id, text) { return historyRequest("edit", { id, text }); }
+  remove(id) { return historyRequest("remove", { id }); }
   // Looks up the word at `offset` in the text node `node` and shows it in the
   // results; resolves to the length of the text it matched, 0 for none.
   lookUp(node, offset) {
