@@ -354,7 +354,7 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
       return service.screenshot(options => captureSenderViewport(sender, options), message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
-      const status = await service.status(message.templateId);
+      const status = singleProfileStatus(message, await service.status(message.templateId));
       return { ...status, configKey: linkedAnkiConfigKey(status.configKey) };
     }
     if (linkedClient && message.type === "hd_anki_view") {
@@ -370,11 +370,21 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     if (linkedClient && message.type === "hd_anki_browse") {
       return service.browse(hostLinkedAnkiRequest(message.request));
     }
-    if (message.type === "hd_anki_status") return service.status(message.templateId);
+    if (message.type === "hd_anki_status") return singleProfileStatus(message, await service.status(message.templateId));
     if (message.type === "hd_anki_preflight_batch") return { replies: await service.preflightMany(message.requests) };
     return service[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
   }).then(result => workerReply(message, result), error => failureReply(message, error));
+}
+
+// A status request that names no profile comes from a single-profile
+// installation or an older linked browser: its reply is today's, without the
+// empty-deck hint that opens Settings → Anki for a new profile's Templates
+// (docs/languages.md 4.5, 6.3).
+function singleProfileStatus(message, status) {
+  if (message.profileId !== undefined || status?.emptyDeck === undefined) return status;
+  const { emptyDeck: _emptyDeck, ...today } = status;
+  return today;
 }
 
 export {

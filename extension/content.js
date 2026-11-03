@@ -2172,7 +2172,14 @@
 
   function buildLevelUi(level) {
     mining ??= globalThis.HDAnki.createAnkiController({
-      send: (type, fields) => sendRequest(type, { ...fields, ...profileFields(controlsProfile()) }, "hachidori-anki"),
+      send: async (type, fields) => {
+        const reply = await sendRequest(type, { ...fields, ...profileFields(controlsProfile()) }, "hachidori-anki");
+        // The empty-deck hint is for a new profile's Templates (docs/languages.md
+        // 6.3); without profiles the button stays as it is today (4.5).
+        if (type !== "hd_anki_status" || readingProfiles !== null || reply?.emptyDeck === undefined) return reply;
+        const { emptyDeck: _emptyDeck, ...today } = reply;
+        return today;
+      },
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
       recordNetflixLine: (cue, templateId, options) => globalThis.HDNetflix.record(cue, {

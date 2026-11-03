@@ -165,7 +165,7 @@ test("content.js asks the worker for Settings → Anki on the popup's profile", 
   // With profiles each profile holds its Templates.
   const templates = reader.normaliseAnki({ ...reader.DEFAULT_OPTIONS.anki, ...anki }).templates;
   const opened = await contentNoteStage({
-    async single() { return settingsRequest(await createHarness(undefined, { options: { anki } })); },
+    async single() { return settingsRequest(Object.assign(await createHarness(undefined, { options: { anki } }), { single: true })); },
     async profiles() {
       return settingsRequest(await createHarness(undefined, { options: { profiles: [
         { id: "ja", language: "ja", settings: { anki: { templates } }, packSettings: {} },
@@ -174,7 +174,9 @@ test("content.js asks the worker for Settings → Anki on the popup's profile", 
     },
   });
   if (opened === null) return;
-  assert.deepEqual(opened.single, { target: "hoshidicts-worker", type: "hd_open_settings", section: "anki" });
+  // Without profiles the worker sends no empty-deck hint (background-anki.js),
+  // and the reader ignores one: the button stays hidden, as today.
+  assert.equal(opened.single, null);
   // A lookup that names no profile uses the Japanese profile (section 5.2).
   assert.deepEqual(opened.profiles, { target: "hoshidicts-worker", type: "hd_open_settings", section: "anki", profileId: "ja" });
 });
@@ -202,6 +204,11 @@ async function settingsRequest(harness) {
     await answer("hd_anki_view", { state: "unknown", canAdd: false, noteIds: [], configKey: "k", cached: false });
     await answer("hd_anki_status", { available: false, configKey: "k", error: "Choose an available deck.", emptyDeck: true });
     const button = actions.querySelector(".gsm-hoshidicts-mine-button");
+    if (harness.single) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      assert.ok(button === null || button.hidden, "a single-profile popup shows no empty-deck button");
+      return harness.sent.find(sent => sent.type === "hd_open_settings") ?? null;
+    }
     await eventually(() => button.dataset.state === "unavailable" && !button.disabled && !button.hidden);
     button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     await eventually(() => harness.sent.some(request => request.type === "hd_open_settings"));
