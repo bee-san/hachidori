@@ -543,6 +543,19 @@ test("a first-run choice makes the language the only profile, once, while setup 
   assert.equal(reply.errorCode, "already-set-up");
 });
 
+test("choosing Japanese at first run keeps a Japanese-only installation's settings and writes nothing", async () => {
+  const welcome = { schemaVersion: 1, revision: 1, startedAt: "2026-11-01T00:00:00.000Z", stage: "welcome", completedAt: null,
+    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null };
+  const options = { revision: 4, scanLength: 14, anki: { model: "Basic", deck: "Mining" } };
+  const { fromEngine, stored } = backgroundWorker({ options, setupState: welcome });
+  const reply = await fromEngine({ type: "hd_profile_cas", action: "add", language: "ja", firstRun: true, baseRevision: 0,
+    state: { dictionaries: [], profiles: { ja: { dictionaries: [], groups: [] } } } });
+  assert.equal(reply.ok, true, reply.error);
+  assert.equal(reply.converted, true, "the records keep the single-profile shape");
+  assert.deepEqual(stored("options"), options);
+  assert.equal(stored("dictionaryState"), undefined);
+});
+
 test("erasing a language empties its document, drops its counts and marks, and keeps Japanese's", async () => {
   const records = profileRecords();
   records.options.profiles.push({ id: "en", language: "en", settings: {}, packSettings: {} });

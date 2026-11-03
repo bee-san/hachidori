@@ -292,6 +292,12 @@ async function profileCas(message) {
       && existing.length === 1 && existing[0].language === language) {
     return { state: current, converted: false, languages: [language] };
   }
+  // Japanese at first run is the Japanese-only installation there already is:
+  // its settings stay as they are and nothing is written (sections 4.5, 16.1).
+  if (message.action === "add" && message.firstRun === true && language === JAPANESE_PROFILE_ID
+      && !hasProfiles(stored[OPTIONS_KEY])) {
+    return { state: current, converted: true };
+  }
   const options = profileRequestOptions(message, stored, language);
   const languages = profileLanguages(options);
   assertProfileDictionaryState(message.state, options);
