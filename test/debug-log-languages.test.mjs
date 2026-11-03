@@ -5,19 +5,26 @@
 // their languages, and text in a pack's non-Latin scripts becomes `[code]`.
 // A Japanese-only installation's log is today's, byte for byte.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { DEBUG_LOG, redactDebugText, setDebugLogLanguages } from "../extension/debug-log.js";
+import { fixtureLanguageFiles } from "./chrome-languages/builds.mjs";
 import { loadBackgroundScript, makeAlarms, makeBus, makeChrome, makeStorage } from "./extension-smoke/fakes.mjs";
 import { openSettings, settle } from "./language-settings-harness.mjs";
 
 const profileState = await import("../extension/profile-state.js");
 const { profileTemplateKey } = await import("../extension/anki-worker.js");
 
-// The shipped registry: Japanese, English and Arabic.
+// A registry.js of Japanese and the English and Arabic fixture packs of
+// test/data/languages/, whatever packs the build ships.
+const scratch = mkdtempSync(join(tmpdir(), "hachidori-debug-log-languages-"));
+const files = await fixtureLanguageFiles(scratch, "debug-log", ["en", "ar"])
+  .finally(() => rmSync(scratch, { recursive: true, force: true }));
 const vendored = {};
-vm.runInNewContext(readFileSync(new URL("../extension/vendor/languages/registry.js", import.meta.url), "utf8"), vendored);
+vm.runInNewContext(files.get("registry.js"), vendored);
 globalThis.HDLanguages = vendored.HDLanguages;
 
 const SAMPLE = "no entry for 食べたかった or الكتاب (running) at https://example.com/a?q=1";

@@ -3,7 +3,9 @@
  * whose language registry holds Japanese and some of the fixture packs of
  * test/data/languages/ (written by scripts/sync-languages.mjs's generator), and
  * the released Hachidori that test/chrome-backup-release.mjs pins, a build
- * from before profiles. Not a test on its own.
+ * from before profiles. test/run.mjs makes firefox-languages' copy of the
+ * Firefox build with it, and debug-log-languages.test.mjs its registry. Not a
+ * test on its own.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -33,22 +35,33 @@ function writeVariantPack(directory, { code, name, iso639_3: iso }) {
 }
 
 /**
- * A copy of extension/ under `scratch` whose registry holds Japanese and the
- * fixture packs `codes`; `variants` adds packs made from the English fixture
- * under other codes ({ code, name, iso639_3 }).
+ * The files of vendor/languages/, by path, for a registry of Japanese and the
+ * fixture packs `codes`, from a packs directory under `scratch`; `variants`
+ * adds packs made from the English fixture under other codes ({ code, name,
+ * iso639_3 }).
  */
-export async function extensionWith(scratch, name, codes, variants = []) {
-  const directory = join(scratch, name);
-  cpSync(resolve(ROOT, "extension"), directory, { recursive: true });
+export async function fixtureLanguageFiles(scratch, name, codes, variants = []) {
   const packs = join(scratch, `${name}-packs`);
   mkdirSync(join(packs, "languages"), { recursive: true });
   symlinkSync(resolve(ROOT, "third_party/hoshidicts/tools"), join(packs, "tools"));
   symlinkSync(resolve(ROOT, "third_party/hoshidicts/languages/ja"), join(packs, "languages/ja"));
   for (const code of codes) symlinkSync(resolve(ROOT, `test/data/languages/${code}`), join(packs, `languages/${code}`));
   for (const variant of variants) writeVariantPack(join(packs, `languages/${variant.code}`), variant);
+  return languageFiles({ hoshidicts: packs, commit: `chrome-languages-${name}` });
+}
+
+/**
+ * A copy of extension/ (or of the unpacked build `source`) under `scratch`
+ * whose registry holds Japanese and the fixture packs `codes`; `variants` adds
+ * packs made from the English fixture under other codes ({ code, name,
+ * iso639_3 }).
+ */
+export async function extensionWith(scratch, name, codes, variants = [], source = resolve(ROOT, "extension")) {
+  const directory = join(scratch, name);
+  cpSync(source, directory, { recursive: true });
   const output = join(directory, "vendor/languages");
   rmSync(output, { recursive: true, force: true });
-  for (const [path, text] of await languageFiles({ hoshidicts: packs, commit: `chrome-languages-${name}` })) {
+  for (const [path, text] of await fixtureLanguageFiles(scratch, name, codes, variants)) {
     mkdirSync(dirname(join(output, path)), { recursive: true });
     writeFileSync(join(output, path), text);
   }
