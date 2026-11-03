@@ -1073,6 +1073,48 @@ async function googleDocsCase() {
   };
 }
 
+// Netflix lays its player's controls over the subtitles (#662): the reader
+// finds the glyph under the pointer in a line's own text, and the player's own
+// text elsewhere is hit-tested as on any page.
+async function netflixSubtitleCase() {
+  const harness = await createHarness(undefined, { url: "https://www.netflix.com/watch/81000001" });
+  const { ownerDocument: document } = harness.popup;
+  const window = document.defaultView;
+  const player = document.createElement("div");
+  player.className = "watch-video";
+  player.innerHTML = '<div class="player-timedtext"><div class="player-timedtext-text-container">'
+    + "<span>食べたかった</span></div></div><div><span>読む</span></div>";
+  document.body.append(player);
+  const [layer, controls] = player.children;
+  const line = layer.querySelector("span");
+  const title = controls.firstChild;
+  // Ten CSS pixels per character: the line in the row y 10-30, the controls' title in y 50-70.
+  window.Range.prototype.getClientRects = function () {
+    const top = this.startContainer.parentElement === title ? 50 : 10;
+    return [{ left: this.startOffset * 10, right: this.endOffset * 10, top, bottom: top + 20 }];
+  };
+  // The controls cover the player, so over the line the hit test and the caret find them.
+  document.elementFromPoint = (_x, y) => (y < 30 ? controls : title);
+  document.caretRangeFromPoint = (x, y) => {
+    const range = document.createRange();
+    if (y < 30) range.setStart(controls, 0);
+    else range.setStart(title.firstChild, Math.floor(x / 10));
+    return range;
+  };
+  const scan = (x, y) => harness.driver.resolveCandidate(x, y);
+  const covered = scan(15, 20); // Over べ.
+  const ownText = scan(5, 60);
+  harness.close();
+  return {
+    // The scan reads on past the line in document order.
+    "a Netflix subtitle line under the player's controls is scanned from the glyph under the pointer":
+      (covered?.query.startsWith("べたかった") && line.contains(covered.anchor))
+      || { query: covered?.query ?? null, anchor: covered?.anchor?.outerHTML ?? null },
+    "the Netflix player's own text away from the subtitles is hit-tested as on any page":
+      ownText?.query === "読む" || { query: ownText?.query ?? null },
+  };
+}
+
 // An <input> or <textarea> keeps its value in user-agent shadow DOM, so the
 // reader scans an invisible imposter laid over the hovered field (#425).
 async function textFieldCase() {
@@ -2064,7 +2106,7 @@ async function definitionTextLookupCase() {
 describe("content script: scanning and selections", () => {
   test("scanning and selections", async () => {
     const noteContent = await contentNoteStage({
-      scanning: async () => ({ ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await textFieldCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
+      scanning: async () => ({ ...await pendingScanCase(), ...await definitionTextLookupCase(), ...await scanExtractionCase(), ...await sentenceBoundaryCase(), ...await longKeyWindowCase(), ...await hoverGlyphCase(), ...await googleDocsCase(), ...await netflixSubtitleCase(), ...await textFieldCase(), ...await matchedAnchorCase(), ...await popupWheelCase(), ...await movedMatchEndpointCase(),
         ...await autofocusedSearchCase(), ...await focusedEditingCase(), ...await shadowEditingCase(),
         ...await exactSelectionCase(), ...await selectionSentenceCase(), ...await selectedWordEditorCase(), ...await selectionActivationCase(),
         ...await selectionCancellationCase(), ...await selectionRecoveryCase(),
