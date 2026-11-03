@@ -236,11 +236,14 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
             mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename });
         }
       }
-      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths, compactGlossary });
+      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths, compactGlossary }); // NOSONAR: results render one at a time, in order
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
       if (!includeMedia) continue;
+      // Only the images these fields show, as mining uploads only those:
+      // Smaller Anki cards leaves hidden content out, with any image in it.
+      const shown = Object.values(fields.at(-1));
       for (const item of built.media) {
-        if (seenMedia.has(item.filename)) continue;
+        if (seenMedia.has(item.filename) || !shown.some(value => value.includes(item.filename))) continue;
         seenMedia.add(item.filename);
         const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
         const match = typeof reply.dataUrl === "string" ? /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(reply.dataUrl) : null;
