@@ -15,7 +15,7 @@ mkdirSync(OUT, { recursive: true });
 const NAMES = (process.env.NAMES || "Lapis sentence cards with audio|Words").split("|");
 const browser = await puppeteer.launch({
   executablePath: computeExecutablePath({ cacheDir: resolve(ROOT, "test/tmp/browsers"), browser: Browser.CHROME, buildId: "152.0.7977.75" }),
-  enableExtensions: true, headless: true, userDataDir: mkdtempSync(resolve(tmpdir(), "hachi656-long-")),
+  enableExtensions: true, headless: true, userDataDir: process.env.PROFILE_DIR || mkdtempSync(resolve(tmpdir(), "hachi656-long-")),
   args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", `--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
 });
 try {
