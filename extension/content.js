@@ -390,6 +390,22 @@
       && typeof globalThis.HDNetflix?.miningFields === "function";
   }
 
+  // Netflix lays parts of its player over the subtitles, where the hit test
+  // finds them instead of the line. While a line is under the pointer, the
+  // probe style leaves only the subtitles hit-testable in the player.
+  let netflixProbeStyle = null;
+  function netflixProbeAt(clientX, clientY) {
+    if (!NETFLIX_HOST) return null;
+    if (!document.elementsFromPoint(clientX, clientY).some(element => element.closest(".player-timedtext"))) return null;
+    if (!netflixProbeStyle) {
+      netflixProbeStyle = document.createElement("style");
+      netflixProbeStyle.textContent = ".watch-video *{pointer-events:none!important}"
+        + ".player-timedtext,.player-timedtext *{pointer-events:auto!important}";
+      (document.head || document.documentElement).append(netflixProbeStyle);
+    }
+    return netflixProbeStyle;
+  }
+
   // netflix-content.js cannot read the switch, so the reader tells it whether
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
@@ -765,10 +781,13 @@
       const docs = resolveDocsCandidate(clientX, clientY);
       if (docs) return docs;
     }
+    const probe = netflixProbeAt(clientX, clientY);
+    if (probe) probe.disabled = false;
     const hit = document.elementFromPoint(clientX, clientY);
     const field = scannableField(hit);
+    const caretRange = field ? null : caretRangeAt(clientX, clientY);
+    if (probe) probe.disabled = true;
     if (field) return resolveFieldCandidate(field, clientX, clientY);
-    const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE || !hit?.contains(node)) return null;
     const text = node.nodeValue || "";
