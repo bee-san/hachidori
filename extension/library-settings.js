@@ -262,8 +262,14 @@ function renderLibraryReset(blocked) {
   const packages = libraryHasProfiles() ? allPackages(storedDictionaryState) : dictionaries;
   element("library-remove-all").disabled = resetBlocked
     || (!erasePersonal.checked && !packages.some(entry => !isManagedCustomDictionary(entry)));
-  // With two or more languages the choice says every language (docs/languages.md 14).
-  const label = erasePersonal.nextElementSibling;
+  renderLibraryResetLabel();
+}
+
+// With two or more languages the choice says every language (docs/languages.md
+// 14). The options record decides it too, so its changes render it again.
+function renderLibraryResetLabel() {
+  const packages = libraryHasProfiles() ? allPackages(storedDictionaryState) : dictionaries;
+  const label = element("library-reset-personal").nextElementSibling;
   const languages = new Set([...optionProfiles(storedOptionsRecord).map(profile => profile.language),
     ...packages.map(personalDictionaryLanguage).filter(language => language !== null)]);
   const text = optionsHaveProfiles(storedOptionsRecord) && languages.size > 1
@@ -1481,7 +1487,7 @@ export {
   adoptDictionaryState, attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitDictionaries,
   commitGroups, committing, dictionaries, dictionaryLabel, dictionaryState, handleDictionaryStateChange,
   libraryHasProfiles, moveListItem, moveToProfile, pendingDictionaryCommits, reloadDictionaries, removing,
-  renderChangedDictionaryState, renderDeferredAfterBlur, reprojectDictionaryState, setControlsDisabled,
+  renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel, reprojectDictionaryState, setControlsDisabled,
   setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary,
   updateItemById
 };

@@ -38,8 +38,9 @@ import { SETUP_STATE_KEY, normaliseSetupState, setupIncomplete } from "./setup-s
 import {
   attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitGroups, committing, dictionaries,
   dictionaryLabel, dictionaryState, handleDictionaryStateChange, moveListItem, pendingDictionaryCommits,
-  reloadDictionaries, removing, renderChangedDictionaryState, renderDeferredAfterBlur, reprojectDictionaryState,
-  setControlsDisabled, setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState, updateItemById,
+  reloadDictionaries, removing, renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel,
+  reprojectDictionaryState, setControlsDisabled, setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState,
+  updateItemById,
 } from "./library-settings.js";
 import {
   attachImportHandlers, attachRecommendedHandlers, importing, installingRecommended,
@@ -1286,6 +1287,7 @@ function adoptOptions(value) {
 
 function handleOptionsChange(change) {
   adoptOptions(change.newValue);
+  renderLibraryResetLabel();
 }
 
 function renderSetupResume(value) {

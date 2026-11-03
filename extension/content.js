@@ -719,6 +719,10 @@
   // netflix-content.js cannot read the switch, so the reader tells it whether
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
+  // The subtitle language last set for a profile, or null while Japanese's
+  // (today's) applies.
+  let netflixSubtitleLanguage = null;
+
   function syncNetflix() {
     if (typeof globalThis.HDNetflix?.setHoverPause !== "function") {
       loadNetflix();
@@ -728,10 +732,12 @@
     globalThis.HDNetflix.setHoverPause(enabled);
     globalThis.HDNetflix.setLineAudio(enabled);
     globalThis.HDNetflix.setSubtitleDragging(enabled);
-    // The subtitle tracks are the active language's, by its primary subtag (8.5).
+    // The subtitle tracks are the active language's, by its primary subtag
+    // (8.5); Japanese's again once the records have no profiles.
     const active = activeReadingProfile();
-    if (active !== null && enabled) {
-      const tag = globalThis.HDLanguages?.get?.(active.language)?.bcp47 ?? active.language;
+    if (enabled && (active !== null || netflixSubtitleLanguage !== null)) {
+      const tag = active === null ? "ja" : globalThis.HDLanguages?.get?.(active.language)?.bcp47 ?? active.language;
+      netflixSubtitleLanguage = active === null ? null : primarySubtag(tag);
       globalThis.HDNetflix.setSubtitleLanguage?.(primarySubtag(tag));
     }
   }
