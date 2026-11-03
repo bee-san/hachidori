@@ -4,8 +4,8 @@ import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiSetupFamily } from "./anki-setup.js";
-import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, ankiUpdateKeepsField, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
-  findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
+import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
+  ankiUpdateKeepsField, findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
 
 const CONFIG_CHANGED = "Anki configuration changed. Refresh this result before adding a note.";
 // The sentence-audio field the Kiku, Lapis and Senren presets leave blank.
