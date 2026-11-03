@@ -1000,7 +1000,10 @@ opens with: a pasted line such as 「食べたかった」 looks up 食べたか
 ～ている looks up ている rather than the grammar dictionary's ～ている
 pointer. Its other words can then be looked up like any page text. Mining
 takes the sentence around the word from that text, cut at its terminators as
-on a page, where Yomitan's search page takes the whole query. The docked popup is the reader's own, with its renderer,
+on a page, where Yomitan's search page takes the whole query. A word typed
+alone is its own sentence, as in Yomitan, so a new note gets the word there,
+while updating an existing note from it leaves the note's sentence fields as
+they are (#655; see [Anki submission](#anki-submission)). The docked popup is the reader's own, with its renderer,
 tabs, Anki and pronunciation controls, Notes and child popups. It fills the
 results area, follows its size and has no resize grip. A search ignores
 **Japanese text only** and the lookup switch, since the reader asked for it;
@@ -3117,7 +3120,14 @@ Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
 same-model overwrite targets inside the configured deck scope. The six field
-overwrite modes use authoritative field spellings. The initial write sends only
+overwrite modes use authoritative field spellings. A lookup whose sentence is
+only the word it matched, such as a word typed alone on the search page, has no
+sentence to give a note it updates: fields whose template uses `{sentence}`,
+`{sentence-furigana}`, `{sentence-furigana-plain}`, `{cloze-prefix}`,
+`{cloze-body}` or `{cloze-suffix}` keep the note's value whatever their mode,
+in the update and in its pronunciation enrichment. Yomitan's search page also
+takes the typed word for the sentence, and its Append adds that word to the
+note's sentences on every update (#655). The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
 earlier snapshot, including fields restored to that value by a failed media
 upload. Pronunciation enrichment compares its complete desired values
