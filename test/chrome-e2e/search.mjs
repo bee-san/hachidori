@@ -370,13 +370,15 @@ describe("search page", () => {
       const text = `${fixture.query}と${fixture.child}`;
       await searchFor(tab, text);
       const searched = await popup.waitForVisible(15_000, state => state.plain.includes(rootDefinition));
-      // The centre of the query's character at `index`; the frame fills the page.
+      // The query's character at `index`: its centre, and its left and right
+      // edges, where a press puts the caret before and after it. The frame
+      // fills the page.
       const queryPoint = index => frame.evaluate(offset => {
         const range = document.createRange();
         range.setStart(document.getElementById("search-query").firstChild, offset);
         range.setEnd(document.getElementById("search-query").firstChild, offset + 1);
         const { x, y, width, height } = range.getBoundingClientRect();
-        return { x: x + width / 2, y: y + height / 2 };
+        return { x: x + width / 2, y: y + height / 2, left: x + 1, right: x + width - 1 };
       }, index);
       const clickQuery = async (index) => {
         const { x, y } = await queryPoint(index);
@@ -408,9 +410,9 @@ describe("search page", () => {
       const childOn = await child.waitForVisible(15_000, state => state.plain.includes(grandchildDefinition));
       // A drag across the query's first word selects it and looks nothing up.
       const start = await queryPoint(0), end = await queryPoint(fixture.query.length - 1);
-      await tab.mouse.move(start.x, start.y);
+      await tab.mouse.move(start.left, start.y);
       await tab.mouse.down();
-      await tab.mouse.move(end.x + 4, end.y, { steps: 5 });
+      await tab.mouse.move(end.right, end.y, { steps: 5 });
       await tab.mouse.up();
       await pause();
       const dragged = await popup.state();
@@ -432,7 +434,7 @@ describe("search page", () => {
     check("Look up words with a click is off by default; on, a click on a word of the search page's query shows its results, one in the results opens a child popup, and a drag still selects text",
       evidence.searched && evidence.keptOff && evidence.definitionOff && !evidence.childOff
         && evidence.queryOn && evidence.definitionOn && evidence.childOn && evidence.keptDrag
-        && evidence.selected.startsWith(fixture.query),
+        && evidence.selected === fixture.query,
       JSON.stringify(evidence));
   });
 
