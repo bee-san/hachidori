@@ -19,7 +19,9 @@ import {
 import { languageName, languageNames } from "./language-names.js";
 import { createUploadHost, uploadImportDecision } from "./linked-import.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX, emptyLookupStats, unreachableLookupStatsKeys } from "./lookup-stats.js";
-import { CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages } from "./custom-dictionary.js";
+import {
+  CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages, personalDictionaryLanguage,
+} from "./custom-dictionary.js";
 import { applyToEveryProfile, singleProfileShape } from "./profile-state.js";
 import { sameJsonValue } from "./json-value.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
@@ -291,7 +293,10 @@ async function apiProfile(profileIndex) {
 async function apiDictionaries(profileId) {
   const { state } = await readDictionaryStorage();
   if (!hasDictionaryProfiles(state)) return state?.dictionaries ?? [];
-  return projectDictionaryState(state, profileId ?? JAPANESE_PROFILE_ID)?.dictionaries ?? [];
+  // The Relay downloads from the Japanese view (docs/languages.md 17.2),
+  // which has no other language's personal package, so neither does the list.
+  return (projectDictionaryState(state, profileId ?? JAPANESE_PROFILE_ID)?.dictionaries ?? [])
+    .filter(row => [null, JAPANESE_PROFILE_ID].includes(personalDictionaryLanguage(row)));
 }
 
 function getApiHost() {

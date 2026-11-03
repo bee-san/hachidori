@@ -732,3 +732,19 @@ test("an erase that converts the records back reports its commit after a lost hd
   assert.equal(storage.raw.get("dictionaryState").schemaVersion, 1);
   assert.equal((await request("hd_status")).dictionaryCount, 1, "only the Japanese dictionary stays loaded");
 });
+
+// Design 17.2: the Relay downloads from the Japanese view, which has no other
+// language's personal package, so the list offers only what opens.
+test("the Relay lists for every profile index only dictionaries that it can download", async () => {
+  const { context } = await englishInstallation();
+  const api = runInContext("getApiHost()", context);
+  for (const profileIndex of [0, 1]) {
+    const { dictionaries } = await api({ type: "hd_api_dictionaries", profileIndex });
+    assert.ok(dictionaries.length >= 1, JSON.stringify(dictionaries));
+    for (const dictionary of dictionaries) {
+      const opened = await api({ type: "hd_api_dictionary_open", profileIndex, id: dictionary.id });
+      assert.ok(opened.token, `${profileIndex} ${dictionary.title}: ${JSON.stringify(opened)}`);
+      await api({ type: "hd_api_dictionary_close", token: opened.token });
+    }
+  }
+});
