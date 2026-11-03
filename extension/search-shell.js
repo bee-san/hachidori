@@ -272,7 +272,7 @@ function templateSwitch(select, frame) {
     }
   }
   let handBack = false;
-  select.closest("label").addEventListener("pointerdown", () => { handBack = document.activeElement !== select; });
+  select.addEventListener("pointerdown", () => { handBack = document.activeElement !== select; });
   select.addEventListener("keydown", () => { handBack = false; });
   select.addEventListener("change", () => {
     wanted = select.value;

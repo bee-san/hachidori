@@ -27,7 +27,7 @@ const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
 const status = document.getElementById("search-status");
-const templateChoices = document.querySelector(".search-template select");
+const templateChoices = document.querySelector("select.search-template");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where

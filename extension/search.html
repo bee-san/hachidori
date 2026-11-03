@@ -27,10 +27,8 @@
     <div class="search-header search-shell-header" hidden>
       <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
       <h1>Hachidori Search</h1>
-      <label class="search-template" title="The Template the popup's Anki button adds notes with" hidden>
-        <span>Anki Template</span>
-        <select id="search-template"></select>
-      </label>
+      <select class="search-template" id="search-template" aria-label="Anki Template"
+        title="Anki Template: the Template the popup's Anki button adds notes with" hidden></select>
       <label class="lookup-enable" title="Search Japanese text as soon as you copy it, in any tab or program">
         <span>Clipboard monitor</span>
         <input type="checkbox" id="search-clipboard" disabled />

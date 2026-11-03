@@ -34,17 +34,18 @@ test("choosing a Template moves it first, keeps the others' order and the connec
 });
 
 function switchElement() {
-  const { document } = new JSDOM("<label hidden><span>Anki Template</span><select></select></label>").window;
+  const { document } = new JSDOM("<select hidden></select>").window;
   return document.querySelector("select");
 }
 
-test("the switch lists the Templates by name with the built-in one chosen, and only with more than one", () => {
+test("the switch lists the Templates by name under its heading, the built-in one chosen, and only with more than one", () => {
   const select = switchElement();
   renderTemplateChoices(select, anki);
   const listed = () => [...select.options].map(option => [option.value, option.text]);
   assert.deepEqual(listed(), [["kanji", "kanji"], ["sentences", "Sentences"], ["words", "Words"]]);
+  assert.deepEqual([...select.children].map(group => group.label), ["Anki Template"]);
   assert.equal(select.value, "sentences");
-  assert.equal(select.closest("label").hidden, false);
+  assert.equal(select.hidden, false);
 
   // The list stays put as a choice moves its Template first, so the arrow
   // keys can walk it, and its options are not rebuilt.
@@ -63,5 +64,5 @@ test("the switch lists the Templates by name with the built-in one chosen, and o
   assert.equal(select.value, "words");
 
   renderTemplateChoices(select, normaliseAnki({ templates: [anki.templates[0]] }));
-  assert.equal(select.closest("label").hidden, true);
+  assert.equal(select.hidden, true);
 });
