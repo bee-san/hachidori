@@ -676,3 +676,21 @@ test("a linked overlay's local-key write replies with the record it stores", asy
     relay.stop();
   }
 });
+
+// Design 17.4: a linked browser cannot delete a package another language
+// uses. The whole-record form of hd_state_cas is the host engine's own.
+test("a linked browser's whole-record hd_state_cas is refused", async () => {
+  const { relay, host } = await hosting(profileRecords(["ja", "en"]));
+  try {
+    const older = await olderClient();
+    const before = host.stored("dictionaryState");
+    const reply = await older.send({ target: "hoshidicts-worker", type: "hd_state_cas", requestId: "older-cas",
+      baseRevision: before.revision,
+      state: { dictionaries: before.dictionaries.filter(row => row.title !== "English words"),
+        profiles: { ja: before.profiles.ja, en: { dictionaries: [], groups: [] } } } });
+    assert.equal(reply.ok, false);
+    assert.deepEqual(host.stored("dictionaryState"), before);
+  } finally {
+    relay.stop();
+  }
+});

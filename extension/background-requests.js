@@ -660,7 +660,10 @@ const WORKER_HANDLERS = {
       throw new Error("the dictionary state write request carried no valid base revision");
     }
     // The engine's own commits write the whole schema-2 record.
-    if (message?.state !== undefined) return wholeStateCas(message, store);
+    if (message?.state !== undefined) {
+      assertOwnStateWrite(sender);
+      return wholeStateCas(message, store);
+    }
     if (!Array.isArray(message?.dictionaries)) {
       throw new TypeError("the dictionary state write request carried no list");
     }
@@ -735,6 +738,7 @@ const WORKER_HANDLERS = {
       customDocument: storedDocument,
     } = read;
     assertDictionaryState(current);
+    if (message.state !== undefined) assertOwnStateWrite(sender);
     if (hasProfiles(currentOptions) || message.state !== undefined
         || (message.language !== undefined && message.language !== JAPANESE_PROFILE_ID)
         || (message.profileId !== undefined && message.profileId !== JAPANESE_PROFILE_ID)) {
@@ -1178,6 +1182,15 @@ async function handleWorkerRequest(message, sender) { // NOSONAR: moved verbatim
 // A browser linked through the sharing bridge sends ordinary runtime messages;
 // each one is answered by the handler for its target, as if a page sent it.
 const SHARING_TARGET = "hachidori-sharing";
+
+// The whole schema-2 record is written only by this installation's own engine
+// (docs/languages.md 5.2); a linked browser is untrusted here (17.4), and none
+// sends that form.
+function assertOwnStateWrite(sender) {
+  if (String(sender?.url ?? "").startsWith(`${SHARING_TARGET}://`)) {
+    throw new Error("A linked Hachidori cannot replace this Hachidori's dictionary list.");
+  }
+}
 
 async function dispatchSharedRequest(message, clientId, capabilities = []) {
   const sender = {
