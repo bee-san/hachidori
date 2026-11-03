@@ -600,10 +600,8 @@ const WORKER_HANDLERS = {
     });
     // A restore that yields the single-profile shape removes the
     // installation-local language choice (docs/languages.md 4.4).
-    if (!hasProfiles(snapshot.options)) {
-      const selection = (await chrome.storage.local.get(LANGUAGE_SELECTION_KEY))[LANGUAGE_SELECTION_KEY];
-      if (selection !== undefined) await chrome.storage.local.remove(LANGUAGE_SELECTION_KEY);
-    }
+    const selection = (await chrome.storage.local.get(LANGUAGE_SELECTION_KEY))[LANGUAGE_SELECTION_KEY];
+    if (selection !== undefined) await chrome.storage.local.remove(LANGUAGE_SELECTION_KEY);
     return { snapshot };
   },
 

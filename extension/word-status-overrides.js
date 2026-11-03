@@ -43,7 +43,6 @@
     return new Map(OVERRIDE_STATUSES.flatMap(status => record[status].map(headword => [headword, status])));
   }
 
-
   // A normalised record with `headword` set to `status`, or cleared with null,
   // at the next revision. The record itself when that is no change.
   function withWordStatusOverride(record, headword, status) {

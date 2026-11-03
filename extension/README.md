@@ -191,7 +191,10 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   their autosave) are the page's own modules: they import from `settings.js`
   and from each other, and assign a binding only in the module that declares
   it; `experimental-settings.js` renders the Advanced → Experimental features
-  switches from the registry in `reader-options.js`; `memory-settings.js`
+  switches from the registry in `reader-options.js`; `profile-settings.js`
+  the Language menu, **Use for lookups** and the Add or remove languages
+  dialog, and `language-settings.js` the settings a language pack defines
+  (docs/languages.md 5.3, 7.5, 16.3-16.5); `memory-settings.js`
   the Advanced → Memory readout and each Dictionaries row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
   with credentials redacted and reader content reduced to counts, and
@@ -214,6 +217,8 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `vendor/themes/index.json` and lists its colour variants under Colours.
   `theme-host.js` selects Default or a bundled Nazeka, Plain, JL, Bee or Crystal view before constructing
   content and applies only its CSS. See the [renderer contract](../docs/themes/README.md).
+  `language-text.js` applies a language pack's display transforms to the text
+  a popup shows (docs/languages.md 10.4).
 - **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
   came from where.

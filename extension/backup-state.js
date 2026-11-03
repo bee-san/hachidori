@@ -21,6 +21,7 @@ import {
 } from "./profile-state.js";
 import { japaneseView } from "./japanese-view.js";
 import { languageName, languageNames } from "./language-names.js";
+import { hasLanguagePack } from "./sharing-languages.js";
 
 export function backupRevisions(snapshot) {
   return Object.fromEntries(["state", "options", "document", "updates", "lookupStats", "wordStatusOverrides"].map(key => {
@@ -197,10 +198,6 @@ function invalidProfiles() {
 }
 
 // Japanese is built into the engine; another language needs its pack.
-function hasLanguagePack(code) {
-  return code === JAPANESE || (globalThis.HDLanguages?.get?.(code) ?? null) !== null;
-}
-
 // A language's personal package id (section 15), also for a language this
 // build has no pack for: the first 32 hexadecimal digits of SHA-256 of
 // "hachidori-custom-dictionary:" and its code.

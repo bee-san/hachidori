@@ -203,11 +203,9 @@ export function mergeDictionaryView(state, profileId, view, { legacy = false } =
  */
 // `joins` names installed packages that join `profileId` when its list lacks
 // them: an import requested for that profile replaced them (design 14).
-export function mergeEngineDictionaries(state, packages,
-  { profileId = JAPANESE_PROFILE_ID, languages = new Map(), joins = [] } = {}) {
+export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_PROFILE_ID, joins = [] } = {}) {
   const previous = new Set(state.dictionaries.map(row => row.id));
   const present = new Set(packages.map(row => row.id));
-  const languageOf = id => languages.get(id) ?? id;
   if (!plainObject(state.profiles[profileId])
       && packages.some(row => !previous.has(row.id) && !isPersonalPackage(row))) {
     const { PROFILE_MESSAGES } = globalThis.HDReaderOptions;
@@ -217,8 +215,9 @@ export function mergeEngineDictionaries(state, packages,
     throw error;
   }
   const result = {};
+  // In version 1 a profile's id is its language (decision 0002).
   for (const [id, profile] of Object.entries(state.profiles)) {
-    const language = languageOf(id);
+    const language = id;
     let list = (Array.isArray(profile?.dictionaries) ? profile.dictionaries : [])
       .filter(entry => present.has(entry?.id));
     for (const row of packages) {

@@ -22,7 +22,7 @@ import { sameJsonValue } from "./json-value.js";
 import { boundResponseFailure, responseFits, responseLimitError } from "./response-limits.js";
 import { STARTUP_PAGE } from "./setup-state.js";
 import { SEARCH_FRAME, SEARCH_PAGE } from "./search-window.js";
-import { mergeDictionaryView } from "./profile-state.js";
+import { mergeDictionaryView, profileLanguages } from "./profile-state.js";
 
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
@@ -327,11 +327,6 @@ function requestProfileId(message, storedOptions) {
   if (optionProfiles(storedOptions).some(profile => profile.id === id)) return id;
   throw named === undefined ? profileError(NO_JAPANESE_PROFILE, "no-japanese-profile")
     : profileError(PROFILE_REMOVED, "profile-missing");
-}
-
-// Profile id → language, for the profiles the options record holds.
-function profileLanguages(storedOptions) {
-  return new Map(optionProfiles(storedOptions).map(profile => [profile.id, profile.language]));
 }
 
 function withPrunedProfileSelections(record, profileId, view) {
