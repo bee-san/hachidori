@@ -1,0 +1,28 @@
+# Evidence for #656
+
+Screenshots and ad-hoc scripts for the search page's click lookups, Anki
+Template switch and popup window size, taken in Chrome for Testing
+152.0.7977.75 (headless) with the extension of the pull request's head.
+
+| File | What it shows |
+| --- | --- |
+| `search-600x640.png` | The default popup window size with three Templates: the switch fits the header on one line. |
+| `search-420x600.png` | A narrow window: the switch gives way first, then the title and the Clipboard monitor's label wrap. |
+| `search-template-default.png`, `-girlypop.png`, `-dracula.png`, `-high-contrast.png`, `-forced-colors.png` | The switch in a dark, a light and the high-contrast palette, and under Windows' forced colours (emulated). |
+| `search-template-focus.png` | Shift+Tab twice from the search box: the switch's 2 px focus ring. |
+| `search-click-lookup.png` | Look up words with a click: 読 clicked in the query 漢字を読む shows 読む. |
+| `settings-search-page.png` | Settings → Reading → Search page. |
+
+Contrast of the switch (`scripts/contrast.mjs`, computed styles painted on a
+canvas, WCAG 2 ratios), text on its background and its border on the page:
+
+| Palette | Text | Border |
+| --- | --- | --- |
+| default | 11.21:1 | 3.44:1 |
+| girlypop (light) | 12.31:1 | 11.64:1 |
+| dracula | 13.37:1 | 13.91:1 |
+| high-contrast | 21.00:1 | 19.68:1 |
+
+Scripts: `probe.mjs` and `ffprobe.test.mjs` asked Chrome 152 and Firefox 159
+which window sizes `windows.create` accepts; `preview.mjs`, `keys.mjs`,
+`evidence.mjs` and `contrast.mjs` produced the rest.
