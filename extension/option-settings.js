@@ -33,6 +33,55 @@ let optionsEditRevision = null; // NOSONAR: shared with the other Settings modul
 let activationController;
 let frequencyDirectionRequest = 0;
 
+// Reading → Search page's history (docs/search-history.md): how many lines it
+// keeps, Clear history, and its limit, applied here at once when it is
+// lowered (the search page applies it with its next line). The history is
+// this browser's IndexedDB, which Settings opens when Reading first shows.
+let searchHistory = null;
+let searchHistoryLimit = null;
+
+function openedSearchHistory() {
+  searchHistory ??= import("./search-history.js").then(({ openSearchHistory }) => {
+    const store = openSearchHistory({ indexedDB: window.indexedDB });
+    store.onChange(() => { void renderSearchHistory(); });
+    return store;
+  });
+  return searchHistory;
+}
+
+async function renderSearchHistory() {
+  if (activeSection !== "lookup") return;
+  const count = element("search-history-count");
+  const clear = element("search-history-clear");
+  try {
+    const store = await openedSearchHistory();
+    if (options.searchHistoryLimit !== searchHistoryLimit) {
+      searchHistoryLimit = options.searchHistoryLimit;
+      await store.prune(searchHistoryLimit);
+    }
+    const kept = await store.count();
+    count.textContent = kept === 0 ? "No lines kept." : `${numberFormat.format(kept)} ${kept === 1 ? "line" : "lines"} kept.`;
+    clear.disabled = kept === 0;
+  } catch (error) {
+    count.textContent = `Could not read the search history: ${describeErrorOrJson(error)}`;
+    clear.disabled = true;
+  }
+}
+
+async function clearSearchHistory() {
+  if (!window.confirm("Clear the search history? Every line the search page kept is deleted.")) return;
+  element("search-history-clear").disabled = true;
+  setSectionStatus("search-history-status", "Clearing the search history…", "working");
+  try {
+    await (await openedSearchHistory()).clear();
+    setSectionStatus("search-history-status", "Search history cleared.", "ready", true);
+  } catch (error) {
+    setSectionStatus("search-history-status", `Could not clear the search history: ${describeErrorOrJson(error)}`, "error",
+      false, error);
+  }
+  await renderSearchHistory();
+}
+
 function selectionParts(value) {
   if (value && typeof value === "object") {
     return value;
@@ -471,6 +520,8 @@ function renderOptions() {
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-toolbar-search").checked = options.showToolbarSearchButton;
   element("opt-search-click-lookup").checked = options.searchClickLookup;
+  element("opt-search-history").checked = options.searchHistoryEnabled;
+  void renderSearchHistory();
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   element("opt-smaller-anki-cards").checked = options.smallerAnkiCards;
   renderThemeChoices();
@@ -538,6 +589,11 @@ function attachOptionHandlers() {
     options.searchClickLookup = event.target.checked;
     writeOptions();
   });
+  element("opt-search-history").addEventListener("change", (event) => {
+    options.searchHistoryEnabled = event.target.checked;
+    writeOptions();
+  });
+  element("search-history-clear").addEventListener("click", () => { void clearSearchHistory(); });
   element("reset-design").addEventListener("click", () => {
     for (const key of DESIGN_OPTION_KEYS) options[key] = DEFAULT_OPTIONS[key];
     customButtonController?.reset();
@@ -853,6 +909,6 @@ async function flushOptionsUntilIdle() {
 
 export {
   attachOptionHandlers, flushOptionsUntilIdle, isAvailableFrequencyDictionary, normaliseKanjiClickOption,
-  optionsEditRevision, pendingOptions, renderOptions, renderThemeChoices, renderWordHighlightControls,
+  optionsEditRevision, pendingOptions, renderOptions, renderSearchHistory, renderThemeChoices, renderWordHighlightControls,
   savingOptions, selectedFrequencyDictionary, setOptionsStatus, writeOptions
 };

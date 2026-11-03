@@ -646,6 +646,26 @@
               </label>
             </div>
             <p class="field-hint" id="search-window-help">The size of the window the Open the search page in a popup window shortcut opens.</p>
+            <label class="lookup-enable">
+              <span>Keep a history of searched lines</span>
+              <input type="checkbox" id="opt-search-history" aria-describedby="search-history-help" data-search-keywords="history lines recall up arrow texthooker clipboard" />
+            </label>
+            <p class="field-hint" id="search-history-help">The search page keeps each line it searches, typed, pasted or copied, in this browser only. Up and Down in its box bring back earlier lines; in the searched text the arrow keys move between words, rows and earlier lines, and Enter adds the word to Anki (<a href="#keybinds">Keybinds</a>). Backups and linked browsers do not include these lines, and turning this off keeps the ones already kept. <a href="https://github.com/bee-san/hachidori/blob/main/docs/search-history.md" target="_blank" rel="noopener noreferrer">The search history</a></p>
+            <label class="field">
+              <span class="field-label">Lines kept</span>
+              <span class="input-suffix">
+                <input id="opt-search-history-limit" type="number" min="1" step="1" inputmode="numeric" />
+                <span class="suffix">lines</span>
+              </span>
+              <span class="field-hint">Past this number, the oldest lines are removed.</span>
+            </label>
+            <div class="setting-row">
+              <p class="field-hint" id="search-history-count"></p>
+              <div class="options-actions">
+                <button type="button" class="ghost danger" id="search-history-clear" aria-describedby="search-history-count" data-search-keywords="delete erase history lines texthooker">Clear history</button>
+                <output class="custom-dictionary-status" id="search-history-status" aria-live="polite"></output>
+              </div>
+            </div>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Frequency sorting</legend>
