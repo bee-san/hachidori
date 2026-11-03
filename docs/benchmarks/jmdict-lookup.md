@@ -26,9 +26,9 @@ Percentiles pool every measured lookup.
 | Import to first lookup, per install | 0.9–1.5 s | 39.8–69.6 s | 36× (medians) |
 | First lookup after import, per install | 3.7–10.3 ms | 6.9–9.5 ms | |
 
-The 295 lookups that returned fewer than 32 entries returned the same
-headwords in both readers. In 22 of the 42 lookups that reached the 32-entry
-limit, the readers kept different entries.
+For the 295 lookups with fewer than 32 entries, both readers returned the same
+headwords. In 22 of the 42 lookups that reached the 32-entry limit, they kept
+different entries.
 
 An earlier run of the same workload on the same laptop, then in a slower power
 state, measured 6.5 ms vs 17.0 ms at p50 (2.6×) and 16.5 ms vs 58.1 ms at p99
