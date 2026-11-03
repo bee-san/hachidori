@@ -41,7 +41,19 @@
         <span class="hd-icon" data-icon="search" aria-hidden="true"></span>
       </button>
     </form>
-    <p class="search-query" id="search-query" lang="ja" hidden></p>
+    <!-- The searched text, which the arrow keys move a cursor through once it
+         has focus (search.js). In a visit to an earlier line (Rubi's line
+         history), the rows around it are its neighbours' last and first rows,
+         drawn from data-text (search.css): no text of theirs can be looked up,
+         selected or read. Each block is its own paragraph, so a lookup never
+         runs on into the next. -->
+    <div class="search-lines" id="search-lines" hidden>
+      <p class="search-neighbour search-neighbour-before" id="search-before" aria-hidden="true" hidden></p>
+      <p class="search-query" id="search-query" lang="ja" tabindex="0" aria-describedby="search-where search-keys" hidden></p>
+      <p class="search-neighbour" id="search-after" aria-hidden="true" hidden></p>
+      <p class="search-line-note" id="search-where" aria-live="polite" hidden></p>
+      <p class="search-line-note search-keys" id="search-keys"></p>
+    </div>
     <main class="search-results" id="search-results" aria-label="Results">
       <output class="hint" id="search-status">Loading…</output>
     </main>

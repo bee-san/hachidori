@@ -119,6 +119,13 @@ body.search-page {
   min-height: var(--search-control-height);
   padding: 0;
 }
+/* The searched text, and in a visit to an earlier line its neighbours' rows
+   and where it is (docs/search-history.md). */
+.search-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .search-query {
   margin: 0;
   max-height: 25vh;
@@ -127,6 +134,50 @@ body.search-page {
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  border-radius: var(--radius-control);
+}
+/* A neighbour shows one row, Rubi's: the last of the line before, the first
+   of the line after, dimmed. Its text is generated content, which no lookup,
+   selection or screen reader reads. */
+.search-neighbour {
+  margin: 0;
+  max-height: 1.6em;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text-dim) 78%, var(--bg));
+  font-size: 20px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.search-neighbour::before {
+  content: attr(data-text);
+}
+.search-neighbour-before {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.search-line-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-caption);
+}
+/* The keys are named while the searched text has focus. */
+.search-lines:not(:focus-within) .search-keys {
+  display: none;
+}
+/* The cursor, while the searched text has focus. Under forced colours the
+   browser paints a highlight in Highlight and HighlightText. */
+::highlight(hd-search-cursor) {
+  text-decoration-line: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.25em;
+}
+@media (forced-colors: active) {
+  .search-neighbour {
+    color: GrayText;
+  }
 }
 .search-results {
   flex: 1;
