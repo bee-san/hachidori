@@ -321,6 +321,22 @@ async function clickLookupCase() {
     outcomes["a click on a word in the results opens it in a child popup"] =
       child?.text.startsWith("食用語") === true && Boolean(driver.popupAt(1)) && !driver.popupAt(1).hidden;
 
+    // The activation key still opens one from the results beside the click:
+    // pressed while the pointer rests on a word, it looks the word up.
+    const keyed = definitionWord(harness, "熟語");
+    const shift = type => document.dispatchEvent(new window.KeyboardEvent(type, {
+      bubbles: true, code: "ShiftLeft", key: "Shift", shiftKey: type === "keydown" }));
+    driver.onPopupMouseMove({ clientX: 140, clientY: 220, target: keyed });
+    await harness.settle();
+    const keyless = sentLookup() === null;
+    shift("keydown");
+    await harness.settle();
+    const hovered = await answer(harness, [harness.term("熟語")]);
+    shift("keyup");
+    outcomes["the activation key still opens a child popup from the results while the switch is on"] =
+      keyless && hovered?.text.startsWith("熟語") === true && Boolean(driver.popupAt(1)) && !driver.popupAt(1).hidden
+      || { keyless, hovered: hovered?.text };
+
     driver.setScanCandidate(writeCandidate);
     click(window, write, [140, 40], [150, 40]);
     const dragged = sentLookup() === null;
