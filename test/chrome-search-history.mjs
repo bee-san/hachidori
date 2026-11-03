@@ -493,6 +493,18 @@ try {
   await settings.goto(`chrome-extension://${extensionId}/settings.html#lookup`, { waitUntil: "domcontentloaded" });
   await settings.waitForFunction(() => document.getElementById("search-history-count").textContent === "7 lines kept.",
     { polling: 100, timeout: 15_000 });
+  if (SCREENSHOTS) {
+    await settings.bringToFront();
+    await settings.setViewport({ width: 1100, height: 900 });
+    // Clips are page coordinates: add the scroll after scrollIntoView.
+    const fieldset = await settings.$eval("#search-page-settings", (element) => {
+      element.scrollIntoView({ block: "center" });
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x: x + scrollX, y: y + scrollY, width, height };
+    });
+    await settle(300);
+    await settings.screenshot({ path: resolve(SCREENSHOTS, "settings-search-history.png"), clip: fieldset });
+  }
   assert.equal(await settings.$eval("#opt-search-history", input => input.checked), true);
   await settings.$eval("#opt-search-history-limit", (input) => {
     input.value = "3";
