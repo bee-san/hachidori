@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createWriteStream, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { finished } from "node:stream/promises";
@@ -73,11 +73,21 @@ try {
     await buildFirefox();
     const webExt = resolve(TOOLING, "node_modules/web-ext/bin/web-ext.js");
     await run("firefox-lint", [webExt, "lint", "--source-dir", FIREFOX_EXTENSION, "--no-config-discovery"]);
-  } else if (suite === "firefox-e2e" || suite === "firefox-large" || suite === "firefox-languages") {
-    // firefox-languages: a profile switch and an English and an Arabic lookup (docs/languages.md 18).
+  } else if (suite === "firefox-e2e" || suite === "firefox-large") {
     await run("fixture", ["test/make-fixture.mjs"]);
     await buildFirefox();
     await run(suite, [...NODE_TEST, `test/${suite}.mjs`]);
+  } else if (suite === "firefox-languages") {
+    // A profile switch and an English and an Arabic lookup (docs/languages.md 18) in a copy of the
+    // Firefox build whose registry holds Japanese and the fixture packs of test/data/languages/,
+    // whatever packs the build ships.
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await buildFirefox();
+    const { extensionWith } = await import("./chrome-languages/builds.mjs");
+    const scratch = resolve(ROOT, "test/tmp/firefox-languages");
+    rmSync(scratch, { recursive: true, force: true });
+    const extension = await extensionWith(scratch, "extension", ["en", "ar"], [], FIREFOX_EXTENSION);
+    await run(suite, [...NODE_TEST, `test/${suite}.mjs`], { HACHIDORI_FIREFOX_EXTENSION: extension });
   } else if (suite === "lint") {
     const eslint = resolve(dirname(require.resolve("eslint/package.json")), "bin/eslint.js");
     await run("lint", [eslint, "--config", "test/tooling/eslint.config.mjs", "."]);

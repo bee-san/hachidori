@@ -663,9 +663,13 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   plays pronunciation audio on hosts with no audio device.
 - **`firefox-languages.mjs`** (`node test/run.mjs firefox-languages`,
   docs/languages.md 18) runs on `firefox-e2e`'s session and harness, with its
-  own plan of six checks, in a profile of its own: the first run offers the
-  shipped packs and chooses English, Settings adds Arabic, each profile imports
-  its fixture dictionary (`make-language-fixtures.mjs`), an English hover finds
+  own plan of six checks, in a profile of its own. It tests a copy of the
+  Firefox build, written to `test/tmp/firefox-languages/` by the launcher with
+  `chrome-languages/builds.mjs`, whose registry holds Japanese and the English
+  and Arabic fixture packs of `test/data/languages/`, whatever packs the build
+  ships. The first run offers those packs and chooses English, Settings adds
+  Arabic, each profile imports its fixture dictionary
+  (`make-language-fixtures.mjs`), an English hover finds
   *run* in *running*, the toolbar switches to Arabic and the badge reads `AR`,
   and a hover on الكتاب on a right-to-left page finds كتاب in a popup that is
   English and left to right, its deinflection trail reading the matched form

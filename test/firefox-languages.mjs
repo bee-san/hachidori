@@ -2,6 +2,12 @@
  * Languages in a real Firefox (docs/languages.md 18): one profile switch and
  * one English and one Arabic lookup in the Firefox build.
  *
+ * The build under test is a copy of the Firefox build whose language registry
+ * holds the Japanese pack and the English and Arabic fixture packs of
+ * test/data/languages/, whatever packs the build ships: test/run.mjs writes it
+ * to test/tmp/firefox-languages/ with chrome-languages/builds.mjs and passes it
+ * as HACHIDORI_FIREFOX_EXTENSION.
+ *
  * Built like test/firefox-e2e.mjs, whose session and fixed-denominator
  * harness it uses: Firefox installs the build as a temporary add-on and
  * Puppeteer drives it over WebDriver BiDi. The first run chooses English,
