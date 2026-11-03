@@ -192,10 +192,17 @@ function adoptOptions(value) {
   return true;
 }
 
+// The pack's name, else the platform's, as language-names.js gives it (the
+// test harnesses load this page without that module).
 function languageName(code) {
   const name = globalThis.HDLanguages?.get?.(code)?.name;
   if (typeof name === "string") return name;
-  return code === "ja" ? "Japanese" : code;
+  if (code === "ja") return "Japanese";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 // A pack's language.json, for its samples and recommended dictionaries.

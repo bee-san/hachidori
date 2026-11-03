@@ -2,6 +2,7 @@ import { actualIndexPolicy, planIndexStorage, residentHashBudgetBytes } from "./
 import { encodeBase64 } from "./base64.js";
 import { readDebugLog, recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessageOrJson } from "./error-text.js";
+import { languageName } from "./language-names.js";
 import {
   httpsUrl,
   assertRecommendedDictionary,
@@ -283,10 +284,6 @@ function lookupArguments(message) {
 }
 
 // The English name of a language, for messages.
-function languageName(language) {
-  return globalThis.HDLanguages?.get?.(language)?.name ?? language;
-}
-
 // The title of the personal package of the language a request is for.
 function personalTitle(message) {
   return personalDictionaryIdentity(message.language ?? JAPANESE_PROFILE_ID)?.title ?? CUSTOM_DICTIONARY_TITLE;
