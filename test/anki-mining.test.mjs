@@ -579,47 +579,94 @@ test("overwrite leaves preserved fields out of the mutation when Anki changes du
 
 // Issue #655: the search page takes a word typed alone for its sentence, as
 // Yomitan's does, and an update appended that word to each Append sentence field.
-test("an update from a lookup whose sentence is only its word leaves the note's sentence fields as they are", async () => {
-  // The reporter's Senren Template: each sentence field appends a scene.
-  const fieldTemplates = {
-    word: { value: "{expression}", overwriteMode: "skip" },
-    sentence: { value: '<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>',
-      overwriteMode: "append" },
-    sentenceFurigana: { value: '<span class="group">{sentence-furigana}</span>', overwriteMode: "append" },
-    miscInfo: { value: "{document-title}", overwriteMode: "overwrite" },
-  };
+const SENREN_SCENE = '<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>';
+const sceneGroup = (prefix, suffix) => `<span class="group">${prefix}<span class="highlight">声明</span>${suffix}</span>`;
+
+// A Senren note type with these field templates, its note `saved` (null: none
+// yet), the production field renderer, and lookups of 声明 in `sentence`.
+function sceneFixture(fieldTemplates, saved = null) {
   const f = fixture();
   f.change({ model: "Senren", duplicateBehavior: "overwrite", fieldTemplates });
   f.gateway.discover = async () => ({ connected: true, model: "Senren", models: ["Senren"], decks: ["Default"],
     fields: Object.keys(fieldTemplates), errors: [] });
-  const scene = '<span class="group">スキナーの<span class="highlight">声明</span>まであと１日だし</span>';
-  const furiganaScene = '<span class="group">スキナーの<b>声明</b>まであと１日だし</span>';
-  const fields = { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Page" };
-  const updates = [];
+  const state = { fields: saved, updates: [], added: null, applied: null };
   f.gateway.invoke = async (action, params) => {
+    if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+    if (action === "addNote") { state.added = params.note.fields; state.fields = { ...params.note.fields }; return 123; }
     if (action === "notesInfo") return [{ noteId: 123, modelName: "Senren", fields: Object.fromEntries(
-      Object.entries(fields).map(([field, value]) => [field, { value }]),
-    ) }];
-    if (action === "updateNoteFields") { updates.push(params.note.fields); Object.assign(fields, params.note.fields); return null; }
+      Object.entries(state.fields).map(([field, value]) => [field, { value }])) }];
+    if (action === "updateNoteFields") { state.updates.push(params.note.fields); Object.assign(state.fields, params.note.fields); return null; }
     assert.fail(`Unexpected ${action}`);
   };
-  const service = createAnkiMiningService({ ...f.dependencies, duplicateIndex: testIndex(() => [123]),
+  const service = createAnkiMiningService({ ...f.dependencies, duplicateIndex: testIndex(() => state.fields ? [123] : []),
     buildFields: async (request, current) => ({
-      fields: await buildAnkiFields(request, current.resolved.templates, { definition: () => "" }) }) });
-  const { configKey } = await service.status();
-  const lookup = (sentence, documentTitle) => ({ configKey, expression: "声明",
+      fields: await buildAnkiFields(request, current.resolved.templates, { definition: () => "" }) }),
+    preflightExtra: async ({ applied }) => { state.applied = applied; return {}; } });
+  const lookup = async (sentence, { matchOffset = 0, documentTitle = "Search", ...extra } = {}) => ({
+    configKey: (await service.status()).configKey, expression: "声明",
     term: { expression: "声明", reading: "せいめい", rules: "", glossaries: [], frequencies: [], pitches: [] },
-    trace: [], sentence, matchOffset: 0, matched: "声明", popupSelectionText: "", searchQuery: "声明", documentTitle,
-    dictionaryAliases: {}, dictionaryIds: {}, frequencyDictionaries: [] });
-  for (let update = 0; update < 3; update++) {
-    assert.equal((await service.submit(lookup("声明", "Search"))).state, "updated");
+    trace: [], sentence, matchOffset, matched: "声明", popupSelectionText: "", searchQuery: "声明", documentTitle,
+    dictionaryAliases: {}, dictionaryIds: {}, frequencyDictionaries: [], ...extra });
+  return { state, service, lookup, submit: async (...args) => service.submit(await lookup(...args)) };
+}
+
+test("an update from a lookup whose sentence is only its word leaves the note's sentence fields as they are", async () => {
+  // The reporter's sentence and sentenceFurigana templates, each appending a scene.
+  const scene = sceneGroup("スキナーの", "まであと１日だし");
+  const furiganaScene = '<span class="group">スキナーの<b>声明</b>まであと１日だし</span>';
+  const f = sceneFixture({
+    word: { value: "{expression}", overwriteMode: "skip" },
+    sentence: { value: SENREN_SCENE, overwriteMode: "append" },
+    sentenceFurigana: { value: '<span class="group">{sentence-furigana}</span>', overwriteMode: "append" },
+    miscInfo: { value: "{document-title}", overwriteMode: "overwrite" },
+  }, { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Page" });
+  for (let update = 0; update < 3; update++) assert.equal((await f.submit("声明")).state, "updated");
+  assert.deepEqual(f.state.updates, [{ miscInfo: "Search" }, {}, {}]);
+  assert.deepEqual(f.state.fields, { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Search" });
+  // Text before the word or after it is a new scene, which each field appends.
+  assert.equal((await f.submit("スキナーの声明", { matchOffset: 5, documentTitle: "Novel" })).state, "updated");
+  assert.deepEqual(f.state.updates.at(-1), { sentence: `${scene}${sceneGroup("スキナーの", "")}`,
+    sentenceFurigana: `${furiganaScene}<span class="group">スキナーの<b>声明</b></span>`, miscInfo: "Novel" });
+  assert.equal((await f.submit("声明を読んだ。", { documentTitle: "Novel" })).state, "updated");
+  assert.deepEqual(f.state.updates.at(-1), { sentence: `${scene}${sceneGroup("スキナーの", "")}${sceneGroup("", "を読んだ。")}`,
+    sentenceFurigana: `${furiganaScene}<span class="group">スキナーの<b>声明</b></span><span class="group"><b>声明</b>を読んだ。</span>` });
+});
+
+test("a word-only update keeps a sentence field in every mode and leaves an empty one empty, while a new note takes the word", async () => {
+  for (const overwriteMode of globalThis.HDReaderOptions.ANKI_OVERWRITE_MODES) {
+    const saved = { word: "声明", sentence: sceneGroup("スキナーの", "。"), sentenceFurigana: "" };
+    const f = sceneFixture({ word: { value: "{expression}", overwriteMode: "skip" },
+      sentence: { value: SENREN_SCENE, overwriteMode }, sentenceFurigana: { value: "{sentence-furigana-plain}", overwriteMode } },
+    { ...saved });
+    assert.equal((await f.submit("声明")).state, "updated", overwriteMode);
+    assert.deepEqual(f.state.updates, [{}], overwriteMode);
+    assert.deepEqual(f.state.fields, saved, overwriteMode);
   }
-  assert.deepEqual(updates, [{ miscInfo: "Search" }, {}, {}]);
-  assert.deepEqual(fields, { word: "声明", sentence: scene, sentenceFurigana: furiganaScene, miscInfo: "Search" });
-  // A sentence around the word is a new scene, which each field appends.
-  assert.equal((await service.submit(lookup("声明を読んだ。", "Novel"))).state, "updated");
-  assert.deepEqual(updates.at(-1), { sentence: `${scene}<span class="group"><span class="highlight">声明</span>を読んだ。</span>`,
-    sentenceFurigana: `${furiganaScene}<span class="group"><b>声明</b>を読んだ。</span>`, miscInfo: "Novel" });
+  const f = sceneFixture({ word: { value: "{expression}", overwriteMode: "skip" },
+    sentence: { value: SENREN_SCENE, overwriteMode: "append" }, sentenceFurigana: { value: "{sentence-furigana-plain}", overwriteMode: "append" } });
+  assert.equal((await f.submit("声明")).state, "added");
+  assert.deepEqual(f.state.added, { word: "声明", sentence: sceneGroup("", ""), sentenceFurigana: "<b>声明</b>" });
+});
+
+test("a word-only update adds none of a scene's media, while a one-word Netflix cue is still a scene", async () => {
+  const fieldTemplates = { word: { value: "{expression}", overwriteMode: "skip" },
+    sentence: { value: SENREN_SCENE, overwriteMode: "append" }, picture: { value: "{screenshot}", overwriteMode: "append" },
+    sentenceAudio: { value: "{sentence-audio}", overwriteMode: "append" },
+    // A field without markers is not a scene's, and follows its mode.
+    hint: { value: "seen", overwriteMode: "overwrite" } };
+  const saved = { word: "声明", sentence: sceneGroup("スキナーの", "。"), picture: '<img src="one.png">', sentenceAudio: "[sound:one.wav]",
+    hint: "" };
+  const f = sceneFixture(fieldTemplates, { ...saved });
+  const media = name => ({ screenshot: { filename: `${name}.png` }, sentenceAudio: { filename: `${name}.wav` } });
+  assert.equal((await f.service.preflight(await f.lookup("声明", media("two")))).canAdd, true);
+  assert.deepEqual(f.state.applied.fields, { hint: "seen" });
+  assert.equal((await f.submit("声明", media("two"))).state, "updated");
+  assert.deepEqual(f.state.updates, [{ hint: "seen" }]);
+  assert.deepEqual(f.state.fields, { ...saved, hint: "seen" });
+  const cue = { netflix: { cue: { movieId: 1, startMs: 0, endMs: 900 } }, ...media("three") };
+  assert.equal((await f.submit("声明", cue)).state, "updated");
+  assert.deepEqual(f.state.updates.at(-1), { sentence: `${saved.sentence}${sceneGroup("", "")}`,
+    picture: `${saved.picture}<img src="three.png">`, sentenceAudio: `${saved.sentenceAudio}[sound:three.wav]` });
 });
 
 test("each Template has an independent configuration identity and routes its note to the selected destination", async () => {

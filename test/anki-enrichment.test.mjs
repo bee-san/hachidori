@@ -91,3 +91,16 @@ test("a lookup whose sentence is only its word adds no pronunciation to a senten
   assert.equal(f.uploads.length, 1);
   assert.equal(f.updates.length, 1);
 });
+
+test("a new note's sentence field still gets its pronunciation from a lookup whose sentence is only its word", async () => {
+  const f = fixture();
+  f.context.request = { sentence: "猫", matchOffset: 0, matched: "猫" };
+  f.context.resolved.templates = { Front: template("{expression}"), Back: template("{sentence}{audio}", "append") };
+  f.context.existingFields = undefined;
+  f.context.appliedFields = { Front: "猫", Back: "<b>猫</b>" };
+  f.edit({ Front: "猫", Back: "<b>猫</b>" });
+  f.dependencies.render = async (request, templates, audio) => ({ fields: Object.fromEntries(Object.entries(templates)
+    .map(([key, { value }]) => [key, value.replace("{sentence}", "<b>猫</b>").replace("{audio}", audio)])), media: [] });
+  assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
+  assert.deepEqual(f.updates, [{ Back: "<b>猫</b>[sound:chosen.wav]" }]);
+});
