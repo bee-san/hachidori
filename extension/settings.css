@@ -358,7 +358,6 @@ button,
 .language-remove { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
   border-radius: var(--radius-surface); background: var(--surface-sunken); }
 .language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.language-dialog-buttons button[hidden] { display: none; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 /* Dictionaries per profile (section 14). */

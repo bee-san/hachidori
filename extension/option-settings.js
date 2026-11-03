@@ -879,7 +879,7 @@ function discardPendingOptions() {
 
 export {
   attachOptionHandlers, discardPendingOptions, flushOptionsUntilIdle, isAvailableFrequencyDictionary,
-  normaliseKanjiClickOption, optionsEditRevision, optionsSaveFailed, pendingOptions, renderOptions, renderThemeChoices,
+  normaliseKanjiClickOption, optionsEditRevision, pendingOptions, renderOptions, renderThemeChoices,
   renderWordHighlightControls, savingOptions, selectedFrequencyDictionary, setOptionsStatus, settlePendingOptions,
   writeOptions
 };
