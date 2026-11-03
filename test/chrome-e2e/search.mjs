@@ -468,8 +468,15 @@ describe("search page", () => {
         }),
         copy: await frame.evaluate(() => {
           const select = document.querySelector("select.search-template");
+          // The lines the header's title and Clipboard monitor label take.
+          const lines = (element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
+          };
           return { hidden: select.hidden, value: select.value, visibility: getComputedStyle(select).visibility,
-            rect: select.getBoundingClientRect().toJSON() };
+            rect: select.getBoundingClientRect().toJSON(),
+            lines: [lines(document.querySelector(".search-header h1")), lines(document.querySelector(".search-header .lookup-enable span"))] };
         }),
         order: (await storedAnki()).templates.map(({ id }) => id),
         frameFocused: await tab.evaluate(() => document.activeElement?.localName === "iframe"),
@@ -483,12 +490,15 @@ describe("search page", () => {
         }
       };
       const single = await state();
-      await writeOptions({ anki: await withTemplates([[null, "Sentences"], ["e2e-words", "Words"], ["e2e-kanji", "Kanji"]]) });
+      // A long name is cut by the menu, which gives way in the 600-pixel
+      // window rather than wrapping the title or the Clipboard monitor's label.
+      await writeOptions({ anki: await withTemplates([[null, "Sentences with audio and a picture"], ["e2e-words", "Words"],
+        ["e2e-kanji", "Kanji"]]) });
       const id = original.templates[0].id;
       const listed = await settled(current => !current.shell.hidden && !current.copy.hidden);
       await screenshot(tab, "search-template-switch");
-      // The arrow keys walk the list, which stays put: Words after Sentences,
-      // then Sentences and Kanji before it.
+      // The arrow keys walk the list, which stays put: Words after Sentences…,
+      // then Sentences… and Kanji before it.
       await tab.focus("#search-template");
       await tab.keyboard.press("ArrowDown");
       const down = await settled(current => current.order[0] === "e2e-words" && current.copy.value === "e2e-words");
@@ -509,10 +519,11 @@ describe("search page", () => {
     }
     const { single, listed, down, up, pointed } = evidence;
     const id = original.templates[0].id;
-    check("the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
+    check("the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy without wrapping the 600-pixel window's header, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
       single.shell.hidden && single.copy.hidden
         && !listed.shell.hidden && listed.shell.name === "Anki Template" && listed.shell.heading === "Anki Template"
-        && JSON.stringify(listed.shell.choices) === '["Kanji","Sentences","Words"]' && listed.shell.value === id
+        && JSON.stringify(listed.shell.choices) === '["Kanji","Sentences with audio and a picture","Words"]'
+        && listed.shell.value === id && JSON.stringify(listed.copy.lines) === "[1,1]"
         && listed.copy.visibility === "hidden" && listed.copy.value === id && evidence.aligned
         && JSON.stringify(down.order) === JSON.stringify(["e2e-words", id, "e2e-kanji"]) && down.shell.focused
         && down.copy.value === "e2e-words"

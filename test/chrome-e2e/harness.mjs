@@ -407,7 +407,7 @@ const PLANNED = [
   "the search page and its results follow a popup theme change at once",
   "keys typed, Ctrl+U and text pasted in the docked result's Note form stay in the form",
   "Look up words with a click is off by default; on, a click on a word of the search page's query shows its results, one in the results opens a child popup, and a drag still selects text",
-  "the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
+  "the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy without wrapping the 600-pixel window's header, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
   "Custom JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages",
   "the settings page lists the dictionary again after a restart",
   "local-only libraries can install recommended dictionaries after a browser restart",
