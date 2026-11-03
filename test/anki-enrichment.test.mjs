@@ -76,7 +76,7 @@ test("an unconfirmed media upload warns without changing the checked first-field
 });
 
 // Issue #655: the pronunciation update leaves alone the sentence fields that
-// the note's update left alone.
+// the note's update left alone, and fetches no pronunciation for them alone.
 test("a lookup whose sentence is only its word adds no pronunciation to a sentence field", async () => {
   const f = fixture();
   f.context.request = { sentence: "猫", matchOffset: 0, matched: "猫" };
@@ -85,4 +85,9 @@ test("a lookup whose sentence is only its word adds no pronunciation to a senten
   f.edit({ back: "old" });
   assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
   assert.deepEqual(f.updates, [{ audio: "[sound:chosen.wav]" }]);
+  delete f.context.resolved.templates.Audio;
+  assert.deepEqual(await enrichAnkiNote(f.context, f.dependencies), []);
+  assert.equal(f.downloads, 1, "a pronunciation only the kept sentence field uses is not downloaded");
+  assert.equal(f.uploads.length, 1);
+  assert.equal(f.updates.length, 1);
 });
