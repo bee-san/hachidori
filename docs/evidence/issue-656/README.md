@@ -24,5 +24,7 @@ canvas, WCAG 2 ratios), text on its background and its border on the page:
 | high-contrast | 21.00:1 | 19.68:1 |
 
 Scripts: `probe.mjs` and `ffprobe.test.mjs` asked Chrome 152 and Firefox 159
-which window sizes `windows.create` accepts; `preview.mjs`, `keys.mjs`,
-`evidence.mjs` and `contrast.mjs` produced the rest.
+which window sizes `windows.create` accepts; `order.mjs` logged, in 8 loads,
+that the frame lays out its invisible copy of the menu before it tells
+search.html it is shown (copy, then shown, 0.2-3.4 ms apart, every time);
+`preview.mjs`, `keys.mjs`, `evidence.mjs` and `contrast.mjs` produced the rest.
