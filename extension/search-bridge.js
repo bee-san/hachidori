@@ -21,6 +21,7 @@
   const storageListeners = new Set();
   const clipboardListeners = new Set();
   const keyListeners = new Set();
+  const historyListeners = new Set();
   let connection = null;
   let nextId = 0;
   let resolveReady;
@@ -46,6 +47,7 @@
     changed: data => dispatch(storageListeners, data.changes, data.area),
     clipboard: data => dispatch(clipboardListeners, data.text),
     key: data => dispatch(keyListeners, data.key),
+    history: data => dispatch(historyListeners, data.change),
   }));
   port.onmessage = ({ data }) => { received.get(data.kind)?.(data); };
   window.parent.postMessage({ type: "hachidori-search-bridge" }, location.origin, [port2]);
@@ -98,12 +100,16 @@
   // search.js waits for the connection and keeps its debug log in the
   // extension's store through it. It searches what the Clipboard monitor reads,
   // takes the page's keys pressed in search.html's header, and tells
-  // search.html when its reader is ready and when text is copied here.
+  // search.html when its reader is ready and when text is copied here. Its line
+  // history (search-history.js) is search.html's too: `history` asks for an
+  // operation, and `onHistory` hears every change.
   globalThis.HDSearchBridge = Object.freeze({
     ready,
     debugLogStore: Object.freeze({ write: ops => call("log", { ops }) }),
     onClipboard: (listener) => { clipboardListeners.add(listener); },
     onKey: (listener) => { keyListeners.add(listener); },
     notify: (kind) => { port.postMessage({ kind }); },
+    history: (op, args) => call("history", { op, args }),
+    onHistory: (listener) => { historyListeners.add(listener); },
   });
 }());

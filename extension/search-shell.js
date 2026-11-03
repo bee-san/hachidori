@@ -8,7 +8,8 @@
 // reader, the script can use too, where on a web page it has no extension
 // messaging at all. The frame therefore gets what the reader needs and no
 // more: the requests a content script's reader sends, the stored keys it
-// reads and the events sent to it. This page keeps the header, whose
+// reads and the events sent to it, and the search page's own line history
+// (search-history.js), which this page opens for it. This page keeps the header, whose
 // Clipboard monitor switch asks for a permission: Firefox grants one only to
 // the document that handles the click. Its Anki Template switch writes the
 // options, which the frame may not.
@@ -19,6 +20,7 @@ import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.
 import { describeErrorMessage } from "./error-text.js";
 import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
+import { openSearchHistory } from "./search-history.js";
 import { renderTemplateChoices, withBuiltinTemplate } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
@@ -70,10 +72,29 @@ function readerRequest({ target, type, options } = {}) {
   return READER_REQUESTS.get(target)?.has(type) && (type !== "hd_options_write" || readerOptionsWrite(options));
 }
 
+// The history requests the frame may make (docs/search-history.md), each
+// checked here, as the frame shares its globals with the user's script: add a
+// line, while Reading → Search page keeps a history and up to its limit;
+// list, edit or remove lines. `settings()` resolves to the options, `page()`
+// to the window the page is in.
+export function searchHistoryRequests(history, { settings, page }) {
+  return new Map(Object.entries({
+    async add({ text, source }) {
+      const { searchHistoryEnabled, searchHistoryLimit } = await settings();
+      if (!searchHistoryEnabled) return null;
+      return (await history.add({ text, source, page: await page() }, { limit: searchHistoryLimit })).line;
+    },
+    list: ({ before, after, limit }) => history.list({ before, after, limit }),
+    edit: ({ id, text }) => history.edit(id, text),
+    remove: ({ id }) => history.remove(id),
+  }));
+}
+
 // Answers the frame on `port` until the returned function closes it. `page`
 // hears when the frame shows its themed page, when its reader is ready and
-// when text is copied there.
-export function serveSearchFrame(api, port, store, page) {
+// when text is copied there. `history` ({ requests, onChange }) answers the
+// frame's history requests and tells it of every change.
+export function serveSearchFrame(api, port, store, page, history = null) {
   // The ring's keys of the records this frame wrote, the only ones it may update.
   const written = new Set();
   const answer = (id, request) => {
@@ -97,10 +118,17 @@ export function serveSearchFrame(api, port, store, page) {
         for (const key of keys) written.add(key);
         return keys;
       });
+    } else if (data?.kind === "history") {
+      answer(data.id, () => {
+        const request = history?.requests.get(data.op);
+        if (!request) throw new Error(`The search page cannot ask its history to ${data.op}.`);
+        return request(data.args ?? {});
+      });
     } else if (["shown", "ready", "copied"].includes(data?.kind)) {
       page[data.kind]();
     }
   };
+  const unheard = history?.onChange((change) => { port.postMessage({ kind: "history", change }); });
   const onMessage = (message, sender) => {
     if (READER_EVENTS.has(message?.target)) port.postMessage({ kind: "message", message, sender: { id: sender.id } });
     return false;
@@ -115,6 +143,7 @@ export function serveSearchFrame(api, port, store, page) {
   return () => {
     api.runtime.onMessage.removeListener(onMessage);
     api.storage.onChanged.removeListener(onChanged);
+    unheard?.();
     port.close();
   };
 }
@@ -292,14 +321,22 @@ async function start() {
   const { normaliseOptions } = globalThis.HDReaderOptions;
   const frame = document.createElement("iframe");
   const templates = templateSwitch(document.getElementById("search-template"), frame);
-  const adoptOptions = (stored) => {
-    const options = normaliseOptions(stored);
-    applyPageTheme(document, options);
-    templates.show(options.anki);
+  // The options, read once and followed: the theme, the Anki Templates, and
+  // what the history keeps.
+  let options = chrome.storage.local.get("options").then(({ options: stored }) => normaliseOptions(stored));
+  const adoptOptions = (adopted) => {
+    applyPageTheme(document, adopted);
+    templates.show(adopted.anki);
   };
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.options) adoptOptions(changes.options.newValue);
+    if (area !== "local" || !changes.options) return;
+    const changed = normaliseOptions(changes.options.newValue);
+    options = Promise.resolve(changed);
+    adoptOptions(changed);
   });
+  const lines = openSearchHistory({ indexedDB: window.indexedDB });
+  const history = { onChange: lines.onChange, requests: searchHistoryRequests(lines, { settings: () => options,
+    page: async () => ((await chrome.windows.getCurrent()).type === "popup" ? "popup" : "tab") }) };
   const customJavaScript = await userScript(chrome);
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
@@ -307,7 +344,7 @@ async function start() {
   const clipboardSwitch = document.getElementById("search-clipboard");
   const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); });
   connectSearchFrame({ window, frame,
-    serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page); },
+    serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page, history); },
     connection: sandboxed => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest(),
       customJavaScript: sandboxed ? customJavaScript : "" }),
     reload: () => location.reload() });
@@ -343,7 +380,7 @@ async function start() {
     frame.focus();
     port?.postMessage({ kind: "key", key: event.key });
   });
-  adoptOptions((await chrome.storage.local.get("options")).options);
+  adoptOptions(await options);
 }
 
 if (globalThis.document) await start();
