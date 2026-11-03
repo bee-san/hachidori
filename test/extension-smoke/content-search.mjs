@@ -235,15 +235,130 @@ async function dockedKanjiCase() {
   }
 }
 
-// The same steps without a dock: the popup over a page closes as before.
+// Reading → Search page → Look up words with a click (#656). The harness's
+// stored lookup settings, so turning the switch changes nothing else and the
+// docked result is not looked up again.
+const STORED = { frequencyDictionary: "Frequency A", frequencyOrder: "descending",
+  kanjiClickDictionary: { title: "Generic", kind: "term" }, maxResults: 7, modifier: "none", scanLength: 9 };
+
+// A pointer press on `target` at `from`, released at `to`.
+function click(window, target, from, to = from) {
+  const [x, y] = from, [releaseX, releaseY] = to;
+  target.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, composed: true, button: 0, buttons: 1, clientX: x, clientY: y }));
+  for (const type of ["mouseup", "click"]) {
+    target.dispatchEvent(new window.MouseEvent(type, { bubbles: true, composed: true, button: 0, clientX: releaseX, clientY: releaseY }));
+  }
+}
+
+// The candidate the reader resolves for a word of the echoed query.
+function wordCandidate(window, element) {
+  const node = element.firstChild;
+  const text = node.nodeValue;
+  const anchorRange = window.document.createRange();
+  anchorRange.setStart(node, 0);
+  anchorRange.setEnd(node, 1);
+  return { anchor: element, anchorRange, matchOffset: 0, query: text, sentence: text, sentenceSource: text,
+    scanEntries: Array.from(text, (character, offset) => ({ node, offset, sourceLength: character.length, text: character })),
+    sourceElements: [element.parentElement], sourceOffset: 0, sourceText: text, vertical: false };
+}
+
+// A word in the definitions of the popup at `depth`, where the caret lands.
+function definitionWord(harness, text, depth = 0) {
+  const { document } = harness.window;
+  const glossary = document.createElement("div");
+  glossary.className = "gsm-hoshidicts-glossary-content";
+  const term = document.createElement("span");
+  term.textContent = text;
+  glossary.append(document.createTextNode("説明："), term, document.createTextNode("です。"));
+  harness.driver.popupAt(depth).querySelector(".gsm-hoshidicts-definitions").append(glossary);
+  document.caretPositionFromPoint = () => ({ offsetNode: term.firstChild, offset: 0 });
+  return term;
+}
+
+async function clickLookupCase() {
+  const outcomes = {};
+  const harness = await createHarness(undefined, { dock: DOCK });
+  const { driver, popup, window } = harness;
+  const { document } = window;
+  const sentLookup = () => harness.take("hd_lookup");
+  try {
+    const searching = driver.search(harness.anchor.firstChild);
+    await answer(harness, [harness.term(harness.anchor.textContent)]);
+    await searching;
+    // The echoed query, whose words search.js registers.
+    const query = document.createElement("p");
+    const read = document.createElement("span");
+    read.textContent = "読む";
+    const write = document.createElement("span");
+    write.textContent = "書く";
+    query.append(read, write);
+    document.body.append(query);
+    driver.lookUpOnClick(query);
+    const readCandidate = wordCandidate(window, read), writeCandidate = wordCandidate(window, write);
+
+    driver.setScanCandidate(readCandidate);
+    click(window, read, [100, 40]);
+    const definitionOff = definitionWord(harness, "食用語");
+    click(window, definitionOff, [120, 200]);
+    outcomes["clicks look nothing up on the search page while Look up words with a click is off"] =
+      sentLookup() === null && !driver.popupAt(1) && !popup.hidden;
+
+    harness.emitOptions({ ...STORED, searchClickLookup: true });
+    const quiet = sentLookup() === null;
+    click(window, read, [100, 40]);
+    const clicked = await answer(harness, [harness.term("読む")]);
+    const shown = harness.render();
+    click(window, read, [101, 40]);
+    const again = sentLookup();
+    outcomes["a click on a word of the echoed query shows its results in the results area, once"] =
+      quiet && clicked?.text === "読む" && shown.kind === "terms" && shown.results[0].term.expression === "読む"
+        && !popup.hidden && again === null;
+
+    const definition = definitionWord(harness, "食用語");
+    click(window, definition, [120, 200]);
+    const child = await answer(harness, [harness.term("食用語")]);
+    outcomes["a click on a word in the results opens it in a child popup"] =
+      child?.text.startsWith("食用語") === true && Boolean(driver.popupAt(1)) && !driver.popupAt(1).hidden;
+
+    driver.setScanCandidate(writeCandidate);
+    click(window, write, [140, 40], [150, 40]);
+    const dragged = sentLookup() === null;
+    const selection = window.getSelection();
+    selection.selectAllChildren(write);
+    click(window, write, [140, 40]);
+    const selected = sentLookup() === null;
+    selection.removeAllRanges();
+    harness.edit(true);
+    click(window, write, [140, 40]);
+    const drafting = sentLookup() === null && driver.snapshot().noteEditing;
+    harness.edit(false);
+    outcomes["a drag, a selection and a Note draft keep the result"] = dragged && selected && drafting
+      || { dragged, selected, drafting };
+
+    harness.emitOptions({ ...STORED, searchClickLookup: true, hoverEnabled: false });
+    const paused = sentLookup() === null;
+    click(window, write, [140, 40]);
+    const whilePaused = await answer(harness, [harness.term("書く")]);
+    outcomes["a click looks a word up while lookups are off, as a search does"] =
+      paused && whilePaused?.text === "書く" && harness.render().results[0].term.expression === "書く";
+  } finally {
+    harness.close();
+  }
+  return outcomes;
+}
+
+// The same steps without a dock: the popup over a page closes as before, and
+// the search page's click lookups do not reach it.
 async function undockedCase() {
-  const harness = await createHarness();
+  const harness = await createHarness(undefined, { options: { searchClickLookup: true } });
   const { anchor, driver, popup } = harness;
   const window = popup.ownerDocument.defaultView;
   const seen = pageEvents(window);
   try {
     await harness.initialLookup();
     const resizable = typeof harness.callbacks().onResizeStart === "function";
+    click(window, definitionWord(harness, "食用語"), [120, 80]);
+    const unclicked = harness.take("hd_lookup") === null && !driver.popupAt(1);
     escape(window);
     const escaped = popup.hidden && seen.length === 0;
     await harness.initialLookup();
@@ -251,7 +366,7 @@ async function undockedCase() {
     const pressed = popup.hidden;
     const unanswered = driver.search(anchor.firstChild);
     const sent = harness.take("hd_lookup") !== null;
-    return { resizable, escaped, pressed, searchedWithoutDock: sent || (await unanswered) !== false };
+    return { resizable, unclicked, escaped, pressed, searchedWithoutDock: sent || (await unanswered) !== false };
   } finally {
     harness.close();
   }
@@ -259,9 +374,11 @@ async function undockedCase() {
 
 describe("content search page", () => {
   test("docked search results", async () => {
-    const stage = await contentNoteStage({ docked: dockedCase, kanji: dockedKanjiCase, undocked: undockedCase });
+    const stage = await contentNoteStage({ docked: dockedCase, kanji: dockedKanjiCase, undocked: undockedCase,
+      clicks: clickLookupCase });
     check("the content harness loaded", stage !== null, "jsdom is unavailable");
     for (const [name, passed] of Object.entries(stage?.docked ?? {})) check(name, passed === true, JSON.stringify(passed));
+    for (const [name, passed] of Object.entries(stage?.clicks ?? {})) check(name, passed === true, JSON.stringify(passed));
     const kanji = stage?.kanji;
     check("a docked kanji view that fails to render offers Try again, which looks the kanji up again",
       kanji?.shown === true && kanji.kind === "failure" && kanji.title === "The lookup failed." && kanji.retried === true,
@@ -269,5 +386,7 @@ describe("content search page", () => {
     const undocked = stage?.undocked;
     check("without a dock the popup keeps its resize grip, Escape and an outside press close it, and search does nothing",
       undocked?.resizable && undocked.escaped && undocked.pressed && !undocked.searchedWithoutDock, JSON.stringify(undocked));
+    check("without a dock Look up words with a click does not open child popups on a click",
+      undocked?.unclicked === true, JSON.stringify(undocked));
   });
 });
