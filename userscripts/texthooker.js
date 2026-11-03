@@ -129,16 +129,21 @@
   }
 
   // Lines stay in the order they were kept, newest at the bottom, whichever
-  // arrives first: the list read at the start or a line kept meanwhile.
-  function add(line, follow) {
+  // arrives first: the list read at the start or a line kept meanwhile. While
+  // the list is scrolled to its end it stays there, as lines arrive and as the
+  // page around it changes size (the searched text appears after a search).
+  let pinned = true;
+  const follow = () => { if (pinned) list.scrollTop = list.scrollHeight; };
+  list.addEventListener("scroll", () => { pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 24; });
+  new ResizeObserver(follow).observe(list);
+  function add(line, newest) {
     if (items.has(line.id)) return;
-    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
     const kept = item(line);
     const later = [...items.values()].find(other => other.line.id > line.id);
     items.set(line.id, kept);
     if (later) later.entry.before(kept.entry, "\n");
     else list.append(kept.entry, "\n");
-    if (follow && atBottom) list.scrollTop = list.scrollHeight;
+    if (newest) follow();
   }
 
   function drop(id) {
@@ -220,7 +225,7 @@
   renderStats();
   void history.list().then((lines) => {
     for (const line of lines) add(line, false);
-    list.scrollTop = list.scrollHeight;
+    follow();
     renderStats();
   });
 }());

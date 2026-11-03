@@ -585,6 +585,22 @@ try {
   await hookFrame.click("#hd-texthooker .hd-th-pause");
   await copyInWeb("食べる読む");
   await panelUntil(state => state.lines.at(-1) === "食べる読む" && state.pause === "Pause clipboard", "resumed");
+  // A texthooker opened on lines that fill its list starts at the newest and
+  // stays there when the searched text appears above it.
+  const reopened = await openSearch("texthooker-reopened");
+  await reopened.frame.waitForSelector("#hd-texthooker li", { timeout: 15_000 });
+  await copyInWeb("漢字の本");
+  await reopened.frame.waitForFunction(() => [...document.querySelectorAll("#hd-texthooker .hd-th-text")].at(-1)
+    ?.textContent === "漢字の本" && document.getElementById("search-query").textContent === "漢字の本",
+  { polling: 50, timeout: 15_000 });
+  await settle(200);
+  const followed = await reopened.frame.evaluate(() => {
+    const list = document.querySelector("#hd-texthooker ol");
+    return { bottom: Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2, overflows: list.scrollHeight > list.clientHeight };
+  });
+  assert.ok(followed.bottom && followed.overflows, `the reopened list follows its newest line: ${JSON.stringify(followed)}`);
+  await reopened.tab.close();
+  await panelUntil(state => state.lines.at(-1) === "漢字の本", "the first texthooker hears the line too");
   // Edit a line with a double click and Enter; delete one; Escape gives up an edit.
   await hooked.tab.bringToFront();
   await hookFrame.$eval("#hd-texthooker li:first-child .hd-th-text", text => text.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
@@ -599,7 +615,7 @@ try {
   await hooked.tab.keyboard.press("Escape");
   await panelUntil(state => state.lines[1] === "ありがとう", "Escape gives up the edit");
   await hookFrame.$eval("#hd-texthooker li:nth-child(2) .hd-th-actions button:last-child", button => button.click());
-  await panelUntil(state => state.lines.length === 12 && state.lines[1] === "読む漢字", "the deleted line");
+  await panelUntil(state => state.lines.length === 13 && state.lines[1] === "読む漢字", "the deleted line");
   assert.ok(!(await lines(hookFrame)).some(line => line.text === "ありがとう"), "the line is deleted");
   // A click on a word in a line looks it up.
   const word = await hookFrame.$eval("#hd-texthooker li:nth-child(2) .hd-th-text", (text) => {
