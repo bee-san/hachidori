@@ -6,7 +6,7 @@
 // alternating schedule; compare.mjs remains the three-engine (JL included) contract.
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 import { makeComparisonSchedule, validateLookupEvidence } from "./comparison-lib.mjs";
 import { runHachidoriSample } from "./hachidori.mjs";
 import { normalizeConfig, sha256Canonical } from "./lib.mjs";
-import { directoryContentSha256, hostSnapshot, sha256File } from "./system.mjs";
+import { directoryContentSha256, hostSnapshot, persistThenCleanup, sha256File } from "./system.mjs";
 import { runYomitanSample } from "./yomitan.mjs";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -231,7 +231,12 @@ async function main() {
         const result = await run({ item: { ...item, attempt }, corpus: config.corpora[0], config, definition, output, launch });
         const row = { ...item, attempt, ...result, diagnostics: undefined };
         validateLookupEvidence(row, config);
-        appendFileSync(rawPath, `${JSON.stringify(row)}\n`);
+        // A failed attempt keeps its profile for diagnosis; a successful one's goes once its row is written.
+        persistThenCleanup({
+          persist: () => appendFileSync(rawPath, `${JSON.stringify(row)}\n`),
+          cleanup: () => rmSync(result.profilePath, { recursive: true, force: true }),
+          onCleanupError: (error) => process.stderr.write(`WARN ${item.runId}: could not remove ${result.profilePath}: ${error.message}\n`),
+        });
         process.stdout.write(`ok   ${item.runId} import=${(result.metrics.importUsableWallMs / 1000).toFixed(1)}s\n`);
         break;
       } catch (error) {
