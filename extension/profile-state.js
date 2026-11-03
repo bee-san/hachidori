@@ -201,7 +201,10 @@ export function mergeDictionaryView(state, profileId, view, { legacy = false } =
  * package is first and enabled in every profile of its language and in no
  * other. Groups lose removed packages. The revision is the state's.
  */
-export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_PROFILE_ID, languages = new Map() } = {}) {
+// `joins` names installed packages that join `profileId` when its list lacks
+// them: an import requested for that profile replaced them (design 14).
+export function mergeEngineDictionaries(state, packages,
+  { profileId = JAPANESE_PROFILE_ID, languages = new Map(), joins = [] } = {}) {
   const previous = new Set(state.dictionaries.map(row => row.id));
   const present = new Set(packages.map(row => row.id));
   const languageOf = id => languages.get(id) ?? id;
@@ -219,7 +222,8 @@ export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_
     let list = (Array.isArray(profile?.dictionaries) ? profile.dictionaries : [])
       .filter(entry => present.has(entry?.id));
     for (const row of packages) {
-      if (previous.has(row.id) || isPersonalPackage(row) || id !== profileId) continue;
+      if ((previous.has(row.id) && !joins.includes(row.id)) || isPersonalPackage(row) || id !== profileId) continue;
+      if (list.some(entry => entry.id === row.id)) continue;
       list.push({ id: row.id, enabled: row.enabled !== false });
     }
     const personal = packages.filter(row => personalDictionaryLanguage(row) === language);

@@ -754,3 +754,21 @@ test("the Relay lists for every profile index only dictionaries that it can down
     }
   }
 });
+
+// Design 14: an import adds the package to the edited profile, enabled and
+// last, also when another profile installed it first; that profile keeps it.
+test("re-importing another profile's dictionary from Japanese adds it to Japanese too", async () => {
+  const { accepted, stored } = await engineInstallation();
+  await accepted("hd_import", { fileName: "japanese.zip",
+    blobUrl: createObjectURL(buildTitledZip("Japanese words", { indexOverrides: { sourceLanguage: "ja", targetLanguage: "en" } })) });
+  await accepted("hd_profile_add", { language: "en", copyFrom: "ja" });
+  const english = () => createObjectURL(buildTitledZip("English words", { terms: englishTerms,
+    indexOverrides: { sourceLanguage: "en", targetLanguage: "en" } }));
+  await accepted("hd_import", { fileName: "english.zip", profileId: "en", blobUrl: english() });
+  await accepted("hd_import", { fileName: "english.zip", profileId: "ja", blobUrl: english() });
+  const state = stored("dictionaryState");
+  const titles = id => state.profiles[id].dictionaries.map(entry => state.dictionaries.find(row => row.id === entry.id)?.title);
+  assert.deepEqual(titles("ja"), ["Japanese words", "English words"]);
+  assert.deepEqual(titles("en"), ["English words"]);
+  assert.equal(state.dictionaries.filter(row => row.title === "English words").length, 1);
+});

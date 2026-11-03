@@ -524,7 +524,12 @@ words are read as the Japanese profile, with every value exactly as stored.
 - Every existing test suite passes without changes to its files: lint, Node
   contracts, the three WebAssembly smoke variants, the extension smoke suite,
   `chrome-e2e`, `chrome-sharing`, `chrome-fallback`, `chrome-overlay`,
-  `chrome-theme-contrast`, `firefox-e2e` and `firefox-lint`.
+  `chrome-theme-contrast`, `firefox-e2e` and `firefox-lint`. One exception:
+  the extension smoke suite's OPFS durability check
+  (`test/extension-smoke/engine.mjs`) refused any read-only `open` in
+  `wasm/bindings.cpp`; the bindings now read small files with one such
+  `open` (`read_file_start`), so the check reads only `flush_file`'s body,
+  where the barrier is. It still fails when `flush_file` opens read-only.
 - hoshidicts' three Japanese parity tests: deinflection, text processing and
   whole lookups compared with today's code (engine contract, section 11.3),
   and Yomitan's complete Japanese conjugation corpus.
@@ -1463,9 +1468,11 @@ separate change for the owner to decide.
   more languages the label and the confirmation say *every language* and list
   each language with its entry count.
 - **Import.** An import adds the package to the edited profile, enabled and
-  last (section 5.2). When the archive's `sourceLanguage` names another
-  profile's language, the success line says so and offers **Move to
-  {language}**.
+  last (section 5.2). A reimport of a package another profile installed also
+  adds it to the edited profile when its list lacks it; the other profiles
+  keep their place for it, and a managed update changes no profile's list.
+  When the archive's `sourceLanguage` names another profile's language, the
+  success line says so and offers **Move to {language}**.
 - **Recommended dictionaries.** The Japanese catalogue, its trust rules and
   its automatic installation stay exactly as they are and install into the
   Japanese profile. Other packs list `host.recommendedDictionaries` as links

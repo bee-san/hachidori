@@ -1440,7 +1440,7 @@ async function commitProfileDictionaryState(baseRevision, next) {
 async function commitDictionaryState(baseRevision, dictionaries, context = null) {
   if (context?.stored) {
     return commitProfileDictionaryState(baseRevision, profileState.mergeEngineDictionaries(context.stored,
-      dictionaries.map(withTargetLanguage), { profileId: context.profileId ?? JAPANESE_PROFILE_ID }));
+      dictionaries.map(withTargetLanguage), { profileId: context.profileId ?? JAPANESE_PROFILE_ID, joins: context.joins ?? [] }));
   }
   try {
     return await ask("hd_state_cas", { baseRevision, dictionaries });
@@ -1490,7 +1490,9 @@ async function recoverPendingRemovals(snapshot) {
 // write is rebuilt against the authoritative state before it is attempted again.
 // Loading happens before the CAS so a disabled corrupt package cannot be
 // published merely because the live engine would otherwise skip it.
-async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_PROFILE_ID } = {}) {
+// `joining()` names the generation path of a package that joins `profileId`
+// even when it was installed already (an import requested for the profile).
+async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_PROFILE_ID, joining = null } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
     // The single-profile shape has only the Japanese profile (section 5.2).
@@ -1503,8 +1505,9 @@ async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_
       return { state: snapshot.state, loadedCount };
     }
     const baseRevision = snapshot.state?.revision ?? 0;
+    const joins = joining === null ? [] : next.filter(row => row.path === joining()).map(row => row.id);
     const reply = await commitDictionaryState(baseRevision, next,
-      snapshot.state?.stored ? { stored: snapshot.state.stored, profileId } : null);
+      snapshot.state?.stored ? { stored: snapshot.state.stored, profileId, joins } : null);
     if (reply.ok === true) {
       if (reply.state?.schemaVersion !== 1
           || !Number.isInteger(reply.state?.revision)
@@ -2603,6 +2606,7 @@ async function commitImportedGeneration(
   expectedRevision,
   importDecision,
   profileId = JAPANESE_PROFILE_ID,
+  joinsProfile = false,
 ) {
   let generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(report.title)}`);
   if (generated.title !== report.title) {
@@ -2650,7 +2654,7 @@ async function commitImportedGeneration(
       generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(candidateTitle)}`);
     }
     return [...stored, generated];
-  }, { profileId });
+  }, { profileId, joining: joinsProfile ? () => generated.path : null });
   report.title = generated.title;
   publishLoadedDictionaries(committed.loadedCount);
   reloadError = null;
@@ -4346,7 +4350,9 @@ const HANDLERS = {
         return request;
       };
       // An import adds its package to the profile it was requested for
-      // (docs/languages.md 5.2); one that names none means Japanese.
+      // (docs/languages.md 5.2), a reimport too when that profile lacks it
+      // (14); one that names none means Japanese, and managed updates name
+      // none, so they leave every profile's list as it is.
       const commit = (request) => (generationRoot, importedReport) =>
         commitImportedGeneration(
           generationRoot,
@@ -4356,6 +4362,7 @@ const HANDLERS = {
           request.expectedRevision,
           request.importDecision,
           typeof message.profileId === "string" ? message.profileId : JAPANESE_PROFILE_ID,
+          typeof message.profileId === "string",
         );
       const replyFor = (report) => (report.success
         ? { report }
