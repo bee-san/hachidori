@@ -11,6 +11,7 @@
  */
 
 import "./settings.mjs";
+import { readFileSync } from "node:fs";
 import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import {
@@ -240,5 +241,112 @@ describe("search page", () => {
     check("the search page's Anki Template switch makes the chosen Template the built-in one, and the frame's copy follows",
       evidence.shown === true && JSON.stringify(evidence.chosen) === JSON.stringify(["e2e-words", original.templates[0].id]),
       JSON.stringify(evidence));
+  });
+
+  // The search page's line history (docs/search-history.md): its lines, the
+  // box's walk, the searched text's cursor and an earlier line, and the
+  // texthooker user script where Custom JavaScript runs on the search page.
+  step("the search page's history and its keys", async () => {
+    const search = await activate(await openExtensionPage("search.html"));
+    let frame = await searchFrame(search);
+    const ready = target => waitFor(() => target.evaluate(() => !document.getElementById("search-submit").disabled || false),
+      { timeout: 30_000 });
+    await ready(frame);
+    const searchFor = text => frame.evaluate((value) => {
+      const box = document.getElementById("search-input");
+      box.value = value;
+      box.form.requestSubmit();
+    }, text);
+    const state = () => frame.evaluate(() => {
+      const element = id => document.getElementById(id);
+      const [cursor] = CSS.highlights.get("hd-search-cursor") ?? [];
+      return { value: element("search-input").value, focused: document.activeElement?.id ?? null,
+        query: element("search-query").hidden ? null : element("search-query").textContent,
+        before: element("search-before").hidden ? null : element("search-before").dataset.text,
+        after: element("search-after").hidden ? null : element("search-after").dataset.text,
+        where: element("search-where").hidden ? null : element("search-where").textContent,
+        cursor: cursor ? { at: cursor.startOffset, text: cursor.toString() } : null };
+    });
+    const until = predicate => waitFor(async () => {
+      const current = await state();
+      return predicate(current) ? current : false;
+    }, { timeout: 15_000 });
+    const lines = () => frame.evaluate(() => globalThis.HDSearchHistory.list());
+
+    const before = await lines();
+    await searchFor("漢字");
+    await until(current => current.query === "漢字");
+    await searchFor("ありがとう");
+    await until(current => current.query === "ありがとう");
+    const kept = await waitFor(async () => {
+      const all = await lines();
+      return all.length === before.length + 2 ? all : false;
+    }, { timeout: 15_000 });
+    await frame.evaluate(() => {
+      const box = document.getElementById("search-input");
+      box.focus();
+      box.value = "下書き";
+      box.setSelectionRange(3, 3);
+    });
+    const walked = [];
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown"]) {
+      const previous = (await state()).value;
+      await search.keyboard.press(key);
+      walked.push((await until(current => current.value !== previous)).value);
+    }
+    check("the search page keeps each line it searches, and Up and Down in its box walk them back to the draft",
+      JSON.stringify(kept?.slice(-2).map(({ text, source, page: window }) => [text, source, window]))
+        === JSON.stringify([["漢字", "typed", "tab"], ["ありがとう", "typed", "tab"]])
+        && JSON.stringify(walked) === JSON.stringify(["ありがとう", "漢字", "ありがとう", "下書き"]),
+      JSON.stringify({ before: before.length, kept: kept?.map(line => line.text), walked }));
+
+    await searchFor("漢字読むありがとう");
+    const opened = await until(current => current.query === "漢字読むありがとう" && current.cursor?.text === "漢字");
+    await search.keyboard.press("ArrowRight");
+    const moved = await until(current => current.cursor?.at === 2 && current.cursor.text === "読む");
+    const looked = await waitFor(async () => ((await readPopup(frame))?.headword === "読む" ? "読む" : false), { timeout: 15_000 });
+    await search.keyboard.press("ArrowUp");
+    const earlier = await until(current => current.where !== null);
+    check("in the searched text Right moves the cursor to the next word and looks it up, and Up past its top row shows the earlier line between its neighbours",
+      opened.focused === "search-query" && moved !== false && looked === "読む" && earlier.query === "ありがとう"
+        && earlier.before === "漢字" && earlier.after === "漢字読むありがとう"
+        && earlier.where === "Earlier line -1 · ▲ earlier · ▼ later",
+      JSON.stringify({ opened, moved, looked, earlier }));
+
+    // The texthooker runs where Custom JavaScript runs on the search page: in
+    // its sandboxed frame, from Firefox 154 (the Custom JavaScript step in
+    // settings.mjs has granted user scripts).
+    const sandboxes = Number(/(\d+)\./u.exec(await browser.version())[1]) >= 154;
+    await writeOptions(page, { customPopupJavascript: readFileSync(new URL("../../userscripts/texthooker.js", import.meta.url), "utf8") });
+    const registered = await waitFor(() => page.evaluate(async () => (await chrome.userScripts.getScripts({
+      ids: ["hachidori-custom-javascript"] })).length === 1 || false), { timeout: 10_000 });
+    frame = await searchFrame(await reloadPage(search));
+    await ready(frame);
+    const listed = sandboxes
+      ? await waitFor(() => frame.evaluate(() => {
+        const texts = [...document.querySelectorAll("#hd-texthooker .hd-th-text")].map(text => text.textContent);
+        return texts.length > 0 ? texts : false;
+      }), { timeout: 15_000 })
+      : await frame.evaluate(() => document.getElementById("hd-texthooker") === null);
+    let clicked = null;
+    if (sandboxes) {
+      const point = await frame.evaluate(() => {
+        const text = [...document.querySelectorAll("#hd-texthooker .hd-th-text")].at(-1);
+        const range = document.createRange();
+        range.setStart(text.firstChild, 2);
+        range.setEnd(text.firstChild, 3);
+        const box = range.getBoundingClientRect();
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      });
+      await search.mouse.click(point.x, point.y);
+      clicked = await waitFor(async () => ((await readPopup(frame))?.headword === "読む" ? "読む" : false), { timeout: 15_000 });
+    }
+    const all = (await lines()).map(line => line.text);
+    await writeOptions(page, { customPopupJavascript: "" });
+    check("the texthooker user script lists the kept lines and looks up a clicked word from Firefox 154, where Custom JavaScript runs on the search page",
+      registered === true && (sandboxes ? JSON.stringify(listed) === JSON.stringify(all) && clicked === "読む" : listed === true),
+      JSON.stringify({ sandboxes, registered, listed, all, clicked }));
+    await search.close();
+    await activate(page);
   });
 });
