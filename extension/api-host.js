@@ -185,9 +185,10 @@ function requireStrings(value, name) {
 // `engine(fields)` answers a "hoshidicts-offscreen" request, `render(fields)`
 // a "hachidori-anki-render" one; both resolve to the reply envelope or throw
 // its error. `readDictionaries()` is the stored dictionary list,
-// `readAudioSources()` the enabled pronunciation sources and
-// `readAnkiTemplates()` the Anki Templates in Settings order.
-export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version }) {
+// `readAudioSources()` the enabled pronunciation sources,
+// `readAnkiTemplates()` the Anki Templates in Settings order and
+// `readSmallerAnkiCards()` whether Smaller Anki cards is on.
+export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, readSmallerAnkiCards, version }) {
   async function whereabouts() {
     const dictionaries = await readDictionaries();
     const titles = dictionaries.map(item => item.title);
@@ -211,6 +212,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     const dictionaryPaths = Object.fromEntries(enabled.map(item => [item.title, item.path]));
     const frequencyModes = new Map(where.dictionaries.map(item => [item.title, item.frequencyMode]));
     const templates = Object.fromEntries(markers.map(marker => [marker, { value: `{${marker}}`, overwriteMode: "coalesce" }]));
+    const compactGlossary = await readSmallerAnkiCards();
     const fields = [], dictionaryMedia = [], audioMedia = [];
     const seenMedia = new Set();
     for (const result of maxEntries > 0 ? results.slice(0, maxEntries) : results) {
@@ -234,7 +236,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
             mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename });
         }
       }
-      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths });
+      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths, compactGlossary });
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
       if (!includeMedia) continue;
       for (const item of built.media) {

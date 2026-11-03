@@ -51,7 +51,7 @@ function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = 
   };
   const answer = createApiHost({ engine, render, version: "0.1.4",
     readDictionaries: async () => dictionaries, readAudioSources: async () => audio ? [{ id: "jpod", type: "jpod101", enabled: true }] : [],
-    readAnkiTemplates: async () => templates });
+    readAnkiTemplates: async () => templates, readSmallerAnkiCards: async () => false });
   return { answer, calls };
 }
 const marker = (message, name) => Object.hasOwn(message.templates, name);
