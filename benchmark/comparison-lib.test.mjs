@@ -13,6 +13,7 @@ import {
   renderComparisonReadme,
   selectedComparisonQueries,
   validateComparisonRows,
+  validateLookupEvidence,
 } from "./comparison-lib.mjs";
 import { sha256Canonical } from "./lib.mjs";
 
@@ -221,6 +222,20 @@ test("comparison validation binds all raw evidence and fails closed", () => {
   failed[0] = { ...failed[0], valid: false, error: "adapter failed" };
   assert.doesNotThrow(() => validateComparisonRows(failed, schedule, definition, { allowMissing: true }));
   assert.throws(() => validateComparisonRows(failed, schedule, definition), /invalid run/i);
+});
+
+test("one adapter row's lookups are checked against the query expectations on their own", () => {
+  const { normalized, rows } = fixture();
+  const row = rows.find((entry) => entry.engine === "yomitan" && !entry.warmup);
+  assert.equal(validateLookupEvidence(row, normalized), row.lookup.semanticSha256);
+
+  const emptyHit = structuredClone(row);
+  emptyHit.lookup.passes[0].details.find((detail) => detail.queryId === "hit").resultCount = 0;
+  assert.throws(() => validateLookupEvidence(emptyHit, normalized), /hit violates its hit expectation/);
+
+  const emptyFirst = structuredClone(row);
+  emptyFirst.firstLookup.resultCount = 0;
+  assert.throws(() => validateLookupEvidence(emptyFirst, normalized), /first lookup returned no results/);
 });
 
 test("comparison summary excludes warmups and emits the requested three-row table", () => {
