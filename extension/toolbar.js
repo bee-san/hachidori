@@ -54,7 +54,11 @@ function profileList() {
 }
 
 // With two or more profiles, a radio group above today's controls, one
-// button per language; a click makes it this browser's language.
+// button per language; a click makes it this browser's language. One radio
+// is a tab stop and the arrow keys choose the next one (the ARIA radio group
+// pattern); state changes update the radios in place, so focus stays.
+let languageActive = null;
+
 function renderLanguages(list, active) {
   let row = elements["language-switcher"];
   if (list.length < 2) {
@@ -68,37 +72,58 @@ function renderLanguages(list, active) {
     row.className = "language-switcher";
     row.setAttribute("role", "radiogroup");
     row.setAttribute("aria-label", "Language");
+    row.addEventListener("keydown", onLanguageKey);
     elements["lookup-toggle"].before(row);
     elements["language-switcher"] = row;
   }
-  const key = JSON.stringify([list.map(profile => [profile.id, profile.language]), active, pending]);
-  if (row.dataset.key === key) return;
-  row.dataset.key = key;
-  row.replaceChildren(...list.map(profile => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "language-choice";
-    button.setAttribute("role", "radio");
-    button.setAttribute("aria-checked", String(profile.id === active));
-    button.dataset.profileId = profile.id;
-    button.disabled = pending;
-    const descriptor = globalThis.HDLanguages?.get?.(profile.language);
-    const name = document.createElement("span");
-    name.textContent = languageName(profile.language);
-    button.append(name);
-    if (typeof descriptor?.nativeName === "string" && descriptor.nativeName !== name.textContent) {
-      const native = document.createElement("span");
-      native.className = "language-native";
-      native.lang = descriptor.bcp47 ?? profile.language;
-      native.dir = descriptor.direction === "rtl" ? "rtl" : "ltr";
-      native.textContent = descriptor.nativeName;
-      button.append(native);
-    }
-    button.addEventListener("click", () => {
-      if (profile.id !== active) void run(() => chooseLanguage(profile.id));
-    });
-    return button;
-  }));
+  languageActive = active;
+  const key = JSON.stringify(list.map(profile => [profile.id, profile.language]));
+  if (row.dataset.key !== key) {
+    row.dataset.key = key;
+    row.replaceChildren(...list.map(profile => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "language-choice";
+      button.setAttribute("role", "radio");
+      button.dataset.profileId = profile.id;
+      const descriptor = globalThis.HDLanguages?.get?.(profile.language);
+      const name = document.createElement("span");
+      name.textContent = languageName(profile.language);
+      button.append(name);
+      if (typeof descriptor?.nativeName === "string" && descriptor.nativeName !== name.textContent) {
+        const native = document.createElement("span");
+        native.className = "language-native";
+        native.lang = descriptor.bcp47 ?? profile.language;
+        native.dir = descriptor.direction === "rtl" ? "rtl" : "ltr";
+        native.textContent = descriptor.nativeName;
+        button.append(native);
+      }
+      button.addEventListener("click", () => {
+        if (profile.id !== languageActive) void run(() => chooseLanguage(profile.id));
+      });
+      return button;
+    }));
+  }
+  for (const button of row.querySelectorAll(".language-choice")) {
+    const checked = button.dataset.profileId === active;
+    button.setAttribute("aria-checked", String(checked));
+    button.tabIndex = checked ? 0 : -1;
+    // aria-disabled rather than disabled, which would drop a focused radio's focus.
+    if (pending) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+  }
+}
+
+function onLanguageKey(event) {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+  if (step === undefined) return;
+  const radios = [...elements["language-switcher"].querySelectorAll(".language-choice")];
+  const index = radios.indexOf(document.activeElement);
+  if (index < 0) return;
+  event.preventDefault();
+  const next = radios[(index + step + radios.length) % radios.length];
+  next.focus();
+  next.click();
 }
 
 function render() {

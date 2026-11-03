@@ -69,7 +69,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
   const dialog = create("dialog", { className: "language-dialog", id: "settings-language-dialog",
     "aria-labelledby": "settings-language-dialog-heading" });
   dialog.innerHTML = `<form method="dialog">
-      <h2 id="settings-language-dialog-heading">Languages</h2>
+      <h2 id="settings-language-dialog-heading" tabindex="-1">Languages</h2>
       <p class="field-hint">Each language has its own dictionaries and settings. Settings every language shares say All languages.</p>
       <h3>Your languages</h3>
       <ul class="language-list" id="settings-language-profiles"></ul>
@@ -239,7 +239,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     const help = dialog.querySelector("#settings-language-erase-help");
     help.textContent = "";
     dialog.querySelector("#settings-language-remove").hidden = false;
-    confirm.focus();
+    // Cancel first, so Enter pressed twice does not remove a language.
+    dialog.querySelector("#settings-language-remove-cancel").focus();
     // An erase is refused when the personal dictionary changed after this
     // read, so it never deletes entries the confirmation did not count
     // (docs/languages.md 5.2).
@@ -253,7 +254,10 @@ export function createProfileSettings({ document, element, send, readEditedProfi
 
   function closeRemoval() {
     removing = null;
-    dialog.querySelector("#settings-language-remove").hidden = true;
+    const panel = dialog.querySelector("#settings-language-remove");
+    const focused = panel.contains(document.activeElement);
+    panel.hidden = true;
+    if (focused) dialog.querySelector("#settings-language-dialog-heading").focus();
   }
 
   async function run(action) {
@@ -268,6 +272,11 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     } finally {
       busy = false;
       render();
+      // The rows are rebuilt, so focus that was on one goes to Use for
+      // lookups when it is offered, else to the heading.
+      if (dialog.open && !dialog.contains(document.activeElement)) {
+        (useAdded.hidden ? dialog.querySelector("#settings-language-dialog-heading") : useAdded).focus();
+      }
     }
   }
 
@@ -483,6 +492,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     renderDialog();
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "");
+    // The heading first, not the first button, which removes a language.
+    dialog.querySelector("#settings-language-dialog-heading").focus();
     void refreshHeld().catch(error => setStatus(dialogStatus, describeErrorOrJson(error), "error", error));
     void refreshHostLanguages();
   });

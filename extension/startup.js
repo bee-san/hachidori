@@ -521,17 +521,23 @@ function languageDictionariesView() {
   };
 }
 
-// Imports the chosen archives one at a time into the active profile.
+// Imports the chosen archives one at a time into the active profile. The
+// progress and the outcome go through the live status, as the Japanese
+// stage's do.
 async function importLanguageDictionaries(files) {
+  let imported = 0;
+  let failed = null;
   for (const [index, file] of files.entries()) {
     languageImport = `Importing ${file.name} (${index + 1} of ${files.length})…`;
     render();
+    setStatus(languageImport);
     const blobUrl = URL.createObjectURL(file);
     try {
       const reply = await send("hd_import", { blobUrl, fileName: file.name, ...profileFields() }, ENGINE_TARGET); // NOSONAR: one archive at a time
       if (!reply.ok) throw new Error(reply.error || "the dictionary could not be imported");
+      imported += 1;
     } catch (error) {
-      setStatus(`Could not import ${file.name}: ${describeErrorMessage(error)}`, "error", error);
+      failed = { file, error };
     } finally {
       URL.revokeObjectURL(blobUrl);
     }
@@ -540,6 +546,11 @@ async function importLanguageDictionaries(files) {
   const stored = await chrome.storage.local.get("dictionaryState");
   adoptDictionaryState(stored.dictionaryState);
   render();
+  if (failed !== null) {
+    setStatus(`Could not import ${failed.file.name}: ${describeErrorMessage(failed.error)}`, "error", failed.error);
+  } else {
+    setStatus(`${imported === 1 ? "1 dictionary" : `${imported} dictionaries`} imported.`);
+  }
 }
 
 // Every source without a recorded outcome is requested on its own; the run's

@@ -415,9 +415,11 @@
       label = document.createElement("span");
       label.className = "gsm-hoshidicts-profile-label";
       label.lang = "en";
+      // The popup's own text colour on its raised surface, at 11px: legible in
+      // every palette (WCAG AA), unlike the faint token at 0.8 opacity.
       label.style.cssText = "position:absolute;inset-block-start:2px;inset-inline-end:8px;z-index:1;"
-        + "pointer-events:none;font-size:10px;line-height:1.4;padding:0 4px;border-radius:4px;opacity:0.8;"
-        + "color:var(--hoshidicts-text-faint,currentColor);background:var(--hoshidicts-palette-base-200,transparent);";
+        + "pointer-events:none;font-size:11px;line-height:1.4;padding:0 4px;border-radius:4px;"
+        + "color:var(--hoshidicts-text,currentColor);background:var(--hoshidicts-palette-base-200,transparent);";
       level.profileLabel = label;
     }
     const name = globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;

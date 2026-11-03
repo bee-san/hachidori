@@ -348,6 +348,7 @@ button,
 .language-dialog::backdrop { background: rgb(0 0 0 / 48%); }
 .language-dialog form { display: grid; gap: 12px; padding: 24px; }
 .language-dialog h2, .language-dialog h3, .language-dialog p { margin: 0; }
+.language-dialog h2:focus { outline: none; }
 .language-dialog h3 { margin-top: 6px; font-size: var(--font-body); }
 .language-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px;
