@@ -130,16 +130,15 @@ window.addEventListener("paste", (event) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.options) adoptOptions(changes.options.newValue);
+  if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
 });
 
-// The page follows the popup theme, and lays out search.html's Anki Template
-// switch, which lies over this header (#656), with the same Templates.
-function adoptOptions(stored) {
-  const options = normaliseOptions(stored);
-  applyPageTheme(document, options);
-  renderTemplateChoices(templateChoices, options.anki);
-}
+// search.html's Anki Template switch lies over this header (#656). The copy
+// here lists the same Templates, invisibly, so both documents lay it out alike.
+const showTemplates = (stored) => { renderTemplateChoices(templateChoices, normaliseOptions(stored).anki); };
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.options) showTemplates(changes.options.newValue);
+});
 
 // Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
 // once the reader is ready, as a user script runs at document_idle after the
@@ -156,7 +155,9 @@ function runCustomJavaScript(code) {
 
 try {
   const connection = await bridge.ready;
-  adoptOptions((await chrome.storage.local.get("options")).options);
+  const { options: stored } = await chrome.storage.local.get("options");
+  applyPageTheme(document, normaliseOptions(stored));
+  showTemplates(stored);
   bridge.notify("shown");
   // The page opens ready to type into, as Yomitan's focuses its box. It is
   // hidden, and its box cannot take focus, until settings-theme.js has the
