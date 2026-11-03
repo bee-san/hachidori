@@ -124,7 +124,7 @@ function getApiHost() {
   apiHost ??= createApiHost({
     version: chrome.runtime.getManifest().version,
     engine: fields => sendAnkiRequest(TARGET, fields),
-    render: fields => sendAnkiRequest("hachidori-anki-render", fields),
+    render: async fields => sendAnkiRequest("hachidori-anki-render", { ...fields, compactGlossary: (await readAnkiOptions()).smallerAnkiCards === true }),
     readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
     readAudioSources: async () => (await readAnkiOptions()).audioSources.filter(source => source.enabled),
     readAnkiTemplates: async () => (await readAnkiOptions()).anki.templates,
