@@ -603,7 +603,8 @@ async function prepareOverlayOptionsWrite(message) {
     }
     const values = localOverlayOptionsValues(options, local, stored);
     if (Object.keys(values).length > 0) await writeLocalState(values);
-    return { reply: workerReply(message, result) };
+    // The reply carries the record just stored, as finishOverlayOptionsWrite's.
+    return { reply: workerReply(message, { ...result, options }) };
   }
   return { local, shared, version: stored[SHARING_OPTIONS_VERSION_KEY], epoch: sharingEpoch };
 }

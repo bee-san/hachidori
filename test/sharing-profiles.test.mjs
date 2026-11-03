@@ -656,3 +656,23 @@ test("a profile-aware client opts in before storing anything and discards change
   assert.equal(client.status().error, "The linked Hachidori is changing its languages. Try again.");
   client.unlink();
 });
+
+// A linked overlay's write of a key it keeps locally stores it in every
+// profile; the reply is that stored record, so Settings adopts the same record
+// whichever of the reply and the storage event comes first.
+test("a linked overlay's local-key write replies with the record it stores", async () => {
+  const { relay } = await hosting(profileRecords(["ja", "en"]));
+  try {
+    const overlay = await linked("overlay", ["ja", "en", "ar"], { overlayMode: true,
+      records: { options: { revision: 2, popupColumns: 3, lookupMode: "activation" } } });
+    await until(() => overlay.stored("options")?.profiles?.length === 2, "the host's profiles");
+    const before = overlay.stored("options");
+    const reply = await overlay.worker("hd_options_write", { baseRevision: before.revision, profileId: "en",
+      options: { popupColumns: 1 } });
+    assert.equal(reply.ok, true, reply.error);
+    await until(() => overlay.stored("options").revision === reply.options.revision, "the stored write");
+    assert.deepEqual(reply.options.profiles, overlay.stored("options").profiles);
+  } finally {
+    relay.stop();
+  }
+});
