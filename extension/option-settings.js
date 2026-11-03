@@ -827,8 +827,10 @@ async function flushOptions() {
     }
     setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.", true);
   } catch (error) {
-    pendingOptions = { ...sent.patch, ...pendingOptions };
-    optionsSaveFailed = true;
+    // A patch for a profile this page no longer edits (another page removed
+    // it, and the page moved on) was discarded with that profile's drafts.
+    if (sent.fields.profileId === profileFields().profileId) pendingOptions = { ...sent.patch, ...pendingOptions };
+    optionsSaveFailed = Object.keys(pendingOptions).length > 0;
     // A reply can be lost after storage commits. Read the current revision for
     // explicit retry; do not silently overwrite it or drop the retained draft.
     try {

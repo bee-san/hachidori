@@ -320,3 +320,47 @@ test("a theme without presentation hides the pack's display settings", async t =
   assert.equal(settings.el("language-display-settings").hidden, true);
   assert.deepEqual(settings.search("vowel marks"), []);
 });
+
+// Design 5.3: when another page removes the edited profile, its drafts are
+// discarded, including a save that was in flight and is then refused.
+test("a save refused because its profile was removed elsewhere is not written into the next profile", async t => {
+  const stored = {
+    options: { revision: 5, profiles: [
+      { id: "ja", language: "ja", settings: { scanLength: 16 }, packSettings: {} },
+      { id: "en", language: "en", settings: { scanLength: 16 }, packSettings: {} },
+    ] },
+    dictionaryState: { schemaVersion: 2, revision: 3, dictionaries: [], profiles: { ja: { dictionaries: [], groups: [] },
+      en: { dictionaries: [], groups: [] } } },
+    languageSelection: { revision: 1, activeProfileId: "ja", autoSwitch: false },
+  };
+  let removed = false;
+  const writes = [];
+  const settings = openSettings(t, { hash: "?profile=en#lookup", stored, onMessage: async (message, { records, write }) => {
+    if (message.type !== "hd_options_write") return undefined;
+    writes.push(message.profileId ?? null);
+    if (removed) return undefined;
+    removed = true;
+    // Another page's removal of English commits first.
+    const options = structuredClone(records.options);
+    options.profiles = options.profiles.filter(profile => profile.id !== "en");
+    options.revision += 1;
+    const dictionaryState = structuredClone(records.dictionaryState);
+    delete dictionaryState.profiles.en;
+    dictionaryState.revision += 1;
+    write({ options, dictionaryState });
+    return { ok: false, conflict: true, error: "Settings changed in another page.", options };
+  } });
+  await settings.page.start();
+  await settle(50);
+  const input = settings.el("opt-scan-length");
+  input.value = "21";
+  input.dispatchEvent(new settings.window.Event("change", { bubbles: true }));
+  await settle(400);
+  assert.equal(settings.page.editedProfile().id, "ja");
+  assert.deepEqual(plain(settings.page.pending()), {});
+  assert.equal(settings.el("options-conflict-actions").hidden, true);
+  settings.el("options-retry").click();
+  await settle(400);
+  assert.deepEqual(writes, ["en"]);
+  assert.equal(settings.records.options.profiles.find(profile => profile.id === "ja").settings.scanLength, 16);
+});
