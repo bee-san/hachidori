@@ -390,22 +390,6 @@
       && typeof globalThis.HDNetflix?.miningFields === "function";
   }
 
-  // Netflix lays parts of its player over the subtitles, where the hit test
-  // finds them instead of the line. While a line is under the pointer, the
-  // probe style leaves only the subtitles hit-testable in the player.
-  let netflixProbeStyle = null;
-  function netflixProbeAt(clientX, clientY) {
-    if (!NETFLIX_HOST) return null;
-    if (!document.elementsFromPoint(clientX, clientY).some(element => element.closest(".player-timedtext"))) return null;
-    if (!netflixProbeStyle) {
-      netflixProbeStyle = document.createElement("style");
-      netflixProbeStyle.textContent = ".watch-video *{pointer-events:none!important}"
-        + ".player-timedtext,.player-timedtext *{pointer-events:auto!important}";
-      (document.head || document.documentElement).append(netflixProbeStyle);
-    }
-    return netflixProbeStyle;
-  }
-
   // netflix-content.js cannot read the switch, so the reader tells it whether
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
@@ -544,7 +528,7 @@
     return docsImposter;
   }
 
-  /** The offset of the glyph under the pointer, found by bisecting an imposter's client rects. */
+  /** The offset of the glyph under the pointer, found by bisecting a text node's client rects. */
   function imposterOffsetAt(node, clientX, clientY) {
     const range = document.createRange();
     let start = 0;
@@ -595,6 +579,21 @@
     const { text, node } = docsImposterFor(rect);
     // The <text> lives inside Docs' <svg>, which the page scan treats as opaque.
     return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false);
+  }
+
+  // Netflix lays parts of its player over the subtitles, where the hit test
+  // finds them instead of the line. As netflix-content.js finds a hovered line
+  // for hover pause, the reader finds the glyph under the pointer in the
+  // lines' own text, whatever covers it.
+  function resolveNetflixLineCandidate(clientX, clientY) {
+    for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
+      const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const offset = imposterOffsetAt(node, clientX, clientY);
+        if (glyphContainsPoint(node, offset, clientX, clientY)) return resolveCandidateAt(node, offset);
+      }
+    }
+    return null;
   }
 
   // An <input> or <textarea> keeps its value in user-agent shadow DOM, which
@@ -781,13 +780,14 @@
       const docs = resolveDocsCandidate(clientX, clientY);
       if (docs) return docs;
     }
-    const probe = netflixProbeAt(clientX, clientY);
-    if (probe) probe.disabled = false;
+    if (NETFLIX_HOST) {
+      const line = resolveNetflixLineCandidate(clientX, clientY);
+      if (line) return line;
+    }
     const hit = document.elementFromPoint(clientX, clientY);
     const field = scannableField(hit);
-    const caretRange = field ? null : caretRangeAt(clientX, clientY);
-    if (probe) probe.disabled = true;
     if (field) return resolveFieldCandidate(field, clientX, clientY);
+    const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE || !hit?.contains(node)) return null;
     const text = node.nodeValue || "";
