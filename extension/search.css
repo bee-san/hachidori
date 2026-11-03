@@ -162,9 +162,11 @@ body.search-page {
   color: var(--text-dim);
   font-size: var(--font-caption);
 }
-/* The keys are named while the searched text has focus. */
+/* The keys are named while the searched text has focus. The line keeps its
+   room meanwhile: a press that takes focus from the text must not move what
+   is under the pointer before its release. */
 .search-lines:not(:focus-within) .search-keys {
-  display: none;
+  visibility: hidden;
 }
 /* The cursor, while the searched text has focus. Under forced colours the
    browser paints a highlight in Highlight and HighlightText. */

@@ -85,6 +85,9 @@ export default defineConfig([
   { files: ["extension/engine-service.js"], languageOptions: { globals: readonly(["FileReaderSync"]) } },
   // The renderer also exports itself to the Node tests that require() it.
   { files: extension(["render/glossary.js", "render/popup.js"]), languageOptions: { globals: readonly(["module"]) } },
+  // User scripts to paste into Design → Custom JavaScript, which runs them in
+  // a page, or on the search page in its frame (docs/search-history.md).
+  { files: ["userscripts/**"], languageOptions: { sourceType: "script", globals: globals.browser } },
 
   // Node tests, benchmarks and scripts.
   {
