@@ -162,8 +162,10 @@
       optionsStorageRevision, dictionaryStateRevision]) : "single-profile";
     if (renderLanguageCache.key !== key) {
       const descriptor = profile ? registry.get?.(profile.language) ?? null : null;
+      // A dictionary's target language belongs to its package, so every
+      // package counts, also one the active profile does not use.
       renderLanguageCache = { key, language: globalThis.HDThemeHost.createLanguage(descriptor, profileId ? {
-        marked: true, packSettings: profile?.packSettings ?? {}, dictionaries,
+        marked: true, packSettings: profile?.packSettings ?? {}, dictionaries: storedDictionaryRecord?.dictionaries ?? dictionaries,
       } : {}) };
     }
     return renderLanguageCache.language;
@@ -2408,8 +2410,9 @@
         wordStatusActions.retire(level);
         level.noteEditing = false;
       },
-      // One-time work (font warm-up); each render carries its own (11.1).
-      language: renderLanguage(),
+      // One-time work (font warm-up) for the active profile's language; each
+      // render carries its own (11.1).
+      language: renderLanguage({ profileId: activeProfileId() }),
       appendExpressionRuby: globalThis.HDGlossary.appendExpressionRuby,
       createPronunciationPitchAccent: globalThis.HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: globalThis.HDGlossary.appendTextOnlyGlossary,

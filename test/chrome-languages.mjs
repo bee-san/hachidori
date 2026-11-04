@@ -54,7 +54,7 @@ const PLANNED = [
   "Settings edits English while Japanese is active, and only English changes",
   "pitch accent, the clicked-kanji dictionary and Anki's note-type setup hide for English and show for Japanese",
   "the Arabic-English dictionary's block takes its targetLanguage as its default lang",
-  "a popup that automatic switching gives English shows English's display name, custom buttons and theme",
+  "a popup that automatic switching gives English shows English's display name, custom buttons, theme and target language",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -474,8 +474,12 @@ try {
       return { alias: this.textContent.includes("EN-ALIAS"), jaOnly: this.innerHTML.includes("JA-ONLY"),
         renderer: this.getRootNode().host?.dataset.hoshidictsRenderer ?? null };
     }`);
-    check("a popup that automatic switching gives English shows English's display name, custom buttons and theme",
-      own?.alias === true && own.jaOnly === false && own.renderer === "default", JSON.stringify(own));
+    // The English dictionary's target language, although Japanese, the active
+    // profile, does not use it (render review minor 1).
+    const blocks = await popupBlocks(reading);
+    check("a popup that automatic switching gives English shows English's display name, custom buttons, theme and target language",
+      own?.alias === true && own.jaOnly === false && own.renderer === "default" && blocks.some(block => block.lang === "en"),
+      JSON.stringify({ own, blocks }));
     stored = await storage(["options"]);
     await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision, profileId: "ja",
       options: { popupTheme: "default", customButtons: [] } });

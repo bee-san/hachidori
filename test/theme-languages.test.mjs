@@ -515,3 +515,25 @@ test("the Design preview passes the edited profile's language and uses its pack'
     assert.equal(popup.querySelector(".gsm-hoshidicts-expression").textContent, "كتاب", "the pack's sample entry, displayed");
   } finally { window.close(); }
 });
+
+// 11.1 and 11.6: a view's one-time work (Crystal's font warm-up) is for the
+// active profile's language, here Arabic in an installation without Japanese.
+test("content.js gives its views the active profile's language", async () => {
+  const outcome = await contentNoteStage({ async single() { return null; }, async profiles() {
+    // The popup is built at the first lookup, once the records are read.
+    const harness = await createHarness(undefined, { prebuildUi: false, options: { profiles: [
+      { id: "ar", language: "ar", settings: {}, packSettings: {} },
+      { id: "en", language: "en", settings: {}, packSettings: {} },
+    ] } });
+    try {
+      const window = harness.anchor.ownerDocument.defaultView;
+      window.eval(readFileSync(new URL("../extension/render/glossary.js", import.meta.url), "utf8"));
+      window.HDLanguages = { get: code => PACKS[code] ?? null };
+      await harness.initialLookup();
+      return { view: harness.callbacks().language };
+    } finally { harness.close(); }
+  } });
+  if (outcome === null) return;
+  assert.equal(outcome.profiles.view.code, "ar");
+  assert.equal(outcome.profiles.view.marked, true);
+});
