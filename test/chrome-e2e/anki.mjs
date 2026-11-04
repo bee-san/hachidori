@@ -12,9 +12,9 @@ import { describe } from "node:test";
 import { AnkiConnectError, answerAnkiConnect } from "../anki-connect-fake.mjs";
 import { buildTitledZip } from "../make-fixture.mjs";
 import { check, HIGHLIGHT_NAME, step } from "./harness.mjs";
-import { hoverForPopup } from "./popup-reader.mjs";
+import { hoverForPopup, popupReader } from "./popup-reader.mjs";
 import { hover, popup, tab } from "./reader.mjs";
-import { browser, installMediaArchive, interceptFetches, makeAudioWav, page } from "./session.mjs";
+import { browser, extensionId, installMediaArchive, interceptFetches, makeAudioWav, page } from "./session.mjs";
 
 async function checkAnkiSubmission(settings, browser, tab, popup) {
   const original = await settings.evaluate(async () => (await chrome.storage.local.get("options")).options);
@@ -510,6 +510,7 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
       JSON.stringify(keyboard));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
     await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
+    await checkSearchPageUpdate({ tab, popup, configure, calls, notes, settled });
     await writeOptions({ kanjiClickDictionary: "" });
     await configure(false, { fieldTemplates: { Front: template("{character}"),
       Back: template("{onyomi}|{kunyomi}|{stroke-count}|{sentence}|{url-plain}"), Audio: template("{glossary}") } });
@@ -847,6 +848,105 @@ async function checkSentenceMining({ tab, popup, configure, calls, notes, settle
       document.getElementById("hooked-lines")?.remove();
       history.replaceState(null, "", original);
     }, original);
+  }
+}
+
+// Issue #655: the search page takes a word typed alone in its box for the
+// sentence, as Yomitan's does. Updating a note from there leaves its Append
+// sentence field as it was, while a sentence on a reading page still appends a
+// scene, as Senren's scene switching has Yomitan do.
+async function checkSearchPageUpdate({ tab, popup, configure, calls, notes, settled }) {
+  const template = (value, overwriteMode = "overwrite") => ({ value, overwriteMode });
+  const lines = ["四行目で本を読む。", "五行目でも読む。"];
+  const scene = (prefix, suffix) => `<span class="group">${prefix}<span class="highlight">読む</span>${suffix}</span>`;
+  const frameUrl = `chrome-extension://${extensionId}/search-frame.html`;
+  const saved = () => [...notes].find(([, fields]) => fields.Front === "読む scenes") ?? [];
+  const updates = () => calls.filter(call => call.action === "updateNoteFields");
+  // Saves the result once the popup's Anki action shows `state`, from the keyboard.
+  const save = async (target, reader, state) => {
+    await settled(value => value?.controls[0]?.state === state && !value.controls[0].disabled, () => reader.anki());
+    const focused = await reader.focusAnki();
+    await target.keyboard.press("Enter");
+    const done = await settled(value => value?.controls[0]?.state === "success", () => reader.anki());
+    return { focused, output: done.controls[0].output };
+  };
+  // 読む in a reading page line, as a reader hovers it.
+  const fromLine = async (index, state) => {
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    const point = await tab.evaluate(index => {
+      const node = document.getElementById(`scene-line-${index}`).firstChild;
+      const range = document.createRange();
+      range.setStart(node, node.nodeValue.indexOf("読"));
+      range.setEnd(node, node.nodeValue.indexOf("読") + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + rect.width * 0.3, y: rect.top + rect.height / 2 };
+    }, index);
+    const shown = await hoverForPopup(tab, popup, `#scene-line-${index}`, { point, accept: value => value.plain.includes("読む") });
+    return { shown: shown !== null, ...await save(tab, popup, state) };
+  };
+  let searchTab = null;
+  try {
+    // Senren's sentence template on Append, behind a first field of its own so
+    // that this is a new note.
+    await configure(false, { duplicateBehavior: "overwrite", fieldTemplates: { Front: template("{expression} scenes"),
+      Back: template('<span class="group">{cloze-prefix}<span class="highlight">{cloze-body}</span>{cloze-suffix}</span>', "append"),
+      Audio: template("{document-title}") } });
+    await tab.evaluate(lines => {
+      const main = document.createElement("main");
+      main.id = "scene-lines";
+      main.style.cssText = "position:fixed;left:600px;top:40px;width:640px;font:26px/1.6 serif;background:#fff";
+      lines.forEach((line, index) => {
+        const paragraph = document.createElement("p");
+        paragraph.id = `scene-line-${index}`;
+        paragraph.textContent = line;
+        main.append(paragraph);
+      });
+      document.body.append(main);
+    }, lines);
+    const added = await fromLine(0, "ready");
+    const [noteId, first] = saved();
+    const pageTitle = await tab.title();
+
+    searchTab = await browser.newPage();
+    await searchTab.setViewport({ width: 960, height: 760 });
+    await searchTab.goto(`chrome-extension://${extensionId}/search.html`, { waitUntil: "load" });
+    let frame = null;
+    for (const deadline = Date.now() + 15_000; !frame && Date.now() < deadline;) {
+      frame = searchTab.frames().find(candidate => candidate.url() === frameUrl) ?? null;
+      if (!frame) await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    await frame.waitForFunction(() => !document.getElementById("search-submit").disabled, { polling: 100, timeout: 15_000 });
+    const searchPopup = await popupReader(searchTab, 0, frameUrl);
+    const searchTitle = await frame.evaluate(() => document.title);
+    await frame.focus("#search-input");
+    await frame.$eval("#search-input", box => { box.value = "読む"; });
+    await searchTab.keyboard.press("Enter");
+    const searchShown = await searchPopup.waitForVisible(15_000, value => value.plain.includes("読む"));
+    const updatesBefore = updates().length;
+    const searched = { shown: searchShown !== null, ...await save(searchTab, searchPopup, "overwrite") };
+    const searchUpdate = updates().slice(updatesBefore);
+    const [, afterSearch] = saved();
+    await searchTab.close();
+    searchTab = null;
+
+    const appended = await fromLine(1, "overwrite");
+    const [, afterLine] = saved();
+    check("an update from a word typed alone on the search page leaves the note's Append sentence as it was, and a reading page's sentence still appends",
+      added.shown && added.focused && first?.Back === scene("四行目で本を", "。") && first.Audio === pageTitle
+        && searched.shown && searched.focused && searched.output.startsWith(`Updated note ${noteId}`)
+        && searchUpdate.length === 1 && JSON.stringify(searchUpdate[0].params.note.fields) === JSON.stringify({ Audio: searchTitle })
+        && afterSearch.Back === first.Back && afterSearch.Audio === searchTitle && searchTitle !== pageTitle
+        && appended.shown && appended.output.startsWith(`Updated note ${noteId}`)
+        && afterLine.Back === `${first.Back}${scene("五行目でも", "。")}` && afterLine.Audio === pageTitle,
+      JSON.stringify({ added, first, pageTitle, searchTitle, searched, searchUpdate: searchUpdate.map(call => call.params.note),
+        afterSearch, appended, afterLine }));
+  } finally {
+    await searchTab?.close();
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await tab.evaluate(() => document.getElementById("scene-lines")?.remove());
   }
 }
 
