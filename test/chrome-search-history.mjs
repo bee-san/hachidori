@@ -355,27 +355,47 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-history-visit-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
-  // The neighbours' rows are dimmed, and still legible: 4.5:1 against the page in every palette.
-  for (const theme of ["girlypop", "high-contrast", "dracula", "default"]) {
+  // The neighbours' rows are dimmed, and still legible: 4.5:1 in every
+  // palette against what is painted behind them. Automatic is Dark or Light.
+  const palettes = await frame.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS
+    .flatMap(group => group.themes.map(theme => theme.id)).filter(id => id !== "auto"));
+  const faint = [];
+  for (const theme of palettes) {
     await writeOptions({ popupTheme: theme });
     await frame.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value, { polling: 100, timeout: 10_000 }, theme);
     const contrast = await frame.evaluate(() => {
       const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-      const rgb = (color) => {
+      const paint = (colors) => {
+        canvas.fillStyle = "#fff";
+        canvas.fillRect(0, 0, 1, 1);
+        for (const color of colors) {
+          canvas.fillStyle = color;
+          canvas.fillRect(0, 0, 1, 1);
+        }
+        return [...canvas.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      };
+      // The backgrounds behind the rows, down to the first opaque one.
+      const row = document.getElementById("search-before");
+      const layers = [];
+      for (let node = row; node; node = node.parentElement) {
+        const color = getComputedStyle(node).backgroundColor;
+        layers.unshift(color);
         canvas.clearRect(0, 0, 1, 1);
         canvas.fillStyle = color;
         canvas.fillRect(0, 0, 1, 1);
-        return [...canvas.getImageData(0, 0, 1, 1).data.slice(0, 3)];
-      };
-      const luminance = color => rgb(color).map(value => value / 255)
+        if (canvas.getImageData(0, 0, 1, 1).data[3] === 255) break;
+      }
+      const luminance = rgb => rgb.map(value => value / 255)
         .map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
         .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-      const [text, page] = [getComputedStyle(document.getElementById("search-before")).color,
-        getComputedStyle(document.body).backgroundColor].map(luminance);
+      const [text, page] = [paint([...layers, getComputedStyle(row).color]), paint(layers)].map(luminance);
       return (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05);
     });
-    assert.ok(contrast >= 4.5, `the dimmed rows in ${theme}: ${contrast.toFixed(2)}:1`);
+    if (!(contrast >= 4.5)) faint.push(`${theme} ${contrast.toFixed(2)}:1`);
   }
+  assert.ok(palettes.length > 40, `every palette: ${palettes.length}`);
+  assert.deepEqual(faint, [], "the dimmed rows keep 4.5:1 in every palette");
+  await writeOptions({ popupTheme: "default" });
   // Up again goes further back, to the oldest line, and Down comes forward to the current line, its cursor where it was.
   await press("ArrowUp");
   const second = await until(state => state.query === "読む" && state.where?.startsWith("Earlier line -2"), "Up to -2");

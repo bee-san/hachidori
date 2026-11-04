@@ -137,13 +137,14 @@ body.search-page {
   border-radius: var(--radius-control);
 }
 /* A neighbour shows one row, Rubi's: the last of the line before, the first
-   of the line after, dimmed. Its text is generated content, which no lookup,
-   selection or screen reader reads. */
+   of the line after, dimmed to the palette's dim text, which keeps 4.5:1. Its
+   text is generated content, which no lookup, selection or screen reader
+   reads. */
 .search-neighbour {
   margin: 0;
   max-height: 1.6em;
   overflow: hidden;
-  color: color-mix(in srgb, var(--text-dim) 78%, var(--bg));
+  color: var(--text-dim);
   font-size: 20px;
   line-height: 1.6;
   white-space: pre-wrap;
