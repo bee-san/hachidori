@@ -1369,19 +1369,26 @@ dictionaries have** (`showMetadataOnlyResults`, off by default, #620) adds
 search-page lookup.
 hoshidicts' `LookupOptions::metadata_only_terms` then turns the frequency and
 pitch rows keyed by the scanned text into a result without glossaries, one per
-reading the rows name. Yomitan has no such option: its results come from term
-banks alone, and it attaches frequencies and pitches to them afterwards
-(`_getDeinflections` and `_addTermMeta` in `ext/js/language/translator.js` at
-yomidevs/yomitan@d3c54c1).
+reading the rows name, unless a result with definitions is that word with that
+reading and so shows those rows already. Yomitan has no such option: its
+results come from term banks alone, and it attaches frequencies and pitches to
+them afterwards, a row that names a reading only to a headword with that
+reading (`_getDeinflections` and `_addTermMeta` in
+`ext/js/language/translator.js` at yomidevs/yomitan@d3c54c1).
 
 - A row has no part of speech, so, like a term-bank entry without one, it
   answers only deinflections that need none. Those are the text as written,
   after preprocessing, and the few dialect rules that carry no part of speech,
   such as kansai-ben -うたら for -ったら. A row for ググる is not found for
   ググった.
-- Such a result counts only where it matches more of the text than every result
-  with definitions, and then it comes first. The results with definitions keep
-  their order, so `maxResults` can only cut the last of them.
+- Such a result comes after the results with definitions that match as much of
+  the text and before those that match less, so it comes first only where it
+  matches more of the text than all of them, or where a dictionary link asks
+  for its reading (`primaryReading`). A reading that no dictionary gives
+  a defined word is such a result too (#658): JMnedict lists 田中 without a
+  reading, so a hover on 田中 shows JMnedict's entries for 田中 and then 田中
+  read だなか and たなか with Jiten's frequencies. The results with definitions
+  keep their order, so `maxResults` can only cut the last of them.
 - `hd_lookup_dictionary` (clicked-kanji term routes) never returns these
   results. Word highlighting's `hd_segment`, the Anki sentence-furigana split,
   the relay API and the startup practice probe do not ask for them, because a
@@ -1407,7 +1414,11 @@ The option stays off by default. In the five recommended dictionaries as of
 2026-10-31, 18,235 of Jiten's 454,276 expressions are in no term dictionary.
 Hovering each of the first 40,000 characters of 吾輩は猫である gives a
 frequency-only first result 1,387 times (3.47%), and most of those are kana
-fragments such as はまだ and こで. #626 tracks the default.
+fragments such as はまだ and こで. #626 tracks the default. Over the same
+hovers, the readings of #658 change no first result and add 16,656 entries
+after the defined words to 12,436 hovers (31%): 8,416 other readings of a
+defined word, often a name reading of a single kanji (出 read いざき), 5,383
+kana rows without a reading (てい) and 2,855 katakana readings (人 read ヒト).
 
 ## Popup metadata controls
 
