@@ -43,6 +43,13 @@ import { dictionaryImportError, isImportMemoryError, nativeImportCall } from "./
 // the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
 
+// A language code as profiles and packs name languages (docs/languages.md 2),
+// and the dictionary state's schema once it has profiles (4.2). The engine
+// keeps its own copies: it imports the profile code only once the records
+// have profiles.
+const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
+const DICTIONARY_STATE_PROFILES_SCHEMA = 2;
+
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
  *
@@ -1150,7 +1157,7 @@ function isObject(value) {
 // reader-options.js's hasDictionaryProfiles, without loading it: schema 2
 // with a profiles object. Any other state has the single-profile shape.
 function hasDictionaryProfiles(state) {
-  return isObject(state) && state.schemaVersion === 2 && isObject(state.profiles);
+  return isObject(state) && state.schemaVersion === DICTIONARY_STATE_PROFILES_SCHEMA && isObject(state.profiles);
 }
 
 function engineState(state) {
@@ -1268,7 +1275,7 @@ const JAPANESE_CUSTOM = Object.freeze({ language: null, identity: personalDictio
 function customRequest(message) {
   const language = message?.language ?? null;
   if (language === null) return JAPANESE_CUSTOM;
-  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) {
+  if (typeof language !== "string" || !LANGUAGE_CODE.test(language)) {
     throw new TypeError("the custom dictionary request named an invalid language");
   }
   const identity = personalDictionaryIdentity(language);
@@ -1927,7 +1934,7 @@ async function fetchLanguageFile(code, name) {
 
 async function loadLanguagePack(code) {
   if (loadedLanguages.has(code)) return;
-  if (!/^[a-z]{2,3}$/u.test(code)) throw new Error(`invalid language code ${JSON.stringify(code)}`);
+  if (!LANGUAGE_CODE.test(code)) throw new Error(`invalid language code ${JSON.stringify(code)}`);
   const languageJson = await fetchLanguageFile(code, "language.json");
   const transforms = parseJson(languageJson, `${code}/language.json`)?.lookup?.transforms;
   const transformsJson = typeof transforms === "string" && transforms !== "" ? await fetchLanguageFile(code, transforms) : "";
@@ -2213,7 +2220,7 @@ async function addProfile(message) {
 
 function addedLanguage(message) {
   const language = text(message.language);
-  if (!/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  if (!LANGUAGE_CODE.test(language)) throw new TypeError("the language request named no language");
   if (message.copyFrom !== undefined && typeof message.copyFrom !== "string") {
     throw new TypeError("the language request named an invalid profile to copy");
   }
@@ -2228,7 +2235,7 @@ function addedProfileState(snapshot, language) {
   const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
     ? [{ id: personal.id, enabled: true }] : [];
   const profiles = { ...stored.profiles, [language]: { dictionaries: own, groups: [] } };
-  const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
+  const next = { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
   const union = globalThis.HDReaderOptions.allPackages(next);
   const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
   return { next, union, personal, baseRevision: snapshot.state?.revision ?? 0,
@@ -2335,7 +2342,7 @@ function removedLanguage(message) {
     throw new TypeError("the language request named an invalid profile");
   }
   const language = profileId ?? text(message.language);
-  if (!/^[a-z]{2,3}$/u.test(language) || (profileId === undefined && !erase)) {
+  if (!LANGUAGE_CODE.test(language) || (profileId === undefined && !erase)) {
     throw new TypeError("the language request named no language");
   }
   // An erase carries the document revision its confirmation read; a newer
@@ -2360,7 +2367,7 @@ function removedProfileState(stored, { erase, profileId, language }) {
   const kept = new Set(dictionaries.map((row) => row.id));
   const profiles = Object.fromEntries(Object.entries(stored.profiles).filter(([id]) => id !== profileId)
     .map(([id, profile]) => [id, { ...profile, dictionaries: profile.dictionaries.filter((entry) => kept.has(entry.id)) }]));
-  return { schemaVersion: 2, revision: stored.revision, dictionaries, profiles };
+  return { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: stored.revision, dictionaries, profiles };
 }
 
 async function askProfileRemove({ erase, profileId, language }, stored, next, baseDocumentRevision) {

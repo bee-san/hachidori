@@ -16,12 +16,12 @@ import {
 } from "./lookup-stats.js";
 import { withOverlayLookupDefault } from "./setup-state.js";
 import {
-  dictionaryStateWithoutProfiles, heldLanguages, optionsWithProfiles, optionsWithoutProfiles, packageRow, singleProfileRow,
-  singleProfileShape,
+  DICTIONARY_STATE_PROFILES_SCHEMA, dictionaryStateWithoutProfiles, heldLanguages, optionsWithProfiles, optionsWithoutProfiles,
+  packageRow, plainObject, singleProfileRow, singleProfileShape,
 } from "./profile-state.js";
 import { japaneseView } from "./japanese-view.js";
 import { languageName, languageNames } from "./language-names.js";
-import { hasLanguagePack } from "./sharing-languages.js";
+import { LANGUAGE_CODE, hasLanguagePack } from "./sharing-languages.js";
 
 export function backupRevisions(snapshot) {
   return Object.fromEntries(["state", "options", "document", "updates", "lookupStats", "wordStatusOverrides"].map(key => {
@@ -186,12 +186,8 @@ export async function assertBackupSnapshot(snapshot, { allowInvalidSettings = fa
 // ---------------------------------------------------------------------------
 
 const JAPANESE = "ja";
-const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
 const INVALID_PROFILES = "The backup contains invalid language profiles.";
 
-function plainObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
 
 function invalidProfiles() {
   return new Error(INVALID_PROFILES);
@@ -384,7 +380,7 @@ async function viewOmissions(snapshot, state, held) {
 async function assertPersonalPackages(snapshot, state, list, languages, omitted) {
   const codes = new Set([JAPANESE, ...Object.keys(languages), ...list.map(profile => profile.language), ...omitted.values()]);
   for (const code of codes) {
-    const identity = hasLanguagePack(code) ? personalDictionaryIdentity(code) : null;
+    const identity = personalDictionaryIdentity(code);
     if (identity === null) continue;
     const document = code === JAPANESE ? normaliseCustomDictionaryDocument(snapshot.document) : languageDocument(languages[code]);
     const entries = parseCustomDictionary(document.text, identity).entries;
@@ -457,7 +453,7 @@ export async function prepareBackupProfiles(snapshot, profiles) {
     ? { [JAPANESE]: { dictionaries: snapshot.state.dictionaries.map(({ id, enabled }) => ({ id, enabled })), groups: snapshot.state.groups } }
     : Object.fromEntries(kept.map(profile => [profile.id, profiles.dictionaryState.profiles[profile.id]]));
   const dictionaryState = {
-    schemaVersion: 2, revision: profiles.dictionaryState.revision, dictionaries: rows,
+    schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: profiles.dictionaryState.revision, dictionaries: rows,
     profiles: Object.fromEntries(Object.entries(lists).map(([id, entry]) => [id, {
       dictionaries: entry.dictionaries.filter(item => ids.has(item.id)), groups: entry.groups,
     }])),
@@ -496,7 +492,7 @@ export function backupEngineDictionaries(plan, fresh = new Map()) {
 export function personalEntryCount(snapshot, profiles) {
   let count = languageEntryCount(normaliseCustomDictionaryDocument(snapshot.document).text);
   for (const [code, part] of Object.entries(profiles?.languages ?? {})) {
-    if (hasLanguagePack(code) && personalDictionaryIdentity(code) !== null && typeof part?.document?.text === "string") {
+    if (personalDictionaryIdentity(code) !== null && typeof part?.document?.text === "string") {
       count += languageEntryCount(part.document.text, code);
     }
   }
@@ -552,7 +548,7 @@ function restoredProfileRecords(current, archived, dictionaries, plan, { overlay
     const items = entry.dictionaries.filter(item => installed.has(item.id));
     return [id, { dictionaries: items, groups: pruneGroupMemberships(entry.groups, items) }];
   }));
-  const state = { schemaVersion: 2, revision: revisions.state + 1, dictionaries: packages, profiles };
+  const state = { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: revisions.state + 1, dictionaries: packages, profiles };
   const record = overlay ? withOverlayLookupDefault(plan.options) : plan.options;
   const options = { ...record, revision: revisions.options + 1, profiles: record.profiles.map(profile => {
     const view = projectDictionaryState(state, profile.id);

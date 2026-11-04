@@ -10,12 +10,12 @@
  */
 
 import "./reader-options.js";
-import { heldLanguages } from "./profile-state.js";
+import { heldLanguages, plainObject } from "./profile-state.js";
 import { japaneseLookupRow, japaneseRecord, withoutLanguages } from "./japanese-view.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX } from "./lookup-stats.js";
 
 const JAPANESE = "ja";
-const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
+export const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
 
 export const PROFILE_REQUEST_TYPES = new Set(["hd_profile_add", "hd_profile_remove"]);
 // Requests whose replies carry options, dictionary state or a personal
@@ -33,9 +33,6 @@ const HELD_SLOTS = {
   [LOOKUP_STATS_KEY]: "lookupStats", wordStatusOverrides: "wordStatusOverrides",
 };
 
-function plainObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
 
 // This build's pack codes; Japanese is built in.
 export function packCodes() {
