@@ -1245,7 +1245,7 @@ export function makeSchedule(corpora, { warmups, samples, seed }) {
   return schedule;
 }
 
-function percentile(sorted, fraction) {
+export function percentile(sorted, fraction) {
   const position = (sorted.length - 1) * fraction;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);

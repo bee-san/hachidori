@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 
 import { makeComparisonSchedule, validateLookupEvidence } from "./comparison-lib.mjs";
 import { runHachidoriSample } from "./hachidori.mjs";
-import { normalizeConfig, sha256Canonical } from "./lib.mjs";
+import { normalizeConfig, percentile, sha256Canonical } from "./lib.mjs";
 import { directoryContentSha256, hostSnapshot, persistThenCleanup, sha256File } from "./system.mjs";
 import { runYomitanSample } from "./yomitan.mjs";
 
@@ -64,13 +64,6 @@ function archiveReport(archive) {
   const banks = unzip("-Z1", archive).split("\n").filter((name) => /^term_bank_\d+\.json$/.test(name));
   const termCount = banks.reduce((sum, bank) => sum + JSON.parse(unzip("-p", archive, bank)).length, 0);
   return { title: index.title, termCount };
-}
-
-function percentile(sorted, p) {
-  const k = (sorted.length - 1) * p;
-  const low = Math.floor(k);
-  const high = Math.min(low + 1, sorted.length - 1);
-  return sorted[low] + (sorted[high] - sorted[low]) * (k - low);
 }
 
 export function summarize(rows) {
