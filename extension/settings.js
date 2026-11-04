@@ -803,8 +803,10 @@ function updateKeybindSettings() {
     openBrowserShortcuts: () => (typeof chrome.commands.openShortcutSettings === "function"
       ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
-    // Toggle option offers what the edited profile's language has (docs/languages.md 7.3).
+    // Toggle option offers what the edited profile's language has (docs/languages.md 7.3),
+    // and Switch to the next language is offered once the records have profiles (16.2).
     optionAvailable, languageName: () => languageName(),
+    actionAvailable: action => action !== "switchLanguage" || hasProfiles(storedOptionsRecord),
   });
   keybindController.render();
 }

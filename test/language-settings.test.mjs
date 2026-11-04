@@ -463,3 +463,19 @@ test("with two languages the sidebar names the one Settings shows and leads to S
   await settle();
   assert.deepEqual(sidebarOf(settings), STATIC_SIDEBAR);
 });
+
+test("Switch to the next language is a keybind action once the records have profiles", async t => {
+  const actionOffered = settings => [...settings.document.querySelectorAll("#keybind-list .keybind-action")]
+    .map(select => !select.querySelector('option[value="switchLanguage"]').hidden);
+  const japanese = await open(t, { hash: "#keybinds", stored: { options: { revision: 1 } } });
+  assert.ok(actionOffered(japanese).length > 0);
+  assert.ok(actionOffered(japanese).every(offered => !offered), "a Japanese-only page does not offer it");
+  const languages = await open(t, { hash: "#keybinds", stored: withProfiles() });
+  assert.ok(actionOffered(languages).every(Boolean));
+  // A stored bind keeps showing its action.
+  const stored = await open(t, { hash: "#keybinds", stored: { options: { revision: 1, keybinds: [{ action: "switchLanguage",
+    argument: "", key: "KeyL", modifiers: ["alt", "shift"], scopes: ["web"], enabled: true }] } } });
+  const select = stored.document.querySelector("#keybind-list .keybind-action");
+  assert.equal(select.value, "switchLanguage");
+  assert.equal(select.selectedOptions[0].hidden, false);
+});
