@@ -1383,7 +1383,8 @@ reading (`_getDeinflections` and `_addTermMeta` in
   ググった.
 - Such a result comes after the results with definitions that match as much of
   the text and before those that match less, so it comes first only where it
-  matches more of the text than all of them. A reading that no dictionary gives
+  matches more of the text than all of them, or where a dictionary link asks
+  for its reading (`primaryReading`). A reading that no dictionary gives
   a defined word is such a result too (#658): JMnedict lists 田中 without a
   reading, so a hover on 田中 shows JMnedict's entries for 田中 and then 田中
   read だなか and たなか with Jiten's frequencies. The results with definitions
