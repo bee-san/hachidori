@@ -14,8 +14,7 @@ Up and Down in its box bring earlier lines back, as a shell's do. In the
 searched text, the arrow keys move a cursor word by word and row by row, and
 on to earlier lines, as Rubi's overlay does, and each word is looked up as the
 cursor reaches it. User scripts read and change the lines through
-`HDSearchHistory`, and [`userscripts/texthooker.js`](../userscripts/texthooker.js)
-turns the page into a texthooker view.
+`HDSearchHistory`.
 
 ## What is kept
 
@@ -227,30 +226,21 @@ if (globalThis.HDSearchHistory) {
 A user script has no storage on the search page: the frame's origin is
 opaque, so anything it wants to keep across reloads lives in its own code.
 
-## The texthooker user script
+## A texthooker user script
 
-[`userscripts/texthooker.js`](../userscripts/texthooker.js) is a user script
-for Design → Custom JavaScript, inspired by
+A texthooker view built on `HDSearchHistory`, inspired by
 [texthooker-ui](https://github.com/Renji-XD/texthooker-ui) (MIT, Copyright (c)
-2023 Renji-xD); its code is Hachidori's own. On the search page it shows the
-kept lines above the results, newest at the bottom, following new lines while
-the list is scrolled to its end, with the number of lines and of Japanese
-characters, a **Times** switch for each line's time, **Pause clipboard** and
-**Resume clipboard**, and **Edit** (or a double click) and **Delete** on each
-line. Enter saves an edit, Escape gives it up, and an edit left empty deletes
-the line. A click on a word looks it up, and so does a hover with the
-activation key, as on any page. Switch on Settings → Advanced → Search
-history, paste the whole file into Custom JavaScript and switch on the search
-page's Clipboard monitor; a program that copies each new line, such as
-Textractor's clipboard extension, then fills the list. While the history is
-off, the list shows the lines already kept and no new ones.
-
-It uses `HDSearchHistory` alone. It has no websocket client, which
-texthooker-ui has for Textractor's and mpv's plugins: the script keeps to the
-history, which the Clipboard monitor fills with the lines those programs copy,
-and the search page opens no connection of its own. Its Times and pause
-choices last until the page reloads. Firefox 153 runs no Custom JavaScript on
-the search page, so the script needs Firefox 154 or later there.
+2023 Renji-xD) but with code of its own, is attached to
+[the pull request that added the history](https://github.com/bee-san/hachidori/pull/666)
+as [`texthooker.js`](https://raw.githubusercontent.com/bee-san/hachidori/assets/search-history/search-history/texthooker.js), rather than kept in this repository. It
+lists the kept lines with their counts and times, pauses the Clipboard monitor,
+edits and deletes lines and looks up a clicked word. To use it, switch on
+Settings → Advanced → Search history, paste the file into Design → Custom
+JavaScript and switch on the search page's Clipboard monitor. It has no
+websocket client, as texthooker-ui has for Textractor's and mpv's plugins: the
+Clipboard monitor brings in what those programs copy, and the search page opens
+no connection of its own. Firefox 153 runs no Custom JavaScript on the search
+page, so it needs Firefox 154 or later there.
 
 ## Tests
 

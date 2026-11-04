@@ -82,8 +82,8 @@ Two runtime rules keep one source for both browsers:
 - **Custom JavaScript.** Settings → Design → Custom JavaScript has an **Allow
   user scripts** button; Firefox asks once, and the saved script runs from then
   on. On the search page it runs from Firefox 154, the first with sandboxed
-  extension pages ([Search page](architecture.md#search-page)), and so does
-  the texthooker user script ([search history](search-history.md#the-texthooker-user-script)).
+  extension pages ([Search page](architecture.md#search-page)), and so do
+  scripts that use its history ([search history](search-history.md#for-user-scripts-hdsearchhistory)).
 - **Clipboard monitor.** Firefox asks for `clipboardRead` each time the search
   page's switch is turned on, because turning it off gives the permission back
   and Firefox prompts for any optional permission the add-on does not hold.

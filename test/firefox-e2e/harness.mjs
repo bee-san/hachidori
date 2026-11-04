@@ -134,7 +134,7 @@ const E2E_PLANNED = [
   "the search page's Anki Template switch makes the chosen Template the built-in one, and the frame's copy follows",
   "the search page keeps each line it searches, and Up and Down in its box walk them back to the draft",
   "in the searched text Right moves the cursor to the next word and looks it up, and Up past its top row shows the earlier line between its neighbours",
-  "the texthooker user script lists the kept lines and looks up a clicked word from Firefox 154, where Custom JavaScript runs on the search page",
+  "HDSearchHistory, the search page's API for user scripts, lists the kept lines, edits one and looks a word up",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",

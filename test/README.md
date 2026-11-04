@@ -517,22 +517,22 @@ These run separately:
   box's lower lines to the box; in the searched text Left and Right move the
   cursor by the matched word and retrace, a one-row text goes round for a
   fresh press only, a clicked word takes the cursor (Look up words with a
-  click), Up and Down move between a long line's rows keeping the
+  click) while a click on a comma or the cursor's own character looks nothing
+  up again, Up and Down move between a long line's rows keeping the
   column, also in a narrower box, and past its top row through every earlier
   line, whose neighbours' rows are smaller and keep 4.5:1 in every palette,
   and dimmer than the searched text in every palette with room; each word is
-  read out from a live region, alone once its lookup answers and only while
-  the searched text has focus; Enter adds the word to a fake
+  read out from a live region, alone once its lookup answers, only while
+  the searched text has focus, and on a click only for the word it moves to; Enter adds the word to a fake
   AnkiConnect with its earlier line as the sentence; the keys follow a rebound
   keybind and leave other controls alone; the history's switch, which ends a
-  visit when turned off; a second page in the popup window; Settings → Advanced's
-  count, lowered limit (a refused save deletes nothing) and Clear history; and
-  the texthooker user script's list, counts, times, pause, edit, delete (an
-  emptied edit too), its click lookups (a row's last glyph, a character of
-  several code points, nothing beside the text) and its following the newest
-  line when reopened, after a scroll back to the end and while the page above
-  it grows. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves an earlier line's visit in
-  four palettes and forced colours.
+  visit, and a walk in the box on its draft, when turned off; a second page in
+  the popup window; Settings → Advanced's count, lowered limit (a refused save
+  deletes nothing) and Clear history, whose status stays off Reading's rail
+  link; and `HDSearchHistory`, which lists, edits and removes lines, tells of
+  each change, pauses the Clipboard monitor's text and looks a word up.
+  `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves an earlier line's visit in four
+  palettes and forced colours.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at
@@ -648,7 +648,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
   | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
   | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
-  | `search.mjs` | The popup window opens one search page, at the size Reading → Search page sets (#656), and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, a click on it hands focus back to the page, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644); a click on a word of the query shows its results with Look up words with a click on, and the Anki Template switch's choice becomes the built-in Template (#656); the search history keeps typed lines, Up and Down in the box walk them back to the draft, Right moves the searched text's cursor and looks the next word up, Up past its top row shows the earlier line between its neighbours, and from Firefox 154 the texthooker user script lists the lines and looks up a clicked word. |
+  | `search.mjs` | The popup window opens one search page, at the size Reading → Search page sets (#656), and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, a click on it hands focus back to the page, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644); a click on a word of the query shows its results with Look up words with a click on, and the Anki Template switch's choice becomes the built-in Template (#656); the search history keeps typed lines, Up and Down in the box walk them back to the draft, Right moves the searched text's cursor and looks the next word up, Up past its top row shows the earlier line between its neighbours, and `HDSearchHistory` lists the lines, edits one and looks a word up. |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
   | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |

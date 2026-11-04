@@ -11,7 +11,6 @@
  */
 
 import "./settings.mjs";
-import { readFileSync } from "node:fs";
 import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import {
@@ -244,8 +243,8 @@ describe("search page", () => {
   });
 
   // The search page's line history (docs/search-history.md): its lines, the
-  // box's walk, the searched text's cursor and an earlier line, and the
-  // texthooker user script where Custom JavaScript runs on the search page.
+  // box's walk, the searched text's cursor and an earlier line, and the API
+  // user scripts use.
   step("the search page's history and its keys", async () => {
     // Off by default: Settings → Advanced → Search history.
     await writeOptions(page, { searchHistoryEnabled: true });
@@ -315,39 +314,27 @@ describe("search page", () => {
         && earlier.where === "Earlier line -1 · ▲ earlier · ▼ later",
       JSON.stringify({ opened, moved, looked, earlier }));
 
-    // The texthooker runs where Custom JavaScript runs on the search page: in
-    // its sandboxed frame, from Firefox 154 (the Custom JavaScript step in
-    // settings.mjs has granted user scripts).
-    const sandboxes = Number(/(\d+)\./u.exec(await browser.version())[1]) >= 154;
-    await writeOptions(page, { customPopupJavascript: readFileSync(new URL("../../userscripts/texthooker.js", import.meta.url), "utf8") });
-    const registered = await waitFor(() => page.evaluate(async () => (await chrome.userScripts.getScripts({
-      ids: ["hachidori-custom-javascript"] })).length === 1 || false), { timeout: 10_000 });
-    frame = await searchFrame(await reloadPage(search));
-    await ready(frame);
-    const listed = sandboxes
-      ? await waitFor(() => frame.evaluate(() => {
-        const texts = [...document.querySelectorAll("#hd-texthooker .hd-th-text")].map(text => text.textContent);
-        return texts.length > 0 ? texts : false;
-      }), { timeout: 15_000 })
-      : await frame.evaluate(() => document.getElementById("hd-texthooker") === null);
-    let clicked = null;
-    if (sandboxes) {
-      const point = await frame.evaluate(() => {
-        const text = [...document.querySelectorAll("#hd-texthooker .hd-th-text")].at(-1);
-        const range = document.createRange();
-        range.setStart(text.firstChild, 2);
-        range.setEnd(text.firstChild, 3);
-        const box = range.getBoundingClientRect();
-        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      });
-      await search.mouse.click(point.x, point.y);
-      clicked = await waitFor(async () => ((await readPopup(frame))?.headword === "読む" ? "読む" : false), { timeout: 15_000 });
-    }
-    const all = (await lines()).map(line => line.text);
-    await writeOptions(page, { customPopupJavascript: "", searchHistoryEnabled: false });
-    check("the texthooker user script lists the kept lines and looks up a clicked word from Firefox 154, where Custom JavaScript runs on the search page",
-      registered === true && (sandboxes ? JSON.stringify(listed) === JSON.stringify(all) && clicked === "読む" : listed === true),
-      JSON.stringify({ sandboxes, registered, listed, all, clicked }));
+    // HDSearchHistory, the page's API for user scripts (docs/search-history.md):
+    // it lists the lines the page kept, edits one and looks a word up in a
+    // text node of the script's own.
+    const [first] = await lines();
+    const api = await frame.evaluate(async (id) => {
+      const history = globalThis.HDSearchHistory;
+      const edited = await history.edit(id, "漢字を読む");
+      const own = document.createElement("p");
+      own.lang = "ja";
+      own.textContent = "ありがとう";
+      document.body.append(own);
+      const matched = await history.lookUp(own.firstChild, 0);
+      own.remove();
+      return JSON.stringify({ enabled: history.enabled, edited: edited?.text ?? null, matched,
+        listed: (await history.list()).map(line => line.text) });
+    }, first.id);
+    const used = JSON.parse(api);
+    await writeOptions(page, { searchHistoryEnabled: false });
+    check("HDSearchHistory, the search page's API for user scripts, lists the kept lines, edits one and looks a word up",
+      used.enabled === true && used.edited === "漢字を読む" && used.matched === 5 && used.listed[0] === "漢字を読む",
+      JSON.stringify(used));
     await search.close();
     await activate(page);
   });
