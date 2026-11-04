@@ -82,15 +82,18 @@ body.search-page {
 .search-header .search-template:not([hidden]) + .lookup-enable {
   margin-left: 12px;
 }
-/* A header too narrow for one line with the menu at 6em, in a narrow or
-   zoomed window, moves the Clipboard monitor to a second row, and then the
-   menu, at the row's end, rather than past the window's edge; the title keeps
-   the start of the first row. */
+/* While the menu is shown, a header too narrow for one line with the menu at
+   6em, in a narrow or zoomed window, wraps rather than running past the
+   window's edge: the Clipboard monitor moves to a second row, at its end, and
+   in a still narrower window the menu takes that row and the Clipboard
+   monitor a third. The title keeps the start of the first row beside the
+   icon (24px and the 8px gap), wrapping its words there if it must. */
 .search-header:has(> .search-template:not([hidden])) {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 .search-header:has(> .search-template:not([hidden])) h1 {
+  max-width: calc(100% - 32px);
   margin-right: auto;
 }
 .search-form {
