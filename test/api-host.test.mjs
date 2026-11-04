@@ -45,9 +45,11 @@ function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = 
       return { ok: true, ...audio };
     }
     assert.equal(message.type, "hd_anki_fields");
-    // The real compact field leaves hidden content out, with any image in it,
-    // but its image is still planned (test/chrome-e2e/settings.mjs).
-    const glossary = `${message.request.term.expression}${message.compactGlossary ? "" : '<img src="hachidori_eat.png">'}`;
+    // A compact field leaves hidden content out, with any image in it
+    // (test/chrome-e2e/settings.mjs), while that image stays planned
+    // (test/anki-resources.test.mjs). 食う's compact field shows the image.
+    const hidden = message.compactGlossary && message.request.term.expression !== "食う";
+    const glossary = `${message.request.term.expression}${hidden ? "" : '<img src="hachidori_eat.png">'}`;
     const fields = Object.fromEntries(Object.entries(message.templates).map(([marker]) => [marker,
       marker === "audio" ? message.audio : marker === "glossary" ? glossary : marker === "bogus" ? "" : `${marker}:${message.request.term.expression}`]));
     return { ok: true, fields, media: marker(message, "glossary") ? [{ dictionary: "Fixture", path: "img/eat.png", filename: "hachidori_eat.png" }] : [] };
@@ -201,6 +203,12 @@ test("anki fields follow Smaller Anki cards on every request and send only the i
   assert.deepEqual(full.dictionaryMedia.map(item => item.ankiFilename), ["hachidori_eat.png"]);
   assert.deepEqual(calls.filter(call => call.type === "hd_media").map(call => call.path), ["img/eat.png"],
     "an image the compact field leaves out is not read");
+  // A later entry that shows an image an earlier one left out still sends it.
+  const later = host({ lookups: { "食べたかった": [tabetakatta, { ...tabetakatta, term: { ...tabetakatta.term, expression: "食う" } }] },
+    media: { "img/eat.png": "data:image/png;base64,iVBORw0KGgo=" }, smallerAnkiCards: () => true });
+  const both = await later.answer({ type: "hd_api_anki_fields", text: "食べたかった", entryType: "term", markers: ["glossary"], maxEntries: 2, includeMedia: true });
+  assert.deepEqual(both.fields, [{ glossary: "食べる" }, { glossary: '食う<img src="hachidori_eat.png">' }]);
+  assert.deepEqual(both.dictionaryMedia.map(item => item.ankiFilename), ["hachidori_eat.png"]);
 });
 
 test("anki card formats answer each Template as Yomitan's AnkiCardFormat, in Settings order, without the AnkiConnect connection", async () => {
