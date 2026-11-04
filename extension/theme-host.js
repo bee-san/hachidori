@@ -194,7 +194,9 @@
         const reading = language.display(result, "reading");
         return reading && reading !== language.display(result, "expression") ? reading : "";
       },
-      // Japanese slices UTF-16 units, as today; other languages never split a grapheme.
+      // Japanese slices UTF-16 units, as today; other languages never split a
+      // grapheme. Both ends move forward to a grapheme boundary, so slices
+      // that meet (before, match, after) partition the text.
       sliceText(text, start = 0, end = undefined) {
         const value = String(text ?? "");
         const from = Math.min(Math.max(0, Math.trunc(start) || 0), value.length);
@@ -202,7 +204,7 @@
         const [low, high] = from <= to ? [from, to] : [to, from];
         if (japanese || !value) return value.substring(low, high);
         const boundaries = graphemeBoundaries(value);
-        const first = boundaries.findLast(boundary => boundary <= low) ?? 0;
+        const first = boundaries.find(boundary => boundary >= low) ?? value.length;
         const last = boundaries.find(boundary => boundary >= high) ?? value.length;
         return value.slice(first, last);
       },

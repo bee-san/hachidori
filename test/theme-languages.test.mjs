@@ -430,6 +430,9 @@ test("the language object's helpers follow 11.1", async () => {
     assert.equal(arabic.readingFor(SCENARIOS.ar.results[0]), "", "an equal reading is no reading");
     assert.equal(arabic.sliceText("قرأتُ", 0, 4), "قرأتُ", "never splits a letter from its vowel mark");
     assert.equal(arabic.sliceText("قرأتُ", 0, 3), "قرأ");
+    // A match that ends inside a grapheme: the slices around it still meet.
+    const sentence = "a cafe\u0301 au lait";
+    assert.equal([arabic.sliceText(sentence, 0, 2), arabic.sliceText(sentence, 2, 6), arabic.sliceText(sentence, 6)].join(""), sentence);
     const english = scenarioLanguage(window, SCENARIOS.en);
     assert.equal(english.dictionaryDirection("English-Persian Glossary"), "rtl", "a target language without a pack takes its script's direction");
     const japanese = window.HDThemeHost.createLanguage();
