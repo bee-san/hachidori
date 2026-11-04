@@ -3131,8 +3131,9 @@ with its picture and line audio. Fields whose template uses `{sentence}`,
 update and in its pronunciation enrichment; an empty one stays empty. Other
 fields follow their modes, and a new note still takes the word for its sentence.
 A line that is one word on a page, such as 「はい」, and a selection that is a
-whole line count as word-only too. A Netflix cue never does: its own audio and
-GIF go with it. Any text around the word, even a lone 。, is a sentence. Yomitan's
+whole line count as word-only too. A Netflix cue does not: its own audio and
+GIF go with it. A linked browser records no line, and its host does not see the
+cue, so there a one-word cue is word-only. Any text around the word, even a lone 。, is a sentence. Yomitan's
 search page also takes the typed word for the sentence, and its Append adds that
 word to the note's sentences on every update (#655). The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
