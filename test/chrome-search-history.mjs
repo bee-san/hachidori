@@ -676,16 +676,19 @@ try {
   await hookFrame.$eval("#hd-texthooker li:nth-child(2) .hd-th-actions button:last-child", button => button.click());
   await panelUntil(state => state.lines.length === 13 && state.lines[1] === "読む漢字", "the deleted line");
   assert.ok(!(await lines(hookFrame)).some(line => line.text === "ありがとう"), "the line is deleted");
-  // A click on a word in a line looks it up.
-  const word = await hookFrame.$eval("#hd-texthooker li:nth-child(2) .hd-th-text", (text) => {
+  // A click on a word in a line looks it up: the right half of 読 in 読む漢字,
+  // while the result shows 漢字.
+  const glyphPoint = (selector, at, side) => hookFrame.$eval(selector, (text, index, part) => {
     const range = document.createRange();
-    range.setStart(text.firstChild, 2);
-    range.setEnd(text.firstChild, 3);
+    range.setStart(text.firstChild, index);
+    range.setEnd(text.firstChild, index + 1);
     const box = range.getBoundingClientRect();
-    return { x: box.x + box.width * 0.75, y: box.y + box.height / 2 };
-  });
+    return { x: box.x + box.width * part, y: box.y + box.height / 2 };
+  }, at, side);
+  assert.ok(!(await hooked.popup.state()).text.includes(GLOSSES["読む"]));
+  const word = await glyphPoint("#hd-texthooker li:nth-child(2) .hd-th-text", 0, 0.75);
   await hooked.tab.mouse.click(word.x, word.y);
-  assert.ok(await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["漢字"])),
+  assert.ok(await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["読む"])),
     "a clicked word is looked up");
   // A click beside a line's text looks nothing up; a line's buttons take
   // keyboard focus, which shows them.
@@ -697,16 +700,93 @@ try {
   });
   await hooked.tab.mouse.click(beside.x, beside.y);
   await settle(500);
-  assert.ok((await hooked.popup.state()).text.includes(GLOSSES["漢字"]), "a click beside the text keeps the result");
+  assert.ok((await hooked.popup.state()).text.includes(GLOSSES["読む"]), "a click beside the text keeps the result");
   const focusable = await hookFrame.$eval("#hd-texthooker li:nth-child(3) .hd-th-actions button", (button) => {
     button.focus();
     return { focused: document.activeElement === button, opacity: getComputedStyle(button.parentElement).opacity };
   });
   assert.deepEqual(focusable, { focused: true, opacity: "1" });
+  // Scrolled up and back to the end, the list follows its newest line again;
+  // and a line whose arrival the page's own growth follows in the same task
+  // (as the searched text can) stays in view. Lines come from the history
+  // itself here, so no search changes the page meanwhile.
+  const settledAtEnd = () => hookFrame.evaluate(() => new Promise((done) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const list = document.querySelector("#hd-texthooker ol");
+      done(Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2);
+    }));
+  }));
+  const keepLine = async (text) => {
+    await hookFrame.evaluate(value => HDSearchBridge.history("add", { text: value, source: "typed" }), text);
+    await panelUntil(state => state.lines.at(-1) === text, `the texthooker shows ${text}`);
+  };
+  // Scrolls the list to `top`, or its end, and waits for the scroll event.
+  const scrollList = top => hookFrame.evaluate(value => new Promise((done) => {
+    const list = document.querySelector("#hd-texthooker ol");
+    const target = Math.min(value ?? list.scrollHeight, list.scrollHeight - list.clientHeight);
+    if (Math.abs(list.scrollTop - target) < 1) {
+      done();
+      return;
+    }
+    list.addEventListener("scroll", () => { done(); }, { once: true });
+    list.scrollTop = target;
+  }), top);
+  await scrollList(null);
+  await keepLine("読む食べる");
+  assert.ok(await settledAtEnd(), "at its end, the list follows its newest line");
+  await scrollList(0);
+  await scrollList(null);
+  await keepLine("食べる読む");
+  assert.ok(await settledAtEnd(), "back at its end, the list follows again");
+  await hookFrame.evaluate(() => {
+    new MutationObserver((changes, observer) => {
+      observer.disconnect();
+      const above = document.createElement("div");
+      above.id = "hd-test-above";
+      above.style.height = "120px";
+      document.getElementById("hd-texthooker").before(above);
+    }).observe(document.querySelector("#hd-texthooker ol"), { childList: true });
+  });
+  await keepLine("食べる漢字");
+  assert.ok(await settledAtEnd(), "the list follows a line as the page above it grows");
+  await hookFrame.evaluate(() => document.getElementById("hd-test-above").remove());
+  // A click on the right half of a row's last glyph looks it up, though the
+  // caret falls at the start of the next row: 読 ends the first row of a line
+  // narrowed to three glyphs.
+  await keepLine("漢字読む漢字");
+  const rowEnd = await hookFrame.$eval("#hd-texthooker li:last-child .hd-th-text", (text) => {
+    const glyph = (at) => {
+      const range = document.createRange();
+      range.setStart(text.firstChild, at);
+      range.setEnd(text.firstChild, at + 1);
+      return range.getBoundingClientRect();
+    };
+    const third = glyph(2).right - glyph(0).left;
+    text.style.flex = "none";
+    text.style.width = `${third + glyph(3).width / 2}px`;
+    text.scrollIntoView({ block: "center" });
+    const [first, end] = [glyph(0), glyph(2)];
+    return { first: { x: first.x + first.width / 4, y: first.y + first.height / 2 },
+      x: end.right - end.width / 4, y: end.y + end.height / 2, wrapped: glyph(3).top > end.top };
+  });
+  assert.ok(rowEnd.wrapped, "the narrowed line wraps after 読");
+  await hooked.tab.mouse.click(rowEnd.first.x, rowEnd.first.y);
+  await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["漢字"]) && !state.text.includes(GLOSSES["読む"]));
+  await hooked.tab.mouse.click(rowEnd.x, rowEnd.y);
+  assert.ok(await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["読む"])),
+    "a click on a row's last glyph looks it up");
+  // An edit left empty deletes its line.
+  await hookFrame.$eval("#hd-texthooker li:first-child .hd-th-text", text => text.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+  await hookFrame.waitForFunction(() => document.activeElement?.isContentEditable, { polling: 50, timeout: 5_000 });
+  await hooked.tab.keyboard.press("Backspace");
+  await hooked.tab.keyboard.press("Enter");
+  await panelUntil(state => !state.lines.includes("漢字を読む"), "the emptied line");
+  assert.ok(!(await lines(hookFrame)).some(line => line.text === "漢字を読む"), "an emptied edit deletes its line");
   await writeOptions({ customPopupJavascript: "" });
   await allowUserScripts(false);
-  console.log("PASS: the texthooker user script lists the lines, newest at the bottom, scrolling along, with their"
-    + " counts and times, pauses the Clipboard monitor, edits and deletes lines and looks up a clicked word");
+  console.log("PASS: the texthooker user script lists the lines, newest at the bottom, scrolling along and again once"
+    + " scrolled back to its end, with their counts and times, pauses the Clipboard monitor, edits and deletes lines"
+    + " (an emptied edit too) and looks up a clicked glyph, a row's last included, and nothing beside the text");
 
   passed = true;
 } finally {

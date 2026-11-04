@@ -133,9 +133,10 @@
   // arrives first: the list read at the start or a line kept meanwhile. While
   // the list is scrolled to its end it stays there, as lines arrive and as the
   // page around it changes size (the searched text appears after a search).
-  // Only the reader's own scrolling unpins it: a scroll event for the position
-  // follow() set can arrive after the list has shrunk, when it no longer looks
-  // like the end.
+  // Scrolling up unpins it and scrolling back to the end pins it again. A
+  // scroll event for the position follow() set can arrive after the list has
+  // shrunk, when that position no longer looks like the end: it keeps the
+  // list pinned.
   let pinned = true;
   let followed = null;
   const follow = () => {
@@ -144,17 +145,21 @@
     followed = list.scrollTop;
   };
   list.addEventListener("scroll", () => {
-    if (list.scrollTop !== followed) pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+    const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+    pinned = atEnd || (pinned && list.scrollTop === followed);
   });
   new ResizeObserver(follow).observe(list);
-  let newestId = 0;
+  // A line's place is found from the end: lines arrive in order, but for one
+  // from another page that overtakes another's.
   function add(line, newest) {
     if (items.has(line.id)) return;
     const kept = item(line);
-    const later = line.id < newestId ? [...items.values()].find(other => other.line.id > line.id) : null;
     items.set(line.id, kept);
-    newestId = Math.max(newestId, line.id);
-    if (later) later.entry.before(kept.entry, "\n");
+    let later = null;
+    for (let entry = list.lastElementChild; entry && Number(entry.dataset.id) > line.id; entry = entry.previousElementSibling) {
+      later = entry;
+    }
+    if (later) later.before(kept.entry, "\n");
     else list.append(kept.entry, "\n");
     if (newest) follow();
   }
@@ -194,26 +199,28 @@
     kept.text.addEventListener("blur", () => finish(true), { signal: editing.signal });
   }
 
-  // A click on a word looks it up, unless it ends a selection or an edit.
+  // A click on a word looks it up, unless it ends a selection or an edit. The
+  // caret falls between two characters: the glyph clicked is the one after it
+  // or, for a click on a glyph's right half, the one before it, which can end
+  // the row above the caret's. A click beside the text looks up nothing.
   function lookUpAt(kept, { clientX, clientY }) {
     if (kept.text.isContentEditable || getSelection()?.isCollapsed === false) return;
     const caret = document.caretPositionFromPoint?.(clientX, clientY);
     const range = caret ? null : document.caretRangeFromPoint?.(clientX, clientY);
     const node = caret?.offsetNode ?? range?.startContainer;
-    if (node?.nodeType !== Node.TEXT_NODE || !kept.text.contains(node) || node.length === 0) return;
-    // The caret falls between two characters: a click on a glyph's right
-    // half reports the one after it. A click beside the text looks up nothing.
+    if (node?.nodeType !== Node.TEXT_NODE || !kept.text.contains(node)) return;
+    const offset = caret?.offset ?? range.startOffset;
     const glyph = document.createRange();
-    const box = (at) => {
+    const clicked = (at) => {
+      if (at < 0 || at >= node.length) return false;
       glyph.setStart(node, at);
-      glyph.setEnd(node, at + 1);
-      return glyph.getBoundingClientRect();
+      glyph.setEnd(node, at + (node.data.codePointAt(at) > 0xffff ? 2 : 1));
+      const { left, right, top, bottom } = glyph.getBoundingClientRect();
+      return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom;
     };
-    let at = Math.min(caret?.offset ?? range.startOffset, node.length - 1);
-    if (at > 0 && box(at).left > clientX) at -= 1;
-    const { left, right, top, bottom } = box(at);
-    if (clientX < left || clientX > right || clientY < top || clientY > bottom) return;
-    void history.lookUp(node, at);
+    const before = offset - (offset > 1 && node.data.codePointAt(offset - 2) > 0xffff ? 2 : 1);
+    const at = [offset, before].find(clicked);
+    if (at !== undefined) void history.lookUp(node, at);
   }
 
   times.addEventListener("change", () => { panel.classList.toggle("hd-th-times", times.checked); });
