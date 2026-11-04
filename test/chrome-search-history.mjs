@@ -21,7 +21,8 @@
  * test/run.mjs chrome-e2e runs it after the main scenario; on its own:
  *   node test/chrome-search-history.mjs
  * HACHIDORI_SEARCH_SCREENSHOTS=DIR also saves an earlier line's visit in the
- * default, a light and the high-contrast palette and Windows' forced colours.
+ * default, two light (Girlypop, Solarized Light) and the high-contrast palette
+ * and Windows' forced colours.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
