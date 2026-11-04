@@ -361,6 +361,34 @@ try {
   assert.ok(await shows("読む"), "a clicked word is looked up");
   await until(state => state.cursor?.at === 2 && state.cursor.text === "読む" && state.announced === "読む", "the cursor on the clicked word");
   await step("ArrowRight", "ありがとう", 4);
+  const pointAt = at => frame.$eval("#search-query", (element, index) => {
+    const range = document.createRange();
+    range.setStart(element.firstChild, index);
+    range.setEnd(element.firstChild, index + 1);
+    const box = range.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }, at);
+  // A click on the cursor's own character looks nothing up again, nor counts it.
+  const timesLookedUp = async () => Number(/Looked up (\d+) time/u.exec((await popup.state()).text)?.[1] ?? -1);
+  const counted = await timesLookedUp();
+  const own = await pointAt(4);
+  await search.mouse.click(own.x, own.y);
+  await settle(500);
+  assert.deepEqual([(await view()).cursor?.at, await timesLookedUp()], [4, counted], "a click on the cursor's own character");
+  // After a line is shown with focus elsewhere, a click that moves the cursor
+  // reads out its new word alone. The line is the newest again, so nothing more is kept.
+  await frame.focus("#search-clear");
+  await frame.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "漢字読むありがとう");
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await until(state => state.query === "漢字読むありがとう" && state.cursor === null && state.announced === "", "a line shown with focus elsewhere");
+  await frame.evaluate(() => { globalThis.said.length = 0; });
+  const next = await pointAt(2);
+  await search.mouse.click(next.x, next.y);
+  await until(state => state.cursor?.at === 2 && state.announced === "読む", "the clicked word read out");
+  assert.deepEqual(await frame.evaluate(() => globalThis.said.filter(Boolean)), ["読む"], "a click reads out only the word it moves to");
   await writeOptions({ searchClickLookup: false });
   const described = (await view()).keys;
   assert.equal(described, "Left/Right: words · Up/Down: rows and earlier lines · Enter: add to Anki · Escape: back to the box");
@@ -573,7 +601,7 @@ try {
   await press("ArrowUp");
   await until(state => state.value !== "下書き", "a walk from the draft");
   await writeOptions({ searchHistoryEnabled: false });
-  await until(state => state.value === "下書き", "the draft once the history is off");
+  await until(state => state.value === "下書き" && state.announced === "", "the draft, and no spoken word, once the history is off");
   await writeOptions({ searchHistoryEnabled: true });
   await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled
     && document.getElementById("search-query").getAttribute("tabindex") === "0", { polling: 50, timeout: 10_000 });

@@ -133,7 +133,8 @@ After a search the searched text has focus, unless focus was in the popup or
 another control. A click or Tab gives it focus too. It is a read-only text
 box, so a screen reader passes it the arrow keys, and each word the cursor
 reaches is read out from a polite live region once its lookup answers, and
-again when the keyboard brings focus to the text. With Reading → Search page →
+again when focus comes to the text; a click that moves the cursor reads out
+the word it moves to instead. With Reading → Search page →
 Look up words with a click on, a click on a word moves the cursor there and
 looks it up from the clicked character. Its cursor
 is the underlined word, the one the results show.

@@ -369,11 +369,15 @@ function search(source = "typed") {
   else if ([input, query, document.body, null].includes(focused)) query.focus({ preventScroll: true });
   void keep(text, source).then((id) => { searched.id = id; });
 }
-// A press on the text gives it focus before its click, which moves the cursor
-// while Look up words with a click is on: then the click's lookup reads the
-// word out, not the focus.
+// A press on the text gives it focus before its click, which can move the
+// cursor while Look up words with a click is on: then the focus reads nothing
+// out, and the click decides (see reader.lookUpOnClick below).
 let pressed = false;
-query.addEventListener("mousedown", () => { pressed = document.activeElement !== query && options.searchClickLookup; });
+let clickMoved = false;
+query.addEventListener("mousedown", () => {
+  pressed = document.activeElement !== query && options.searchHistoryEnabled && options.searchClickLookup;
+  clickMoved = false;
+});
 query.addEventListener("focus", () => {
   paintCursor();
   if (!pressed) sayCursorWord();
@@ -561,6 +565,7 @@ try {
     // up (and counts) a word it already shows no second time.
     if (!options.searchHistoryEnabled || !shown || node !== query.firstChild || offset === shown.cursor
         || firstSelectable(node.data, offset, options.onlyScanJapaneseText) !== offset) return false;
+    clickMoved = true;
     shown.cursor = offset;
     shown.match = null;
     navigation = createNavigation();
@@ -568,6 +573,12 @@ try {
     query.focus({ preventScroll: true });
     paintCursor();
     return true;
+  });
+  // A click that moved no cursor reads its word out if nothing has yet: a
+  // press's focus left that to the click.
+  query.addEventListener("click", () => {
+    pressed = false;
+    if (!clickMoved && cursorWord.textContent === "") sayCursorWord();
   });
   if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
