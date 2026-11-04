@@ -328,6 +328,7 @@ test("the Relay API writes the notes and readings of the profile its index names
   const rendered = [];
   const apiHost = (profiles = true) => createApiHost({
     version: "test",
+    readSmallerAnkiCards: async () => false,
     engine: async message => {
       if (message.type === "hd_lookup") {
         return message.text.startsWith(result.matched) ? { results: [result], generation: 1 } : { results: [], generation: 1 };
