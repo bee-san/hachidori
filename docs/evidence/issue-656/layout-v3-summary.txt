@@ -1,0 +1,128 @@
+== head-152
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 248, "firstStartOverflow": null, "firstSwitchOutside": 236, "firstUnreachable": 218, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+== head-128
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 248, "firstStartOverflow": null, "firstSwitchOutside": 236, "firstUnreachable": 218, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+== head-152-default20
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 248, "firstStartOverflow": null, "firstSwitchOutside": 236, "firstUnreachable": 218, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 468, 'img+h1+menu+label'), (466, 282, 'img+h1+menu | label'), (280, 200, 'img+h1 | menu | label')]
+== head-152-min20
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 288, "firstStartOverflow": null, "firstSwitchOutside": 278, "firstUnreachable": 260, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at [214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 36, "maxDelta": 0}
+    layouts [(640, 544, 'img+h1+menu+label'), (542, 308, 'img+h1+menu | label'), (306, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at [214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 36, "maxDelta": 0}
+    layouts [(640, 544, 'img+h1+menu+label'), (542, 308, 'img+h1+menu | label'), (306, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at [214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 36, "maxDelta": 0}
+    layouts [(640, 544, 'img+h1+menu+label'), (542, 308, 'img+h1+menu | label'), (306, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at [214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 36, "maxDelta": 0}
+    layouts [(640, 544, 'img+h1+menu+label'), (542, 308, 'img+h1+menu | label'), (306, 200, 'img+h1 | menu | label')]
+== head-152-zoom125
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 310, "firstStartOverflow": null, "firstSwitchOutside": 294, "firstUnreachable": 274, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at [236, 234, 232, 230, 228, 226, 224, 222, 220, 218, 216, 214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 584, 'img+h1+menu+label'), (582, 354, 'img+h1+menu | label'), (352, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at [236, 234, 232, 230, 228, 226, 224, 222, 220, 218, 216, 214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 584, 'img+h1+menu+label'), (582, 354, 'img+h1+menu | label'), (352, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at [236, 234, 232, 230, 228, 226, 224, 222, 220, 218, 216, 214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 584, 'img+h1+menu+label'), (582, 354, 'img+h1+menu | label'), (352, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at [236, 234, 232, 230, 228, 226, 224, 222, 220, 218, 216, 214, 212, 210, 208, 206, 204, 202, 200]
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 584, 'img+h1+menu+label'), (582, 354, 'img+h1+menu | label'), (352, 200, 'img+h1 | menu | label')]
+== head-152-zoom175
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 432, "firstStartOverflow": null, "firstSwitchOutside": 414, "firstUnreachable": 382, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at 67 widths
+    {"firstOverflow": 230, "firstStartOverflow": 228, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 494, 'img+h1+menu | label'), (492, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at 67 widths
+    {"firstOverflow": 230, "firstStartOverflow": 228, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 494, 'img+h1+menu | label'), (492, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at 67 widths
+    {"firstOverflow": 230, "firstStartOverflow": 228, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 494, 'img+h1+menu | label'), (492, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at 67 widths
+    {"firstOverflow": 230, "firstStartOverflow": 228, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 494, 'img+h1+menu | label'), (492, 200, 'img+h1 | menu | label')]
+== head-152-zoom200
+  single: 221 widths, differ from 94d43a93 at []
+    {"firstOverflow": 494, "firstStartOverflow": null, "firstSwitchOutside": 472, "firstUnreachable": 436, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 221 widths, differ from 94d43a93 at 90 widths
+    {"firstOverflow": 264, "firstStartOverflow": 262, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 564, 'img+h1+menu | label'), (562, 200, 'img+h1 | menu | label')]
+  n25: 221 widths, differ from 94d43a93 at 90 widths
+    {"firstOverflow": 264, "firstStartOverflow": 262, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 564, 'img+h1+menu | label'), (562, 200, 'img+h1 | menu | label')]
+  n34: 221 widths, differ from 94d43a93 at 90 widths
+    {"firstOverflow": 264, "firstStartOverflow": 262, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 564, 'img+h1+menu | label'), (562, 200, 'img+h1 | menu | label')]
+  n55: 221 widths, differ from 94d43a93 at 90 widths
+    {"firstOverflow": 264, "firstStartOverflow": 262, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 564, 'img+h1+menu | label'), (562, 200, 'img+h1 | menu | label')]
+== ff-159
+  single: 111 widths, differ from 94d43a93 at []
+    {"firstOverflow": 248, "firstStartOverflow": null, "firstSwitchOutside": 236, "firstUnreachable": 220, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 200, 'img+h1+label')]
+  short: 111 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 472, 'img+h1+menu+label'), (468, 288, 'img+h1+menu | label'), (284, 200, 'img+h1 | menu | label')]
+  n25: 111 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 472, 'img+h1+menu+label'), (468, 288, 'img+h1+menu | label'), (284, 200, 'img+h1 | menu | label')]
+  n34: 111 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 472, 'img+h1+menu+label'), (468, 288, 'img+h1+menu | label'), (284, 200, 'img+h1 | menu | label')]
+  n55: 111 widths, differ from 94d43a93 at []
+    {"firstOverflow": null, "firstStartOverflow": null, "firstSwitchOutside": null, "firstUnreachable": null, "notTitleAtStart": [], "notLabelAtEnd": [], "notMenuAtEnd": [], "anyBelowMin": 0, "maxDelta": 0}
+    layouts [(640, 472, 'img+h1+menu+label'), (468, 288, 'img+h1+menu | label'), (284, 200, 'img+h1 | menu | label')]
