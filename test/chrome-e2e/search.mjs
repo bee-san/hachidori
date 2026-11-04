@@ -497,6 +497,16 @@ describe("search page", () => {
       const id = original.templates[0].id;
       const listed = await settled(current => !current.shell.hidden && !current.copy.hidden);
       await screenshot(tab, "search-template-switch");
+      // In a 320 px window, or the default one at 200% zoom, the header wraps
+      // rather than putting the Clipboard monitor past the window's edge.
+      await tab.setViewport({ width: 320, height: 640 });
+      const narrow = { copy: await frame.waitForFunction(() => {
+        const header = document.querySelector(".search-header");
+        return header.getBoundingClientRect().height > 40 && header.scrollWidth <= header.clientWidth;
+      }, { polling: 50, timeout: 5_000 }).then(() => true, () => false),
+      switchInside: await tab.evaluate(() => document.getElementById("search-clipboard").getBoundingClientRect().right
+        <= innerWidth) };
+      await tab.setViewport({ width: 600, height: 640 });
       // The arrow keys walk the list, which stays put: Words after Sentences…,
       // then Sentences… and Kanji before it.
       await tab.focus("#search-template");
@@ -511,19 +521,19 @@ describe("search page", () => {
       await tab.select("#search-template", id);
       const pointed = await settled(current => current.order[0] === id && current.copy.value === id && current.frameFocused);
       const same = (left, right) => ["x", "y", "width", "height"].every(key => Math.abs(left[key] - right[key]) < 0.5);
-      evidence = { single, listed, down, up, pointed, apiKey: (await storedAnki()).apiKey === original.apiKey,
+      evidence = { single, listed, narrow, down, up, pointed, apiKey: (await storedAnki()).apiKey === original.apiKey,
         aligned: same(listed.shell.rect, listed.copy.rect) };
     } finally {
       await writeOptions({ anki: await page.evaluate(anki => globalThis.HDReaderOptions.normaliseAnki(anki), original) });
       await tab.close();
     }
-    const { single, listed, down, up, pointed } = evidence;
+    const { single, listed, narrow, down, up, pointed } = evidence;
     const id = original.templates[0].id;
-    check("the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy without wrapping the 600-pixel window's header, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
+    check("the search page's Anki Template switch is hidden with one Template; with more, it lists them by name over the frame's invisible copy without wrapping the 600-pixel window's header or overflowing a 320-pixel one, and a choice by key or pointer becomes the built-in Template as Set built-in makes it",
       single.shell.hidden && single.copy.hidden
         && !listed.shell.hidden && listed.shell.name === "Anki Template" && listed.shell.heading === "Anki Template"
         && JSON.stringify(listed.shell.choices) === '["Kanji","Sentences with audio and a picture","Words"]'
-        && listed.shell.value === id && JSON.stringify(listed.copy.lines) === "[1,1]"
+        && listed.shell.value === id && JSON.stringify(listed.copy.lines) === "[1,1]" && narrow.copy && narrow.switchInside
         && listed.copy.visibility === "hidden" && listed.copy.value === id && evidence.aligned
         && JSON.stringify(down.order) === JSON.stringify(["e2e-words", id, "e2e-kanji"]) && down.shell.focused
         && down.copy.value === "e2e-words"
