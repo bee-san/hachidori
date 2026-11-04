@@ -33,15 +33,15 @@ HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo
 ## Screenshots
 
 `HACHIDORI_SEARCH_SCREENSHOTS=DIR node test/chrome-search-history.mjs` on the
-PR at `10d4715a`: an earlier line's visit (the searched text with its cursor,
+PR at `626cd4e9`: an earlier line's visit (the searched text with its cursor,
 the neighbour rows and the keys) in the default, Girlypop (light), Solarized
 Light and High contrast palettes and with forced colours emulated, and
-Settings → Reading → Search page. The neighbour rows are set smaller than the
-searched text in every palette, and in the palette's dim text, which is dimmer
-than its text only in Default, Autumn and High contrast; Girlypop and
-Solarized Light show rows told apart by size alone. The Chrome suite checks
-the rows at 4.5:1 or more, smaller, and dimmer where the palette has a dim
-text, in all 42 palettes.
+Settings → Reading → Search page. The neighbour rows are dimmed (the palette's
+dim text mixed toward the page, as far as each palette keeps 4.5:1) and set
+smaller than the searched text. Solarized Light's text is at 4.65:1, so there
+only the size sets them apart. The Chrome suite checks, in all 42 palettes,
+that the rows keep 4.5:1, are smaller, and are dimmer than the searched text
+wherever it is at 4.7:1 or more.
 
 ## Benchmark
 
