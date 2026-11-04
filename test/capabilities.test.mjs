@@ -205,5 +205,8 @@ test("the keybind editor offers only Toggle options the edited language has and 
   assert.equal(note(0).textContent, "Not available in English");
   assert.equal([...select(1).options].find(option => option.value === "onlyScanJapaneseText").textContent,
     "English text only");
-  assert.deepEqual(plain(page.options().keybinds), keybinds, "nothing is rewritten");
+  // Reading the list adds the search page's default rows (#666); the Toggle
+  // option rows themselves are not rewritten.
+  assert.deepEqual(plain(page.options().keybinds), plain(context.HDReaderOptions.normaliseOptions({ revision: 1, keybinds }).keybinds),
+    "nothing is rewritten");
 });
