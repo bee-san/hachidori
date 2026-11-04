@@ -703,6 +703,8 @@ try {
   await settings.waitForFunction(() => document.getElementById("search-history-count").textContent === "No lines kept."
     && document.getElementById("search-history-status").textContent === "Search history cleared.", { polling: 100, timeout: 15_000 });
   assert.deepEqual(await lines(), []);
+  assert.equal(await settings.$eval("#nav-status-lookup", status => status.textContent), "",
+    "Clear history reports in Advanced, not Reading");
   await settings.click("#opt-search-history");
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
   await settings.click("#opt-search-history");

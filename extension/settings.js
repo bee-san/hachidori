@@ -201,7 +201,7 @@ const SECTION_STATUSES = {
   "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
   "options-status": { section: "lookup", label: "Reading" },
   "lookup-counts-reset-status": { section: "lookup", label: "Lookup history" },
-  "search-history-status": { section: "lookup", label: "Search history" },
+  "search-history-status": { section: "advanced", label: "Search history" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
