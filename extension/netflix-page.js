@@ -379,7 +379,7 @@
       // The reader reads another language: the kept manifests' tracks of it
       // are posted instead (docs/languages.md 8.5).
       subtitleLanguage = command.language;
-      for (const [movieId, textTracks] of [...manifests]) {
+      for (const [movieId, textTracks] of manifests) {
         posted.set(movieId, new Map());
         readTracks({ movieId, textTracks });
       }

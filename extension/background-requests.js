@@ -227,31 +227,41 @@ const PROFILE_RECORD_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, CUSTOM_DICTIONAR
 // are, copying the settings of `copyFrom` (section 6.3), or the only profile
 // at first run, holding the stored profile keys; or a profile removed.
 function profileRequestOptions(message, stored, language) {
-  const storedOptions = stored[OPTIONS_KEY];
-  if (message.action === "add") {
-    const descriptor = languageDescriptor(language);
-    if (descriptor === null) throw profileError(`This Hachidori has no pack for ${language}.`, "language-unknown");
-    const added = source => ({ id: language, language, settings: newProfileSettings(source.settings, descriptor),
-      packSettings: packSettingDefaults(descriptor) });
-    if (message.firstRun === true) {
-      // Still at the start (section 16.1): unlinked, setup at its welcome card,
-      // the single-profile shape and no packages, judged on this snapshot.
-      const setup = normaliseSetupState(stored[SETUP_STATE_KEY]);
-      if (hasProfiles(storedOptions) || setup?.stage !== "welcome"
-          || (stored[DICTIONARY_STATE_KEY]?.dictionaries?.length ?? 0) > 0) {
-        throw profileError(`Hachidori is already set up. Add ${descriptor.name} in Settings.`, "already-set-up");
-      }
-      return { ...optionsWithProfiles(storedOptions), profiles: [added(optionProfiles(storedOptions)[0])] };
-    }
-    const record = optionsWithProfiles(storedOptions);
-    if (record.profiles.some(profile => profile.language === language)) {
-      throw profileError(`${descriptor.name} is already one of your languages.`, "language-present");
-    }
-    const source = record.profiles.find(profile => profile.id === (message.copyFrom ?? JAPANESE_PROFILE_ID));
-    if (source === undefined) throw profileError("The language to copy settings from was removed.", "profile-missing");
-    return { ...record, profiles: [...record.profiles, added(source)] };
-  }
+  if (message.action === "add") return addedProfileOptions(message, stored, language);
   if (message.action !== "remove") throw new Error("unknown profile request");
+  return removedProfileOptions(message, stored[OPTIONS_KEY], language);
+}
+
+function addedProfileOptions(message, stored, language) {
+  const storedOptions = stored[OPTIONS_KEY];
+  const descriptor = languageDescriptor(language);
+  if (descriptor === null) throw profileError(`This Hachidori has no pack for ${language}.`, "language-unknown");
+  const added = source => ({ id: language, language, settings: newProfileSettings(source.settings, descriptor),
+    packSettings: packSettingDefaults(descriptor) });
+  if (message.firstRun === true) {
+    assertAtFirstRun(stored, descriptor);
+    return { ...optionsWithProfiles(storedOptions), profiles: [added(optionProfiles(storedOptions)[0])] };
+  }
+  const record = optionsWithProfiles(storedOptions);
+  if (record.profiles.some(profile => profile.language === language)) {
+    throw profileError(`${descriptor.name} is already one of your languages.`, "language-present");
+  }
+  const source = record.profiles.find(profile => profile.id === (message.copyFrom ?? JAPANESE_PROFILE_ID));
+  if (source === undefined) throw profileError("The language to copy settings from was removed.", "profile-missing");
+  return { ...record, profiles: [...record.profiles, added(source)] };
+}
+
+// Still at the start (section 16.1): unlinked, setup at its welcome card,
+// the single-profile shape and no packages, judged on this snapshot.
+function assertAtFirstRun(stored, descriptor) {
+  const setup = normaliseSetupState(stored[SETUP_STATE_KEY]);
+  if (hasProfiles(stored[OPTIONS_KEY]) || setup?.stage !== "welcome"
+      || (stored[DICTIONARY_STATE_KEY]?.dictionaries?.length ?? 0) > 0) {
+    throw profileError(`Hachidori is already set up. Add ${descriptor.name} in Settings.`, "already-set-up");
+  }
+}
+
+function removedProfileOptions(message, storedOptions, language) {
   if (!hasProfiles(storedOptions)) throw new Error("The last language cannot be removed.");
   const record = applyOptionsPatch(storedOptions, {});
   if (message.profileId === undefined) {
@@ -264,6 +274,94 @@ function profileRequestOptions(message, stored, language) {
   }
   if (record.profiles.length === 1) throw new Error("The last language cannot be removed.");
   return { ...record, profiles: record.profiles.filter(profile => profile.id !== message.profileId) };
+}
+
+// The language a profile request is for: a removal's profile names it.
+function profileCasLanguage(message, storedOptions) {
+  const named = message.profileId === undefined ? null : profileLanguages(storedOptions).get(message.profileId);
+  const language = message.action === "remove" && named !== undefined && named !== null ? named : message.language;
+  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  return language;
+}
+
+// First-run requests that leave the records as they are: a choice whose
+// reply was lost is already the only profile, and Japanese at first run is
+// the Japanese-only installation there already is (sections 4.5, 16.1).
+function firstRunUnchanged(message, storedOptions, language, current) {
+  if (message.action !== "add" || message.firstRun !== true) return null;
+  const existing = optionProfiles(storedOptions);
+  if (hasProfiles(storedOptions) && existing.length === 1 && existing[0].language === language) {
+    return { state: current, converted: false, languages: [language] };
+  }
+  if (language === JAPANESE_PROFILE_ID && !hasProfiles(storedOptions)) return { state: current, converted: true };
+  return null;
+}
+
+// The request that first gives the records profiles also adds each
+// package's `targetLanguage`, read from its index by the engine
+// (docs/languages.md 4.2); every other field stays as stored.
+function convertingComparable(converting) {
+  return (row) => {
+    if (!converting || row?.targetLanguage === undefined) return row;
+    const { targetLanguage, ...rest } = row;
+    return typeof targetLanguage === "string" && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u.test(targetLanguage) ? rest : row;
+  };
+}
+
+// A language request changes no package; an erase removes the language's
+// personal package (`erasedId`) and nothing else.
+function assertPackagesKept(current, state, erasedId) {
+  const before = new Map(dictionaryStateWithProfiles(current).dictionaries.map(row => [row.id, row]));
+  const comparable = convertingComparable(!hasDictionaryProfiles(current));
+  if (state.dictionaries.some(row => !sameJsonValue(before.get(row.id), comparable(row)))) {
+    throw new Error("adding or removing a language changes no dictionary");
+  }
+  const kept = new Set(state.dictionaries.map(row => row.id));
+  if ([...before.keys()].some(id => !kept.has(id) && id !== erasedId)) {
+    throw new Error("adding or removing a language removes no dictionary");
+  }
+}
+
+// An erase empties the language's personal document and drops its counts
+// and marks, all in the request's write. A document that changed after the
+// confirmation is kept: the stale reply.
+function eraseLanguageRecords(records, message, language, state, personal, current) {
+  const languageDocument = customDictionaryDocumentFor(records.document, language);
+  if (message.baseDocumentRevision !== languageDocument.revision) {
+    return { ok: false, stale: true, error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again.",
+      document: languageDocument, state: current };
+  }
+  if (state.dictionaries.some(row => row.id === personal?.id)) throw new Error("an erase removes the personal dictionary");
+  records.document = withCustomDictionaryDocument(records.document, language, { schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
+    revision: languageDocument.revision + 1, semanticRevision: EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION, text: "" });
+  assertLookupStatsDescriptor(records.lookupStats);
+  records.lookupStats = withoutLookupStatsLanguage(records.lookupStats, language);
+  const { normaliseWordStatusOverrides: normaliseMarks, withLanguageWordStatusOverrides } = globalThis.HDWordStatusOverrides;
+  records.marks = withLanguageWordStatusOverrides(records.marks, language,
+    { revision: normaliseMarks(records.marks).revision + 1, known: [], ignored: [] });
+  return null;
+}
+
+// The single-profile shape has no `languages` maps (section 4.5): the top
+// document stays unless it is empty, and `languageSelection` goes.
+function convertedBackRemovals(values, document, stored) {
+  const removals = [];
+  if (document !== undefined && document !== null) {
+    const top = normaliseCustomDictionaryDocument(document);
+    if (top.revision === 0 && top.text === "") removals.push(CUSTOM_DICTIONARY_SOURCE_KEY);
+    else values[CUSTOM_DICTIONARY_SOURCE_KEY] = top;
+  }
+  if (stored[LANGUAGE_SELECTION_KEY] !== undefined) removals.push(LANGUAGE_SELECTION_KEY);
+  for (const key of removals) delete values[key];
+  return removals;
+}
+
+async function removeErasedLookupRows() {
+  try {
+    await removeObsoleteLookupStatsRows();
+  } catch (error) {
+    console.warn("hachidori: the language was erased; its lookup counts could not be removed yet:", describeErrorOrJson(error));
+  }
 }
 
 // The worker side of hd_profile_add and hd_profile_remove (docs/languages.md
@@ -283,90 +381,33 @@ async function profileCas(message) {
   if (message.baseRevision !== (current?.revision ?? 0)) {
     return { ok: false, conflict: true, error: "the dictionary state changed while the language was being changed", state: current };
   }
-  const named = message.profileId === undefined ? null : profileLanguages(stored[OPTIONS_KEY]).get(message.profileId);
-  const language = message.action === "remove" && named !== undefined && named !== null ? named : message.language;
-  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
-  const existing = optionProfiles(stored[OPTIONS_KEY]);
-  // A first-run choice whose reply was lost is already the only profile.
-  if (message.action === "add" && message.firstRun === true && hasProfiles(stored[OPTIONS_KEY])
-      && existing.length === 1 && existing[0].language === language) {
-    return { state: current, converted: false, languages: [language] };
-  }
-  // Japanese at first run is the Japanese-only installation there already is:
-  // its settings stay as they are and nothing is written (sections 4.5, 16.1).
-  if (message.action === "add" && message.firstRun === true && language === JAPANESE_PROFILE_ID
-      && !hasProfiles(stored[OPTIONS_KEY])) {
-    return { state: current, converted: true };
-  }
+  const language = profileCasLanguage(message, stored[OPTIONS_KEY]);
+  const unchanged = firstRunUnchanged(message, stored[OPTIONS_KEY], language, current);
+  if (unchanged !== null) return unchanged;
   const options = profileRequestOptions(message, stored, language);
   const languages = profileLanguages(options);
   assertProfileDictionaryState(message.state, options);
-  const revision = (current?.revision ?? 0) + 1;
-  const state = profileStateOf(message.state, revision);
+  const state = profileStateOf(message.state, (current?.revision ?? 0) + 1);
   assertPersonalPlacement(state, languages);
-  // A language request changes no package; an erase removes the language's
-  // personal package and nothing else.
-  const before = new Map(dictionaryStateWithProfiles(current).dictionaries.map(row => [row.id, row]));
   const personal = personalDictionaryIdentity(language);
-  // The request that first gives the records profiles also adds each
-  // package's `targetLanguage`, read from its index by the engine
-  // (docs/languages.md 4.2); every other field stays as stored.
-  const converting = !hasDictionaryProfiles(current);
-  const comparable = (row) => {
-    if (!converting || row?.targetLanguage === undefined) return row;
-    const { targetLanguage, ...rest } = row;
-    return typeof targetLanguage === "string" && /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u.test(targetLanguage) ? rest : row;
-  };
-  if (state.dictionaries.some(row => !sameJsonValue(before.get(row.id), comparable(row)))) {
-    throw new Error("adding or removing a language changes no dictionary");
-  }
-  const kept = new Set(state.dictionaries.map(row => row.id));
-  if ([...before.keys()].some(id => !kept.has(id) && !(message.erase === true && id === personal?.id))) {
-    throw new Error("adding or removing a language removes no dictionary");
-  }
-  let document = stored[CUSTOM_DICTIONARY_SOURCE_KEY];
-  let lookupStats = stored[LOOKUP_STATS_KEY] ?? emptyLookupStats();
-  let marks = stored[WORD_STATUS_OVERRIDES_KEY];
+  assertPackagesKept(current, state, message.erase === true ? personal?.id : null);
+  const records = { document: stored[CUSTOM_DICTIONARY_SOURCE_KEY], lookupStats: stored[LOOKUP_STATS_KEY] ?? emptyLookupStats(),
+    marks: stored[WORD_STATUS_OVERRIDES_KEY] };
   const values = {};
   if (message.erase === true) {
-    const languageDocument = customDictionaryDocumentFor(document, language);
-    if (message.baseDocumentRevision !== languageDocument.revision) {
-      return { ok: false, stale: true, error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again.",
-        document: languageDocument, state: current };
-    }
-    if (state.dictionaries.some(row => row.id === personal?.id)) throw new Error("an erase removes the personal dictionary");
-    document = withCustomDictionaryDocument(document, language, { schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION,
-      revision: languageDocument.revision + 1, semanticRevision: EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION, text: "" });
-    assertLookupStatsDescriptor(lookupStats);
-    lookupStats = withoutLookupStatsLanguage(lookupStats, language);
-    const { normaliseWordStatusOverrides: normaliseMarks, withLanguageWordStatusOverrides } = globalThis.HDWordStatusOverrides;
-    marks = withLanguageWordStatusOverrides(marks, language,
-      { revision: normaliseMarks(marks).revision + 1, known: [], ignored: [] });
-    Object.assign(values, { [CUSTOM_DICTIONARY_SOURCE_KEY]: document, [LOOKUP_STATS_KEY]: lookupStats, [WORD_STATUS_OVERRIDES_KEY]: marks });
+    const stale = eraseLanguageRecords(records, message, language, state, personal, current);
+    if (stale !== null) return stale;
+    Object.assign(values, { [CUSTOM_DICTIONARY_SOURCE_KEY]: records.document, [LOOKUP_STATS_KEY]: records.lookupStats,
+      [WORD_STATUS_OVERRIDES_KEY]: records.marks });
   }
-  const converted = singleProfileShape({ options, state, document, lookupStats, wordStatusOverrides: marks });
+  const converted = singleProfileShape({ options, state, document: records.document, lookupStats: records.lookupStats,
+    wordStatusOverrides: records.marks });
   values[OPTIONS_KEY] = { ...(converted ? optionsWithoutProfiles(options) : options), revision: optionsRevision(stored[OPTIONS_KEY]) + 1 };
   values[DICTIONARY_STATE_KEY] = converted ? dictionaryStateWithoutProfiles(state) : state;
-  const removals = [];
-  if (converted) {
-    // The single-profile shape has no `languages` maps (section 4.5).
-    const top = normaliseCustomDictionaryDocument(document);
-    if (document !== undefined && document !== null) {
-      if (top.revision === 0 && top.text === "") removals.push(CUSTOM_DICTIONARY_SOURCE_KEY);
-      else values[CUSTOM_DICTIONARY_SOURCE_KEY] = top;
-    }
-    if (stored[LANGUAGE_SELECTION_KEY] !== undefined) removals.push(LANGUAGE_SELECTION_KEY);
-  }
-  for (const key of removals) delete values[key];
+  const removals = converted ? convertedBackRemovals(values, records.document, stored) : [];
   await writeLocalState(values);
   if (removals.length > 0) await chrome.storage.local.remove(removals);
-  if (message.erase === true) {
-    try {
-      await removeObsoleteLookupStatsRows();
-    } catch (error) {
-      console.warn("hachidori: the language was erased; its lookup counts could not be removed yet:", describeErrorOrJson(error));
-    }
-  }
+  if (message.erase === true) await removeErasedLookupRows();
   return { state: values[DICTIONARY_STATE_KEY], converted, ...(converted ? {} : { languages: [...new Set(languages.values())] }) };
 }
 
@@ -374,17 +415,25 @@ async function profileCas(message) {
 // Japanese (docs/languages.md 15): the language's document, its personal
 // package's rules checked in every profile of the language, the other
 // languages' documents and packages kept.
+// The shape hd_custom_cas checks: with the engine's whole record, the
+// request without its list fields, which that record replaces.
+function customCasShape(message) {
+  if (message?.state === undefined) return message;
+  return { ...message, state: undefined, dictionaries: undefined, groups: undefined };
+}
+
+// Records with profiles, another language or the engine's whole record go
+// through languageCustomCas; a Japanese-only request is today's.
+function languageCustomRequest(message, currentOptions) {
+  return hasProfiles(currentOptions) || message.state !== undefined
+    || (message.language !== undefined && message.language !== JAPANESE_PROFILE_ID)
+    || (message.profileId !== undefined && message.profileId !== JAPANESE_PROFILE_ID);
+}
+
 async function languageCustomCas(message, store, read) {
   const { state: current, options: currentOptions, customDocument: storedDocument } = read;
-  if (!hasProfiles(currentOptions)) throw new Error("This language has no profile on this Hachidori.");
-  const language = customRequestLanguage(message, currentOptions);
-  const languages = profileLanguages(currentOptions);
-  if (![...languages.values()].includes(language)) {
-    throw language === JAPANESE_PROFILE_ID ? profileError(NO_JAPANESE_PROFILE, "no-japanese-profile")
-      : profileError(PROFILE_REMOVED, "profile-missing");
-  }
-  const identity = personalDictionaryIdentity(language);
-  if (identity === null) throw new Error("This Hachidori has no personal dictionary for this language.");
+  const target = customProfileLanguage(message, currentOptions);
+  const { language, languages, identity } = target;
   const document = customDictionaryDocumentFor(storedDocument, language);
   if (message.baseDocumentRevision !== document.revision) {
     return { ok: false, stale: true, error: "the custom dictionary source changed while it was being saved", document, state: current };
@@ -401,26 +450,10 @@ async function languageCustomCas(message, store, read) {
   const next = message.state === undefined ? current : profileStateOf(message.state, current.revision);
   if (message.state !== undefined) {
     assertProfileDictionaryState(message.state, currentOptions);
-    // Only this language's personal package may change here.
-    for (const row of [...(current?.dictionaries ?? []), ...next.dictionaries]) {
-      const owner = personalDictionaryLanguage(row);
-      if (owner === null || owner === language) continue;
-      const before = current.dictionaries.find(entry => entry.id === row.id);
-      const after = next.dictionaries.find(entry => entry.id === row.id);
-      if (!before || !after || !sameJsonValue(before, after)) {
-        throw new Error("the managed custom dictionary can only be changed by its source editor");
-      }
-    }
+    assertOtherPersonalPackagesKept(current, next, language);
     assertPersonalPlacement(next, languages);
   }
-  const rows = next.dictionaries.filter(row => row.id === identity.id);
-  if (parsed.entries.length === 0 ? rows.length !== 0 : rows.length !== 1) {
-    throw new Error("the custom dictionary package does not match its source semantics");
-  }
-  for (const [profileId, profileLanguage] of languages) {
-    if (profileLanguage !== language) continue;
-    assertCustomSourceState(projectDictionaryState(next, profileId).dictionaries, calculatedRevision, parsed.entries.length, identity);
-  }
+  assertPersonalPackageState(next, parsed.entries.length, calculatedRevision, target);
   const documentChanged = document.text !== message.text || document.semanticRevision !== message.semanticRevision;
   const nextDocument = documentChanged
     ? { schemaVersion: CUSTOM_DICTIONARY_SOURCE_SCHEMA_VERSION, revision: document.revision + 1,
@@ -436,6 +469,46 @@ async function languageCustomCas(message, store, read) {
   }
   if (Object.keys(values).length > 0) await writeLocalState(values, store);
   return { document: nextDocument, state };
+}
+
+// The language a personal-dictionary request on records with profiles is
+// for, its profiles' languages and its personal package's identity.
+function customProfileLanguage(message, currentOptions) {
+  if (!hasProfiles(currentOptions)) throw new Error("This language has no profile on this Hachidori.");
+  const language = customRequestLanguage(message, currentOptions);
+  const languages = profileLanguages(currentOptions);
+  if (![...languages.values()].includes(language)) {
+    throw language === JAPANESE_PROFILE_ID ? profileError(NO_JAPANESE_PROFILE, "no-japanese-profile")
+      : profileError(PROFILE_REMOVED, "profile-missing");
+  }
+  const identity = personalDictionaryIdentity(language);
+  if (identity === null) throw new Error("This Hachidori has no personal dictionary for this language.");
+  return { language, languages, identity };
+}
+
+// Only this language's personal package may change here.
+function assertOtherPersonalPackagesKept(current, next, language) {
+  for (const row of [...(current?.dictionaries ?? []), ...next.dictionaries]) {
+    const owner = personalDictionaryLanguage(row);
+    if (owner === null || owner === language) continue;
+    const before = current.dictionaries.find(entry => entry.id === row.id);
+    const after = next.dictionaries.find(entry => entry.id === row.id);
+    if (!before || !after || !sameJsonValue(before, after)) {
+      throw new Error("the managed custom dictionary can only be changed by its source editor");
+    }
+  }
+}
+
+// The language's personal package matches its source in every profile of the language.
+function assertPersonalPackageState(next, entryCount, calculatedRevision, { identity, languages, language }) {
+  const rows = next.dictionaries.filter(row => row.id === identity.id);
+  if (entryCount === 0 ? rows.length !== 0 : rows.length !== 1) {
+    throw new Error("the custom dictionary package does not match its source semantics");
+  }
+  for (const [profileId, profileLanguage] of languages) {
+    if (profileLanguage !== language) continue;
+    assertCustomSourceState(projectDictionaryState(next, profileId).dictionaries, calculatedRevision, entryCount, identity);
+  }
 }
 
 // hd_backup_cas for records with profiles (docs/languages.md 17.2): the
@@ -731,8 +804,7 @@ const WORKER_HANDLERS = {
 
   async hd_custom_cas(message, sender) {
     const store = stateStore(sender);
-    const changesDictionaryState = message?.state === undefined ? assertCustomDictionaryCasRequest(message)
-      : assertCustomDictionaryCasRequest({ ...message, state: undefined, dictionaries: undefined, groups: undefined });
+    const changesDictionaryState = assertCustomDictionaryCasRequest(customCasShape(message));
 
     const read = await readDictionaryStorage(true, store);
     const {
@@ -743,11 +815,7 @@ const WORKER_HANDLERS = {
     } = read;
     assertDictionaryState(current);
     if (message.state !== undefined) assertOwnStateWrite(sender);
-    if (hasProfiles(currentOptions) || message.state !== undefined
-        || (message.language !== undefined && message.language !== JAPANESE_PROFILE_ID)
-        || (message.profileId !== undefined && message.profileId !== JAPANESE_PROFILE_ID)) {
-      return languageCustomCas(message, store, read);
-    }
+    if (languageCustomRequest(message, currentOptions)) return languageCustomCas(message, store, read);
     const document = normaliseCustomDictionaryDocument(storedDocument);
     if (message.baseDocumentRevision !== document.revision) {
       return {
@@ -1044,6 +1112,17 @@ async function detectFirstRunAnki() {
 // Dictionary-dependent initial preferences follow the committed entry's exact
 // title, whether setup installed it or found it installed. Each is consumed
 // once; an option the user already changed is left alone.
+// Jitendex and Bee's Ultimate Kanji Dictionary are the Japanese profile's:
+// the selections go into it, or nowhere without a Japanese profile.
+function japaneseProfileSelections(storedOptions, dictionaryState, patch, revision) {
+  if (!optionProfiles(storedOptions).some(profile => profile.id === JAPANESE_PROFILE_ID)) return null;
+  const view = projectDictionaryState(dictionaryState, JAPANESE_PROFILE_ID) ?? { dictionaries: [], groups: [] };
+  const record = applyOptionsPatch(storedOptions, validateOptionsPatch(patch), JAPANESE_PROFILE_ID);
+  const options = { ...record, profiles: record.profiles.map(profile => profile.id !== JAPANESE_PROFILE_ID ? profile
+    : { ...profile, settings: normaliseDictionarySelections(profile.settings, view.dictionaries, view.groups) }) };
+  return sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 };
+}
+
 function firstInstallSelections(previousSelections, outcomes, dictionaryState, storedOptions) {
   const dictionaries = dictionaryState?.dictionaries ?? [];
   const effective = normaliseOptions(storedOptions);
@@ -1063,15 +1142,7 @@ function firstInstallSelections(previousSelections, outcomes, dictionaryState, s
   }
   if (Object.keys(patch).length === 0) return { applied, options: null };
   const revision = optionsRevision(storedOptions);
-  if (hasProfiles(storedOptions)) {
-    // Jitendex and Bee's Ultimate Kanji Dictionary are the Japanese profile's.
-    if (!optionProfiles(storedOptions).some(profile => profile.id === JAPANESE_PROFILE_ID)) return { applied, options: null };
-    const view = projectDictionaryState(dictionaryState, JAPANESE_PROFILE_ID) ?? { dictionaries: [], groups: [] };
-    const record = applyOptionsPatch(storedOptions, validateOptionsPatch(patch), JAPANESE_PROFILE_ID);
-    const options = { ...record, profiles: record.profiles.map(profile => profile.id !== JAPANESE_PROFILE_ID ? profile
-      : { ...profile, settings: normaliseDictionarySelections(profile.settings, view.dictionaries, view.groups) }) };
-    return { applied, options: sameJsonValue(options, { ...storedOptions, revision }) ? null : { ...options, revision: revision + 1 } };
-  }
+  if (hasProfiles(storedOptions)) return { applied, options: japaneseProfileSelections(storedOptions, dictionaryState, patch, revision) };
   const options = normaliseDictionarySelections(
     { ...projectStoredOptions(storedOptions), ...validateOptionsPatch(patch), revision }, dictionaries, dictionaryState?.groups ?? [],
   );

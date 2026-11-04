@@ -2,6 +2,13 @@
 // Static, local sample data; the view itself is the production popup renderer.
 (function () {
   "use strict";
+  // A pack's sample character stats in the shape the renderers read,
+  // [{ name, value }], also when the pack writes the kanji bank's { name: value }.
+  function sampleStats(stats) {
+    if (Array.isArray(stats)) return stats;
+    if (!stats || typeof stats !== "object") return [];
+    return Object.entries(stats).map(([name, value]) => ({ name, value: String(value) }));
+  }
   HDVisualNovel.initialize(document.querySelector(".vn-scene"));
   const host = document.getElementById("preview-host");
   const shadow = host.attachShadow({ mode: "open" });
@@ -298,43 +305,7 @@
 
   function renderSample(preserveViewControls = false) {
     if (kanjiCharacter) {
-      const capability = HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries, state.groups);
-      kanjiSource = capability;
-      const renderContext = { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
-        kanjiCharacter = null;
-        renderSample();
-        popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
-      } };
-      // A pack's sample character in the shape the renderers read: `stats`
-      // as [{ name, value }], also when the pack writes { name: value }.
-      const packCharacter = language.code !== "ja" ? packSample?.character ?? null : null;
-      const packStats = packCharacter?.stats;
-      const languageCharacter = packCharacter === null ? null : { ...packCharacter,
-        stats: Array.isArray(packStats) ? packStats : packStats && typeof packStats === "object"
-          ? Object.entries(packStats).map(([name, value]) => ({ name, value: String(value) })) : [] };
-      const nativeSample = (dictionary) => languageCharacter ? { ...languageCharacter, dictionary }
-        : { dictionary, onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用",
-          definitions: ["eat", "food"], stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }] };
-      if (capability?.kind === "term" || capability?.kind === "group") {
-        // A group compares its members: one card each, in group order, with a tab per member.
-        const members = capability.kind === "group" ? capability.members : [capability];
-        view.renderResults([{ matched: kanjiCharacter, deinflected: kanjiCharacter, trace: [], preprocessorSteps: 0, term: {
-          expression: kanjiCharacter, reading: language.code === "ja" ? "しょく" : kanjiCharacter, rules: "", score: 0,
-          glossaries: members.map(member => member.kind === "kanji"
-            ? HDPopup.characterEntryResult(kanjiCharacter, nativeSample(member.title), language).term.glossaries[0]
-            : { dictionary: member.title, glossary: JSON.stringify(["food; eating — sample single-kanji entry"]),
-              definitionTags: "", termTags: "" }), frequencies: [], pitches: [],
-        } }], candidate, capability.kind === "group"
-          ? { ...renderContext, dictionaryTabScope: members.map(member => member.title) } : renderContext);
-        sampleTermView = true;
-        armSampleBlur();
-      } else {
-        // Native kanji is outside term blur.
-        sampleTermView = false;
-        clearSampleBlurTimer();
-        view.renderKanji({ character: kanjiCharacter, entries: [nativeSample(capability?.title || "Sample kanji")] },
-          candidate, { ...renderContext, definitionBlurState: "revealed" });
-      }
+      renderSampleCharacter(preserveViewControls);
     } else {
       view.renderResults(sample.results, candidate, { ...context(), preserveViewControls,
         onDictionaryTabSelected(selection) { selectedDictionaryTab = selection; },
@@ -348,6 +319,50 @@
     // The render's own callback ran before sampleTermView was set.
     definitionReveal.sync();
   }
+
+  // The clicked character's sample entry: the pack's, or today's Japanese one.
+  function characterSample(dictionary) {
+    const packCharacter = language.code !== "ja" ? packSample?.character ?? null : null;
+    if (packCharacter !== null) return { ...packCharacter, stats: sampleStats(packCharacter.stats), dictionary };
+    return { dictionary, onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用",
+      definitions: ["eat", "food"], stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }] };
+  }
+
+  // A clicked character: a term or group dictionary shows its cards, a
+  // character dictionary its entry, outside term blur.
+  function renderSampleCharacter(preserveViewControls) {
+    const capability = HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, state.dictionaries, state.groups);
+    kanjiSource = capability;
+    const renderContext = { ...context(), preserveViewControls, highlightText: candidate.query, onBack() {
+      kanjiCharacter = null;
+      renderSample();
+      popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
+    } };
+    if (capability?.kind === "term" || capability?.kind === "group") {
+      renderSampleCharacterCards(capability, renderContext);
+      return;
+    }
+    sampleTermView = false;
+    clearSampleBlurTimer();
+    view.renderKanji({ character: kanjiCharacter, entries: [characterSample(capability?.title || "Sample kanji")] },
+      candidate, { ...renderContext, definitionBlurState: "revealed" });
+  }
+
+  // A group compares its members: one card each, in group order, with a tab per member.
+  function renderSampleCharacterCards(capability, renderContext) {
+    const members = capability.kind === "group" ? capability.members : [capability];
+    view.renderResults([{ matched: kanjiCharacter, deinflected: kanjiCharacter, trace: [], preprocessorSteps: 0, term: {
+      expression: kanjiCharacter, reading: language.code === "ja" ? "しょく" : kanjiCharacter, rules: "", score: 0,
+      glossaries: members.map(member => member.kind === "kanji"
+        ? HDPopup.characterEntryResult(kanjiCharacter, characterSample(member.title), language).term.glossaries[0]
+        : { dictionary: member.title, glossary: JSON.stringify(["food; eating — sample single-kanji entry"]),
+          definitionTags: "", termTags: "" }), frequencies: [], pitches: [],
+    } }], candidate, capability.kind === "group"
+      ? { ...renderContext, dictionaryTabScope: members.map(member => member.title) } : renderContext);
+    sampleTermView = true;
+    armSampleBlur();
+  }
+
 
   // The pack's `host.sample` (entry, practice, character) for languages other
   // than Japanese, which stays in its language.json (docs/languages.md 9.1).
@@ -370,19 +385,34 @@
   let lastUpdate = null;
   // `profile` is the edited profile (`{ language, packSettings }`) once the
   // records have profiles; without one the preview is today's Japanese one.
+  // The edited profile's language (11.1, 11.5) and its pack's sample scene,
+  // or today's Japanese one.
+  function adoptPreviewLanguage(profile, nextState) {
+    const nextLanguageKey = JSON.stringify(profile ? [profile.language, profile.packSettings ?? {}, nextState.revision] : null);
+    if (nextLanguageKey === languageKey) return;
+    languageKey = nextLanguageKey;
+    language = profile ? HDThemeHost.createLanguage(globalThis.HDLanguages?.get?.(profile.language) ?? null,
+      { marked: true, packSettings: profile.packSettings ?? {}, dictionaries: nextState.dictionaries })
+      : HDThemeHost.createLanguage();
+    packSample = language.code === "ja" ? null : packSamples.get(language.code) ?? null;
+    setScene(packSample?.practice ?? JAPANESE_SCENE, language);
+    kanjiCharacter = null;
+    if (language.code !== "ja" && !packSamples.has(language.code)) loadPackSample(language.code);
+  }
+
+  // A blur edit restarts the sample decision so its effect is visible.
+  function restartSampleBlur() {
+    sampleRevealed = false;
+    if (sampleTermView) {
+      view.setDefinitionBlurState(sampleBlurState());
+      armSampleBlur();
+    }
+    definitionReveal.sync();
+  }
+
   window.HDDesignPreview = { update(nextOptions, nextState, profile = null) {
     lastUpdate = [nextOptions, nextState, profile];
-    const nextLanguageKey = JSON.stringify(profile ? [profile.language, profile.packSettings ?? {}, nextState.revision] : null);
-    if (nextLanguageKey !== languageKey) {
-      languageKey = nextLanguageKey;
-      language = profile ? HDThemeHost.createLanguage(globalThis.HDLanguages?.get?.(profile.language) ?? null,
-        { marked: true, packSettings: profile.packSettings ?? {}, dictionaries: nextState.dictionaries })
-        : HDThemeHost.createLanguage();
-      packSample = language.code === "ja" ? null : packSamples.get(language.code) ?? null;
-      setScene(packSample?.practice ?? JAPANESE_SCENE, language);
-      kanjiCharacter = null;
-      if (language.code !== "ja" && !packSamples.has(language.code)) loadPackSample(language.code);
-    }
+    adoptPreviewLanguage(profile, nextState);
     const themeChanged = HDReaderOptions.popupRenderer(options.popupTheme) !== HDReaderOptions.popupRenderer(nextOptions.popupTheme);
     const toolbarChanged = !state || options.popupToolbarPosition !== nextOptions.popupToolbarPosition;
     const geometryChanged = !state || options.popupColumns !== nextOptions.popupColumns
@@ -395,7 +425,6 @@
     appearance.update(nextOptions);
     const cssChanged = customStyle.update(nextOptions.customPopupCss);
     const countsChanged = !state || options.showLookupCounts !== nextOptions.showLookupCounts;
-    // A blur edit restarts the sample decision so its effect is visible.
     const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
     void themeHost.sync();
@@ -405,14 +434,7 @@
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     if (countsChanged) paintSampleLookupStats();
-    if (blurChanged) {
-      sampleRevealed = false;
-      if (sampleTermView) {
-        view.setDefinitionBlurState(sampleBlurState());
-        armSampleBlur();
-      }
-      definitionReveal.sync();
-    }
+    if (blurChanged) restartSampleBlur();
     const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
       nextOptions.popupTheme,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,

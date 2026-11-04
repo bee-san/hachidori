@@ -60,7 +60,7 @@ export function setDebugLogLanguages(codes) {
   debugLanguageText = others.flatMap(code => {
     const pack = globalThis.HDLanguages?.get?.(code);
     if (typeof pack?.text?.pattern !== "string" || !pack.scripts?.some(script => script !== "Latn")) return [];
-    return [[new RegExp(`(?:(?!\\p{Script=Latin})${pack.text.pattern})+`, "gu"), `[${code}]`]];
+    return [[new RegExp(String.raw`(?:(?!\p{Script=Latin})${pack.text.pattern})+`, "gu"), `[${code}]`]];
   });
 }
 

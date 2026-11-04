@@ -615,8 +615,11 @@ sharingReady = initialiseSharing().catch((error) => {
 });
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
-void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
-  if (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY])) void syncLanguageBadge(chrome).catch(() => {});
+const startupOptions = chrome.storage.local.get(OPTIONS_KEY);
+// The toolbar badge names the active language once the records have profiles.
+void startupOptions.then(stored => (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY]) ? syncLanguageBadge(chrome) : null))
+  .catch(() => {});
+void startupOptions.then(stored => {
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);

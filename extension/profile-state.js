@@ -90,7 +90,9 @@ const DICTIONARY_SELECTION_KEYS = ["frequencyDictionary", "kanjiClickDictionary"
  * there are no custom buttons.
  */
 export function newProfileSettings(source, descriptor, newId = () => crypto.randomUUID()) {
-  const settings = JSON.parse(JSON.stringify(source ?? {}));
+  // A JSON copy keeps exactly what storage keeps of the settings, and runs in
+  // every context that reads this module, the worker's sandboxes included.
+  const settings = JSON.parse(JSON.stringify(source ?? {})); // NOSONAR: a JSON copy is the stored form
   for (const key of DICTIONARY_SELECTION_KEYS) delete settings[key];
   const { normaliseAnki } = globalThis.HDReaderOptions;
   settings.anki = { templates: normaliseAnki({ templates: settings.anki?.templates }).templates
@@ -206,41 +208,12 @@ export function mergeDictionaryView(state, profileId, view, { legacy = false } =
 export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_PROFILE_ID, joins = [] } = {}) {
   const previous = new Set(state.dictionaries.map(row => row.id));
   const present = new Set(packages.map(row => row.id));
-  if (!plainObject(state.profiles[profileId])
-      && packages.some(row => !previous.has(row.id) && !isPersonalPackage(row))) {
-    const { PROFILE_MESSAGES } = globalThis.HDReaderOptions;
-    const error = new Error(profileId === JAPANESE_PROFILE_ID ? PROFILE_MESSAGES.noJapaneseProfile : PROFILE_MESSAGES.profileRemoved);
-    error.code = profileId === JAPANESE_PROFILE_ID ? "no-japanese-profile" : "profile-missing";
-    error.errorCode = error.code;
-    throw error;
-  }
+  assertJoinedProfile(state, packages, previous, profileId);
+  const context = { packages, previous, present, joins, profileId };
   const result = {};
-  // In version 1 a profile's id is its language (decision 0002).
   for (const [id, profile] of Object.entries(state.profiles)) {
-    const language = id;
-    let list = (Array.isArray(profile?.dictionaries) ? profile.dictionaries : [])
-      .filter(entry => present.has(entry?.id));
-    for (const row of packages) {
-      if ((previous.has(row.id) && !joins.includes(row.id)) || isPersonalPackage(row) || id !== profileId) continue;
-      if (list.some(entry => entry.id === row.id)) continue;
-      list.push({ id: row.id, enabled: row.enabled !== false });
-    }
-    const personal = packages.filter(row => personalDictionaryLanguage(row) === language);
-    const personalIds = new Set(packages.filter(isPersonalPackage).map(row => row.id));
-    list = [
-      ...personal.map(row => ({ id: row.id, enabled: true })),
-      ...list.filter(entry => !personalIds.has(entry.id)),
-    ];
-    // Group members outside the profile's own list are pruned, as the
-    // worker's commit prunes them.
-    const ids = new Set(list.map(entry => entry.id));
-    result[id] = {
-      dictionaries: list,
-      groups: (Array.isArray(profile?.groups) ? profile.groups : []).map(group => ({
-        ...group, dictionaryIds: (Array.isArray(group?.dictionaryIds) ? group.dictionaryIds : [])
-          .filter((member, index, members) => ids.has(member) && members.indexOf(member) === index),
-      })),
-    };
+    const list = mergedProfileList(profile, id, context);
+    result[id] = { dictionaries: list, groups: prunedGroups(profile, new Set(list.map(entry => entry.id))) };
   }
   return {
     schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA,
@@ -248,6 +221,41 @@ export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_
     dictionaries: packages.map(packageRow),
     profiles: result,
   };
+}
+
+// A new package needs the profile it joins.
+function assertJoinedProfile(state, packages, previous, profileId) {
+  if (plainObject(state.profiles[profileId]) || !packages.some(row => !previous.has(row.id) && !isPersonalPackage(row))) return;
+  const { PROFILE_MESSAGES } = globalThis.HDReaderOptions;
+  const error = new Error(profileId === JAPANESE_PROFILE_ID ? PROFILE_MESSAGES.noJapaneseProfile : PROFILE_MESSAGES.profileRemoved);
+  error.code = profileId === JAPANESE_PROFILE_ID ? "no-japanese-profile" : "profile-missing";
+  error.errorCode = error.code;
+  throw error;
+}
+
+// One profile's list after the merge: its remaining entries in their order,
+// new packages (and `joins`) last in `profileId`, and the personal package of
+// its language first. In version 1 a profile's id is its language (decision 0002).
+function mergedProfileList(profile, id, { packages, previous, present, joins, profileId }) {
+  const list = (Array.isArray(profile?.dictionaries) ? profile.dictionaries : []).filter(entry => present.has(entry?.id));
+  if (id === profileId) {
+    for (const row of packages) {
+      if ((previous.has(row.id) && !joins.includes(row.id)) || isPersonalPackage(row)) continue;
+      if (!list.some(entry => entry.id === row.id)) list.push({ id: row.id, enabled: row.enabled !== false });
+    }
+  }
+  const personal = packages.filter(row => personalDictionaryLanguage(row) === id);
+  const personalIds = new Set(packages.filter(isPersonalPackage).map(row => row.id));
+  return [...personal.map(row => ({ id: row.id, enabled: true })), ...list.filter(entry => !personalIds.has(entry.id))];
+}
+
+// Group members outside the profile's own list are pruned, as the worker's
+// commit prunes them.
+function prunedGroups(profile, ids) {
+  return (Array.isArray(profile?.groups) ? profile.groups : []).map(group => ({
+    ...group, dictionaryIds: (Array.isArray(group?.dictionaryIds) ? group.dictionaryIds : [])
+      .filter((member, index, members) => ids.has(member) && members.indexOf(member) === index),
+  }));
 }
 
 /**

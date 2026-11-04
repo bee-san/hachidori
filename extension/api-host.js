@@ -193,6 +193,37 @@ function requireStrings(value, name) {
 // or null for an index that names none (docs/languages.md 12).
 // `readProfile(profileId)` is that profile's { language, packSettings }, whose
 // language its notes and readings follow, null while the records have no profiles.
+// What every result's mining request shares (docs/languages.md 12): each
+// dictionary's target language, which a profile's notes follow, beside the
+// display names, ids and frequency dictionaries.
+function termContext(where, profile, generation, text) {
+  const targets = profile === null ? {} : { dictionaryTargetLanguages: Object.fromEntries(where.dictionaries
+    .filter(item => typeof item.targetLanguage === "string" && item.targetLanguage).map(item => [item.title, item.targetLanguage])) };
+  return {
+    generation, text,
+    frequencyModes: new Map(where.dictionaries.map(item => [item.title, item.frequencyMode])),
+    shared: {
+      dictionaryAliases: Object.fromEntries(where.dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
+      dictionaryIds: Object.fromEntries(where.dictionaries.map(item => [item.title, item.id])),
+      frequencyDictionaries: where.dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+      ...targets,
+    },
+  };
+}
+
+// One result's mining request, as the popup builds it.
+function termRequest(result, context) {
+  const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
+    ({ ...group, frequencyMode: context.frequencyModes.get(group.dictionary) })) };
+  return { ...result, term, generation: context.generation, sentence: context.text, matchOffset: 0, matched: result.matched,
+    searchQuery: context.text, popupSelectionText: "", documentTitle: "", ...context.shared };
+}
+
+// A match's segments: its furigana, or the matched text without a reading.
+function matchedSegments(best, ruby) {
+  return ruby ? globalThis.HDGlossary.matchedFurigana(best.term, best.matched) : [{ text: best.matched, reading: "" }];
+}
+
 export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, readSmallerAnkiCards, version,
   resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null),
   readProfile = async () => null }) {
@@ -218,58 +249,51 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
   async function ankiTermFields(profileId, text, markers, maxEntries, includeMedia) {
     const where = await whereabouts(profileId);
     const profile = await readProfile(profileId);
-    // Each dictionary's target language, which a profile's notes follow; the
-    // note builder takes each direction from it or from the glosses.
-    const targets = profile === null ? {} : { dictionaryTargetLanguages: Object.fromEntries(where.dictionaries
-      .filter(item => typeof item.targetLanguage === "string" && item.targetLanguage).map(item => [item.title, item.targetLanguage])) };
     const { results, generation } = await lookup(profileId, text, maxEntries > 0 ? { maxResults: maxEntries } : {});
-    const enabled = where.dictionaries.filter(item => item.enabled !== false);
-    const dictionaryPaths = Object.fromEntries(enabled.map(item => [item.title, item.path]));
-    const frequencyModes = new Map(where.dictionaries.map(item => [item.title, item.frequencyMode]));
+    const context = termContext(where, profile, generation, text);
+    const dictionaryPaths = Object.fromEntries(where.dictionaries.filter(item => item.enabled !== false)
+      .map(item => [item.title, item.path]));
     const templates = Object.fromEntries(markers.map(marker => [marker, { value: `{${marker}}`, overwriteMode: "coalesce" }]));
     const compactGlossary = await readSmallerAnkiCards();
     const fields = [], dictionaryMedia = [], audioMedia = [];
     const seenMedia = new Set();
     for (const result of maxEntries > 0 ? results.slice(0, maxEntries) : results) {
-      const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
-        ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
-      const request = { ...result, term, generation, sentence: text, matchOffset: 0, matched: result.matched,
-        searchQuery: text, popupSelectionText: "", documentTitle: "",
-        dictionaryAliases: Object.fromEntries(where.dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
-        dictionaryIds: Object.fromEntries(where.dictionaries.map(item => [item.title, item.id])),
-        frequencyDictionaries: where.dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
-        ...targets };
-      let audio = "";
-      if (markers.includes("audio") && includeMedia) {
-        const sources = await readAudioSources(profileId);
-        const prepared = sources.length
-          ? await render({ type: "hd_anki_audio", term: result.term, sources, recordSpeech: false,
-            ...(profile === null ? {} : { language: profile.language }) }).catch(() => null)
-          : null;
-        if (typeof prepared?.filename === "string" && typeof prepared.data === "string") {
-          audio = `[sound:${prepared.filename}]`;
-          const extension = prepared.filename.split(".").at(-1).toLowerCase();
-          audioMedia.push({ term: term.expression, reading: term.reading,
-            mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename });
-        }
-      }
-      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths, compactGlossary, // NOSONAR: results render one at a time, in order
-        ...(profile === null ? {} : { profile }) });
+      const request = termRequest(result, context);
+      const sound = markers.includes("audio") && includeMedia ? await termAudio(profileId, profile, result) : null; // NOSONAR: results render one at a time, in order
+      if (sound) audioMedia.push(sound.media);
+      const built = await render({ type: "hd_anki_fields", request, templates, audio: sound?.audio ?? "", dictionaryPaths, // NOSONAR: results render one at a time, in order
+        compactGlossary, ...(profile === null ? {} : { profile }) });
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
-      if (!includeMedia) continue;
-      // Only the images these fields show, as mining uploads only those:
-      // Smaller Anki cards leaves hidden content out, with any image in it.
-      const shown = Object.values(fields.at(-1));
-      for (const item of built.media) {
-        if (seenMedia.has(item.filename) || !shown.some(value => value.includes(item.filename))) continue;
-        seenMedia.add(item.filename);
-        const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
-        const match = typeof reply.dataUrl === "string" ? /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(reply.dataUrl) : null;
-        if (!match) continue;
-        dictionaryMedia.push({ dictionary: item.dictionary, path: item.path, mediaType: match[1], content: match[2], ankiFilename: item.filename });
-      }
+      if (includeMedia) dictionaryMedia.push(...await shownDictionaryMedia(built.media, fields.at(-1), seenMedia, generation)); // NOSONAR: results render one at a time, in order
     }
     return { fields, dictionaryMedia, audioMedia };
+  }
+
+  // A result's pronunciation as a sound tag and its media, or null.
+  async function termAudio(profileId, profile, result) {
+    const sources = await readAudioSources(profileId);
+    if (!sources.length) return null;
+    const prepared = await render({ type: "hd_anki_audio", term: result.term, sources, recordSpeech: false,
+      ...(profile === null ? {} : { language: profile.language }) }).catch(() => null);
+    if (typeof prepared?.filename !== "string" || typeof prepared.data !== "string") return null;
+    const extension = prepared.filename.split(".").at(-1).toLowerCase();
+    return { audio: `[sound:${prepared.filename}]`, media: { term: result.term.expression, reading: result.term.reading,
+      mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename } };
+  }
+
+  // Only the images these fields show, as mining uploads only those:
+  // Smaller Anki cards leaves hidden content out, with any image in it.
+  async function shownDictionaryMedia(media, noteFields, seenMedia, generation) {
+    const shown = Object.values(noteFields);
+    const found = [];
+    for (const item of media) {
+      if (seenMedia.has(item.filename) || !shown.some(value => value.includes(item.filename))) continue;
+      seenMedia.add(item.filename);
+      const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation }); // NOSONAR: media files are read one at a time
+      const match = typeof reply.dataUrl === "string" ? /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(reply.dataUrl) : null;
+      if (match) found.push({ dictionary: item.dictionary, path: item.path, mediaType: match[1], content: match[2], ankiFilename: item.filename });
+    }
+    return found;
   }
 
   async function ankiKanjiFields(profileId, text, markers, maxEntries) {
@@ -287,35 +311,36 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     const ruby = profile === null
       || globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings);
     const lines = [];
-    for (const line of text.split("\n")) {
-      const segments = [];
-      const plain = (value) => {
-        if (value === "") return;
-        const last = segments.at(-1);
-        if (last && last.reading === "") last.text += value;
-        else segments.push({ text: value, reading: "" });
-      };
-      let position = 0;
-      while (position < line.length) {
-        const rest = line.slice(position);
-        const { results } = await lookup(profileId, rest, { maxResults: 1, ...(scanLength ? { scanLength } : {}) });
-        const best = results[0];
-        if (!best || !best.matched || !rest.startsWith(best.matched)) {
-          const step = String.fromCodePoint(rest.codePointAt(0));
-          plain(step);
-          position += step.length;
-          continue;
-        }
-        for (const segment of ruby ? globalThis.HDGlossary.matchedFurigana(best.term, best.matched)
-          : [{ text: best.matched, reading: "" }]) {
-          if (segment.reading === "") plain(segment.text);
-          else segments.push({ text: segment.text, reading: segment.reading });
-        }
-        position += best.matched.length;
-      }
-      lines.push(segments);
-    }
+    for (const line of text.split("\n")) lines.push(await tokenizeLine(profileId, line, scanLength, ruby)); // NOSONAR: lines are read one at a time, in order
     return { id: "scan", source: "scanning-parser", dictionary: null, index, content: lines };
+  }
+
+  async function tokenizeLine(profileId, line, scanLength, ruby) {
+    const segments = [];
+    const plain = (value) => {
+      if (value === "") return;
+      const last = segments.at(-1);
+      if (last && last.reading === "") last.text += value;
+      else segments.push({ text: value, reading: "" });
+    };
+    let position = 0;
+    while (position < line.length) {
+      const rest = line.slice(position);
+      const { results } = await lookup(profileId, rest, { maxResults: 1, ...(scanLength ? { scanLength } : {}) }); // NOSONAR: each lookup starts where the last match ended
+      const best = results[0];
+      if (!best || !best.matched || !rest.startsWith(best.matched)) {
+        const step = String.fromCodePoint(rest.codePointAt(0));
+        plain(step);
+        position += step.length;
+        continue;
+      }
+      for (const segment of matchedSegments(best, ruby)) {
+        if (segment.reading === "") plain(segment.text);
+        else segments.push({ text: segment.text, reading: segment.reading });
+      }
+      position += best.matched.length;
+    }
+    return segments;
   }
 
   const handlers = {
@@ -326,7 +351,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       const where = await whereabouts(profileId);
       const results = [];
       for (const [index, text] of terms.entries()) {
-        const found = text === "" ? [] : (await lookup(profileId, text)).results;
+        const found = text === "" ? [] : (await lookup(profileId, text)).results; // NOSONAR: terms are looked up one at a time, in order
         results.push({ index, dictionaryEntries: found.map(result => termEntry(result, where)),
           originalTextLength: found[0]?.matched.length ?? 0 });
       }
@@ -340,7 +365,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       for (const [index, text] of characters.entries()) {
         const entries = [];
         for (const character of [...text]) {
-          const reply = await engine(named(profileId, { type: "hd_kanji", character }));
+          const reply = await engine(named(profileId, { type: "hd_kanji", character })); // NOSONAR: characters are looked up one at a time, in order
           for (const entry of reply.kanji?.entries ?? []) entries.push(kanjiEntry(character, entry, where));
         }
         results.push({ index, dictionaryEntries: entries });
@@ -367,7 +392,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       const texts = requireStrings(message.texts, "texts");
       const scanLength = Number.isSafeInteger(message.scanLength) && message.scanLength > 0 ? message.scanLength : 0;
       const results = [];
-      for (const [index, text] of texts.entries()) results.push(await tokenize(profileId, text, index, scanLength));
+      for (const [index, text] of texts.entries()) results.push(await tokenize(profileId, text, index, scanLength)); // NOSONAR: texts are read one at a time, in order
       return { results };
     },
 

@@ -87,6 +87,19 @@ function reconnects(connection) {
   return connection.client.origin !== API_CLIENT_ORIGIN;
 }
 
+// Whether a followed connection closes after a storage change: records that
+// gain profiles close every one; an opt-in that now lacks one of the host's
+// packs is refused; a refused one whose packs now cover the held languages
+// reconnects to opt in again.
+function closesAfterChange(connection, leftSingleProfile, carried, held) {
+  if (leftSingleProfile) return true;
+  if (optedIn(connection) && missingLanguages(carried, connection.packs).length > 0) {
+    connection.optIn = "refused";
+    return true;
+  }
+  return connection.optIn === "refused" && held !== null && missingLanguages(held, connection.packs).length === 0;
+}
+
 // The opt-in, answered in one turn of the storage queue (17.3 item 2, 17.6):
 // the snapshot read, the client's pack codes checked against every language
 // it holds, the outcome recorded for this connection, whose change frames are
@@ -175,10 +188,8 @@ const HOST_LANGUAGE_HOOKS = {
       languageTracker = null;
       return null;
     }
-    if (!hostProfiles && !leftSingleProfile
-        && !connections.some(connection => connection.closing || connection.queue !== null || connection.optIn !== undefined)) {
-      return null;
-    }
+    const followed = connections.some(connection => connection.closing || connection.queue !== null || connection.optIn !== undefined);
+    if (!hostProfiles && !leftSingleProfile && !followed) return null;
     // Records that gain profiles are read afresh by the next hello.
     if (leftSingleProfile) languageTracker = null;
     const tracker = trackedLanguages();
@@ -186,13 +197,7 @@ const HOST_LANGUAGE_HOOKS = {
     const held = tracker.known ? tracker.held() : null;
     for (const connection of connections) {
       if (connection.closing || !reconnects(connection)) continue;
-      if (leftSingleProfile) connection.closing = true;
-      else if (optedIn(connection) && missingLanguages(carried, connection.packs).length > 0) {
-        connection.optIn = "refused";
-        connection.closing = true;
-      } else if (connection.optIn === "refused" && held !== null && missingLanguages(held, connection.packs).length === 0) {
-        connection.closing = true;
-      }
+      if (closesAfterChange(connection, leftSingleProfile, carried, held)) connection.closing = true;
     }
     return {
       frame: (connection, values) => (optedIn(connection) ? values : japaneseChanges(values, tracker.descriptor)),
@@ -610,6 +615,33 @@ async function prepareOverlayOptionsWrite(message) {
   return { local, shared, version: stored[SHARING_OPTIONS_VERSION_KEY], epoch: sharingEpoch };
 }
 
+// The overlay's own keys written into the record: into every profile once
+// the record has profiles, else into the record; a change moves the revision on.
+function withLocalOverlayKeys(current, local) {
+  if (hasProfiles(current)) {
+    const options = applyToEveryProfile(current, local);
+    if (!sameJsonValue(options, current)) options.revision += 1;
+    return options;
+  }
+  const options = { ...current, ...local };
+  if (Object.entries(local).some(([key, value]) => current[key] !== value)) options.revision += 1;
+  return options;
+}
+
+// The browser's own language choice comes back with its records; an unlink
+// whose restored records are in the single-profile shape removes the key
+// (docs/languages.md 4.4).
+function restoreLanguageSelection(captured, stored, values, removals) {
+  if (captured[LANGUAGE_SELECTION_KEY] !== undefined && captured[LANGUAGE_SELECTION_KEY] !== null) {
+    values[LANGUAGE_SELECTION_KEY] = unlinkedLocalValue(LANGUAGE_SELECTION_KEY, captured[LANGUAGE_SELECTION_KEY],
+      stored[LANGUAGE_SELECTION_KEY]);
+  } else if (stored[LANGUAGE_SELECTION_KEY] !== undefined && singleProfileShape({ options: captured[OPTIONS_KEY],
+    state: captured[DICTIONARY_STATE_KEY], document: captured[CUSTOM_DICTIONARY_SOURCE_KEY],
+    lookupStats: captured[LOOKUP_STATS_KEY], wordStatusOverrides: captured[WORD_STATUS_OVERRIDES_KEY] })) {
+    removals.push(LANGUAGE_SELECTION_KEY);
+  }
+}
+
 async function finishOverlayOptionsWrite(message, prepared, reply) {
   const stored = await chrome.storage.local.get(OVERLAY_OPTIONS_STORAGE_KEYS);
   // Link/Unlink and local edits remain available during the network wait. A
@@ -627,13 +659,7 @@ async function finishOverlayOptionsWrite(message, prepared, reply) {
   } else {
     let options = current;
     if (reply.ok !== false) {
-      if (hasProfiles(current)) {
-        options = applyToEveryProfile(current, prepared.local);
-        if (!sameJsonValue(options, current)) options.revision += 1;
-      } else {
-        options = { ...current, ...prepared.local };
-        if (Object.entries(prepared.local).some(([key, value]) => current[key] !== value)) options.revision += 1;
-      }
+      options = withLocalOverlayKeys(current, prepared.local);
       Object.assign(values, localOverlayOptionsValues(options, prepared.local, { ...stored, ...values }));
     }
     result = checkedOptionsResult(message, { ...reply, options });
@@ -785,17 +811,7 @@ const SHARING_HANDLERS = {
           values[key] = unlinkedLocalValue(key, local, stored[key]);
         }
         removals.push(...unreachableLookupStatsKeys(Object.keys(stored), values[LOOKUP_STATS_KEY] ?? emptyLookupStats()));
-        // The browser's own language choice comes back with its records; an
-        // unlink whose restored records are in the single-profile shape
-        // removes the key (docs/languages.md 4.4).
-        if (captured[LANGUAGE_SELECTION_KEY] !== undefined && captured[LANGUAGE_SELECTION_KEY] !== null) {
-          values[LANGUAGE_SELECTION_KEY] = unlinkedLocalValue(LANGUAGE_SELECTION_KEY, captured[LANGUAGE_SELECTION_KEY],
-            stored[LANGUAGE_SELECTION_KEY]);
-        } else if (stored[LANGUAGE_SELECTION_KEY] !== undefined && singleProfileShape({ options: captured[OPTIONS_KEY],
-          state: captured[DICTIONARY_STATE_KEY], document: captured[CUSTOM_DICTIONARY_SOURCE_KEY],
-          lookupStats: captured[LOOKUP_STATS_KEY], wordStatusOverrides: captured[WORD_STATUS_OVERRIDES_KEY] })) {
-          removals.push(LANGUAGE_SELECTION_KEY);
-        }
+        restoreLanguageSelection(captured, stored, values, removals);
         await writeLocalState(values);
         if (removals.length > 0) await chrome.storage.local.remove(removals);
       }

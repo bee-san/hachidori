@@ -285,15 +285,20 @@
         if (show && record.actions.isConnected) controls(record);
         if (record.control) showControls(record, show);
         if (!value && !show) record.needsCheck = false;
-        if (record.opensSettings && !record.custom) {
-          record.needsCheck = false;
-          setMiningButtonState(record, "unavailable", error);
-        }
-        if (!value && record.custom) {
-          record.needsCheck = false;
-          setMiningButtonState(record, "unavailable", error || "This Anki Template is unavailable.");
-          setStatus(record, error || "This Anki Template is unavailable.", "error");
-        }
+        showUnavailable(record, value, error);
+      }
+    }
+    // The button of a Template without a deck says so and opens Settings; a
+    // custom button's Template that is unavailable says so in its status.
+    function showUnavailable(record, value, error) {
+      if (record.opensSettings && !record.custom) {
+        record.needsCheck = false;
+        setMiningButtonState(record, "unavailable", error);
+      }
+      if (!value && record.custom) {
+        record.needsCheck = false;
+        setMiningButtonState(record, "unavailable", error || "This Anki Template is unavailable.");
+        setStatus(record, error || "This Anki Template is unavailable.", "error");
       }
     }
     async function requestCachedView(record) {

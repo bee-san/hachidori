@@ -482,7 +482,7 @@ function languageDictionariesView() {
   list.id = "setup-language-recommendations";
   void packFile(language).then(pack => {
     const links = (Array.isArray(pack?.host?.recommendedDictionaries) ? pack.host.recommendedDictionaries : [])
-      .filter(entry => typeof entry?.name === "string" && /^https:\/\//u.test(entry?.url ?? ""));
+      .filter(entry => typeof entry?.name === "string" && String(entry?.url ?? "").startsWith("https://"));
     list.replaceChildren(...links.map(entry => {
       const item = document.createElement("li");
       const link = document.createElement("a");
@@ -520,12 +520,21 @@ function languageDictionariesView() {
     body: [
       paragraph(`Hachidori does not install ${name} dictionaries for you. Open one of these pages, download its Yomitan ZIP file and import it here.`),
       list, picker,
-      paragraph(languageImport ?? (installed > 0 ? `${installed === 1 ? "1 dictionary" : `${installed} dictionaries`} installed.` : "No dictionary installed yet.")),
+      paragraph(languageImport ?? installedLine(installed)),
       settingsNote("You can also import dictionaries later in ", "settings.html#add-dictionaries"),
     ],
     actions: [button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); },
       installed > 0 ? "primary-button" : "ghost")],
   };
+}
+
+// "1 dictionary" or "3 dictionaries".
+function dictionaryCount(count) {
+  return count === 1 ? "1 dictionary" : `${count} dictionaries`;
+}
+
+function installedLine(installed) {
+  return installed > 0 ? `${dictionaryCount(installed)} installed.` : "No dictionary installed yet.";
 }
 
 // Imports the chosen archives one at a time into the active profile. The
@@ -556,7 +565,7 @@ async function importLanguageDictionaries(files) {
   if (failed !== null) {
     setStatus(`Could not import ${failed.file.name}: ${describeErrorMessage(failed.error)}`, "error", failed.error);
   } else {
-    setStatus(`${imported === 1 ? "1 dictionary" : `${imported} dictionaries`} imported.`);
+    setStatus(`${dictionaryCount(imported)} imported.`);
   }
 }
 

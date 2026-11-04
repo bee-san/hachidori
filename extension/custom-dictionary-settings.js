@@ -146,8 +146,8 @@ function adoptCustomDictionaryRecord(record) {
 
 function renderCustomDictionaryPlaceholder() {
   const source = element("custom-dictionary-source");
-  const placeholder = customLanguage === "ja" ? JAPANESE_SOURCE_PLACEHOLDER
-    : `word, ${sourceRules().readingRequired ? "reading" : ""}, definition`;
+  let placeholder = JAPANESE_SOURCE_PLACEHOLDER;
+  if (customLanguage !== "ja") placeholder = `word, ${sourceRules().readingRequired ? "reading" : ""}, definition`;
   if (source.placeholder !== placeholder) source.placeholder = placeholder;
 }
 

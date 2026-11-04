@@ -228,18 +228,13 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     root.append(small);
   }
 
-  return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false }) => {
-    let selected = [...groups].filter(([name]) => dictionary === undefined || name === dictionary);
-    if (firstOnly) selected = selected.slice(0, 1);
-    if (!selected.length) return "";
-    if (plain) return plainDefinition(selected, noDictionary);
-    const pending = [];
-    const names = selected.map(([name]) => name);
+  // The field's root and list. Under the right-to-left rules the root takes
+  // its dictionaries' direction, ltr included, so a right-to-left card cannot
+  // turn English glosses around. Dictionaries of both directions keep each
+  // item's own, and the list pads both sides so every number stays inside
+  // the field.
+  function glossaryRoot(names) {
     const rtlRules = followsRtlRules(names);
-    // Under the right-to-left rules the root takes its dictionaries' direction,
-    // ltr included, so a right-to-left card cannot turn English glosses
-    // around. Dictionaries of both directions keep each item's own, and the
-    // list pads both sides so every number stays inside the field.
     const rootDirections = rtlRules ? new Set(names.map(directionOf)) : null;
     const mixed = rootDirections?.size > 1;
     const root = inert.createElement("div");
@@ -248,6 +243,16 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     if (rtlRules) root.dir = mixed ? language.direction : [...rootDirections][0];
     const list = inert.createElement("ol");
     if (mixed) list.style.paddingInline = "40px";
+    return { root, list, rtlRules, mixed };
+  }
+
+  return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false }) => {
+    let selected = [...groups].filter(([name]) => dictionary === undefined || name === dictionary);
+    if (firstOnly) selected = selected.slice(0, 1);
+    if (!selected.length) return "";
+    if (plain) return plainDefinition(selected, noDictionary);
+    const pending = [];
+    const { root, list, rtlRules, mixed } = glossaryRoot(selected.map(([name]) => name));
     // One item per term-bank row, as Yomitan's {glossary} template emits: note
     // types page by li[data-dictionary] and pad any nested list (#359).
     for (const [name, glossaries] of selected) {

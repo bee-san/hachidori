@@ -127,7 +127,7 @@ async function packRecommendations(code) {
 async function renderLanguageRecommendations() {
   const code = editedProfile.language;
   const links = code === "ja" ? [] : (await packRecommendations(code))
-    .filter(entry => typeof entry?.name === "string" && /^https:\/\//u.test(entry?.url ?? ""));
+    .filter(entry => typeof entry?.name === "string" && String(entry?.url ?? "").startsWith("https://"));
   if (editedProfile.language !== code) return;
   let block = element("recommended-language");
   if (links.length === 0) {

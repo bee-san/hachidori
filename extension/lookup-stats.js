@@ -50,7 +50,8 @@ export function withLookupStatsGeneration(descriptor, language, generation) {
 // is dropped, Japanese's top-level generation is replaced by a fresh one.
 export function withoutLookupStatsLanguage(descriptor, language) {
   if (language === "ja") return withLookupStatsGeneration(descriptor, "ja", crypto.randomUUID());
-  const { [language]: dropped, ...languages } = descriptor.languages ?? {};
+  const languages = { ...descriptor.languages };
+  delete languages[language];
   const next = { generation: descriptor.generation, revision: descriptor.revision + 1,
     ...(Object.keys(languages).length > 0 ? { languages } : {}) };
   assertLookupStatsDescriptor(next);

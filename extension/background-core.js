@@ -103,13 +103,28 @@ async function ensureOffscreen() {
   await ensureChromeOffscreen(OFFSCREEN_DOCUMENT);
 }
 
+// A lookup once the records have profiles, or an engine request that names a
+// profile or a language, is resolved to its profile's language before it is
+// relayed (docs/languages.md 5.2, 9.3). Other requests go as they are.
+function resolvesProfile(message) {
+  return message?.target === TARGET && (resolvesLookupProfile(message) || resolvesRequestLanguage(message));
+}
+
+function resolvesLookupProfile(message) {
+  return PROFILE_LOOKUP_TYPES.has(message.type) && (lookupProfiles !== null || message.profileId !== undefined);
+}
+
+function resolvesRequestLanguage(message) {
+  return PROFILE_LANGUAGE_TYPES.has(message.type) && (message.profileId !== undefined || Object.hasOwn(message, "language"));
+}
+
+async function withProfileFields(message) {
+  const looked = resolvesLookupProfile(message) ? await resolveLookupProfile(message) : message;
+  return resolvesRequestLanguage(looked) ? resolveRequestLanguage(looked) : looked;
+}
+
 async function relay(message, stillCurrent = null) {
-  if (message?.target === TARGET && PROFILE_LOOKUP_TYPES.has(message.type)
-      && (lookupProfiles !== null || message.profileId !== undefined)) message = await resolveLookupProfile(message);
-  if (message?.target === TARGET && PROFILE_LANGUAGE_TYPES.has(message.type)
-      && (message.profileId !== undefined || Object.hasOwn(message, "language"))) {
-    message = await resolveRequestLanguage(message);
-  }
+  if (resolvesProfile(message)) message = await withProfileFields(message);
   let failure = null;
   for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
     // ensureOffscreen() costs a getContexts() round trip to the browser process
@@ -399,9 +414,9 @@ function assertProfileDictionaryState(next, storedOptions) {
     ids.add(row.id);
   }
   const profiles = next.profiles;
-  const expected = optionProfiles(storedOptions).map(profile => profile.id).sort();
+  const expected = optionProfiles(storedOptions).map(profile => profile.id).sort((a, b) => a.localeCompare(b));
   if (!profiles || typeof profiles !== "object" || Array.isArray(profiles)
-      || !sameJsonValue(Object.keys(profiles).sort(), expected)) {
+      || !sameJsonValue(Object.keys(profiles).sort((a, b) => a.localeCompare(b)), expected)) {
     throw new TypeError("the dictionary state write does not match the installation's profiles");
   }
   for (const profile of Object.values(profiles)) {

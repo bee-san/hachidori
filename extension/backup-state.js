@@ -300,7 +300,8 @@ function assertProfileState(state, list) {
     throw new Error("The backup contains invalid dictionary state.");
   }
   assertDictionaryList(state.dictionaries.map(row => packageWithEnabled(row, true)));
-  if (!sameJsonValue(Object.keys(state.profiles).sort(), list.map(profile => profile.id).sort())) throw invalidProfiles();
+  const byCode = (a, b) => a.localeCompare(b);
+  if (!sameJsonValue(Object.keys(state.profiles).sort(byCode), list.map(profile => profile.id).sort(byCode))) throw invalidProfiles();
   const installed = new Set(state.dictionaries.map(row => row.id));
   const groupIds = new Set();
   for (const profile of list) {
@@ -323,25 +324,27 @@ function assertProfileState(state, list) {
 }
 
 function assertLanguageParts(languages) {
-  const { normaliseWordStatusOverrides } = globalThis.HDWordStatusOverrides;
   if (plainObject(languages) === null) throw invalidProfiles();
-  for (const [code, part] of Object.entries(languages)) {
-    if (!LANGUAGE_CODE.test(code) || code === JAPANESE || plainObject(part) === null) throw invalidProfiles();
-    if (part.document !== undefined) {
-      try {
-        languageDocument(part);
-      } catch {
-        throw invalidProfiles();
-      }
+  for (const [code, part] of Object.entries(languages)) assertLanguagePart(code, part);
+}
+
+// One language's records in a backup: its document, marks and count rows.
+function assertLanguagePart(code, part) {
+  if (!LANGUAGE_CODE.test(code) || code === JAPANESE || plainObject(part) === null) throw invalidProfiles();
+  if (part.document !== undefined) {
+    try {
+      languageDocument(part);
+    } catch {
+      throw invalidProfiles();
     }
-    if (part.wordStatusOverrides !== undefined) {
-      const { known, ignored } = normaliseWordStatusOverrides(part.wordStatusOverrides);
-      if (!sameJsonValue(part.wordStatusOverrides, { known, ignored })) {
-        throw new Error("The backup contains invalid word status overrides.");
-      }
-    }
-    if (part.lookupStatsRows !== undefined) assertLookupStatsRows({ generation: code, revision: 0 }, part.lookupStatsRows);
   }
+  if (part.wordStatusOverrides !== undefined) {
+    const { known, ignored } = globalThis.HDWordStatusOverrides.normaliseWordStatusOverrides(part.wordStatusOverrides);
+    if (!sameJsonValue(part.wordStatusOverrides, { known, ignored })) {
+      throw new Error("The backup contains invalid word status overrides.");
+    }
+  }
+  if (part.lookupStatsRows !== undefined) assertLookupStatsRows({ generation: code, revision: 0 }, part.lookupStatsRows);
 }
 
 // The view lists every package as the complete state holds it, except other
@@ -384,17 +387,28 @@ async function assertPersonalPackages(snapshot, state, list, languages, omitted)
     const semanticRevision = await customDictionarySemanticRevision(entries, identity); // NOSONAR: one digest per language
     if (document.semanticRevision !== semanticRevision) throw new Error("The backup custom source has invalid semantics.");
     const row = state.dictionaries.find(entry => entry.id === identity.id);
-    if (entries.length === 0 ? row !== undefined
-      : row === undefined || !customDictionaryMetadataMatches(row, semanticRevision, entries.length, identity)) {
+    if (!personalRowMatches(row, entries.length, semanticRevision, identity)) {
       throw new Error("The backup custom dictionary package does not match its source.");
     }
-    for (const profile of list) {
-      const items = state.profiles[profile.id].dictionaries;
-      const index = items.findIndex(item => item.id === identity.id);
-      const misplaced = profile.language === code ? row !== undefined && (index !== 0 || items[0].enabled !== true) : index >= 0;
-      if (misplaced) throw new Error("The managed custom dictionary must stay enabled and first.");
+    if (list.some(profile => personalPackageMisplaced(state.profiles[profile.id].dictionaries, identity, profile.language === code, row))) {
+      throw new Error("The managed custom dictionary must stay enabled and first.");
     }
   }
+}
+
+// A personal package exists exactly when its source has entries, and then
+// matches the source.
+function personalRowMatches(row, entryCount, semanticRevision, identity) {
+  if (entryCount === 0) return row === undefined;
+  return row !== undefined && customDictionaryMetadataMatches(row, semanticRevision, entryCount, identity);
+}
+
+// In its language's profiles a personal package is first and enabled; in
+// other profiles it is absent.
+function personalPackageMisplaced(items, identity, ownLanguage, row) {
+  const index = items.findIndex(item => item.id === identity.id);
+  if (!ownLanguage) return index >= 0;
+  return row !== undefined && (index !== 0 || items[0].enabled !== true);
 }
 
 /**
@@ -426,7 +440,8 @@ export async function prepareBackupProfiles(snapshot, profiles) {
   await assertBackupProfiles(snapshot, profiles, { allowInvalidSettings: true });
   const { applyOptionsPatch, normaliseDictionarySelections, profiles: profileList, projectDictionaryState } = globalThis.HDReaderOptions;
   const parts = profiles.languages ?? {};
-  const missing = [...backupHeldLanguages(snapshot, { ...profiles, languages: parts })].filter(code => !hasLanguagePack(code)).sort();
+  const missing = [...backupHeldLanguages(snapshot, { ...profiles, languages: parts })].filter(code => !hasLanguagePack(code))
+    .sort((a, b) => a.localeCompare(b));
   const leftOut = new Set(await Promise.all(missing.map(personalPackageId)));
   const record = applyOptionsPatch(profiles.options, {});
   const list = profileList(record);
@@ -507,7 +522,7 @@ export function restorePreviewNotes(current, plan) {
       notes.push(`The Japanese settings and dictionaries are restored in place of ${languageNames(plan.leftOutProfiles)}.`);
     }
   }
-  const removed = [...heldLanguages(current)].filter(code => !after.has(code)).sort();
+  const removed = [...heldLanguages(current)].filter(code => !after.has(code)).sort((a, b) => a.localeCompare(b));
   if (removed.length === 1) {
     notes.push(`Restoring removes ${languageNames(removed)} and its settings, personal dictionary, lookup counts and marked words.`);
   } else if (removed.length > 1) {

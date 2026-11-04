@@ -1227,7 +1227,7 @@
   const RTL_SCRIPTS = new Set(["Adlm", "Arab", "Armi", "Avst", "Chrs", "Cprt", "Elym", "Hatr", "Hebr", "Hung",
     "Khar", "Lydi", "Mand", "Mani", "Mend", "Merc", "Mero", "Narb", "Nbat", "Nkoo", "Orkh", "Ougr", "Palm",
     "Phli", "Phlp", "Phnx", "Prti", "Rohg", "Samr", "Sarb", "Sogd", "Sogo", "Syrc", "Thaa", "Yezi"]);
-  const RTL_SCRIPT_CLASS = [...RTL_SCRIPTS].map((code) => `\\p{Script=${code}}`).join("");
+  const RTL_SCRIPT_CLASS = [...RTL_SCRIPTS].map((code) => String.raw`\p{Script=${code}}`).join("");
   // Each pattern below is compiled the first time it is used. V8 builds the
   // character set of a Unicode property escape when it parses a regular
   // expression literal and again when it creates the expression, so as
@@ -1239,8 +1239,8 @@
   };
   // One class, letters in those scripts: a lookahead per character scans
   // a long glossary several times slower.
-  const RTL_LETTERS = lazyPattern(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "gv");
-  const RTL_LETTER = lazyPattern(`[\\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "v");
+  const RTL_LETTERS = lazyPattern(String.raw`[\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "gv");
+  const RTL_LETTER = lazyPattern(String.raw`[\p{L}&&[${RTL_SCRIPT_CLASS}]]`, "v");
   const LETTERS = lazyPattern(String.raw`\p{L}`, "gu");
   const LETTER = lazyPattern(String.raw`\p{L}`, "u");
   const NON_LATIN_LETTER = lazyPattern(String.raw`(?!\p{Script=Latin})\p{L}`, "u");
@@ -1270,8 +1270,8 @@
   function textDirection(text) {
     const value = String(text ?? "");
     if (!hasRtlText(value)) return LETTER().test(value) ? "ltr" : null;
-    const letters = value.match(LETTERS())?.length ?? 0;
-    return (value.match(RTL_LETTERS())?.length ?? 0) * 2 > letters ? "rtl" : "ltr";
+    const letters = Array.from(value.matchAll(LETTERS())).length;
+    return Array.from(value.matchAll(RTL_LETTERS())).length * 2 > letters ? "rtl" : "ltr";
   }
 
   function scriptDirection(script) {
@@ -1301,9 +1301,9 @@
     const nonLatin = scripts.filter((code) => code !== "Latn");
     let native = null;
     if (nonLatin.length > 0 && typeof pack?.text?.pattern === "string") {
-      const excluded = nonLatin.every((code) => HAN_ONLY_SCRIPTS.has(code)) ? "" : "\\p{Script=Han}";
+      const excluded = nonLatin.every((code) => HAN_ONLY_SCRIPTS.has(code)) ? "" : String.raw`\p{Script=Han}`;
       try {
-        native = new RegExp(`(?![\\p{Script=Latin}${excluded}])${pack.text.pattern}`, "u");
+        native = new RegExp(String.raw`(?![\p{Script=Latin}${excluded}])${pack.text.pattern}`, "u");
       } catch {
         native = null;
       }
@@ -1324,8 +1324,8 @@
     const pack = packFor(primary);
     const script = pack ? null : localeScript(tag);
     const scripts = pack?.scripts ?? (script ? [script] : null);
-    const direction = pack?.direction === "rtl" || pack?.direction === "ltr" ? pack.direction
-      : script ? scriptDirection(script) : null;
+    let direction = script ? scriptDirection(script) : null;
+    if (pack?.direction === "rtl" || pack?.direction === "ltr") direction = pack.direction;
     return { tag, direction,
       latin: scripts ? scripts.includes("Latn") : null,
       han: HAN_LANGUAGES.has(primary) || Boolean(scripts?.some((code) => HAN_SCRIPTS.has(code))) };
@@ -1421,7 +1421,8 @@
     const blockDirection = (block) => {
       const own = count(block, "own");
       const [letters, rtl] = own > 0 ? [own, count(block, "ownRtl")] : [count(block, "all"), count(block, "allRtl")];
-      return letters > 0 ? (rtl * 2 > letters ? "rtl" : "ltr") : null;
+      if (letters === 0) return null;
+      return rtl * 2 > letters ? "rtl" : "ltr";
     };
     // Only dictionary styles count: the walk reads each block before marking it.
     const aligned = (element) => Boolean(element.style?.textAlign);

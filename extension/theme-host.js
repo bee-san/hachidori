@@ -13,9 +13,9 @@
   // it these fields of the Japanese pack, which give today's labels.
   const JAPANESE = Object.freeze({
     schema: 1, code: "ja", name: "Japanese", nativeName: "日本語", bcp47: "ja", scripts: ["Jpan"], direction: "ltr",
-    text: { pattern: "[\\u3005-\\u3007\\u303B\\u3040-\\u30FF\\u31F0-\\u31FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\uFF66-\\uFF9F\\u{20000}-\\u{2FA1F}]" },
+    text: { pattern: String.raw`[\u3005-\u3007\u303B\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF66-\uFF9F\u{20000}-\u{2FA1F}]` },
     capabilities: { readings: "required", ruby: { alignment: "kana" }, pitchAccent: true,
-      characterView: { name: "Kanji", pattern: "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]",
+      characterView: { name: "Kanji", pattern: String.raw`[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u{20000}-\u{2FA1F}]`,
         readingLabels: { onyomi: "On", kunyomi: "Kun" }, readingSeparator: "\u3001" },
       wordHighlighting: true },
     presentation: { typography: { fontFamily: null, wordBreak: null, lineBreak: null, joinedScript: false },
@@ -28,16 +28,24 @@
   // Compiled the first time it is used, like glossary.js's patterns: a
   // property escape in a literal costs every frame at injection.
   let hanPattern = null;
-  const HAN = () => hanPattern ??= new RegExp(String.raw`\p{Script=Han}`, "u");
+  const HAN = () => hanPattern ??= /\p{Script=Han}/u;
   const FIRST_STRONG_ISOLATE = "\u2068", POP_ISOLATE = "\u2069";
   const registryPack = code => globalThis.HDLanguages?.get?.(code) ?? null;
 
   // A pack setting's value: the profile's when valid, else its default (7.5).
   function settingValue(setting, value) {
-    const valid = setting.type === "boolean" ? typeof value === "boolean"
-      : setting.type === "enum" ? Array.isArray(setting.values) && setting.values.some(item => item.id === value)
-        : setting.type === "number" ? Number.isFinite(value) && !(value < setting.min) && !(value > setting.max) : false;
-    return valid ? value : setting.default;
+    return validSettingValue(setting, value) ? value : setting.default;
+  }
+
+  // A bound the schema leaves out does not limit the value.
+  function validSettingValue(setting, value) {
+    switch (setting.type) {
+      case "boolean": return typeof value === "boolean";
+      case "enum": return Array.isArray(setting.values) && setting.values.some(item => item.id === value);
+      case "number": return Number.isFinite(value) && (typeof setting.min !== "number" || value >= setting.min)
+        && (typeof setting.max !== "number" || value <= setting.max);
+      default: return false;
+    }
   }
 
   // An optional capability is on only while a setting with a capability
@@ -58,22 +66,164 @@
   function glossDirection(glossaries) {
     const glossary = globalThis.HDGlossary;
     if (!glossaries.some(row => glossary.hasRtlText(row.glossary))) return "ltr";
+    return glossary.textDirection(glossStrings(glossaries).join(" ")) ?? "ltr";
+  }
+
+  // The strings of gloss rows: text and structured content, without images.
+  function glossStrings(glossaries) {
     const strings = [];
     const stack = [];
     for (const row of glossaries) {
       try { stack.push(typeof row.glossary === "string" ? JSON.parse(row.glossary) : row.glossary); }
       catch { strings.push(String(row.glossary)); }
     }
-    while (stack.length > 0) {
-      const value = stack.pop();
-      if (typeof value === "string") strings.push(value);
-      else if (Array.isArray(value)) stack.push(...value);
-      else if (value && typeof value === "object") {
-        if (value.type === "text") stack.push(value.text);
-        else if (value.tag !== "img" && value.type !== "image") stack.push(value.content);
+    while (stack.length > 0) collectGlossString(stack.pop(), strings, stack);
+    return strings;
+  }
+
+  function collectGlossString(value, strings, stack) {
+    if (typeof value === "string") strings.push(value);
+    else if (Array.isArray(value)) stack.push(...value);
+    else if (value && typeof value === "object") {
+      if (value.type === "text") stack.push(value.text);
+      else if (value.tag !== "img" && value.type !== "image") stack.push(value.content);
+    }
+  }
+
+  // A render's gloss rows by dictionary title.
+  function glossariesByDictionary(results) {
+    const byTitle = new Map();
+    for (const result of results) {
+      for (const row of result.term?.glossaries ?? []) {
+        if (!byTitle.has(row.dictionary)) byTitle.set(row.dictionary, []);
+        byTitle.get(row.dictionary).push(row);
       }
     }
-    return glossary.textDirection(strings.join(" ")) ?? "ltr";
+    return byTitle;
+  }
+
+  // 11.4's fallbacks act on the headwords and definition containers of the
+  // subtrees a render changed.
+  function fallbackTargets(roots) {
+    const containers = new Set(), expressions = new Set();
+    for (const root of roots) {
+      if (root.nodeType !== 1) continue;
+      if (root.matches(".gsm-hoshidicts-expression")) expressions.add(root);
+      for (const element of root.querySelectorAll(".gsm-hoshidicts-expression")) expressions.add(element);
+      const outer = root.closest(".gsm-hoshidicts-definitions");
+      if (outer) containers.add(outer);
+      for (const element of root.querySelectorAll(".gsm-hoshidicts-definitions")) containers.add(element);
+    }
+    return { containers, expressions };
+  }
+
+  // The dictionaries a definition container shows.
+  function containerTitles(container) {
+    const named = container.closest("[data-dictionary]")?.dataset.dictionary;
+    if (named) return [named];
+    return [...new Set([...container.querySelectorAll("[data-hoshidicts-dictionary]")]
+      .map(element => element.dataset.hoshidictsDictionary))];
+  }
+
+  // Neither property reaches block descendants in every Chrome version.
+  function applyPlaintextFallback(container) {
+    for (const element of [container, ...container.querySelectorAll("*")]) {
+      if (element === container || BLOCK_TAGS.has(element.localName)) {
+        element.style.unicodeBidi = "plaintext";
+        element.style.textAlign = "start";
+      }
+    }
+  }
+
+  // The labelling pass (10.1) reads the topmost nodes that mutation records
+  // added or changed inside `popup`.
+  function changedRoots(records, popup) {
+    const found = new Set();
+    for (const record of records) {
+      if (record.type === "characterData") found.add(record.target);
+      else for (const node of record.addedNodes) found.add(node);
+    }
+    return [...found].filter(node => popup.contains(node) && !hasFoundAncestor(node, popup, found));
+  }
+
+  function hasFoundAncestor(node, popup, found) {
+    for (let parent = node.parentNode; parent && parent !== popup; parent = parent.parentNode) {
+      if (found.has(parent)) return true;
+    }
+    return false;
+  }
+
+  function textNodesOf(root) {
+    const walker = root.ownerDocument.createTreeWalker(root, 4);
+    const texts = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node);
+    return texts;
+  }
+
+  function labelledSpan(document, tag) {
+    const span = document.createElement("span");
+    span.setAttribute("lang", tag);
+    return span;
+  }
+
+  // Text of several lines is labelled one line at a time.
+  function labelLines(node, lines, tags) {
+    const document = node.ownerDocument;
+    const fragment = document.createDocumentFragment();
+    let plain = "";
+    lines.forEach((line, index) => {
+      const separator = index < lines.length - 1 ? "\n" : "";
+      if (!tags[index]) {
+        plain += line + separator;
+        return;
+      }
+      if (plain) fragment.append(plain);
+      const span = labelledSpan(document, tags[index]);
+      span.textContent = line;
+      fragment.append(span);
+      plain = separator;
+    });
+    if (plain) fragment.append(plain);
+    node.replaceWith(fragment);
+  }
+
+  // One text node of the labelling pass: text that inherits the popup's own
+  // language or a block's default takes the language its characters give.
+  function labelText(node, popup, language) {
+    const text = node.data;
+    const parent = node.parentElement;
+    if (!parent || !text.trim()) return;
+    const holder = parent.closest("[lang]");
+    if (!holder || (holder !== popup && !("hdLangDefault" in holder.dataset))) return;
+    const inherited = holder.getAttribute("lang");
+    const isDefault = holder !== popup;
+    const detect = value => {
+      const tag = value.trim() ? language.detectLabel(value, inherited, isDefault) : null;
+      return tag && tag !== inherited ? tag : null;
+    };
+    if (text.includes("\n")) {
+      const lines = text.split("\n");
+      const tags = lines.map(detect);
+      if (tags.some(Boolean)) labelLines(node, lines, tags);
+      return;
+    }
+    const tag = detect(text);
+    if (!tag) return;
+    // The parent takes the label only when the text is all it holds, so
+    // the interface controls beside such text keep English (10.1).
+    if (parent === holder || parent.childNodes.length > 1) {
+      const span = labelledSpan(node.ownerDocument, tag);
+      node.replaceWith(span);
+      span.append(node);
+    } else parent.setAttribute("lang", tag);
+  }
+
+  // Lists of mixed direction get an end padding equal to their start padding.
+  function padMixedLists(lists, popup) {
+    if (lists.length === 0 || !popup.isConnected) return;
+    const view = popup.ownerDocument.defaultView;
+    const paddings = lists.map(list => view.getComputedStyle(list).paddingInlineStart);
+    lists.forEach((list, index) => { list.style.paddingInlineEnd = paddings[index]; });
   }
 
   function createLanguage(descriptor = null, { marked = false, packSettings = {}, dictionaries = [], packFor = registryPack } = {}) {
@@ -143,7 +293,10 @@
         if (known) return known;
         if (!result?.term) return "ltr";
         let byTitle = directions.get(result);
-        if (!byTitle) directions.set(result, byTitle = new Map());
+        if (!byTitle) {
+          byTitle = new Map();
+          directions.set(result, byTitle);
+        }
         if (!byTitle.has(title)) {
           byTitle.set(title, glossDirection((result.term.glossaries ?? []).filter(row => row.dictionary === title)));
         }
@@ -431,14 +584,7 @@
         renderDictionaries = new Map();
         if (!language.marked) return;
         if (method === "renderResults") {
-          const byTitle = new Map();
-          for (const result of args[0] ?? []) {
-            for (const row of result.term?.glossaries ?? []) {
-              if (!byTitle.has(row.dictionary)) byTitle.set(row.dictionary, []);
-              byTitle.get(row.dictionary).push(row);
-            }
-          }
-          for (const [title, rows] of byTitle) {
+          for (const [title, rows] of glossariesByDictionary(args[0] ?? [])) {
             renderDictionaries.set(title, language.dictionaryDirection(title, { term: { glossaries: rows } }));
           }
         } else if (method === "renderKanji") {
@@ -470,41 +616,29 @@
       }
 
       function applyFallback(roots) {
-        const containers = new Set(), expressions = new Set();
-        for (const root of roots) {
-          if (root.nodeType !== 1) continue;
-          if (root.matches(".gsm-hoshidicts-expression")) expressions.add(root);
-          for (const element of root.querySelectorAll(".gsm-hoshidicts-expression")) expressions.add(element);
-          const outer = root.closest(".gsm-hoshidicts-definitions");
-          if (outer) containers.add(outer);
-          for (const element of root.querySelectorAll(".gsm-hoshidicts-definitions")) containers.add(element);
-        }
+        const { containers, expressions } = fallbackTargets(roots);
         // The headword is in the profile's language, whatever an older theme wrote on it.
         for (const expression of expressions) setAttributes(expression, language.sourceAttributes());
         for (const container of containers) {
-          let mode = container.dataset.hdFallback;
-          if (!mode) {
-            const named = container.closest("[data-dictionary]")?.dataset.dictionary;
-            const titles = named ? [named] : [...new Set([...container.querySelectorAll("[data-hoshidicts-dictionary]")]
-              .map(element => element.dataset.hoshidictsDictionary))];
-            if (titles.length === 1) {
-              mode = "dictionary";
-              if ((renderDictionaries.get(titles[0]) ?? language.dictionaryDirection(titles[0])) === "rtl") {
-                container.setAttribute("dir", "rtl");
-                container.style.textAlign = "start";
-              }
-            } else mode = "plaintext";
-            container.dataset.hdFallback = mode;
-          }
-          if (mode !== "plaintext") continue;
-          // Neither property reaches block descendants in every Chrome version.
-          for (const element of [container, ...container.querySelectorAll("*")]) {
-            if (element === container || BLOCK_TAGS.has(element.localName)) {
-              element.style.unicodeBidi = "plaintext";
-              element.style.textAlign = "start";
-            }
+          if (fallbackMode(container) === "plaintext") applyPlaintextFallback(container);
+        }
+      }
+
+      // A container of one dictionary takes that dictionary's direction; one
+      // of several lays out each block by its own text. Decided once.
+      function fallbackMode(container) {
+        if (container.dataset.hdFallback) return container.dataset.hdFallback;
+        const titles = containerTitles(container);
+        let mode = "plaintext";
+        if (titles.length === 1) {
+          mode = "dictionary";
+          if ((renderDictionaries.get(titles[0]) ?? language.dictionaryDirection(titles[0])) === "rtl") {
+            container.setAttribute("dir", "rtl");
+            container.style.textAlign = "start";
           }
         }
+        container.dataset.hdFallback = mode;
+        return mode;
       }
 
       // 10.1's labelling pass over the subtrees added or changed since the
@@ -514,89 +648,19 @@
       // padding equal to their start padding.
       function labelPass(records = observer?.takeRecords() ?? []) {
         if (destroyed || !language.marked || records.length === 0) return;
-        const found = new Set();
-        for (const record of records) {
-          if (record.type === "characterData") found.add(record.target);
-          else for (const node of record.addedNodes) found.add(node);
-        }
-        const roots = [...found].filter(node => {
-          if (!popup.contains(node)) return false;
-          for (let parent = node.parentNode; parent && parent !== popup; parent = parent.parentNode) {
-            if (found.has(parent)) return false;
-          }
-          return true;
-        });
+        const roots = changedRoots(records, popup);
         if (roots.length === 0) return;
         if (fallbackDirection()) applyFallback(roots);
-        const document = popup.ownerDocument;
-        const visit = node => {
-          const text = node.data;
-          const parent = node.parentElement;
-          if (!parent || !text.trim()) return;
-          const holder = parent.closest("[lang]");
-          if (!holder || (holder !== popup && !holder.hasAttribute("data-hd-lang-default"))) return;
-          const inherited = holder.getAttribute("lang");
-          const isDefault = holder !== popup;
-          const detect = value => {
-            const tag = value.trim() ? language.detectLabel(value, inherited, isDefault) : null;
-            return tag && tag !== inherited ? tag : null;
-          };
-          const labelled = tag => {
-            const span = document.createElement("span");
-            span.setAttribute("lang", tag);
-            return span;
-          };
-          if (text.includes("\n")) {
-            const lines = text.split("\n");
-            const tags = lines.map(detect);
-            if (!tags.some(Boolean)) return;
-            const fragment = document.createDocumentFragment();
-            let plain = "";
-            lines.forEach((line, index) => {
-              const separator = index < lines.length - 1 ? "\n" : "";
-              if (!tags[index]) {
-                plain += line + separator;
-                return;
-              }
-              if (plain) fragment.append(plain);
-              const span = labelled(tags[index]);
-              span.textContent = line;
-              fragment.append(span);
-              plain = separator;
-            });
-            if (plain) fragment.append(plain);
-            node.replaceWith(fragment);
-            return;
-          }
-          const tag = detect(text);
-          if (!tag) return;
-          // The parent takes the label only when the text is all it holds, so
-          // the interface controls beside such text keep English (10.1).
-          if (parent === holder || parent.childNodes.length > 1) {
-            const span = labelled(tag);
-            node.replaceWith(span);
-            span.append(node);
-          } else parent.setAttribute("lang", tag);
-        };
         const lists = [];
         for (const root of roots) {
-          if (root.nodeType === 3) {
-            visit(root);
-            continue;
+          if (root.nodeType === 3) labelText(root, popup, language);
+          else if (root.nodeType === 1) {
+            for (const node of textNodesOf(root)) labelText(node, popup, language);
+            if ("hdMixedList" in root.dataset) lists.push(root);
+            lists.push(...root.querySelectorAll("[data-hd-mixed-list]"));
           }
-          if (root.nodeType !== 1) continue;
-          const walker = document.createTreeWalker(root, 4);
-          const texts = [];
-          for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node);
-          texts.forEach(visit);
-          if (root.hasAttribute("data-hd-mixed-list")) lists.push(root);
-          lists.push(...root.querySelectorAll("[data-hd-mixed-list]"));
         }
-        if (lists.length > 0 && popup.isConnected) {
-          const view = document.defaultView;
-          const paddings = lists.map(list => view.getComputedStyle(list).paddingInlineStart);
-          lists.forEach((list, index) => { list.style.paddingInlineEnd = paddings[index]; });
-        }
+        padMixedLists(lists, popup);
         observer?.takeRecords();
       }
 

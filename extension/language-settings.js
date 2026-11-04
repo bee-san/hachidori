@@ -21,44 +21,11 @@ function settingValue(setting, values) {
 function controlFor(document, setting, value, onChange) {
   const id = `opt-pack-${setting.id}`;
   const describedBy = typeof setting.description === "string" && setting.description !== "" ? `${id}-help` : "";
-  let row;
-  let control;
-  if (setting.type === "boolean") {
-    row = document.createElement("label");
-    row.className = "lookup-enable";
-    const label = document.createElement("span");
-    label.textContent = setting.label;
-    control = document.createElement("input");
-    control.type = "checkbox";
-    row.append(label, control);
-    control.addEventListener("change", () => onChange(setting.id, control.checked));
-  } else {
-    row = document.createElement("label");
-    row.className = "field";
-    const label = document.createElement("span");
-    label.className = "field-label";
-    label.textContent = setting.label;
-    if (setting.type === "enum") {
-      control = document.createElement("select");
-      for (const choice of setting.values ?? []) control.add(new Option(choice.label ?? choice.id, choice.id));
-      control.addEventListener("change", () => onChange(setting.id, control.value));
-    } else {
-      control = document.createElement("input");
-      control.type = "number";
-      for (const key of ["min", "max", "step"]) {
-        if (typeof setting[key] === "number") control[key] = String(setting[key]);
-      }
-      control.addEventListener("change", () => {
-        const number = Number(control.value);
-        if (control.value !== "" && Number.isFinite(number)) onChange(setting.id, number);
-      });
-    }
-    row.append(label, control);
-  }
+  const { row, control } = setting.type === "boolean" ? checkboxRow(document, setting, onChange) : fieldRow(document, setting, onChange);
   control.id = id;
-  if (describedBy) control.setAttribute("aria-describedby", describedBy);
   const nodes = [row];
   if (describedBy) {
+    control.setAttribute("aria-describedby", describedBy);
     const hint = document.createElement("p");
     hint.className = "field-hint";
     hint.id = describedBy;
@@ -67,6 +34,51 @@ function controlFor(document, setting, value, onChange) {
   }
   setValue(document, control, setting, value);
   return { nodes, control };
+}
+
+// A boolean setting is a check row, as the Settings switches beside it are.
+function checkboxRow(document, setting, onChange) {
+  const row = document.createElement("label");
+  row.className = "lookup-enable";
+  const label = document.createElement("span");
+  label.textContent = setting.label;
+  const control = document.createElement("input");
+  control.type = "checkbox";
+  row.append(label, control);
+  control.addEventListener("change", () => onChange(setting.id, control.checked));
+  return { row, control };
+}
+
+// An enum or number setting is a labelled field.
+function fieldRow(document, setting, onChange) {
+  const row = document.createElement("label");
+  row.className = "field";
+  const label = document.createElement("span");
+  label.className = "field-label";
+  label.textContent = setting.label;
+  const control = setting.type === "enum" ? selectFor(document, setting, onChange) : numberFor(document, setting, onChange);
+  row.append(label, control);
+  return { row, control };
+}
+
+function selectFor(document, setting, onChange) {
+  const control = document.createElement("select");
+  for (const choice of setting.values ?? []) control.add(new Option(choice.label ?? choice.id, choice.id));
+  control.addEventListener("change", () => onChange(setting.id, control.value));
+  return control;
+}
+
+function numberFor(document, setting, onChange) {
+  const control = document.createElement("input");
+  control.type = "number";
+  for (const key of ["min", "max", "step"]) {
+    if (typeof setting[key] === "number") control[key] = String(setting[key]);
+  }
+  control.addEventListener("change", () => {
+    const number = Number(control.value);
+    if (control.value !== "" && Number.isFinite(number)) onChange(setting.id, number);
+  });
+  return control;
 }
 
 function setValue(document, control, setting, value) {

@@ -676,7 +676,7 @@
       // must still re-read the rest.
       if (refresh) {
         if (profile.key === "") statuses.clear();
-        else for (const key of [...statuses.keys()]) if (key.startsWith(`${profile.key}\u0000`)) statuses.delete(key);
+        else for (const key of statuses.keys()) if (key.startsWith(`${profile.key}\u0000`)) statuses.delete(key);
         statusesEpochs.set(profile.key, statusEpoch);
         statusRevisions.set(profile.key, reply.revision);
         repaintAll();

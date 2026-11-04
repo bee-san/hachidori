@@ -215,6 +215,25 @@ export function createAnkiWorkerService({
     return screenshot;
   }
 
+  // Audio in the first field is part of Anki's duplicate identity. A
+  // failed/stale selection must not turn that identity into text-only.
+  // Browser speech is audible work, so preflight verifies only that the
+  // active capture can record it and defers the exact duplicate identity
+  // until the user submits.
+  async function prepareFirstFieldAudio(request, current, resources, preflight) {
+    const first = current.resolved.templates[current.discovery.fields[0]];
+    if (!ankiTemplateMarkerNames(first.value).includes("audio") || !current.config.audioSources.length) return;
+    const prepared = await audio(request, current.config, { recordSpeech: !preflight });
+    if (prepared?.recordingRequired === true) {
+      if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
+      if (prepared.clientSpeech) resources.clientSpeech = prepared.clientSpeech;
+      resources.deferDuplicateCheck = true;
+    } else {
+      resources.audioPrepared = true;
+      resources.audio = prepared;
+    }
+  }
+
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
       const { profileId, templateId } = profileTemplateTarget(key);
@@ -244,24 +263,7 @@ export function createAnkiWorkerService({
         .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
-      const first = current.resolved.templates[current.discovery.fields[0]];
-      if (ankiTemplateMarkerNames(first.value).includes("audio") && current.config.audioSources.length) {
-        // Audio in the first field is part of Anki's duplicate identity. A
-        // failed/stale selection must not turn that identity into text-only.
-        // Browser speech is audible work, so preflight verifies only that the
-        // active capture can record it and defers the exact duplicate identity
-        // until the user submits.
-        const prepared = await audio(request, current.config, { recordSpeech: !preflight });
-        if (prepared?.recordingRequired === true) {
-          if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
-          if (prepared.clientSpeech) resources.clientSpeech = prepared.clientSpeech;
-          resources.deferDuplicateCheck = true;
-        }
-        else {
-          resources.audioPrepared = true;
-          resources.audio = prepared;
-        }
-      }
+      await prepareFirstFieldAudio(request, current, resources, preflight);
       const pronunciation = resources.audio ? `[sound:${resources.audio.filename}]`
         : resources.deferDuplicateCheck ? "[sound:hachidori_pending_speech.wav]" : "";
       const built = await render(request, current.resolved.templates, pronunciation, resources);

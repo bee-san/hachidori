@@ -48,7 +48,7 @@ export function createAudioService(window, repository = createAudioRepository({ 
     for (const source of sources) {
       const group = { sourceId: source.id, sourceKey: JSON.stringify(source), type: source.type };
       try {
-        group.candidates = await repository.candidates(source, term, signal, language);
+        group.candidates = await repository.candidates(source, term, signal, language); // NOSONAR: sources are asked one at a time, in order
       } catch (error) {
         signal.throwIfAborted();
         group.error = error.message;

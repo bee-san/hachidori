@@ -383,7 +383,8 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
 // (docs/languages.md 4.5, 6.3).
 function singleProfileStatus(message, status) {
   if (message.profileId !== undefined || status?.emptyDeck === undefined) return status;
-  const { emptyDeck: _emptyDeck, ...today } = status;
+  const today = { ...status };
+  delete today.emptyDeck;
   return today;
 }
 

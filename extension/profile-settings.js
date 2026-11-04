@@ -29,6 +29,21 @@ function countLabel(count, singular, plural) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function setStatus(output, message, tone = "", error = null) {
+  setStatusOutput(output, message, tone, error);
+}
+
+// A language's personal dictionary: its document's revision and entry count.
+function personalEntries(records, language) {
+  const document = customDictionaryDocumentFor(records.customDictionarySource, language);
+  const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
+  return { revision: document.revision, count: parseCustomDictionary(document.text, { readingRequired }).entries.length };
+}
+
+function replyError(reply, fallback) {
+  return new Error(reply?.error || fallback);
+}
+
 export function createProfileSettings({ document, element, send, readEditedProfile, readActiveProfileId,
   readOptionsRecord, readDictionaryState, readSelection, readRecords, languageName, chooseEditedProfile,
   useEditedProfileForLookups, writeAutoSwitch, settleEdits, afterProfileChange }) {
@@ -123,10 +138,6 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     return state.profiles?.[profileId]?.dictionaries?.length ?? 0;
   }
 
-  function setStatus(output, message, tone = "", error = null) {
-    setStatusOutput(output, message, tone, error);
-  }
-
   function renderMenu() {
     const list = profileList();
     const edited = readEditedProfile();
@@ -203,19 +214,13 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     dialog.querySelector("#settings-language-held").hidden = held.length === 0;
   }
 
-  function personalEntries(records, language) {
-    const document_ = customDictionaryDocumentFor(records.customDictionarySource, language);
-    const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
-    return { revision: document_.revision, count: parseCustomDictionary(document_.text, { readingRequired }).entries.length };
-  }
-
   async function refreshHeld() {
     const records = await readRecords();
     const languages = heldLanguages({ options: records.options, state: records.dictionaryState,
       document: records.customDictionarySource, lookupStats: records.lookupStats,
       wordStatusOverrides: records.wordStatusOverrides });
     const profiled = new Set(profileList().map(profile => profile.language));
-    held = [...languages].filter(code => !profiled.has(code)).sort()
+    held = [...languages].filter(code => !profiled.has(code)).sort((a, b) => a.localeCompare(b))
       .map(language => ({ language, entries: personalEntries(records, language) }));
     renderHeld();
   }
@@ -280,10 +285,6 @@ export function createProfileSettings({ document, element, send, readEditedProfi
         (useAdded.hidden ? dialog.querySelector("#settings-language-dialog-heading") : useAdded).focus();
       }
     }
-  }
-
-  function replyError(reply, fallback) {
-    return new Error(reply?.error || fallback);
   }
 
   // Adding copies the edited profile's settings, including its unsaved edits,
@@ -511,7 +512,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     } catch {
       // Without the status every pack stays listed; the host refuses one it lacks.
     }
-    const key = codes => (codes === null ? null : [...codes].sort().join(" "));
+    const key = codes => (codes === null ? null : [...codes].sort((a, b) => a.localeCompare(b)).join(" "));
     if (key(next) === key(hostLanguages)) return;
     hostLanguages = next;
     renderAvailable();

@@ -83,7 +83,9 @@ function frequencyHtml(request, groups = request.term.frequencies, rtlRules = fa
     const dictionary = rtlRules && globalThis.HDGlossary.hasRtlText(name) ? `<span dir="auto">${escape(name)}</span>` : escape(name);
     return group.frequencies.map(value => `<li>${dictionary}: ${escape(value.displayValue ?? value.value)}</li>`);
   });
-  return items.length ? `<ul style="text-align: ${rtlRules ? "start" : "left"};">${items.join("")}</ul>` : "";
+  if (!items.length) return "";
+  const align = rtlRules ? "start" : "left";
+  return `<ul style="text-align: ${align};">${items.join("")}</ul>`;
 }
 
 function singleFrequency(request, dictionary, numeric, rtlRules) {

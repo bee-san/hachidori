@@ -19,7 +19,7 @@ export function applyDesignSettings(section, theme, { language = null } = {}) {
   for (const control of section.querySelectorAll("[data-design-setting]")) {
     const key = control.dataset.designSetting;
     control.hidden = (declared !== null && !declared.includes(key))
-      || control.hasAttribute("data-requirement-unmet")
+      || "requirementUnmet" in control.dataset
       || (undeclaredOutsideJapanese && key === "kanjiClickDictionary");
   }
   for (const group of section.querySelectorAll("[data-design-group]")) {

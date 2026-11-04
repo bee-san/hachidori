@@ -1034,7 +1034,7 @@
       id: source.id,
       language: source.language,
       settings: { ...pick(projected, PROFILE_OPTION_KEYS), ...(anki === null ? {} : { anki }) },
-      packSettings: { ...(plainObject(source.packSettings) ?? {}) },
+      packSettings: { ...plainObject(source.packSettings) },
     };
   }
 

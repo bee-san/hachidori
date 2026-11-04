@@ -1110,10 +1110,11 @@ function bindNameDraft(input, collection, id, field, value, normalise, validate)
 async function removeDictionary(id, title) {
   // Delete names every language that uses the dictionary (docs/languages.md 14).
   const users = profilesUsing(id);
-  const question = libraryHasProfiles()
-    ? `Delete ${title} from Hachidori? ${users.length > 0 ? `${usedByText(users)}. ` : ""}`
-      + "Its imported data is deleted and has to be imported again."
-    : `Remove ${title}? Its imported data is deleted and has to be imported again.`;
+  let question = `Remove ${title}? Its imported data is deleted and has to be imported again.`;
+  if (libraryHasProfiles()) {
+    const usedBy = users.length > 0 ? `${usedByText(users)}. ` : "";
+    question = `Delete ${title} from Hachidori? ${usedBy}Its imported data is deleted and has to be imported again.`;
+  }
   if (!window.confirm(question)) {
     return;
   }
@@ -1260,8 +1261,8 @@ function allLanguagesConfirmation(count, sources) {
   if (sources.length === 1) {
     erase = `the ${languageName(sources[0].language)} personal dictionary source and its ${entries(sources[0])}`;
   } else if (sources.length > 1) {
-    erase = `every language's personal dictionary source: ${listOf(sources.map(source =>
-      `${languageName(source.language)} (${entries(source)})`))}`;
+    const named = sources.map(source => `${languageName(source.language)} (${entries(source)})`);
+    erase = `every language's personal dictionary source: ${listOf(named)}`;
   }
   const parts = count === 0 ? [`Erase ${erase}?`] : [
     erase === "" ? `Remove ${packages}?` : `Remove ${packages} and erase ${erase}?`,

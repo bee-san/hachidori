@@ -11,7 +11,7 @@
 
 import "./reader-options.js";
 import { heldLanguages } from "./profile-state.js";
-import { japaneseLookupRow, japaneseRecord, japaneseView, withoutLanguages } from "./japanese-view.js";
+import { japaneseLookupRow, japaneseRecord, withoutLanguages } from "./japanese-view.js";
 import { LOOKUP_STATS_KEY, LOOKUP_STATS_ROW_PREFIX } from "./lookup-stats.js";
 
 const JAPANESE = "ja";
@@ -74,7 +74,7 @@ export function snapshotLanguages(snapshot) {
 }
 
 export function missingLanguages(held, packs) {
-  return [...held].filter(code => code !== JAPANESE && !packs.has(code)).sort();
+  return [...held].filter(code => code !== JAPANESE && !packs.has(code)).sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -95,7 +95,7 @@ export function japaneseChanges(changes, descriptor) {
   return Object.keys(result).length === 0 ? null : result;
 }
 
-export { japaneseView };
+export { japaneseView } from "./japanese-view.js";
 
 // A reply as a browser that has not opted in receives it (17.3 item 4).
 export function japaneseReply(type, response) {

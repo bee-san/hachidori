@@ -396,7 +396,7 @@ function optionAvailable(key) {
 // word highlighting. It leads to the destination it is a tab of.
 function requirementGatedSection(section) {
   const node = element(section);
-  return node?.localName === "section" && node.hasAttribute("data-requires")
+  return node?.localName === "section" && "requires" in node.dataset
     && !requirementMet(parseRequirement(node.dataset.requires));
 }
 
@@ -426,6 +426,33 @@ function renderLanguageText(selector, from, to) {
   }
 }
 
+// One control's requirement for the edited profile's language; true when a
+// Design control changed, which the theme filter decides with.
+function applyRequirement(node) {
+  const unmet = !requirementMet(parseRequirement(node.dataset.requires));
+  if (unmet === "requirementUnmet" in node.dataset) return false;
+  node.toggleAttribute("data-requirement-unmet", unmet);
+  if ("designSetting" in node.dataset) {
+    // The theme filter decides with the requirement (theme-store.js).
+    if (unmet) node.hidden = true;
+    return true;
+  }
+  if (node.localName === "section") applySectionRequirement(node, unmet);
+  else node.hidden = unmet;
+  return false;
+}
+
+// A gated section hides with its rail link, tab and picker option.
+function applySectionRequirement(node, unmet) {
+  const id = node.id;
+  const hidden = unmet || !sectionAvailable(id);
+  const link = document.querySelector(`.settings-nav a[href="#${id}"], .section-tabs a[href="#${id}"]`);
+  if (link) (link.closest(".nav-item") ?? link).hidden = hidden;
+  const option = element("settings-section").querySelector(`option[value="${id}"]`);
+  if (option) option.hidden = hidden;
+  node.toggleAttribute("data-settings-gated", hidden);
+}
+
 // Section 7.3: hides what the edited profile's language lacks, keeps it in
 // storage, and never touches a control while the language meets its
 // requirement, so a Japanese profile's page is today's.
@@ -435,24 +462,7 @@ function renderLanguageCapabilities() {
   renderedCapabilities = key;
   let designChanged = false;
   for (const node of document.querySelectorAll("[data-requires]")) {
-    const unmet = !requirementMet(parseRequirement(node.dataset.requires));
-    if (unmet === node.hasAttribute("data-requirement-unmet")) continue;
-    node.toggleAttribute("data-requirement-unmet", unmet);
-    if (node.hasAttribute("data-design-setting")) {
-      // The theme filter decides with the requirement (theme-store.js).
-      designChanged = true;
-      if (unmet) node.hidden = true;
-    } else if (node.localName === "section") {
-      const id = node.id;
-      const hidden = unmet || !sectionAvailable(id);
-      const link = document.querySelector(`.settings-nav a[href="#${id}"], .section-tabs a[href="#${id}"]`);
-      if (link) (link.closest(".nav-item") ?? link).hidden = hidden;
-      const option = element("settings-section").querySelector(`option[value="${id}"]`);
-      if (option) option.hidden = hidden;
-      node.toggleAttribute("data-settings-gated", hidden);
-    } else {
-      node.hidden = unmet;
-    }
+    if (applyRequirement(node)) designChanged = true;
   }
   const name = languageName();
   renderLanguageText("[data-language-label]", "Japanese", name);
@@ -484,8 +494,8 @@ function activeProfile() {
 }
 
 function describedProfile(id) {
-  return hasProfiles(storedOptionsRecord) ? profileDescriptor(storedOptionsRecord, id)
-    : (id === JAPANESE_PROFILE_ID ? { ...JAPANESE_EDITED_PROFILE } : null);
+  if (hasProfiles(storedOptionsRecord)) return profileDescriptor(storedOptionsRecord, id);
+  return id === JAPANESE_PROFILE_ID ? { ...JAPANESE_EDITED_PROFILE } : null;
 }
 
 // The profile this page's address names: `settings.html?profile=ar#anki` from

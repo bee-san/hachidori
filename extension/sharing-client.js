@@ -116,6 +116,43 @@ export function createSharingClient({
     onWordStatus(null);
   }
 
+  // A host with profiles: opt in before storing anything, so this
+  // browser's pages never adopt the Japanese view first.
+  async function handleHello(current, currentGeneration, frame) {
+    host = { version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount,
+      capabilities: frame.capabilities };
+    const codes = frame.capabilities.includes(LANGUAGE_PROFILES_CAPABILITY) ? languages() : null;
+    if (codes !== null) {
+      languageProfiles = { capability: true, optIn: null, missingLanguages: [], hostLanguages: [] };
+      optIn = { id: ++nextId };
+      current.send(optInFrame(optIn.id, codes));
+      return;
+    }
+    languageProfiles = null;
+    await adoptSnapshot(current, currentGeneration, frame.snapshot);
+  }
+
+  // The opt-in's reply, or a request's.
+  async function handleReply(current, currentGeneration, frame) {
+    if (optIn !== null && frame.id === optIn.id) {
+      optIn = null;
+      const outcome = optInOutcome(frame.response);
+      if (outcome === null) {
+        // Nothing is stored; the connection starts over.
+        error = frame.response?.error || OPT_IN_FAILED;
+        current.close();
+        return;
+      }
+      languageProfiles = outcome.languageProfiles;
+      await adoptSnapshot(current, currentGeneration, outcome.snapshot);
+      return;
+    }
+    const entry = pending.get(frame.id);
+    if (entry === undefined || entry.generation !== currentGeneration) return;
+    pending.delete(frame.id);
+    entry.resolve(frame.response);
+  }
+
   async function handleFrame(current, currentGeneration, text) {
     if (socket !== current || linkGeneration !== currentGeneration) return;
     let frame;
@@ -126,42 +163,12 @@ export function createSharingClient({
       return;
     }
     switch (frame.kind) {
-      case "hello": {
-        host = { version: frame.version, name: frame.name, dictionaryCount: frame.dictionaryCount,
-          capabilities: frame.capabilities };
-        // A host with profiles: opt in before storing anything, so this
-        // browser's pages never adopt the Japanese view first.
-        const codes = frame.capabilities.includes(LANGUAGE_PROFILES_CAPABILITY) ? languages() : null;
-        if (codes !== null) {
-          languageProfiles = { capability: true, optIn: null, missingLanguages: [], hostLanguages: [] };
-          optIn = { id: ++nextId };
-          current.send(optInFrame(optIn.id, codes));
-          return;
-        }
-        languageProfiles = null;
-        await adoptSnapshot(current, currentGeneration, frame.snapshot);
+      case "hello":
+        await handleHello(current, currentGeneration, frame);
         return;
-      }
-      case "reply": {
-        if (optIn !== null && frame.id === optIn.id) {
-          optIn = null;
-          const outcome = optInOutcome(frame.response);
-          if (outcome === null) {
-            // Nothing is stored; the connection starts over.
-            error = frame.response?.error || OPT_IN_FAILED;
-            current.close();
-            return;
-          }
-          languageProfiles = outcome.languageProfiles;
-          await adoptSnapshot(current, currentGeneration, outcome.snapshot);
-          return;
-        }
-        const entry = pending.get(frame.id);
-        if (entry === undefined || entry.generation !== currentGeneration) return;
-        pending.delete(frame.id);
-        entry.resolve(frame.response);
+      case "reply":
+        await handleReply(current, currentGeneration, frame);
         return;
-      }
       case "storage":
         // Changes sent before the host answered the opt-in are no newer than
         // its reply.

@@ -262,8 +262,7 @@ function lookupOptionsJson(options, extra = {}) {
 function languageLookupOptions(message) {
   if (message.language === undefined) return {};
   const language = text(message.language);
-  const failure = languageFailures.find((entry) => entry.language === language);
-  if (failure) throw new Error(`${languageName(language)} could not be loaded.`);
+  if (languageFailures.some((entry) => entry.language === language)) throw new Error(`${languageName(language)} could not be loaded.`);
   const paths = new Map((loadedPackages ?? []).map((entry) => [entry.id, entry.path]));
   const ids = Array.isArray(message.dictionaries) ? message.dictionaries : [];
   return {
@@ -1018,7 +1017,8 @@ function withTargetLanguage(row) {
   } catch {
     return row;
   }
-  const { targetLanguage: _stored, ...rest } = row;
+  const rest = { ...row };
+  delete rest.targetLanguage;
   return target ? { ...rest, targetLanguage: target } : rest;
 }
 
@@ -1487,6 +1487,19 @@ async function recoverPendingRemovals(snapshot) {
 // write is rebuilt against the authoritative state before it is attempted again.
 // Loading happens before the CAS so a disabled corrupt package cannot be
 // published merely because the live engine would otherwise skip it.
+// The ids of the packages at the generation path `joining()` names.
+function joinedIds(next, joining) {
+  if (joining === null) return [];
+  const path = joining();
+  return next.filter(row => row.path === path).map(row => row.id);
+}
+
+function assertCommittedState(state) {
+  if (state?.schemaVersion !== 1 || !Number.isInteger(state?.revision) || !Array.isArray(state?.dictionaries)) {
+    throw new Error("the service worker returned invalid committed dictionary state");
+  }
+}
+
 // `joining()` names the generation path of a package that joins `profileId`
 // even when it was installed already (an import requested for the profile).
 async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_PROFILE_ID, joining = null } = {}) {
@@ -1502,15 +1515,10 @@ async function commitDictionaryCandidate(buildCandidate, { profileId = JAPANESE_
       return { state: snapshot.state, loadedCount };
     }
     const baseRevision = snapshot.state?.revision ?? 0;
-    const joins = joining === null ? [] : next.filter(row => row.path === joining()).map(row => row.id);
     const reply = await commitDictionaryState(baseRevision, next,
-      snapshot.state?.stored ? { stored: snapshot.state.stored, profileId, joins } : null);
+      snapshot.state?.stored ? { stored: snapshot.state.stored, profileId, joins: joinedIds(next, joining) } : null);
     if (reply.ok === true) {
-      if (reply.state?.schemaVersion !== 1
-          || !Number.isInteger(reply.state?.revision)
-          || !Array.isArray(reply.state?.dictionaries)) {
-        throw new Error("the service worker returned invalid committed dictionary state");
-      }
+      assertCommittedState(reply.state);
       return { state: reply.state, loadedCount };
     }
     if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
@@ -2182,11 +2190,7 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
 // the engine publishes. Nothing is compiled.
 async function addProfile(message) {
   requireEngine();
-  const language = text(message.language);
-  if (!/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
-  if (message.copyFrom !== undefined && typeof message.copyFrom !== "string") {
-    throw new TypeError("the language request named an invalid profile to copy");
-  }
+  const language = addedLanguage(message);
   try {
     await loadLanguagePack(language);
   } catch (error) {
@@ -2194,55 +2198,89 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
-    const personal = personalDictionaryIdentity(language);
-    const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
-      ? [{ id: personal.id, enabled: true }] : [];
-    // A first-run choice makes the new profile the only one (section 16.1).
-    const profiles = { ...(message.firstRun === true ? {} : stored.profiles), [language]: { dictionaries: own, groups: [] } };
-    const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
-    const union = globalThis.HDReaderOptions.allPackages(next);
-    const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
-    const entering = union.some((row) => row.enabled !== false && !before.has(row.path));
-    const baseRevision = snapshot.state?.revision ?? 0;
-    let loadedCount = dictionaryCount;
-    let reply;
-    try {
-      if (entering) {
-        loadedCount = loadDictionaries(union, {
-          committed: (snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false || row.id !== personal?.id),
-        });
-      }
-      try {
-        reply = await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
-          firstRun: message.firstRun === true, baseRevision, state: { dictionaries: next.dictionaries, profiles } });
-      } catch (commitError) {
-        reply = await profileCasReadback(commitError, baseRevision, next, (languages) => languages.includes(language));
-      }
-    } catch (error) {
-      if (entering) {
-        try {
-          await restoreCommittedDictionaries();
-        } catch (restoreError) {
-          reloadError = asError(restoreError);
-        }
-      }
-      throw error;
-    }
+    const plan = addedProfileState(snapshot, language, message.firstRun === true);
+    const { loadedCount, reply } = await commitAddedProfile(snapshot, plan, language, message);
     if (reply.ok === true) {
-      profileRecords = reply.converted !== true;
-      recordLanguages = Array.isArray(reply.languages) ? reply.languages : [];
-      setDebugLogLanguages(recordLanguages);
-      if (entering) publishLoadedDictionaries(loadedCount);
+      adoptProfileRecords(reply);
+      if (plan.entering) publishLoadedDictionaries(loadedCount);
       reloadError = null;
       return { state: publicState(reply.state), languages: recordLanguages };
     }
-    if (entering) await restoreCommittedDictionaries(reply.state ? engineState(reply.state) : null);
-    if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
-      return { ok: false, conflict: reply.conflict === true, error: reply.error || "the language could not be added",
-        state: publicState(reply.state ?? null) };
-    }
+    if (plan.entering) await restoreCommittedDictionaries(reply.state ? engineState(reply.state) : null);
+    if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) return profileFailure(reply, "the language could not be added");
   }
+}
+
+function addedLanguage(message) {
+  const language = text(message.language);
+  if (!/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  if (message.copyFrom !== undefined && typeof message.copyFrom !== "string") {
+    throw new TypeError("the language request named an invalid profile to copy");
+  }
+  return language;
+}
+
+// The records an added language leaves: its profile, holding its personal
+// package when the library has one, and whether a package enters the set.
+function addedProfileState(snapshot, language, firstRun) {
+  const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
+  const personal = personalDictionaryIdentity(language);
+  const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
+    ? [{ id: personal.id, enabled: true }] : [];
+  // A first-run choice makes the new profile the only one (section 16.1).
+  const profiles = { ...(firstRun ? {} : stored.profiles), [language]: { dictionaries: own, groups: [] } };
+  const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
+  const union = globalThis.HDReaderOptions.allPackages(next);
+  const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
+  return { next, union, personal, baseRevision: snapshot.state?.revision ?? 0,
+    entering: union.some((row) => row.enabled !== false && !before.has(row.path)) };
+}
+
+// Loads the packages that enter the set, then commits. A failure restores
+// the committed set.
+async function commitAddedProfile(snapshot, plan, language, message) {
+  let loadedCount = dictionaryCount;
+  try {
+    if (plan.entering) {
+      loadedCount = loadDictionaries(plan.union, {
+        committed: (snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false || row.id !== plan.personal?.id),
+      });
+    }
+    return { loadedCount, reply: await askProfileAdd(plan, language, message) };
+  } catch (error) {
+    if (plan.entering) await restoreAfterFailedLoad();
+    throw error;
+  }
+}
+
+async function askProfileAdd(plan, language, message) {
+  try {
+    return await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
+      firstRun: message.firstRun === true, baseRevision: plan.baseRevision,
+      state: { dictionaries: plan.next.dictionaries, profiles: plan.next.profiles } });
+  } catch (commitError) {
+    return profileCasReadback(commitError, plan.baseRevision, plan.next, (languages) => languages.includes(language));
+  }
+}
+
+async function restoreAfterFailedLoad() {
+  try {
+    await restoreCommittedDictionaries();
+  } catch (restoreError) {
+    reloadError = asError(restoreError);
+  }
+}
+
+// What a committed language change leaves: whether the records have
+// profiles, and their languages (docs/languages.md 5.2).
+function adoptProfileRecords(reply) {
+  profileRecords = reply.converted !== true;
+  recordLanguages = Array.isArray(reply.languages) ? reply.languages : [];
+  setDebugLogLanguages(recordLanguages);
+}
+
+function profileFailure(reply, fallback) {
+  return { ok: false, conflict: reply.conflict === true, error: reply.error || fallback, state: publicState(reply.state ?? null) };
 }
 
 // Removing a language, or erasing a held language (docs/languages.md 5.2
@@ -2253,6 +2291,28 @@ async function addProfile(message) {
 // language's code as id (section 2).
 async function removeProfile(message) {
   requireEngine();
+  const request = removedLanguage(message);
+  for (let attempt = 0; ; attempt += 1) {
+    const stored = (await requestDictionaryStorage()).state?.stored;
+    if (!stored) throw new Error("The last language cannot be removed.");
+    if (request.profileId !== undefined && !stored.profiles[request.profileId]) {
+      throw profileRequestError(profileMessages().profileRemoved, "profile-missing");
+    }
+    const next = removedProfileState(stored, request);
+    let baseDocumentRevision;
+    if (request.erase) {
+      const { document } = await readCustomStorage(request.language);
+      if (document.revision !== request.confirmed) return changedAfterConfirmation(document);
+      baseDocumentRevision = document.revision;
+    }
+    const reply = await askProfileRemove(request, stored, next, baseDocumentRevision);
+    if (reply.ok === true) return adoptRemovedProfile(reply, request.erase);
+    if (reply.stale === true) return { ...changedAfterConfirmation(reply.document), state: publicState(reply.state ?? null) };
+    if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) return profileFailure(reply, "the language could not be removed");
+  }
+}
+
+function removedLanguage(message) {
   const erase = message.erase === true;
   const profileId = message.profileId;
   if (profileId !== undefined && (typeof profileId !== "string" || profileId === "")) {
@@ -2268,59 +2328,50 @@ async function removeProfile(message) {
   if (erase && (!Number.isInteger(confirmed) || confirmed < 0)) {
     throw new TypeError("the erase carried no valid document revision");
   }
-  const changedAfterConfirmation = (document) => ({ ok: false, stale: true, document,
-    error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again." });
-  for (let attempt = 0; ; attempt += 1) {
-    const snapshot = await requestDictionaryStorage();
-    const stored = snapshot.state?.stored;
-    if (!stored) throw new Error("The last language cannot be removed.");
-    if (profileId !== undefined && !stored.profiles[profileId]) {
-      throw profileRequestError(profileMessages().profileRemoved, "profile-missing");
-    }
-    const personal = personalDictionaryIdentity(language);
-    const dictionaries = erase ? stored.dictionaries.filter((row) => row.id !== personal?.id) : stored.dictionaries;
-    const kept = new Set(dictionaries.map((row) => row.id));
-    const profiles = Object.fromEntries(Object.entries(stored.profiles).filter(([id]) => id !== profileId)
-      .map(([id, profile]) => [id, { ...profile, dictionaries: profile.dictionaries.filter((entry) => kept.has(entry.id)) }]));
-    const next = { schemaVersion: 2, revision: stored.revision, dictionaries, profiles };
-    let baseDocumentRevision;
-    if (erase) {
-      const { document } = await readCustomStorage(language);
-      if (document.revision !== confirmed) return changedAfterConfirmation(document);
-      baseDocumentRevision = document.revision;
-    }
-    let reply;
-    try {
-      reply = await ask("hd_profile_cas", { action: "remove", language, ...(profileId === undefined ? {} : { profileId }),
-        erase, baseRevision: stored.revision, ...(erase ? { baseDocumentRevision } : {}),
-        state: { dictionaries, profiles } });
-    } catch (commitError) {
-      reply = await profileCasReadback(commitError, stored.revision, next,
-        (languages) => profileId === undefined || !languages.includes(language),
-        erase ? { language, documentRevision: baseDocumentRevision } : null);
-    }
-    if (reply.ok === true) {
-      profileRecords = reply.converted !== true;
-      recordLanguages = Array.isArray(reply.languages) ? reply.languages : [];
-      setDebugLogLanguages(recordLanguages);
-      const committed = engineState(reply.state);
-      try {
-        const loadedCount = loadDictionaries(committed.dictionaries, { committed: committed.dictionaries });
-        publishLoadedDictionaries(loadedCount);
-        reloadError = null;
-      } catch (error) {
-        reloadError = asError(error);
-        throw error;
-      }
-      if (erase) await cleanupCommittedDictionaries();
-      return { state: publicState(reply.state), ...(profileRecords ? { languages: recordLanguages } : {}) };
-    }
-    if (reply.stale === true) return { ...changedAfterConfirmation(reply.document), state: publicState(reply.state ?? null) };
-    if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) {
-      return { ok: false, conflict: reply.conflict === true,
-        error: reply.error || "the language could not be removed", state: publicState(reply.state ?? null) };
-    }
+  return { erase, profileId, language, confirmed };
+}
+
+function changedAfterConfirmation(document) {
+  return { ok: false, stale: true, document,
+    error: "The personal dictionary changed after you confirmed, so it was kept. Review it and try again." };
+}
+
+// The records a removal leaves: without the profile, and with an erase
+// without the language's personal package.
+function removedProfileState(stored, { erase, profileId, language }) {
+  const personal = personalDictionaryIdentity(language);
+  const dictionaries = erase ? stored.dictionaries.filter((row) => row.id !== personal?.id) : stored.dictionaries;
+  const kept = new Set(dictionaries.map((row) => row.id));
+  const profiles = Object.fromEntries(Object.entries(stored.profiles).filter(([id]) => id !== profileId)
+    .map(([id, profile]) => [id, { ...profile, dictionaries: profile.dictionaries.filter((entry) => kept.has(entry.id)) }]));
+  return { schemaVersion: 2, revision: stored.revision, dictionaries, profiles };
+}
+
+async function askProfileRemove({ erase, profileId, language }, stored, next, baseDocumentRevision) {
+  try {
+    return await ask("hd_profile_cas", { action: "remove", language, ...(profileId === undefined ? {} : { profileId }),
+      erase, baseRevision: stored.revision, ...(erase ? { baseDocumentRevision } : {}),
+      state: { dictionaries: next.dictionaries, profiles: next.profiles } });
+  } catch (commitError) {
+    return profileCasReadback(commitError, stored.revision, next,
+      (languages) => profileId === undefined || !languages.includes(language),
+      erase ? { language, documentRevision: baseDocumentRevision } : null);
   }
+}
+
+// Once a removal commits, the engine loads the committed set.
+async function adoptRemovedProfile(reply, erase) {
+  adoptProfileRecords(reply);
+  const committed = engineState(reply.state);
+  try {
+    publishLoadedDictionaries(loadDictionaries(committed.dictionaries, { committed: committed.dictionaries }));
+    reloadError = null;
+  } catch (error) {
+    reloadError = asError(error);
+    throw error;
+  }
+  if (erase) await cleanupCommittedDictionaries();
+  return { state: publicState(reply.state), ...(profileRecords ? { languages: recordLanguages } : {}) };
 }
 
 // Every count an import report carries. The last four are what a successful
@@ -2595,16 +2646,11 @@ async function cleanupCommittedDictionaries() {
   }
 }
 
-async function commitImportedGeneration(
-  generationRoot,
-  report,
-  recommendedSource,
-  managedSource,
-  expectedRevision,
-  importDecision,
-  profileId = JAPANESE_PROFILE_ID,
-  joinsProfile = false,
-) {
+// `request` is the prepared import request; `target` names the profile the
+// package joins, and whether it joins even when it was installed already.
+async function commitImportedGeneration(generationRoot, report, request, target = { profileId: JAPANESE_PROFILE_ID, joins: false }) {
+  const { recommendedSource, managedSource, expectedRevision, importDecision } = request;
+  const { profileId, joins: joinsProfile } = target;
   let generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(report.title)}`);
   if (generated.title !== report.title) {
     throw new Error("the imported dictionary title changed while it was being committed");
@@ -4351,16 +4397,8 @@ const HANDLERS = {
       // (14); one that names none means Japanese, and managed updates name
       // none, so they leave every profile's list as it is.
       const commit = (request) => (generationRoot, importedReport) =>
-        commitImportedGeneration(
-          generationRoot,
-          importedReport,
-          request.recommendedSource,
-          request.managedSource,
-          request.expectedRevision,
-          request.importDecision,
-          typeof message.profileId === "string" ? message.profileId : JAPANESE_PROFILE_ID,
-          typeof message.profileId === "string",
-        );
+        commitImportedGeneration(generationRoot, importedReport, request, typeof message.profileId === "string"
+          ? { profileId: message.profileId, joins: true } : { profileId: JAPANESE_PROFILE_ID, joins: false });
       const replyFor = (report) => (report.success
         ? { report }
         : { ok: false, error: report.error || `${fileName} could not be imported`, report,
@@ -4665,6 +4703,21 @@ function engineFailureReply(type, requestId, error) {
   });
 }
 
+// Why a bounded request cannot be answered: an id a reply cannot carry, or a
+// failure reply that would not fit the response limit; null when it can.
+function boundedRequestRefusal(type, requestId) {
+  if (!validResponseRequestId(requestId)) return "request ID must be a string, finite number, or null";
+  if (!responseFits({ type: `${type}_result`, requestId, ok: false,
+    error: responseLimitError(type), generation, ...failurePayload(type) })) return responseLimitError(type);
+  return null;
+}
+
+// The import of the profile code runs in the request's own turn, so the
+// queue keeps the order requests arrive in.
+function engineJob(type, message, handler) {
+  return readsProfileCode(type, message) ? () => loadProfileCode().then(() => handler(message)) : () => handler(message);
+}
+
 export async function handleEngineMessage(message) {
   const type = text(message.type);
   let requestId = message.requestId ?? null;
@@ -4680,23 +4733,12 @@ export async function handleEngineMessage(message) {
 
   const bounded = isBoundedRequest(type);
   try {
-    if (bounded) {
-      if (!validResponseRequestId(requestId)) {
-        requestId = null;
-        throw new Error("request ID must be a string, finite number, or null");
-      }
-      if (!responseFits({ type: `${type}_result`, requestId, ok: false,
-        error: responseLimitError(type), generation, ...failurePayload(type) })) {
-        requestId = null;
-        throw new Error(responseLimitError(type));
-      }
+    const refusal = bounded ? boundedRequestRefusal(type, requestId) : null;
+    if (refusal !== null) {
+      requestId = null;
+      throw new Error(refusal);
     }
-    const handler = HANDLERS[type];
-    // The import runs in the request's own turn, so the queue keeps the
-    // order requests arrive in.
-    const job = readsProfileCode(type, message)
-      ? () => loadProfileCode().then(() => handler(message))
-      : () => handler(message);
+    const job = engineJob(type, message, HANDLERS[type]);
     const run = UNQUEUED.has(type) ? Promise.resolve().then(job) : serialise(job);
     const result = await run;
     const { ok = true, error = null, nativeJsonLength = 0, ...payload } = result ?? {};

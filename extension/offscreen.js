@@ -193,32 +193,37 @@ function finishRequest(id, response) {
   // dictionaries keep the idle window open.
   if (!POLL_TYPES.has(request.message.type)) recycler.noteIdle();
   if (response?.type === "hd_status_result") {
-    lastEngineStatus = {
-      ...lastEngineStatus,
-      ok: response.ok === true,
-      error: response.error ?? null,
-      ready: response.ready === true,
-      loading: response.loading === true,
-      dictionaryCount: Number(response.dictionaryCount) || 0,
-      packageCount: Number(response.packageCount) || 0,
-      registeredKindCount: Number(response.registeredKindCount) || 0,
-      dictionaryIndexStorage: response.dictionaryIndexStorage,
-      useLessRamByDefault: response.useLessRamByDefault,
-      hashIndexStorage: response.hashIndexStorage,
-      residentHashBudgetBytes: response.residentHashBudgetBytes,
-      failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
-      generation: Number(response.generation) || 0,
-    };
-    // Present once the records have profiles (docs/languages.md 9.2), so the
-    // single-profile reply served during a mutation stays today's.
-    if (Array.isArray(response.failedLanguages)) lastEngineStatus.failedLanguages = response.failedLanguages;
-    else delete lastEngineStatus.failedLanguages;
+    adoptEngineStatus(response);
     // The engine cannot see the bridge's lock; Settings waits on it.
     request.sendResponse({ ...response, mutating: mutating() });
   } else {
     request.sendResponse(response);
   }
   if (mutated) admitWaiting();
+}
+
+// The engine's last status, which Settings reads while a mutation holds it.
+function adoptEngineStatus(response) {
+  lastEngineStatus = {
+    ...lastEngineStatus,
+    ok: response.ok === true,
+    error: response.error ?? null,
+    ready: response.ready === true,
+    loading: response.loading === true,
+    dictionaryCount: Number(response.dictionaryCount) || 0,
+    packageCount: Number(response.packageCount) || 0,
+    registeredKindCount: Number(response.registeredKindCount) || 0,
+    dictionaryIndexStorage: response.dictionaryIndexStorage,
+    useLessRamByDefault: response.useLessRamByDefault,
+    hashIndexStorage: response.hashIndexStorage,
+    residentHashBudgetBytes: response.residentHashBudgetBytes,
+    failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
+    generation: Number(response.generation) || 0,
+  };
+  // Present once the records have profiles (docs/languages.md 9.2), so the
+  // single-profile reply served during a mutation stays today's.
+  if (Array.isArray(response.failedLanguages)) lastEngineStatus.failedLanguages = response.failedLanguages;
+  else delete lastEngineStatus.failedLanguages;
 }
 
 function adoptEngineProgress(progress) {

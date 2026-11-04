@@ -303,26 +303,29 @@ export function resolveAnkiTemplates(config, fields) {
   return { templates, staleFields, errors };
 }
 
+// Automatic's suggestions: the generic field names, then a pack's aliases
+// for the markers they name.
+function automaticSuggestions(fieldAliases) {
+  const suggestions = new Map();
+  for (const [semantic, aliases] of Object.entries(genericAliases)) {
+    for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semanticMarker(semantic)}}` });
+  }
+  for (const [marker, aliases] of Object.entries(fieldAliases)) {
+    if (!MARKERS.has(marker) || !Array.isArray(aliases)) continue;
+    for (const alias of aliases.filter(item => typeof item === "string" && !suggestions.has(fieldKey(item)))) {
+      suggestions.set(fieldKey(alias), { slot: marker, value: `{${marker}}` });
+    }
+  }
+  return suggestions;
+}
+
 // `fieldAliases` are the edited profile's pack's `host.anki.fieldAliases`
 // (docs/languages.md 12): more field names, by the marker they suggest, for
 // Automatic suggestions beside the generic ones. A key that names no marker
 // suggests nothing.
 export function applyAnkiPreset(config, fields, preset, fieldAliases = {}) {
   const table = PRESETS[preset] ?? KIKU;
-  const suggestions = new Map();
-  if (preset === "automatic") {
-    for (const [semantic, aliases] of Object.entries(genericAliases)) {
-      for (const alias of aliases) suggestions.set(fieldKey(alias), { slot: semantic, value: `{${semanticMarker(semantic)}}` });
-    }
-    for (const [marker, aliases] of Object.entries(fieldAliases)) {
-      if (!MARKERS.has(marker) || !Array.isArray(aliases)) continue;
-      for (const alias of aliases) {
-        if (typeof alias === "string" && !suggestions.has(fieldKey(alias))) {
-          suggestions.set(fieldKey(alias), { slot: marker, value: `{${marker}}` });
-        }
-      }
-    }
-  }
+  const suggestions = preset === "automatic" ? automaticSuggestions(fieldAliases) : new Map();
   for (const [field, value] of Object.entries(table)) {
     if (preset === "automatic" && value === "") continue;
     suggestions.set(fieldKey(field), {
