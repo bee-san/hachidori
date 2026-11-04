@@ -24,7 +24,7 @@ const dictionaries = [
   { id: "kanji-id", title: "Kanji", displayName: null, path: "/dicts/g1/Kanji", enabled: true, revision: "3", termCount: 0, frequencyCount: 0, kanjiCount: 1 },
 ];
 
-function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = {}, templates = [] } = {}) {
+function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = {}, templates = [], smallerAnkiCards = () => false } = {}) {
   const calls = [];
   const engine = async message => {
     calls.push(structuredClone(message));
@@ -45,13 +45,18 @@ function host({ lookups = {}, kanji = {}, media = {}, audio = null, downloads = 
       return { ok: true, ...audio };
     }
     assert.equal(message.type, "hd_anki_fields");
+    // A compact field leaves hidden content out, with any image in it
+    // (test/chrome-e2e/settings.mjs), while that image stays planned
+    // (test/anki-resources.test.mjs). 食う's compact field shows the image.
+    const hidden = message.compactGlossary && message.request.term.expression !== "食う";
+    const glossary = `${message.request.term.expression}${hidden ? "" : '<img src="hachidori_eat.png">'}`;
     const fields = Object.fromEntries(Object.entries(message.templates).map(([marker]) => [marker,
-      marker === "audio" ? message.audio : marker === "glossary" ? `<img src="${message.request.term.expression}.png">` : marker === "bogus" ? "" : `${marker}:${message.request.term.expression}`]));
+      marker === "audio" ? message.audio : marker === "glossary" ? glossary : marker === "bogus" ? "" : `${marker}:${message.request.term.expression}`]));
     return { ok: true, fields, media: marker(message, "glossary") ? [{ dictionary: "Fixture", path: "img/eat.png", filename: "hachidori_eat.png" }] : [] };
   };
   const answer = createApiHost({ engine, render, version: "0.1.4",
     readDictionaries: async () => dictionaries, readAudioSources: async () => audio ? [{ id: "jpod", type: "jpod101", enabled: true }] : [],
-    readAnkiTemplates: async () => templates });
+    readAnkiTemplates: async () => templates, readSmallerAnkiCards: async () => smallerAnkiCards() });
   return { answer, calls };
 }
 const marker = (message, name) => Object.hasOwn(message.templates, name);
@@ -150,7 +155,7 @@ test("anki fields render each term through the mining renderer with the requeste
   const { answer, calls } = host({ lookups: { "食べたかった": [tabetakatta, { ...tabetakatta, term: { ...tabetakatta.term, expression: "食う" } }] },
     media: { "img/eat.png": "data:image/png;base64,iVBORw0KGgo=" }, audio: { filename: "hachidori_abc.mp3", data: "AAEC" } });
   const reply = await answer({ type: "hd_api_anki_fields", text: "食べたかった", entryType: "term", markers: ["Expression", "glossary", "audio", "bogus"], maxEntries: 1, includeMedia: true });
-  assert.deepEqual(reply.fields, [{ expression: "expression:食べる", glossary: '<img src="食べる.png">', audio: "[sound:hachidori_abc.mp3]", bogus: "" }]);
+  assert.deepEqual(reply.fields, [{ expression: "expression:食べる", glossary: '食べる<img src="hachidori_eat.png">', audio: "[sound:hachidori_abc.mp3]", bogus: "" }]);
   assert.deepEqual(reply.dictionaryMedia, [{ dictionary: "Fixture", path: "img/eat.png", mediaType: "image/png", content: "iVBORw0KGgo=", ankiFilename: "hachidori_eat.png" }]);
   assert.deepEqual(reply.audioMedia, [{ term: "食べる", reading: "たべる", mediaType: "audio/mpeg", content: "AAEC", ankiFilename: "hachidori_abc.mp3" }]);
   const lookup = calls.find(call => call.type === "hd_lookup");
@@ -182,6 +187,28 @@ test("anki fields without media skip audio and images, keep every entry when unl
   assert.deepEqual(kanji, { fields: [{ character: "食", onyomi: "ショク, ジキ", kunyomi: "く.う, た.べる", glossary: "<ul><li>food</li><li>eat</li><li>meal</li></ul>",
     "stroke-count": "9", dictionary: "Kanji", tags: "jouyou, grade2", nothing: "" }], dictionaryMedia: [], audioMedia: [] });
   await assert.rejects(answer({ type: "hd_api_anki_fields", text: "食", entryType: "sentence", markers: [] }), /unsupported entry type/u);
+});
+
+// #659: a card the relay fills matches a mined one.
+test("anki fields follow Smaller Anki cards on every request and send only the images their fields show", async () => {
+  let smaller = true;
+  const { answer, calls } = host({ lookups: { "食べたかった": [tabetakatta] }, media: { "img/eat.png": "data:image/png;base64,iVBORw0KGgo=" },
+    smallerAnkiCards: () => smaller });
+  const ask = () => answer({ type: "hd_api_anki_fields", text: "食べたかった", entryType: "term", markers: ["glossary"], maxEntries: 1, includeMedia: true });
+  const compact = await ask();
+  smaller = false;
+  const full = await ask();
+  assert.deepEqual(calls.filter(call => call.type === "hd_anki_fields").map(call => call.compactGlossary), [true, false]);
+  assert.deepEqual(compact, { fields: [{ glossary: "食べる" }], dictionaryMedia: [], audioMedia: [] });
+  assert.deepEqual(full.dictionaryMedia.map(item => item.ankiFilename), ["hachidori_eat.png"]);
+  assert.deepEqual(calls.filter(call => call.type === "hd_media").map(call => call.path), ["img/eat.png"],
+    "an image the compact field leaves out is not read");
+  // A later entry that shows an image an earlier one left out still sends it.
+  const later = host({ lookups: { "食べたかった": [tabetakatta, { ...tabetakatta, term: { ...tabetakatta.term, expression: "食う" } }] },
+    media: { "img/eat.png": "data:image/png;base64,iVBORw0KGgo=" }, smallerAnkiCards: () => true });
+  const both = await later.answer({ type: "hd_api_anki_fields", text: "食べたかった", entryType: "term", markers: ["glossary"], maxEntries: 2, includeMedia: true });
+  assert.deepEqual(both.fields, [{ glossary: "食べる" }, { glossary: '食う<img src="hachidori_eat.png">' }]);
+  assert.deepEqual(both.dictionaryMedia.map(item => item.ankiFilename), ["hachidori_eat.png"]);
 });
 
 test("anki card formats answer each Template as Yomitan's AnkiCardFormat, in Settings order, without the AnkiConnect connection", async () => {

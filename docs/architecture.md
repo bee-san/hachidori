@@ -1017,7 +1017,10 @@ opens with: a pasted line such as 「食べたかった」 looks up 食べたか
 ～ている looks up ている rather than the grammar dictionary's ～ている
 pointer. Its other words can then be looked up like any page text. Mining
 takes the sentence around the word from that text, cut at its terminators as
-on a page, where Yomitan's search page takes the whole query. The docked popup is the reader's own, with its renderer,
+on a page, where Yomitan's search page takes the whole query. A word typed
+alone is its own sentence, as in Yomitan, so a new note gets the word there,
+while updating an existing note from it leaves the note's sentence and
+screenshot fields as they are (#655; see [Anki submission](#anki-submission)). The docked popup is the reader's own, with its renderer,
 tabs, Anki and pronunciation controls, Notes and child popups. It fills the
 results area, follows its size and has no resize grip. A search ignores
 **Japanese text only** and the lookup switch, since the reader asked for it;
@@ -3140,7 +3143,22 @@ Fixed background handlers own a separate Anki mutation queue. Submission freshly
 validates configuration, fields, dictionary generation and duplicate identity;
 it never holds the dictionary storage queue. Native Anki duplicate search selects
 same-model overwrite targets inside the configured deck scope. The six field
-overwrite modes use authoritative field spellings. The initial write sends only
+overwrite modes use authoritative field spellings. A lookup whose sentence is
+only the word it matched, such as a word typed alone on the search page, has no
+sentence to give a note it updates, so it adds no sentence and none of the
+media that would pair with one, as Senren's scene switching pairs each sentence
+with its picture and line audio. Fields whose template uses `{sentence}`,
+`{sentence-furigana}`, `{sentence-furigana-plain}`, `{cloze-prefix}`,
+`{cloze-body}` or `{cloze-suffix}`, and fields made only of `{screenshot}`,
+`{gif}` or `{sentence-audio}`, keep the note's value whatever their mode, in the
+update and in its pronunciation enrichment; an empty one stays empty. Other
+fields follow their modes, and a new note still takes the word for its sentence.
+A line that is one word on a page, such as 「はい」, and a selection that is a
+whole line count as word-only too. A Netflix cue does not: its own audio and
+GIF go with it. A linked browser records no line, and its host does not see the
+cue, so there a one-word cue is word-only. Any text around the word, even a lone 。, is a sentence. Yomitan's
+search page also takes the typed word for the sentence, and its Append adds that
+word to the note's sentences on every update (#655). The initial write sends only
 changed fields; preserved values are omitted instead of written back from the
 earlier snapshot, including fields restored to that value by a failed media
 upload. Pronunciation enrichment compares its complete desired values
@@ -3194,7 +3212,10 @@ the outer Yomitan-compatible glossary structure are kept. The
 `small.yomitan-glossary-details` Rules/Deinflection footer of the uncompacted
 fields is not written, as Yomitan's `{glossary}` has none;
 `{part-of-speech}` and `{conjugation}` carry that information (#399). Plain
-glossary markers and the relay's `ankiFields` API are unchanged.
+glossary markers are unchanged. The relay's `ankiFields` API follows the option
+too, read on every request, so a card another app fills through it matches a
+mined one (#659). Like mining, it sends only the dictionary images its fields
+reference.
 
 First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write

@@ -185,14 +185,15 @@ function requireStrings(value, name) {
 // `engine(fields)` answers a "hoshidicts-offscreen" request, `render(fields)`
 // a "hachidori-anki-render" one; both resolve to the reply envelope or throw
 // its error. `readDictionaries(profileId)` is a profile's dictionary list,
-// `readAudioSources(profileId)` its enabled pronunciation sources and
-// `readAnkiTemplates(profileId)` its Anki Templates in Settings order.
+// `readAudioSources(profileId)` its enabled pronunciation sources,
+// `readAnkiTemplates(profileId)` its Anki Templates in Settings order and
+// `readSmallerAnkiCards()` whether Smaller Anki cards is on.
 // `resolveProfile(profileIndex)` names the profile a Yomitan profile index
 // selects, as { profileId } (undefined while the records have no profiles),
 // or null for an index that names none (docs/languages.md 12).
 // `readProfile(profileId)` is that profile's { language, packSettings }, whose
 // language its notes and readings follow, null while the records have no profiles.
-export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, version,
+export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, readSmallerAnkiCards, version,
   resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null),
   readProfile = async () => null }) {
   // Engine requests made for a profile name it (docs/languages.md 9.3).
@@ -226,6 +227,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
     const dictionaryPaths = Object.fromEntries(enabled.map(item => [item.title, item.path]));
     const frequencyModes = new Map(where.dictionaries.map(item => [item.title, item.frequencyMode]));
     const templates = Object.fromEntries(markers.map(marker => [marker, { value: `{${marker}}`, overwriteMode: "coalesce" }]));
+    const compactGlossary = await readSmallerAnkiCards();
     const fields = [], dictionaryMedia = [], audioMedia = [];
     const seenMedia = new Set();
     for (const result of maxEntries > 0 ? results.slice(0, maxEntries) : results) {
@@ -251,12 +253,15 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
             mediaType: AUDIO_TYPES[extension] ?? "application/octet-stream", content: prepared.data, ankiFilename: prepared.filename });
         }
       }
-      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths,
+      const built = await render({ type: "hd_anki_fields", request, templates, audio, dictionaryPaths, compactGlossary, // NOSONAR: results render one at a time, in order
         ...(profile === null ? {} : { profile }) });
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
       if (!includeMedia) continue;
+      // Only the images these fields show, as mining uploads only those:
+      // Smaller Anki cards leaves hidden content out, with any image in it.
+      const shown = Object.values(fields.at(-1));
       for (const item of built.media) {
-        if (seenMedia.has(item.filename)) continue;
+        if (seenMedia.has(item.filename) || !shown.some(value => value.includes(item.filename))) continue;
         seenMedia.add(item.filename);
         const reply = await engine({ type: "hd_media", dictionary: item.dictionary, path: item.path, generation });
         const match = typeof reply.dataUrl === "string" ? /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/u.exec(reply.dataUrl) : null;

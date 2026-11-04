@@ -309,6 +309,7 @@ function getApiHost() {
     readAnkiTemplates: async profileId => (await readAnkiOptions(profileId)).anki.templates,
     resolveProfile: apiProfile,
     readProfile: readAnkiProfile,
+    readSmallerAnkiCards: async () => (await readAnkiOptions()).smallerAnkiCards,
   });
   return apiHost;
 }
