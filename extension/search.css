@@ -70,9 +70,8 @@ body.search-page {
 }
 /* The Anki Template switch (#656), before it, where Yomitan's search page has
    its profile switch. It grows from nothing up to its own width into the room
-   the title and the Clipboard monitor's label leave, so it gives way first:
-   only once it is down to 6em do those two shrink, and wrap. A longer name
-   is cut by the menu. */
+   the title and the Clipboard monitor's label leave, so it gives way first,
+   down to 6em, and a longer name is cut by the menu. */
 .search-header .search-template {
   flex: 1 1 0;
   width: auto;
@@ -82,6 +81,17 @@ body.search-page {
 }
 .search-header .search-template:not([hidden]) + .lookup-enable {
   margin-left: 12px;
+}
+/* A header too narrow for one line with the menu at 6em, in a narrow or
+   zoomed window, moves the Clipboard monitor to a second row, and then the
+   menu, at the row's end, rather than past the window's edge; the title keeps
+   the start of the first row. */
+.search-header:has(> .search-template:not([hidden])) {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.search-header:has(> .search-template:not([hidden])) h1 {
+  margin-right: auto;
 }
 .search-form {
   --search-control-height: 42px;
