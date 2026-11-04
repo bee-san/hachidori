@@ -498,14 +498,23 @@ describe("search page", () => {
       const listed = await settled(current => !current.shell.hidden && !current.copy.hidden);
       await screenshot(tab, "search-template-switch");
       // In a 320 px window, or the default one at 200% zoom, the header wraps
-      // rather than putting the Clipboard monitor past the window's edge.
+      // rather than putting the Clipboard monitor past the window's edge. Its
+      // rows end at its end, so a line too long would spill past its start,
+      // which scrollWidth does not count: each control has to lie inside it.
       await tab.setViewport({ width: 320, height: 640 });
       const narrow = { copy: await frame.waitForFunction(() => {
         const header = document.querySelector(".search-header");
-        return header.getBoundingClientRect().height > 40 && header.scrollWidth <= header.clientWidth;
+        const box = header.getBoundingClientRect();
+        const inside = [...header.children].every(child => {
+          const rect = child.getBoundingClientRect();
+          return !child.getClientRects().length || (rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5);
+        });
+        return box.height > 40 && header.scrollWidth <= header.clientWidth && inside;
       }, { polling: 50, timeout: 5_000 }).then(() => true, () => false),
-      switchInside: await tab.evaluate(() => document.getElementById("search-clipboard").getBoundingClientRect().right
-        <= innerWidth) };
+      switchInside: await tab.evaluate(() => {
+        const rect = document.getElementById("search-clipboard").getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth;
+      }) };
       await tab.setViewport({ width: 600, height: 640 });
       // The arrow keys walk the list, which stays put: Words after Sentences…,
       // then Sentences… and Kanji before it.
