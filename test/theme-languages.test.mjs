@@ -537,3 +537,16 @@ test("content.js gives its views the active profile's language", async () => {
   assert.equal(outcome.profiles.view.code, "ar");
   assert.equal(outcome.profiles.view.marked, true);
 });
+
+// 10.1: the labelling pass leaves the English interface alone. Nazeka keeps
+// its 《 》 text beside the audio control and the entry actions.
+test("the labelling pass labels text beside interface controls without relabelling them", async () => {
+  const run = await rendered("nazeka", "ja");
+  try {
+    // The headword's character links are Japanese text, not interface.
+    const controls = [...run.popup.querySelectorAll("button:not(.gsm-hoshidicts-kanji-link), .gsm-hoshidicts-entry-actions")];
+    assert.ok(controls.length > 0);
+    const outside = controls.filter(control => control.closest("[lang]")?.getAttribute("lang") !== "en");
+    assert.deepEqual(outside.map(control => control.className), []);
+  } finally { run.dom.window.close(); }
+});

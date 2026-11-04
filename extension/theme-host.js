@@ -568,7 +568,9 @@
           }
           const tag = detect(text);
           if (!tag) return;
-          if (parent === holder) {
+          // The parent takes the label only when the text is all it holds, so
+          // the interface controls beside such text keep English (10.1).
+          if (parent === holder || parent.childNodes.length > 1) {
             const span = labelled(tag);
             node.replaceWith(span);
             span.append(node);
