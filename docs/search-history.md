@@ -153,9 +153,10 @@ This is Rubi's overlay cursor (bee-san/Rubi_for_vita@6b5e276:
 Up on the text's top row opens Rubi's line history
 ([`docs/line-history.md`](https://github.com/bee-san/Rubi_for_vita/blob/main/docs/line-history.md)):
 the line before it takes its place, between the last row of the line before
-that and the first row of the line after it, both in smaller type, and dimmer
-where the palette's dim text is dimmer than its text, which no lookup,
-selection or screen reader reads. A note under them says where it is:
+that and the first row of the line after it, both dimmed and in smaller type,
+which no lookup, selection or screen reader reads. Each palette dims them as
+far as it keeps 4.5:1; Solarized Light, whose text is at 4.65:1, has no room,
+so there only the size sets them apart. A note under them says where it is:
 `Earlier line -2 · ▲ earlier · ▼ later`, without `▲ earlier` on the oldest
 line. Up on its top row goes further back, and Down on its last row comes
 forward; past the newest earlier line, the searched line comes back with its
@@ -174,6 +175,8 @@ These differ from Rubi's overlay:
   search starts. Rubi's opens on its first character while Japanese characters
   only is off.
 - Escape leaves the visit shown while it focuses the box.
+- The neighbour rows are smaller than the text as well as dimmed; Rubi draws
+  them at the text's size.
 - The cursor always goes by word (Rubi's Whole word mode).
 
 Beside the text, while it has focus, a note names its keys from the keybinds,

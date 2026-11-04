@@ -137,16 +137,34 @@ body.search-page {
   border-radius: var(--radius-control);
 }
 /* A neighbour shows one row, Rubi's: the last of the line before, the first
-   of the line after. It is set apart from the searched text in every palette
-   by its smaller size, and also by the palette's dim text where that is
-   dimmer than its text (most palettes' is the same, and none has room for a
-   dimmer colour at 4.5:1). Its text is generated content, which no lookup,
-   selection or screen reader reads. */
+   of the line after, dimmed: the palette's dim text mixed toward the page by
+   --search-neighbour-fade, which each palette keeps at 4.5:1 or more. It is
+   also set smaller, which keeps it apart from the searched text where a
+   palette has no room to dim (Solarized Light's text is at 4.65:1). Its text
+   is generated content, which no lookup, selection or screen reader reads. */
+:root {
+  --search-neighbour-fade: 20%;
+}
+/* The palettes with less room keep 4.5:1 with less fade; Autumn's own dim
+   text is already dimmer than its text. */
+:root[data-hoshidicts-theme="retro"] {
+  --search-neighbour-fade: 15%;
+}
+:root[data-hoshidicts-theme="valentine"] {
+  --search-neighbour-fade: 10%;
+}
+:root[data-hoshidicts-theme="solarized-dark"] {
+  --search-neighbour-fade: 8%;
+}
+:root[data-hoshidicts-theme="autumn"],
+:root[data-hoshidicts-theme="solarized-light"] {
+  --search-neighbour-fade: 0%;
+}
 .search-neighbour {
   margin: 0;
   max-height: 1.6em;
   overflow: hidden;
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--text-dim), var(--bg) var(--search-neighbour-fade));
   font-size: 16px;
   line-height: 1.6;
   white-space: pre-wrap;

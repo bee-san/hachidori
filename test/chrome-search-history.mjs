@@ -397,10 +397,10 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-history-visit-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
-  // The neighbours' rows are set apart from the searched text (smaller, and
-  // dimmer where the palette's dim text is), and still legible: 4.5:1 in
-  // every palette against what is painted behind them. Automatic is Dark or
-  // Light.
+  // The neighbours' rows are set apart from the searched text, smaller and
+  // dimmer, and still legible: 4.5:1 in every palette against what is painted
+  // behind them. A palette whose text is under 4.7:1 has no room to dim.
+  // Automatic is Dark or Light.
   const palettes = await frame.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS
     .flatMap(group => group.themes.map(theme => theme.id)).filter(id => id !== "auto"));
   const faint = [];
@@ -433,19 +433,22 @@ try {
       const luminance = rgb => rgb.map(value => value / 255)
         .map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
         .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-      const [text, page] = [paint([...layers, getComputedStyle(row).color]), paint(layers)].map(luminance);
       const [rowStyle, queryStyle] = [row, document.getElementById("search-query")].map(node => getComputedStyle(node));
-      const dimText = rowStyle.getPropertyValue("--text-dim").trim() !== rowStyle.getPropertyValue("--text").trim();
-      return { ratio: (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05),
-        smaller: parseFloat(rowStyle.fontSize) < parseFloat(queryStyle.fontSize),
-        dimmed: !dimText || rowStyle.color !== queryStyle.color };
+      const page = luminance(paint(layers));
+      const ratio = color => {
+        const text = luminance(paint([...layers, color]));
+        return (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05);
+      };
+      const [rows, searched] = [ratio(rowStyle.color), ratio(queryStyle.color)];
+      return { ratio: rows, smaller: parseFloat(rowStyle.fontSize) < parseFloat(queryStyle.fontSize),
+        dimmed: rows < searched || searched < 4.7 };
     });
     if (!(contrast.ratio >= 4.5)) faint.push(`${theme} ${contrast.ratio.toFixed(2)}:1`);
     if (!contrast.smaller || !contrast.dimmed) alike.push(theme);
   }
   assert.ok(palettes.length > 40, `every palette: ${palettes.length}`);
   assert.deepEqual(faint, [], "the neighbours' rows keep 4.5:1 in every palette");
-  assert.deepEqual(alike, [], "the neighbours' rows are smaller than the searched text, and dimmer where the palette has a dim text");
+  assert.deepEqual(alike, [], "the neighbours' rows are smaller and dimmer than the searched text in every palette with room");
   await writeOptions({ popupTheme: "default" });
   // Up again goes further back, to the oldest line, and Down comes forward to the current line, its cursor where it was.
   await press("ArrowUp");
