@@ -651,22 +651,27 @@ test("a word-only update keeps a sentence field in every mode and leaves an empt
 test("a word-only update adds none of a scene's media, while a one-word Netflix cue is still a scene", async () => {
   const fieldTemplates = { word: { value: "{expression}", overwriteMode: "skip" },
     sentence: { value: SENREN_SCENE, overwriteMode: "append" }, picture: { value: "{screenshot}", overwriteMode: "append" },
-    sentenceAudio: { value: "{sentence-audio}", overwriteMode: "append" },
-    // A field without markers is not a scene's, and follows its mode.
-    hint: { value: "seen", overwriteMode: "overwrite" } };
+    sentenceAudio: { value: "{sentence-audio}", overwriteMode: "append" }, clip: { value: "<div>{gif}</div>", overwriteMode: "append" },
+    // Fields that are not only a scene's follow their modes.
+    mixed: { value: "{screenshot}{audio}", overwriteMode: "append" }, hint: { value: "seen", overwriteMode: "overwrite" } };
   const saved = { word: "声明", sentence: sceneGroup("スキナーの", "。"), picture: '<img src="one.png">', sentenceAudio: "[sound:one.wav]",
-    hint: "" };
+    clip: '<div><img src="one.png"></div>', mixed: "", hint: "" };
   const f = sceneFixture(fieldTemplates, { ...saved });
   const media = name => ({ screenshot: { filename: `${name}.png` }, sentenceAudio: { filename: `${name}.wav` } });
   assert.equal((await f.service.preflight(await f.lookup("声明", media("two")))).canAdd, true);
-  assert.deepEqual(f.state.applied.fields, { hint: "seen" });
+  assert.deepEqual(f.state.applied.fields, { mixed: '<img src="two.png">', hint: "seen" });
+  assert.deepEqual(Object.keys(f.state.applied.templates), ["mixed", "hint"]);
   assert.equal((await f.submit("声明", media("two"))).state, "updated");
-  assert.deepEqual(f.state.updates, [{ hint: "seen" }]);
-  assert.deepEqual(f.state.fields, { ...saved, hint: "seen" });
+  assert.deepEqual(f.state.updates, [{ mixed: '<img src="two.png">', hint: "seen" }]);
+  // A Netflix lookup without its cue records no line, so it is word-only too.
+  assert.equal((await f.submit("声明", { netflix: { unavailable: "no-timeline" }, ...media("four") })).state, "updated");
+  assert.deepEqual(f.state.updates.at(-1), { mixed: '<img src="two.png"><img src="four.png">' });
+  assert.deepEqual(f.state.fields, { ...saved, mixed: '<img src="two.png"><img src="four.png">', hint: "seen" });
   const cue = { netflix: { cue: { movieId: 1, startMs: 0, endMs: 900 } }, ...media("three") };
   assert.equal((await f.submit("声明", cue)).state, "updated");
   assert.deepEqual(f.state.updates.at(-1), { sentence: `${saved.sentence}${sceneGroup("", "")}`,
-    picture: `${saved.picture}<img src="three.png">`, sentenceAudio: `${saved.sentenceAudio}[sound:three.wav]` });
+    picture: `${saved.picture}<img src="three.png">`, sentenceAudio: `${saved.sentenceAudio}[sound:three.wav]`,
+    clip: `${saved.clip}<div><img src="three.png"></div>`, mixed: '<img src="two.png"><img src="four.png"><img src="three.png">' });
 });
 
 test("each Template has an independent configuration identity and routes its note to the selected destination", async () => {
