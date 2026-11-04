@@ -51,8 +51,8 @@
     #hd-texthooker .hd-th-text { flex: 1; margin: 0; font-size: 20px; line-height: 1.6; white-space: pre-wrap;
       overflow-wrap: anywhere; cursor: text; }
     #hd-texthooker .hd-th-text[contenteditable] { outline: 2px solid var(--accent); outline-offset: 2px; cursor: auto; }
-    #hd-texthooker .hd-th-actions { flex: none; display: flex; gap: 4px; visibility: hidden; }
-    #hd-texthooker li:is(:hover, :focus-within) .hd-th-actions { visibility: visible; }
+    #hd-texthooker .hd-th-actions { flex: none; display: flex; gap: 4px; opacity: 0; }
+    #hd-texthooker li:is(:hover, :focus-within) .hd-th-actions { opacity: 1; }
     #hd-texthooker .hd-th-actions button, #hd-texthooker .hd-th-bar button { min-height: 28px; padding: 2px 8px; }
   `;
   document.head.append(style);
@@ -80,7 +80,7 @@
   const items = new Map();
   function renderStats() {
     let count = 0;
-    for (const { line } of items.values()) count += characters(line.text);
+    for (const kept of items.values()) count += kept.characters;
     stats.textContent = `${items.size} ${items.size === 1 ? "line" : "lines"} · ${count} characters`;
   }
   function renderPause() {
@@ -120,6 +120,7 @@
 
   function show(kept, line) {
     kept.line = line;
+    kept.characters = characters(line.text);
     kept.entry.dataset.id = String(line.id);
     kept.stamp.dateTime = new Date(line.at).toISOString();
     kept.stamp.textContent = time.format(line.at);
@@ -146,11 +147,13 @@
     if (list.scrollTop !== followed) pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
   });
   new ResizeObserver(follow).observe(list);
+  let newestId = 0;
   function add(line, newest) {
     if (items.has(line.id)) return;
     const kept = item(line);
-    const later = [...items.values()].find(other => other.line.id > line.id);
+    const later = line.id < newestId ? [...items.values()].find(other => other.line.id > line.id) : null;
     items.set(line.id, kept);
+    newestId = Math.max(newestId, line.id);
     if (later) later.entry.before(kept.entry, "\n");
     else list.append(kept.entry, "\n");
     if (newest) follow();
@@ -199,12 +202,17 @@
     const node = caret?.offsetNode ?? range?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE || !kept.text.contains(node) || node.length === 0) return;
     // The caret falls between two characters: a click on a glyph's right
-    // half reports the one after it.
-    let at = Math.min(caret?.offset ?? range.startOffset, node.length - 1);
+    // half reports the one after it. A click beside the text looks up nothing.
     const glyph = document.createRange();
-    glyph.setStart(node, at);
-    glyph.setEnd(node, at + 1);
-    if (at > 0 && glyph.getBoundingClientRect().left > clientX) at -= 1;
+    const box = (at) => {
+      glyph.setStart(node, at);
+      glyph.setEnd(node, at + 1);
+      return glyph.getBoundingClientRect();
+    };
+    let at = Math.min(caret?.offset ?? range.startOffset, node.length - 1);
+    if (at > 0 && box(at).left > clientX) at -= 1;
+    const { left, right, top, bottom } = box(at);
+    if (clientX < left || clientX > right || clientY < top || clientY > bottom) return;
     void history.lookUp(node, at);
   }
 

@@ -667,6 +667,22 @@ try {
   await hooked.tab.mouse.click(word.x, word.y);
   assert.ok(await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["漢字"])),
     "a clicked word is looked up");
+  // A click beside a line's text looks nothing up; a line's buttons take
+  // keyboard focus, which shows them.
+  const beside = await hookFrame.$eval("#hd-texthooker li:nth-child(3) .hd-th-text", (text) => {
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const glyphs = range.getBoundingClientRect();
+    return { x: Math.min(glyphs.right + 60, text.getBoundingClientRect().right - 4), y: glyphs.y + glyphs.height / 2 };
+  });
+  await hooked.tab.mouse.click(beside.x, beside.y);
+  await settle(500);
+  assert.ok((await hooked.popup.state()).text.includes(GLOSSES["漢字"]), "a click beside the text keeps the result");
+  const focusable = await hookFrame.$eval("#hd-texthooker li:nth-child(3) .hd-th-actions button", (button) => {
+    button.focus();
+    return { focused: document.activeElement === button, opacity: getComputedStyle(button.parentElement).opacity };
+  });
+  assert.deepEqual(focusable, { focused: true, opacity: "1" });
   await writeOptions({ customPopupJavascript: "" });
   await allowUserScripts(false);
   console.log("PASS: the texthooker user script lists the lines, newest at the bottom, scrolling along, with their"
