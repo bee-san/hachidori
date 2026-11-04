@@ -105,8 +105,8 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `searchHistoryEnabled` (false) | Reading → Search page | None; the history keeps lines of every language | G |
 | `searchHistoryLimit` (10000) | Reading → Search page | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
-| new `profiles` (not an option key) | Settings Language menu and dialog | — | structure of `options` (4.1) |
-| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Settings **Use for lookups**, Reading → Scanning | — | installation-local key (4.4) |
+| new `profiles` (not an option key) | Advanced → Languages | — | structure of `options` (4.1) |
+| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Advanced → Languages (**Use for lookups**, Switch language automatically) | — | installation-local key (4.4) |
 
 Retired keys (`modifier`, `definitionBlurEnabled`, `hoverDelayMs`,
 `experimental.smallerAnkiCards`) keep their migrations and are read from the
@@ -128,7 +128,7 @@ top level of a single-profile record.
 | `wordStatusOverrides` known/ignored headwords; written by `hd_word_status_override`, the erase in `hd_profile_cas`, the restore | word-status-overrides.js:17, 27-60; background-requests.js:158-167 | No language key; helpers return only `revision`, `known`, `ignored` | L; every writer keeps `languages` through one helper (4.3) |
 | `ankiDuplicateIndex`: one `snapshot` and one `attempt`, for the first Template's source | anki-index-cache.js:28-57, 180, 226, 366-390 | One Template list | Today's record with one source; one snapshot per source key with several (4.3, 12) |
 | new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |
-| `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; non-Japanese first run records no catalogue outcome (16) |
+| `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; another language's setup stages (Resume setup) record no catalogue outcome (16.1) |
 | `automaticBackups`, `sharing`, `sharingLocalState`, `sharingOptionsVersion`, session `backupDownloads`, IndexedDB debug log | backup-automatic.js, background-sharing.js, debug-log.js | None except redaction | G |
 | `OVERLAY_LOCAL_OPTION_KEYS` (includes the profile keys `onlyScanJapaneseText`, `personalDictionaryEnabled`, `showNoResultNotice`, `popupColumns`) | setup-state.js:46-51 | Partition precedent | Kept flat in the overlay's own record and laid over every profile's projection (17.5) |
 | `hd_options_write`, `hd_state_cas`, `hd_apply_state`, `hd_custom_*`, `hd_lookup_stats_*`, `hd_word_status_override` | background-requests.js | No profile dimension | Optional `profileId` (5.2) |
