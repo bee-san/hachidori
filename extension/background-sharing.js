@@ -122,7 +122,7 @@ async function answerLanguageOptIn(message, connection) {
 }
 
 // A request from a connection that has not opted in names no profile; one
-// that opted in may add a language this host has a pack for, never at first run.
+// that opted in may add a language this host has a pack for.
 function languageRequest(message, connection) {
   const type = message?.type;
   const profileRequest = message?.target === TARGET && PROFILE_REQUEST_TYPES.has(type);
@@ -133,13 +133,9 @@ function languageRequest(message, connection) {
     if (profileRequest) return { response: failureReply(message, new Error(PROFILES_NOT_SHARED)) };
     return { message: withoutProfile(message) };
   }
-  if (profileRequest && type === "hd_profile_add") {
-    if (!hasLanguagePack(message.language)) {
-      return { response: failureReply(message,
-        new Error(`The linked Hachidori does not have ${languageName(message.language)}. Update it and try again.`)) };
-    }
-    const { firstRun, ...ordinary } = message;
-    return { message: ordinary };
+  if (profileRequest && type === "hd_profile_add" && !hasLanguagePack(message.language)) {
+    return { response: failureReply(message,
+      new Error(`The linked Hachidori does not have ${languageName(message.language)}. Update it and try again.`)) };
   }
   return { message };
 }
@@ -464,8 +460,7 @@ async function forwardProfileRequest(message) {
     }
     if (languageDescriptor(language) === null) throw new Error(`This Hachidori has no pack for ${language}.`);
   }
-  const { firstRun, ...forwarded } = message;
-  return forwardToHost(forwarded);
+  return forwardToHost(message);
 }
 
 function linkedOptionsCapability(message) {

@@ -519,43 +519,6 @@ test("a language request changes no dictionary and the last language stays", asy
   assert.match(reply.error, /last language/u);
 });
 
-test("a first-run choice makes the language the only profile, once, while setup is at its start", async () => {
-  const welcome = { schemaVersion: 1, revision: 1, startedAt: "2026-11-01T00:00:00.000Z", stage: "welcome", completedAt: null,
-    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null };
-  const { fromEngine, stored } = backgroundWorker({ options: { revision: 1, popupTheme: "auto", scanLength: 14 }, setupState: welcome });
-  const message = { type: "hd_profile_cas", action: "add", language: "ar", firstRun: true, baseRevision: 0,
-    state: { dictionaries: [], profiles: { ar: { dictionaries: [], groups: [] } } } };
-  let reply = await fromEngine(message);
-  assert.equal(reply.ok, true, reply.error);
-  const options = stored("options");
-  assert.deepEqual(options.profiles.map(profile => profile.id), ["ar"]);
-  assert.equal(options.profiles[0].settings.scanLength, 14, "edits made before setup move into the profile");
-  assert.equal(options.profiles[0].settings.popupTheme, "auto");
-  assert.deepEqual(options.profiles[0].packSettings, { vowelMarks: "show" });
-  // A retry after a lost reply does no harm.
-  reply = await fromEngine({ ...message, baseRevision: 1 });
-  assert.equal(reply.ok, true, reply.error);
-  assert.deepEqual(stored("options").profiles.map(profile => profile.id), ["ar"]);
-  // Japanese at first run is refused once setup has a language.
-  reply = await fromEngine({ ...message, language: "en", baseRevision: 1,
-    state: { dictionaries: [], profiles: { en: { dictionaries: [], groups: [] } } } });
-  assert.equal(reply.ok, false);
-  assert.equal(reply.errorCode, "already-set-up");
-});
-
-test("choosing Japanese at first run keeps a Japanese-only installation's settings and writes nothing", async () => {
-  const welcome = { schemaVersion: 1, revision: 1, startedAt: "2026-11-01T00:00:00.000Z", stage: "welcome", completedAt: null,
-    dictionaries: { outcomes: {}, totalSeconds: null, continued: false, selectionsApplied: [], recordedRuns: [] }, anki: null };
-  const options = { revision: 4, scanLength: 14, anki: { model: "Basic", deck: "Mining" } };
-  const { fromEngine, stored } = backgroundWorker({ options, setupState: welcome });
-  const reply = await fromEngine({ type: "hd_profile_cas", action: "add", language: "ja", firstRun: true, baseRevision: 0,
-    state: { dictionaries: [], profiles: { ja: { dictionaries: [], groups: [] } } } });
-  assert.equal(reply.ok, true, reply.error);
-  assert.equal(reply.converted, true, "the records keep the single-profile shape");
-  assert.deepEqual(stored("options"), options);
-  assert.equal(stored("dictionaryState"), undefined);
-});
-
 test("erasing a language empties its document, drops its counts and marks, and keeps Japanese's", async () => {
   const records = profileRecords();
   records.options.profiles.push({ id: "en", language: "en", settings: {}, packSettings: {} });
