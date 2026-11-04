@@ -27,7 +27,7 @@ function validLanguageGenerations(languages) {
       && typeof generation === "string" && generation !== "");
 }
 
-export function lookupStatsGeneration(descriptor, language = "ja") {
+function lookupStatsGeneration(descriptor, language = "ja") {
   return language === "ja" ? descriptor.generation : descriptor.languages?.[language] ?? null;
 }
 
@@ -56,11 +56,6 @@ export function withoutLookupStatsLanguage(descriptor, language) {
     ...(Object.keys(languages).length > 0 ? { languages } : {}) };
   assertLookupStatsDescriptor(next);
   return next;
-}
-
-// The Japanese view: the descriptor without `languages`, which older readers ignore.
-export function japaneseLookupStats(descriptor) {
-  return { generation: descriptor.generation, revision: descriptor.revision };
 }
 
 // The stored keys of rows outside every live generation: the top-level one
