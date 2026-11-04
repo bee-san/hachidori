@@ -5,6 +5,13 @@
 Media and evidence for the search history pull request (branch
 `feat/search-history`); kept off that branch so its diff stays code.
 
+## The texthooker user script
+
+`texthooker.js` is the texthooker user script for Design → Custom JavaScript,
+attached to the PR at the owner's request instead of being added to the
+repository. Switch on Settings → Advanced → Search history first. It is the
+file the PR branch carried until `9242ff5a`.
+
 ## GIFs
 
 Recorded with `scripts/capture-search-history-gifs.mjs` in headless Chrome
