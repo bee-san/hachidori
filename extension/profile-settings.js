@@ -442,7 +442,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     const hint = label?.querySelector(":scope > .field-hint")
       ?? element(control?.getAttribute("aria-describedby")?.split(" ")[0] ?? "");
     if (hint) {
-      hint.append(create("span", { className: "scope-note", text: "All languages", "data-scope-note": "" }));
+      // The space keeps Search settings' text of the hint apart from the note.
+      hint.append(" ", create("span", { className: "scope-note", text: "All languages", "data-scope-note": "" }));
       return;
     }
     if (label !== null) {

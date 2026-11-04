@@ -275,7 +275,9 @@ every value. Choosing another language at first run, before anything is
 installed (section 16.1), moves the stored profile keys, edits made before
 setup included, into that language's profile instead and applies the pack's
 replacements of section 6.3. The records convert back when one Japanese
-profile remains and no other language is held (section 16.5).
+profile remains and no other language is held (section 16.5), with every
+value they had; the options record's key order is the one exception
+(16.5).
 
 ## 5. The profile layer
 
@@ -1641,7 +1643,16 @@ source highlighting and Custom CSS and JavaScript for every language. The
   `languageSelection` names a profile that no longer exists (section 4.4).
 - When the only remaining profile is Japanese and no other language is held
   (section 2), which needs an explicit erase, the removal or erase converts
-  the records back to the single-profile shape (section 4.5).
+  the records back to the single-profile shape (section 4.5). The converted
+  record has the same keys and values as before, but not always their order:
+  the options record is rebuilt in the order the profile layer writes keys.
+  Chrome's `storage.local` returns keys sorted, so its records read back
+  byte for byte as before; where storage keeps insertion order (the smoke
+  fakes do, and Firefox's may: it was not measured), the JSON of the record and
+  of what it is copied into (backup manifests, sharing frames,
+  `hd_state_read` replies) can list keys in another order. Every reader
+  compares records by value (`sameJsonValue`), so nothing behaves
+  differently.
 
 ## 17. Backup, restore and sharing
 

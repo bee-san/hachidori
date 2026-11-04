@@ -349,13 +349,17 @@ function assertLanguagePart(code, part) {
 
 // The view lists every package as the complete state holds it, except other
 // languages' personal packages, which it leaves out. Returns those, by id,
-// with their language, including languages this build has no pack for.
+// with their language, including languages this build has no pack for. Both
+// sides are compared without targetLanguage: builds of the multi-language
+// branch before 7f36f9cf, the first test build among them, kept it in the
+// view's rows, and a restore takes only ids and enabled from the view.
 async function viewOmissions(snapshot, state, held) {
   const { packageWithEnabled } = globalThis.HDReaderOptions;
   const rows = new Map(state.dictionaries.map(row => [row.id, row]));
   for (const row of snapshot.state.dictionaries) {
     const source = rows.get(row.id);
-    if (source === undefined || !sameJsonValue(row, singleProfileRow(packageWithEnabled(source, row.enabled)))) throw invalidProfiles();
+    if (source === undefined
+      || !sameJsonValue(singleProfileRow(row), singleProfileRow(packageWithEnabled(source, row.enabled)))) throw invalidProfiles();
   }
   const listed = new Set(snapshot.state.dictionaries.map(row => row.id));
   const personal = new Map();

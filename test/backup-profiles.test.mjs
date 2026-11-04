@@ -218,6 +218,25 @@ test("a backup of records with profiles is a version 3 snapshot of their Japanes
   await assert.rejects(assertBackupProfiles(snapshot, renamed), /invalid language profiles/u);
 });
 
+test("a version 4 backup whose view rows kept targetLanguage, as the first test build wrote, restores the same records", async () => {
+  const { payload } = await payloadOf(JA_EN);
+  const rows = new Map(payload.profiles.dictionaryState.dictionaries.map(row => [row.id, row]));
+  const earlier = structuredClone(payload);
+  // Those builds copied each package's target language into its view row.
+  for (const row of earlier.snapshot.state.dictionaries) row.targetLanguage = rows.get(row.id).targetLanguage ?? "en";
+  await assertBackupProfiles(earlier.snapshot, earlier.profiles);
+  const [today, before] = await withBuild(["ja", "en"], () => Promise.all([
+    plannedRestore(EMPTY_CURRENT, payload), plannedRestore(EMPTY_CURRENT, earlier)]));
+  // Each restore stages fresh generations; everything else is the same.
+  const fresh = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu;
+  const stable = records => JSON.parse(JSON.stringify(records).replaceAll(fresh, "<generation>"));
+  assert.deepEqual(stable(before.records), stable(today.records));
+  // A view row that differs in anything else is still refused.
+  const renamed = structuredClone(earlier);
+  renamed.snapshot.state.dictionaries.find(row => row.id === "en-dictionary").title = "Renamed";
+  await assert.rejects(assertBackupProfiles(renamed.snapshot, renamed.profiles), /invalid/u);
+});
+
 test("a version 4 archive is version 3 for builds without profiles: the view's packages and nothing more", async () => {
   const { payload } = await payloadOf(JA_EN);
   const files = payload.snapshot.state.dictionaries.map((entry, index) => ({

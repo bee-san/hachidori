@@ -405,7 +405,8 @@
 
   // The popup names the profile in effect when it is not the active one
   // (docs/languages.md 8.1): a small label on a line of its own at the top of
-  // the popup, so it never covers what a theme draws there.
+  // the popup, so it never covers what a theme draws there. order:-1 keeps it
+  // first when the renderer moves its header back to the top.
   function syncProfileLabel(level) {
     if (!level.popup) return;
     const profile = readingProfiles === null ? null : requestProfile(level.currentViewRequest);

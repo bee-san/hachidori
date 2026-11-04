@@ -347,6 +347,8 @@ button,
 .language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 /* A row whose one button is hidden takes no space in the dialog's grid. */
 .language-dialog-buttons:has(> [hidden]:only-child) { display: none; }
+/* The heading's focus ring fits its text, as a section heading's does. */
+.language-dialog h2 { width: fit-content; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 .field-hint > .scope-note { display: block; }
