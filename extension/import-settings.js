@@ -173,49 +173,50 @@ async function renderLanguageRecommendations() {
 // An import whose archive names another profile's language says so and offers
 // Move to {Language} (docs/languages.md 14).
 function renderLanguageMoves() {
-  let block = element("import-language-moves");
+  for (const offer of document.querySelectorAll(".import-language-move")) offer.remove();
+  if (!libraryHasProfiles()) return;
   const profiles = globalThis.HDReaderOptions.profiles(storedOptionsRecord);
-  const offers = libraryHasProfiles() ? importedTitles.flatMap(title => {
+  for (const { title, index } of importedTitles) {
     const row = storedDictionaryState.dictionaries.find(entry => entry.title === title);
     const language = typeof row?.language === "string" ? row.language.toLowerCase().split("-")[0] : "";
     const target = profiles.find(profile => profile.language === language && profile.id !== editedProfile.id);
-    const here = dictionaries.some(entry => entry.id === row?.id);
-    return target && here ? [{ row, target }] : [];
-  }) : [];
-  if (offers.length === 0) {
-    block?.remove();
-    return;
+    const notes = element("import-progress")
+      .querySelector(`.setup-dictionary[data-source-id="${CSS.escape(String(index))}"] .setup-dictionary-notes`);
+    if (!target || !notes || !dictionaries.some(entry => entry.id === row?.id)) continue;
+    notes.append(languageMoveOffer(row, target));
+    notes.hidden = false;
   }
-  if (block === null) {
-    block = document.createElement("ul");
-    block.className = "import-language-moves";
-    block.id = "import-language-moves";
-    element("import-progress").after(block);
-  }
-  block.replaceChildren(...offers.map(({ row, target }) => {
-    const item = document.createElement("li");
-    const name = languageName(target.language);
-    const text = document.createElement("span");
-    text.textContent = `${row.displayName || row.title} is for ${name}. It was added to ${languageName()}.`;
-    const move = document.createElement("button");
-    move.type = "button";
-    move.className = "ghost";
-    move.textContent = `Move to ${name}`;
-    move.addEventListener("click", () => {
-      move.disabled = true;
-      void moveToProfile(row.id, target.id).then(error => {
-        if (error === null) {
-          text.textContent = `Moved ${row.displayName || row.title} to ${name}.`;
-          move.remove();
-        } else {
-          text.textContent = `Could not move ${row.displayName || row.title}: ${error}`;
-          move.disabled = false;
-        }
-      });
+}
+
+// One finished import's offer, among its entry's notes: the dictionary is for
+// another profile's language, and Move to {Language} moves it there.
+function languageMoveOffer(row, target) {
+  const item = document.createElement("li");
+  item.className = "import-language-move";
+  const name = languageName(target.language);
+  const text = document.createElement("span");
+  text.textContent = `This dictionary is for ${name}. It was added to ${languageName()}.`;
+  const move = document.createElement("button");
+  move.type = "button";
+  move.className = "ghost";
+  move.textContent = `Move to ${name}`;
+  move.addEventListener("click", () => {
+    const focused = document.activeElement === move;
+    move.disabled = true;
+    void moveToProfile(row.id, target.id).then(error => {
+      if (error === null) {
+        text.textContent = `Moved to ${name}.`;
+        if (focused) element("import-file").focus();
+        move.remove();
+      } else {
+        text.textContent = `Could not move ${row.displayName || row.title}: ${error}`;
+        move.disabled = false;
+        if (focused) move.focus();
+      }
     });
-    item.append(text, move);
-    return item;
-  }));
+  });
+  item.append(text, move);
+  return item;
 }
 
 function elapsedSince(started) {
@@ -440,7 +441,7 @@ async function importArchive(runImport, index, total, label) {
 
   if (outcome.ok) {
     const { report } = outcome.reply;
-    importedTitles.push(report.title);
+    importedTitles.push({ title: report.title, index });
     // What an MDX import left out. Notes never turn a success into a
     // failure: the dictionary is installed and counts as imported.
     const notes = mdxImportNotes(report, numberFormat);

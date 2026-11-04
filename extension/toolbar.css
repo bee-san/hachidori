@@ -43,8 +43,16 @@ button:focus-visible { outline: 3px solid #7765dc; outline-offset: 3px; }
 .language-choice[aria-checked="true"] { color: #483292; border-color: #7457c8; background: #eee8fd; }
 .language-choice .language-native { color: #686879; font-weight: 400; }
 .language-choice[aria-disabled="true"] { cursor: default; opacity: .6; }
+.language-choice:hover:not([aria-checked="true"]) { background: #f1edf9; border-color: #c9bedf; }
 @media (prefers-color-scheme: dark) {
   .language-choice { color: #d0cadc; background: #302d3a; border-color: #494352; }
   .language-choice[aria-checked="true"] { color: #e0d6ff; border-color: #806a93; background: #43325f; }
   .language-choice .language-native { color: #b6b0c3; }
+  .language-choice:hover:not([aria-checked="true"]) { background: #403749; border-color: #806a93; }
+}
+/* Under Windows contrast themes the chosen language keeps its look, as the
+   Settings switches do. */
+@media (forced-colors: active) {
+  .language-choice[aria-checked="true"] { forced-color-adjust: none; color: HighlightText; background: Highlight; border-color: Highlight; }
+  .language-choice[aria-checked="true"] .language-native { color: HighlightText; }
 }

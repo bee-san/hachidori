@@ -540,7 +540,7 @@ words are read as the Japanese profile, with every value exactly as stored.
   that no write happens on upgrade.
 
 A Japanese-only user sees three additions, all outside what the suites pin:
-the Settings sidebar's **Language** menu with **Add or remove languages**, the
+the Settings sidebar's **Language** menu with **Manage languages**, the
 welcome card's *I'm learning* menu (16.1), and the browser command *Switch to
 the next language* in Keybinds → Browser shortcuts, on Chrome's shortcuts page
 and in the keybind action list. The
@@ -770,7 +770,7 @@ it chooses the profile in effect:
    profile.
 
 The popup shows the profile in effect only when it differs from the active
-one, as a small language label beside the close button.
+one, as a small language label on a line of its own at the top of the popup.
 
 Each popup renders with its own profile in effect: that profile's dictionary
 view (display names, favourites, frequency modes and tab groups), its custom
@@ -1468,8 +1468,9 @@ separate change for the owner to decide.
   from the profile without deleting it (**Remove from {language}**) or
   deleted from Hachidori (**Delete**, whose confirmation names every profile
   using it).
-- **Bulk actions.** With the edited profile's selection, **Remove** deletes the
-  selected packages from Hachidori, naming the other profiles that use them.
+- **Bulk actions.** With the edited profile's selection, **Delete** (Remove in
+  the single-profile shape) deletes the selected packages from Hachidori,
+  naming the other profiles that use them.
   **Remove all imported dictionaries** removes every package from every
   profile; with **Also erase the personal dictionary source** it erases every
   language's personal source, held languages without a profile included
@@ -1524,7 +1525,7 @@ separate change for the owner to decide.
 
 The welcome card gains *I'm learning*, a language menu with every pack,
 Japanese first and selected, when `HDLanguages` is present (section 5). It
-sits in its own element after `#setup-actions`, outside `#setup-body` and not
+sits in its own element before `#setup-actions`, outside `#setup-body` and not
 among the action buttons, whose text and ids existing tests pin. The choice
 applies to **Start setup**, **Set up separately** and **Set up manually**. On
 an unlinked installation that is still at the start (`setupState` at
@@ -1592,10 +1593,10 @@ frame, gains nothing it could not do from the toolbar.
   in `.settings-nav` and not a `.nav-item`. In the narrow layout it sits above
   the `#settings-section` picker. With two or more profiles, **Use for
   lookups** beside it activates the edited profile.
-- **Add or remove languages** opens a dialog: the profiles with their
+- **Manage languages** opens a dialog: the profiles with their
   dictionary counts, **Remove**, and **Add a language** with every pack not in
-  use. Each held language without a profile is listed too ("Vietnamese:
-  personal dictionary, lookup counts and marks are kept") with **Erase**. On a
+  use. Each held language without a profile is listed too ("Vietnamese ·
+  Personal dictionary, lookup counts and marked words kept") with **Erase**. On a
   linked client whose host's `hello` lacks the capability, or that the host
   refused at opt-in, **Add a language** shows the welcome card's message for
   that case (section 16.1).

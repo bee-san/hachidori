@@ -70,7 +70,8 @@
 }
 .theme-store-card h3, .theme-store-card p { margin: 0; }
 .theme-store-card button { margin-top: auto; }
-.theme-store-card button[aria-pressed="true"] { outline: 2px solid var(--accent); }
+.theme-store-card button[aria-pressed="true"],
+#settings-language-use[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .theme-store-preview { width: 100%; height: var(--theme-store-preview-height); object-fit: contain; background: #111; border-radius: 4px; }
 
 @media (prefers-color-scheme: dark) {
@@ -330,29 +331,15 @@ button,
 .settings-language { display: grid; gap: 6px; margin: 22px 10px 0; }
 .settings-language-picker { display: grid; gap: 6px; }
 .settings-language-picker select { width: 100%; min-width: 0; }
-.settings-language-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.settings-language-actions button { min-height: 0; padding: 4px 8px; font-size: var(--font-caption); }
+.settings-language-actions { display: grid; gap: 6px; }
 .settings-language-status { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
 .settings-language-status:empty { display: none; }
 .settings-language-status.is-error { color: var(--error); }
-.language-dialog {
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-dialog);
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-overlay);
-}
-.language-dialog::backdrop { background: rgb(0 0 0 / 48%); }
-.language-dialog form { display: grid; gap: 12px; padding: 24px; }
 .language-dialog h2, .language-dialog h3, .language-dialog p { margin: 0; }
-.language-dialog h2:focus { outline: none; }
 .language-dialog h3 { margin-top: 6px; font-size: var(--font-body); }
-.language-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.language-list { margin: 0; padding: 0; list-style: none; }
+.language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: var(--row-padding) 16px; }
+.language-row + .language-row { border-top: 1px solid var(--border); }
 .language-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; overflow-wrap: anywhere; }
 .language-native { color: var(--text-dim); }
 .language-remove { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
@@ -360,15 +347,16 @@ button,
 .language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
+.field-hint > .scope-note { display: block; }
 /* Dictionaries per profile (section 14). */
 .dict-other-languages { display: grid; gap: 8px; margin-top: 24px; }
 .dict-other-languages h2, .dict-other-languages p { margin: 0; }
-.dict-other-language-list, .import-language-moves { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.dict-other-language, .import-language-moves li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
-  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-surface); }
+.dict-other-language-list { margin: 0; padding: 0; list-style: none; }
+.dict-other-language { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: var(--row-padding) 16px; }
+.dict-other-language + .dict-other-language { border-top: 1px solid var(--border); }
 .dict-other-language-title { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
-.dict-other-language button, .import-language-moves button { margin-inline-start: auto; }
-.import-language-moves { margin-top: 12px; }
+.dict-other-language button, .import-language-move button { margin-inline-start: auto; }
+.import-language-move { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .settings-search input { width: 100%; min-width: 0; }
 .settings-search-results h1 { margin-top: 0; }
 .settings-search-results ul { display: grid; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
@@ -820,7 +808,8 @@ button.danger:hover:not(:disabled) {
   color: var(--text-dim);
   font-size: var(--font-small);
 }
-.import-decision-dialog {
+.import-decision-dialog,
+.language-dialog {
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 0;
@@ -830,10 +819,12 @@ button.danger:hover:not(:disabled) {
   color: var(--text);
   box-shadow: var(--shadow-overlay);
 }
-.import-decision-dialog::backdrop {
+.import-decision-dialog::backdrop,
+.language-dialog::backdrop {
   background: rgb(0 0 0 / 48%);
 }
-.import-decision-dialog form {
+.import-decision-dialog form,
+.language-dialog form {
   display: grid;
   gap: 16px;
   padding: 24px;
@@ -1487,6 +1478,8 @@ textarea {
 .lookup-group,
 .anki-panel,
 .dict-list:not(:empty),
+.language-list:not(:empty),
+.dict-other-language-list:not(:empty),
 .dict-group-create,
 .dict-group,
 .recommendations,
@@ -2310,6 +2303,14 @@ textarea {
   }
   .settings-sidebar:has(.settings-language) .settings-section-picker {
     grid-row: 2;
+  }
+  .settings-sidebar:has(.settings-language) .settings-search {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .settings-language-actions {
+    grid-auto-flow: column;
+    justify-content: start;
   }
   .settings-nav {
     display: none;

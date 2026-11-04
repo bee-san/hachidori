@@ -321,7 +321,10 @@ async function start() {
   const adoptOptions = (stored, selection = languageSelection) => {
     storedOptions = stored;
     languageSelection = selection;
-    applyPageTheme(document, normaliseOptions(stored));
+    // The page reads in the active profile, and so takes its palette.
+    const layer = globalThis.HDReaderOptions;
+    applyPageTheme(document, layer.hasProfiles(stored)
+      ? layer.projectOptions(stored, layer.activeProfileId(stored, selection)) : normaliseOptions(stored));
     templates.show(activeTemplates(stored, selection).anki);
   };
   chrome.storage.onChanged.addListener((changes, area) => {

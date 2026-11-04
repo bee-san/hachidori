@@ -657,8 +657,10 @@ function renderDictionaryRow(template, entry, index) {
 // Remove from {Language}: the package leaves this profile and stays in the
 // library for the others.
 function removeFromEditedProfile(id) {
+  // Focus goes to the package's row among the other languages' dictionaries.
   void commitDictionaries(current => (current.some(entry => entry.id === id)
-    ? current.filter(entry => entry.id !== id) : null), true);
+    ? current.filter(entry => entry.id !== id) : null), true)
+    .then(() => document.querySelector(`.dict-other-language[data-dictionary-id="${CSS.escape(id)}"] .dict-use`)?.focus());
 }
 
 // Use in {Language}: a package of another language joins this profile,
@@ -666,6 +668,8 @@ function removeFromEditedProfile(id) {
 function useInEditedProfile(id) {
   const row = storedDictionaryState?.dictionaries?.find(entry => entry.id === id);
   if (!row) return;
+  // Focus goes to the package's new row in this library.
+  setPendingManagementFocus({ kind: "dictionary", id, controlClass: "dict-details-toggle" });
   void commitDictionaries(current => (current.some(entry => entry.id === id) ? null
     : [...current, normaliseDictionary({ ...row, enabled: true })]), true);
 }
@@ -831,6 +835,18 @@ function renderDictionaries(reuseRows = false) {
       : "Download a recommended dictionary from Add dictionaries, or bring your own Yomitan ZIP files.";
   }
   element("dict-empty-description").textContent = emptyDescription;
+  // 辞 is Japanese's own icon; another language's library shows the
+  // dictionary icon instead.
+  const icon = empty.querySelector(".empty-state-icon");
+  if (japanese && icon.textContent !== "辞") icon.replaceChildren("辞");
+  if (!japanese && !icon.querySelector(".hd-icon")) {
+    icon.replaceChildren(Object.assign(document.createElement("span"), { className: "hd-icon" }));
+    icon.firstChild.dataset.icon = "book-search";
+  }
+  // With profiles the row's Remove from {Language} leaves a language, so the
+  // bulk action that deletes from Hachidori says Delete, as the row's does.
+  const bulkLabel = libraryHasProfiles() ? "Delete" : "Remove";
+  if (element("dict-bulk-remove").textContent.trim() !== bulkLabel) element("dict-bulk-remove").textContent = bulkLabel;
   if (element("empty-install-recommended").hidden === japanese) element("empty-install-recommended").hidden = !japanese;
   element("dict-empty-actions").hidden = !isEmpty;
   element("empty-clear-search").hidden = isEmpty;

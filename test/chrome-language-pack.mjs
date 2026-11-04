@@ -4,7 +4,7 @@
  * (docs/languages.md 14, 16 and 18). In one fresh profile of headless Chrome,
  * as a user would:
  *
- *   1. Settings → Add or remove languages → Add a language adds the pack's
+ *   1. Settings → Manage languages → Add a language adds the pack's
  *      language, and the Japanese profile stays.
  *   2. Settings' import puts the dictionary into that profile; the import
  *      must succeed and the engine must load it.

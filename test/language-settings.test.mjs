@@ -2,7 +2,7 @@
 //
 // Settings edits one profile (docs/languages.md 5.3, 5.4, 7.5, 16.3-16.5): the
 // Language menu, the edited profile's own values and writes, Use for lookups,
-// the explicit-save prompt, removal elsewhere, the Add or remove languages
+// the explicit-save prompt, removal elsewhere, the Manage languages
 // dialog with held languages, the All languages notes and a pack's own
 // settings. A Japanese-only page keeps today's requests.
 import assert from "node:assert/strict";
@@ -44,7 +44,7 @@ test("a Japanese-only page shows the Language menu and sends today's requests", 
   const select = el("settings-language-select");
   assert.deepEqual([...select.options].map(option => [option.value, option.textContent]), [["ja", "Japanese (日本語)"]]);
   assert.equal(el("settings-language-use").hidden, true, "Use for lookups needs a second language");
-  assert.equal(el("settings-language-manage").textContent, "Add or remove languages");
+  assert.equal(el("settings-language-manage").textContent, "Manage languages");
   assert.equal(settings.document.querySelectorAll("[data-scope-note]").length, 0, "no All languages notes");
   assert.equal(el("language-auto-switch"), null);
   el("opt-scan-length").value = "20";
@@ -64,7 +64,7 @@ test("Settings starts on the active profile, shows its values and names it in ev
   assert.equal(el("opt-scan-length").value, "24", "the profile's own value");
   assert.equal(el("opt-popup-width").value, "600", "a global value");
   assert.equal(el("settings-language-use").hidden, false);
-  assert.equal(el("settings-language-use").disabled, true, "Arabic is already used for lookups");
+  assert.equal(el("settings-language-use").getAttribute("aria-pressed"), "true", "Arabic is already used for lookups");
   assert.equal(el("settings-language-use").textContent, "Used for lookups");
   assert.equal(page.dictionaries().map(entry => entry.title).join(), "Arabic", "the library is the profile's");
   el("opt-scan-length").value = "30";
@@ -182,7 +182,9 @@ test("shared settings say All languages once the records have profiles, and the 
   const { document, el } = settings;
   const noted = id => Boolean(el(id).closest("label")?.querySelector("[data-scope-note]")
     || el(id).closest("label")?.nextElementSibling?.matches("[data-scope-note]")
-    || document.querySelector(`label[for="${id}"]`)?.nextElementSibling?.matches("[data-scope-note]"));
+    || document.querySelector(`label[for="${id}"]`)?.nextElementSibling?.matches("[data-scope-note]")
+    // A control with a hint has the note as the hint's last line.
+    || el(el(id).getAttribute("aria-describedby")?.split(" ")[0] ?? "")?.querySelector("[data-scope-note]"));
   for (const id of ["opt-popup-width", "opt-popup-height", "opt-popup-scale", "opt-popup-toolbar", "opt-source-highlight",
     "opt-custom-popup-css", "opt-custom-popup-javascript", "opt-popup-nesting-depth", "opt-smaller-anki-cards", "opt-anki-url"]) {
     assert.ok(noted(id), id);
@@ -279,8 +281,9 @@ test("languages held without a profile are listed with Erase", async t => {
   el("settings-language-manage").click();
   await settle(50);
   assert.equal(el("settings-language-held").hidden, false);
-  assert.equal(el("settings-language-held-list").textContent.replace("Erase", ""),
-    "Vietnamese: personal dictionary, lookup counts and marks are kept");
+  const heldRow = el("settings-language-held-list").querySelector(".language-row");
+  assert.equal(heldRow.querySelector("strong").textContent, "Vietnamese");
+  assert.equal(heldRow.querySelector(".field-hint").textContent, "Personal dictionary, lookup counts and marked words kept");
   document.querySelector('[aria-label="Erase Vietnamese"]').click();
   await settle(50);
   const [erase] = writesOf(settings, "hd_profile_remove");

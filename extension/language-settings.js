@@ -26,11 +26,14 @@ function controlFor(document, setting, value, onChange) {
   const nodes = [row];
   if (describedBy) {
     control.setAttribute("aria-describedby", describedBy);
-    const hint = document.createElement("p");
+    // A switch's description follows its row; a field's hint is in the field.
+    const boolean = setting.type === "boolean";
+    const hint = document.createElement(boolean ? "p" : "span");
     hint.className = "field-hint";
     hint.id = describedBy;
     hint.textContent = setting.description;
-    nodes.push(hint);
+    if (boolean) nodes.push(hint);
+    else row.append(hint);
   }
   setValue(document, control, setting, value);
   return { nodes, control };

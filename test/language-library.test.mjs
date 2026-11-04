@@ -169,15 +169,16 @@ test("an import joins the edited profile, and an archive of another profile's la
   await settle(400);
   const [request] = sent(settings, "hd_import");
   assert.equal(request.profileId, "ar", "bound to the profile edited when the import started");
-  const offer = el("import-language-moves");
+  // The offer is one of the finished entry's notes (dictionary-progress.js).
+  const offer = el("import-progress").querySelector(".setup-dictionary .setup-dictionary-notes .import-language-move");
   assert.ok(offer, el("import-state").textContent);
-  assert.match(offer.textContent, /^Kaikki English is for English\. It was added to Arabic\.Move to English$/u);
+  assert.match(offer.textContent, /^This dictionary is for English\. It was added to Arabic\.Move to English$/u);
   offer.querySelector("button").click();
   await settle(100);
   const applies = sent(settings, "hd_apply_state");
   assert.deepEqual(applies.map(apply => [apply.profileId, apply.dictionaries.map(entry => entry.id).includes(added.id)]),
     [["en", true], ["ar", false]], "it joins English first, then leaves Arabic");
-  assert.equal(offer.textContent, "Moved Kaikki English to English.");
+  assert.equal(offer.textContent, "Moved to English.");
 });
 
 test("another language's library links to its pack's recommended dictionaries instead of the Japanese installer", async t => {

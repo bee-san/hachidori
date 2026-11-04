@@ -74,7 +74,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
   const use = create("button", { className: "ghost", id: "settings-language-use", type: "button", text: "Use for lookups" });
   use.hidden = true;
   const manage = create("button", { className: "ghost", id: "settings-language-manage", type: "button",
-    text: "Add or remove languages", "aria-haspopup": "dialog" });
+    text: "Manage languages", "aria-haspopup": "dialog" });
   actions.append(use, manage);
   const status = create("output", { className: "settings-language-status", id: "settings-language-status",
     "aria-live": "polite" });
@@ -97,6 +97,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
           <button type="button" class="ghost" id="settings-language-remove-cancel">Cancel</button>
         </div>
       </div>
+      <output class="settings-language-status" id="settings-language-dialog-status" aria-live="polite"></output>
+      <div class="language-dialog-buttons"><button type="button" class="ghost" id="settings-language-use-added" hidden>Use for lookups</button></div>
       <h3>Add a language</h3>
       <ul class="language-list" id="settings-language-available"></ul>
       <p class="field-hint" id="settings-language-available-empty" hidden>This Hachidori has no other language yet.</p>
@@ -104,12 +106,16 @@ export function createProfileSettings({ document, element, send, readEditedProfi
         <h3>Removed languages</h3>
         <ul class="language-list" id="settings-language-held-list"></ul>
       </div>
-      <output class="settings-language-status" id="settings-language-dialog-status" aria-live="polite"></output>
-      <div class="language-dialog-buttons"><button type="button" class="ghost" id="settings-language-use-added" hidden>Use for lookups</button></div>
       <div class="language-dialog-buttons"><button class="ghost" value="close">Close</button></div>
     </form>`;
   document.body.append(dialog);
   const dialogStatus = dialog.querySelector("#settings-language-dialog-status");
+  // Escape closes the removal panel before the dialog.
+  dialog.addEventListener("cancel", event => {
+    if (removing === null) return;
+    event.preventDefault();
+    closeRemoval();
+  });
   const useAdded = dialog.querySelector("#settings-language-use-added");
 
   function descriptorName(code) {
@@ -152,7 +158,10 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     const several = list.length > 1;
     use.hidden = !several;
     const active = readActiveProfileId() === edited.id;
-    use.disabled = busy || active;
+    // Enabled while pressed, as the theme store's Current theme is, so it
+    // keeps focus after a click.
+    use.disabled = busy;
+    use.setAttribute("aria-pressed", String(active));
     use.textContent = active ? "Used for lookups" : "Use for lookups";
     select.disabled = busy;
     manage.disabled = busy;
@@ -203,7 +212,8 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     container.replaceChildren(...held.map(({ language, entries }) => {
       const item = create("li", { className: "language-row" });
       const label = create("span", { className: "language-label" });
-      label.append(`${languageName(language)}: personal dictionary, lookup counts and marks are kept`);
+      label.append(...nameNodes(language), " ", create("span", { className: "field-hint",
+        text: "Personal dictionary, lookup counts and marked words kept" }));
       const erase = create("button", { className: "ghost danger", type: "button", text: "Erase",
         "aria-label": `Erase ${languageName(language)}` });
       erase.disabled = busy;
@@ -269,6 +279,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
 
   async function run(action) {
     if (busy) return;
+    const trigger = document.activeElement;
     busy = true;
     useAdded.hidden = true;
     render();
@@ -283,6 +294,9 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       // lookups when it is offered, else to the heading.
       if (dialog.open && !dialog.contains(document.activeElement)) {
         (useAdded.hidden ? dialog.querySelector("#settings-language-dialog-heading") : useAdded).focus();
+      } else if (document.activeElement === document.body && trigger?.isConnected && !trigger.disabled) {
+        // A control disabled while busy gets its focus back.
+        trigger.focus();
       }
     }
   }
@@ -394,7 +408,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     if (input !== document.activeElement) input.checked = readSelection().autoSwitch === true;
     const help = `Each lookup uses the language the page or the hovered element declares, when it is one of yours;`
       + ` otherwise ${languageName(profileList().find(profile => profile.id === readActiveProfileId())?.language ?? "ja")}.`
-      + " This browser only.";
+      + " This setting applies to this browser only.";
     if (element("language-auto-switch-help").textContent !== help) element("language-auto-switch-help").textContent = help;
   }
 
@@ -421,6 +435,14 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     for (const id of SHARED_CONTROLS) {
       const control = element(id);
       const label = control?.closest("label.field") ?? null;
+      // A control with a hint gets the note as the hint's last line, so a
+      // field keeps its grid and a switch keeps its description under it.
+      const hint = label?.querySelector(":scope > .field-hint")
+        ?? element(control?.getAttribute("aria-describedby")?.split(" ")[0] ?? "");
+      if (hint) {
+        hint.append(create("span", { className: "scope-note", text: "All languages", "data-scope-note": "" }));
+        continue;
+      }
       if (label !== null) {
         label.append(scopeNote("span"));
         continue;
@@ -474,6 +496,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     });
   });
   use.addEventListener("click", () => {
+    if (readActiveProfileId() === readEditedProfile().id) return;
     void run(async () => {
       await useEditedProfileForLookups();
       setStatus(status, `Lookups now use ${languageName(readEditedProfile().language)}.`, "ready");

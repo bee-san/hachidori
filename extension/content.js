@@ -404,8 +404,8 @@
   }
 
   // The popup names the profile in effect when it is not the active one
-  // (docs/languages.md 8.1): a small label in the popup's top corner, beside
-  // where the close button sits.
+  // (docs/languages.md 8.1): a small label on a line of its own at the top of
+  // the popup, so it never covers what a theme draws there.
   function syncProfileLabel(level) {
     if (!level.popup) return;
     const profile = readingProfiles === null ? null : requestProfile(level.currentViewRequest);
@@ -419,16 +419,14 @@
       label = document.createElement("span");
       label.className = "gsm-hoshidicts-profile-label";
       label.lang = "en";
-      // The popup's own text colour on its raised surface, at 11px: legible in
-      // every palette (WCAG AA), unlike the faint token at 0.8 opacity.
-      label.style.cssText = "position:absolute;inset-block-start:2px;inset-inline-end:8px;z-index:1;"
-        + "pointer-events:none;font-size:11px;line-height:1.4;padding:0 4px;border-radius:4px;"
-        + "color:var(--hoshidicts-text,currentColor);background:var(--hoshidicts-palette-base-200,transparent);";
+      // The popup's own text colour at 11px, legible in every palette (WCAG AA).
+      label.style.cssText = "display:block;margin:2px 8px 0;text-align:end;pointer-events:none;"
+        + "font-size:11px;line-height:1.4;color:var(--hoshidicts-text,currentColor);";
       level.profileLabel = label;
     }
     const name = globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;
     if (label.textContent !== name) label.textContent = name;
-    if (label.parentNode !== level.popup) level.popup.append(label);
+    if (level.popup.firstChild !== label) level.popup.prepend(label);
   }
 
   // Before a view renders it takes its profile's custom buttons, and a root

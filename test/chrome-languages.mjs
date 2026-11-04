@@ -210,13 +210,13 @@ try {
     const menu = await startup.evaluate(() => {
       const select = document.getElementById("setup-language-select");
       return { values: [...select.options].map(option => option.value), selected: select.value,
-        afterActions: document.getElementById("setup-actions").nextElementSibling?.id ?? "",
+        beforeActions: document.getElementById("setup-actions").previousElementSibling?.id ?? "",
         insideBody: document.getElementById("setup-body").contains(select),
         insideActions: document.getElementById("setup-actions").contains(select) };
     });
     await screenshot(startup, "first-run-picker", "#setup-card");
     check(PLANNED[0], menu.values[0] === "ja" && menu.selected === "ja" && menu.values.includes("en")
-      && menu.values.includes("ar") && menu.afterActions === "setup-language" && !menu.insideBody && !menu.insideActions,
+      && menu.values.includes("ar") && menu.beforeActions === "setup-language" && !menu.insideBody && !menu.insideActions,
     JSON.stringify(menu));
     // In one task, so no render can come between the choice and the click.
     await startup.evaluate(() => {

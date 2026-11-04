@@ -501,7 +501,7 @@ function languageDictionariesView() {
   picker.className = "file-button";
   picker.dataset.focusKey = "setup-language-import";
   const caption = document.createElement("span");
-  caption.textContent = "Import dictionary files";
+  caption.textContent = "Choose dictionary files";
   const input = document.createElement("input");
   input.type = "file";
   input.id = "setup-language-import";
@@ -519,7 +519,7 @@ function languageDictionariesView() {
     heading: `Add ${name} dictionaries`,
     body: [
       paragraph(`Hachidori does not install ${name} dictionaries for you. Open one of these pages, download its Yomitan ZIP file and import it here.`),
-      list, picker,
+      list, picker, languageImportRows(),
       paragraph(languageImport ?? installedLine(installed)),
       settingsNote("You can also import dictionaries later in ", "settings.html#add-dictionaries"),
     ],
@@ -537,23 +537,40 @@ function installedLine(installed) {
   return installed > 0 ? `${dictionaryCount(installed)} installed.` : "No dictionary installed yet.";
 }
 
+// One result row per chosen file, as Settings and the Japanese stage show.
+let languageImportProgress = null;
+
+function languageImportRows() {
+  languageImportProgress ??= createDictionaryProgressList({
+    document,
+    ariaLabel: "Dictionary import progress",
+    idPrefix: "setup-language-import",
+  });
+  return languageImportProgress.element;
+}
+
 // Imports the chosen archives one at a time into the active profile. The
 // progress and the outcome go through the live status, as the Japanese
 // stage's do.
 async function importLanguageDictionaries(files) {
   let imported = 0;
   let failed = null;
+  languageImportRows();
+  languageImportProgress.setEntries(files.map((file, index) => ({ id: index, name: file.name })));
   for (const [index, file] of files.entries()) {
     languageImport = `Importing ${file.name} (${index + 1} of ${files.length})…`;
     render();
     setStatus(languageImport);
+    languageImportProgress.update(index, { text: "Importing…", progress: { value: null } });
     const blobUrl = URL.createObjectURL(file);
     try {
       const reply = await send("hd_import", { blobUrl, fileName: file.name, ...profileFields() }, ENGINE_TARGET); // NOSONAR: one archive at a time
       if (!reply.ok) throw new Error(reply.error || "the dictionary could not be imported");
       imported += 1;
+      languageImportProgress.update(index, { text: `Imported ${reply.report?.title ?? file.name}.`, tone: "ok" });
     } catch (error) {
       failed = { file, error };
+      languageImportProgress.update(index, { text: `Failed: ${describeErrorMessage(error)}`, tone: "error" });
     } finally {
       URL.revokeObjectURL(blobUrl);
     }
@@ -1057,7 +1074,7 @@ function renderLanguageMenu(stage) {
     select.dataset.focusKey = "setup-language-select";
     select.addEventListener("change", () => { chosenLanguage = select.value; });
     menu.append(caption, select);
-    element("setup-actions").after(menu);
+    element("setup-actions").before(menu);
   }
   const select = element("setup-language-select");
   if (select.options.length !== choices.length) {
@@ -1166,7 +1183,7 @@ async function useSharedHachidori() {
   const completed = await advance("complete");
   if (completed && languageFailure !== null) {
     setStatus(`Linked. ${languageName(chosenLanguage)} could not be added, so Hachidori reads Japanese: `
-      + `${describeErrorMessage(languageFailure)} Add it in Settings → Language.`, "error", languageFailure);
+      + `${describeErrorMessage(languageFailure)} Add it later from the Language menu in Settings.`, "error", languageFailure);
   }
 }
 

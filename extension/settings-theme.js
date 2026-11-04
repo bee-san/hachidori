@@ -15,8 +15,19 @@
   // A failed read releases the page to the browser preference, as before; the
   // settings.js read reports the failure.
   const release = () => { delete root.dataset.hoshidictsThemePending; };
-  api.storage.local.get("options").then(({ options }) => {
-    let theme = globalThis.HDReaderOptions.normaliseOptions(options).popupTheme;
+  const reader = globalThis.HDReaderOptions;
+  api.storage.local.get(["options", reader.LANGUAGE_SELECTION_KEY]).then(stored => {
+    const { options } = stored;
+    // With profiles, the theme of the profile the page shows: the one the
+    // address names, else this browser's active one (docs/languages.md 5.3).
+    let flat = reader.normaliseOptions(options);
+    if (reader.hasProfiles(options)) {
+      const named = new URLSearchParams(location.search).get("profile");
+      const id = reader.profiles(options).some(profile => profile.id === named)
+        ? named : reader.activeProfileId(options, stored[reader.LANGUAGE_SELECTION_KEY]);
+      flat = reader.projectOptions(options, id);
+    }
+    let theme = flat.popupTheme;
     if (theme === "auto") theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     if (globalThis.HDReaderOptions.popupRenderer(theme) !== "default") theme = "default";
     root.dataset.hoshidictsTheme = theme;

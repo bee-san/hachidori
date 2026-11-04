@@ -192,7 +192,7 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   and from each other, and assign a binding only in the module that declares
   it; `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `profile-settings.js`
-  the Language menu, **Use for lookups** and the Add or remove languages
+  the Language menu, **Use for lookups** and the Manage languages
   dialog, and `language-settings.js` the settings a language pack defines
   (docs/languages.md 5.3, 7.5, 16.3-16.5); `memory-settings.js`
   the Advanced → Memory readout and each Dictionaries row's *In memory* line;

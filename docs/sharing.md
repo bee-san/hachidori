@@ -266,7 +266,7 @@ linked browser receives what it can read:
 - **Browsers that know about languages** opt in: they send the languages
   their own Hachidori has, and receive every profile as the host stores it.
   Each browser still chooses the language it reads in itself; the choice is
-  never shared. **Add or remove languages** on such a browser changes the
+  never shared. **Manage languages** on such a browser changes the
   host's languages, offering those both Hachidoris have.
 - A browser that **lacks one of the host's languages** (a language arrived
   with a newer Hachidori on the host) is refused at opt-in and works as an
