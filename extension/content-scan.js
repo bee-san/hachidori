@@ -19,6 +19,17 @@
   const JAPANESE_CHARACTER_PATTERN =
     /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
 
+  // Yomitan's search looks its query up from the first character, as a hover
+  // there would. A pasted line often opens with a bracket, an ellipsis, a space
+  // or a wave dash (〜, or ～ from a Windows IME), which no word starts with, so
+  // the search page's lookup starts after them (#610), and its cursor with it
+  // (search.js); a text of nothing else is looked up from its start.
+  const LEADING_PUNCTUATION_PATTERN = /^[\p{P}\p{Z}\s～]+/u;
+  function searchStart(text) {
+    const skipped = text.match(LEADING_PUNCTUATION_PATTERN)?.[0].length ?? 0;
+    return skipped < text.length ? skipped : 0;
+  }
+
   // `isOurNode(node)` is content.js's test for the reader's own popup host and
   // text-field imposter, which a scan never reads as page text.
   function createPageScanner({ isOurNode }) {
@@ -719,5 +730,5 @@
     };
   }
 
-  globalThis.HDContent = { ...globalThis.HDContent, createPageScanner, JAPANESE_CHARACTER_PATTERN };
+  globalThis.HDContent = { ...globalThis.HDContent, createPageScanner, JAPANESE_CHARACTER_PATTERN, searchStart };
 }());

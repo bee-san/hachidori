@@ -57,7 +57,7 @@ import {
 import { renderLookupCountsReset, resetLookupCounts } from "./lookup-stats-settings.js";
 import {
   attachOptionHandlers, flushOptionsUntilIdle, optionsEditRevision, pendingOptions, renderOptions,
-  renderThemeChoices, savingOptions, writeOptions,
+  renderSearchHistory, renderThemeChoices, savingOptions, writeOptions,
 } from "./option-settings.js";
 
 // Get debug info includes this page's warnings and errors, the errors it shows
@@ -117,6 +117,7 @@ const NUMBER_FIELDS = [
   { key: "automaticBackupDays", id: "opt-automatic-backup-days" },
   { key: "searchWindowWidthPx", id: "opt-search-window-width" },
   { key: "searchWindowHeightPx", id: "opt-search-window-height" },
+  { key: "searchHistoryLimit", id: "opt-search-history-limit" },
 ];
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },
@@ -200,6 +201,7 @@ const SECTION_STATUSES = {
   "custom-dictionary-status": { section: "custom-dictionary", label: "Personal dictionary" },
   "options-status": { section: "lookup", label: "Reading" },
   "lookup-counts-reset-status": { section: "lookup", label: "Lookup history" },
+  "search-history-status": { section: "advanced", label: "Search history" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
@@ -372,6 +374,7 @@ function showSettingsSection(focus = false) {
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
+  void renderSearchHistory();
   if (activeSection === "advanced") refreshAdvancedMemory();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,

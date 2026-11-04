@@ -241,4 +241,101 @@ describe("search page", () => {
       evidence.shown === true && JSON.stringify(evidence.chosen) === JSON.stringify(["e2e-words", original.templates[0].id]),
       JSON.stringify(evidence));
   });
+
+  // The search page's line history (docs/search-history.md): its lines, the
+  // box's walk, the searched text's cursor and an earlier line, and the API
+  // user scripts use.
+  step("the search page's history and its keys", async () => {
+    // Off by default: Settings → Advanced → Search history.
+    await writeOptions(page, { searchHistoryEnabled: true });
+    const search = await activate(await openExtensionPage("search.html"));
+    let frame = await searchFrame(search);
+    const ready = target => waitFor(() => target.evaluate(() => !document.getElementById("search-submit").disabled || false),
+      { timeout: 30_000 });
+    await ready(frame);
+    const searchFor = text => frame.evaluate((value) => {
+      const box = document.getElementById("search-input");
+      box.value = value;
+      box.form.requestSubmit();
+    }, text);
+    const state = () => frame.evaluate(() => {
+      const element = id => document.getElementById(id);
+      const [cursor] = CSS.highlights.get("hd-search-cursor") ?? [];
+      return { value: element("search-input").value, focused: document.activeElement?.id ?? null,
+        query: element("search-query").hidden ? null : element("search-query").textContent,
+        before: element("search-before").hidden ? null : element("search-before").dataset.text,
+        after: element("search-after").hidden ? null : element("search-after").dataset.text,
+        where: element("search-where").hidden ? null : element("search-where").textContent,
+        cursor: cursor ? { at: cursor.startOffset, text: cursor.toString() } : null };
+    });
+    const until = predicate => waitFor(async () => {
+      const current = await state();
+      return predicate(current) ? current : false;
+    }, { timeout: 15_000 });
+    const lines = () => frame.evaluate(() => globalThis.HDSearchHistory.list());
+
+    const before = await lines();
+    await searchFor("漢字");
+    await until(current => current.query === "漢字");
+    await searchFor("ありがとう");
+    await until(current => current.query === "ありがとう");
+    const kept = await waitFor(async () => {
+      const all = await lines();
+      return all.length === before.length + 2 ? all : false;
+    }, { timeout: 15_000 });
+    await frame.evaluate(() => {
+      const box = document.getElementById("search-input");
+      box.focus();
+      box.value = "下書き";
+      box.setSelectionRange(3, 3);
+    });
+    const walked = [];
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown"]) {
+      const previous = (await state()).value;
+      await search.keyboard.press(key);
+      walked.push((await until(current => current.value !== previous)).value);
+    }
+    check("the search page keeps each line it searches, and Up and Down in its box walk them back to the draft",
+      JSON.stringify(kept?.slice(-2).map(({ text, source, page: window }) => [text, source, window]))
+        === JSON.stringify([["漢字", "typed", "tab"], ["ありがとう", "typed", "tab"]])
+        && JSON.stringify(walked) === JSON.stringify(["ありがとう", "漢字", "ありがとう", "下書き"]),
+      JSON.stringify({ before: before.length, kept: kept?.map(line => line.text), walked }));
+
+    await searchFor("漢字読むありがとう");
+    const opened = await until(current => current.query === "漢字読むありがとう" && current.cursor?.text === "漢字");
+    await search.keyboard.press("ArrowRight");
+    const moved = await until(current => current.cursor?.at === 2 && current.cursor.text === "読む");
+    const looked = await waitFor(async () => ((await readPopup(frame))?.headword === "読む" ? "読む" : false), { timeout: 15_000 });
+    await search.keyboard.press("ArrowUp");
+    const earlier = await until(current => current.where !== null);
+    check("in the searched text Right moves the cursor to the next word and looks it up, and Up past its top row shows the earlier line between its neighbours",
+      opened.focused === "search-query" && moved !== false && looked === "読む" && earlier.query === "ありがとう"
+        && earlier.before === "漢字" && earlier.after === "漢字読むありがとう"
+        && earlier.where === "Earlier line -1 · ▲ earlier · ▼ later",
+      JSON.stringify({ opened, moved, looked, earlier }));
+
+    // HDSearchHistory, the page's API for user scripts (docs/search-history.md):
+    // it lists the lines the page kept, edits one and looks a word up in a
+    // text node of the script's own.
+    const [first] = await lines();
+    const api = await frame.evaluate(async (id) => {
+      const history = globalThis.HDSearchHistory;
+      const edited = await history.edit(id, "漢字を読む");
+      const own = document.createElement("p");
+      own.lang = "ja";
+      own.textContent = "ありがとう";
+      document.body.append(own);
+      const matched = await history.lookUp(own.firstChild, 0);
+      own.remove();
+      return JSON.stringify({ enabled: history.enabled, edited: edited?.text ?? null, matched,
+        listed: (await history.list()).map(line => line.text) });
+    }, first.id);
+    const used = JSON.parse(api);
+    await writeOptions(page, { searchHistoryEnabled: false });
+    check("HDSearchHistory, the search page's API for user scripts, lists the kept lines, edits one and looks a word up",
+      used.enabled === true && used.edited === "漢字を読む" && used.matched === 5 && used.listed[0] === "漢字を読む",
+      JSON.stringify(used));
+    await search.close();
+    await activate(page);
+  });
 });

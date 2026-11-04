@@ -132,6 +132,9 @@ const E2E_PLANNED = [
   "Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
   "a click on a word of the search page's query shows its results once Look up words with a click is on",
   "the search page's Anki Template switch makes the chosen Template the built-in one, and the frame's copy follows",
+  "the search page keeps each line it searches, and Up and Down in its box walk them back to the draft",
+  "in the searched text Right moves the cursor to the next word and looks it up, and Up past its top row shows the earlier line between its neighbours",
+  "HDSearchHistory, the search page's API for user scripts, lists the kept lines, edits one and looks a word up",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",

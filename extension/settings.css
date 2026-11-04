@@ -2195,6 +2195,7 @@ textarea {
   width: 8ch;
 }
 #opt-blur-frequency-threshold { width: 12ch; }
+#opt-search-history-limit { width: 12ch; }
 #opt-automatic-backup-days { width: 8ch; }
 #sharing-host-port { width: 12ch; }
 #definition-blur-count-paused label {

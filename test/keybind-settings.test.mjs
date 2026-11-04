@@ -15,30 +15,38 @@ const { DEFAULT_OPTIONS, KEYBIND_TOGGLE_OPTIONS, normaliseOptions, validateOptio
 const plain = value => JSON.parse(JSON.stringify(value));
 
 test("default keybinds keep Yomitan's keys for the actions Hachidori supports and patches stay strict", () => {
-  assert.deepEqual(DEFAULT_OPTIONS.keybinds.map(({ action, argument, key, modifiers }) =>
-    `${formatKeybind(key, modifiers)} ${action}${argument ? ` ${argument}` : ""}`), [
-    "Escape close", "Alt + PageUp previousEntry 3", "Alt + PageDown nextEntry 3", "Alt + End lastEntry",
-    "Alt + Home firstEntry", "Alt + ArrowUp previousEntry 1", "Alt + ArrowDown nextEntry 1",
-    "Alt + B historyBackward", "Alt + F historyForward", "Alt + E addNote", "Alt + P playAudio",
-    "Alt + V viewNotes", "Alt + WheelUp previousEntry 1", "Alt + WheelDown nextEntry 1",
+  assert.deepEqual(DEFAULT_OPTIONS.keybinds.map(({ action, argument, key, modifiers, scopes }) =>
+    `${formatKeybind(key, modifiers)} ${action}${argument ? ` ${argument}` : ""} ${scopes.join()}`), [
+    "Escape close popup", "Alt + PageUp previousEntry 3 popup", "Alt + PageDown nextEntry 3 popup", "Alt + End lastEntry popup",
+    "Alt + Home firstEntry popup", "Alt + ArrowUp previousEntry 1 popup", "Alt + ArrowDown nextEntry 1 popup",
+    "Alt + B historyBackward popup", "Alt + F historyForward popup", "Alt + E addNote popup", "Alt + P playAudio popup",
+    "Alt + V viewNotes popup", "Alt + WheelUp previousEntry 1 popup", "Alt + WheelDown nextEntry 1 popup",
+    // The search page's (docs/search-history.md).
+    "ArrowUp searchPreviousLine search", "ArrowDown searchNextLine search", "ArrowLeft searchPreviousWord search",
+    "ArrowRight searchNextWord search", "ArrowUp searchRowUp search", "ArrowDown searchRowDown search", "Enter addNote search",
   ]);
-  assert.ok(DEFAULT_OPTIONS.keybinds.every(bind => bind.enabled && bind.scopes.join() === "popup"));
+  assert.ok(DEFAULT_OPTIONS.keybinds.every(bind => bind.enabled));
   assert.deepEqual(plain(normaliseOptions({}).keybinds), plain(DEFAULT_OPTIONS.keybinds));
+  const searchRows = plain(DEFAULT_OPTIONS.keybinds.filter(bind => bind.scopes.includes("search")));
+  // A list saved before the search page had keys gains them when read; one with any search row is kept as it is.
   assert.deepEqual(plain(normaliseOptions({ keybinds: [
-    { action: "nextEntry", argument: "0", key: "", modifiers: ["shift", "alt", "hyper", "alt"], scopes: ["search", "web"] },
+    { action: "nextEntry", argument: "0", key: "", modifiers: ["shift", "alt", "hyper", "alt"], scopes: ["page", "web"] },
     { action: "profileNext", argument: "", key: "Equal", modifiers: ["alt"], scopes: ["popup"], enabled: true },
     { action: "toggleOption", argument: "scanLength", key: "KeyT", modifiers: [], scopes: ["web"], enabled: false },
     null,
   ] }).keybinds), [
     { action: "nextEntry", argument: "1", key: null, modifiers: ["alt", "shift"], scopes: ["web"], enabled: true },
     { action: "toggleOption", argument: "", key: "KeyT", modifiers: [], scopes: ["web"], enabled: false },
+    ...searchRows,
   ]);
+  const own = [{ ...searchRows[0], key: "KeyK", modifiers: ["alt"], enabled: false }];
+  assert.deepEqual(plain(normaliseOptions({ keybinds: own }).keybinds), own);
   assert.deepEqual(plain(validateOptionsPatch({ keybinds: [] })), { keybinds: [] });
   validateOptionsPatch({ keybinds: DEFAULT_OPTIONS.keybinds });
   const valid = { action: "playAudioFromSource", argument: "source-id", key: null, modifiers: ["ctrl"], scopes: ["popup"], enabled: true };
   validateOptionsPatch({ keybinds: [valid] });
   for (const invalid of [{ ...valid, action: "copyHostSelection" }, { ...valid, modifiers: ["shift", "ctrl"] },
-    { ...valid, scopes: ["search"] }, { ...valid, key: "" }, { ...valid, enabled: "yes" },
+    { ...valid, scopes: ["page"] }, { ...valid, scopes: ["web", "popup"] }, { ...valid, key: "" }, { ...valid, enabled: "yes" },
     { ...valid, action: "nextEntry", argument: "-1" }, { ...valid, action: "toggleOption", argument: "maxResults" }]) {
     assert.throws(() => validateOptionsPatch({ keybinds: [invalid] }), /invalid reader option/u, JSON.stringify(invalid));
   }
@@ -92,13 +100,19 @@ function fixture(t, { browserShortcutsAvailable = true } = {}) {
 
 test("keybind rows capture Yomitan-style key combinations and edit actions, arguments and scopes", t => {
   const f = fixture(t);
-  assert.equal(f.rows().length, 14);
+  assert.equal(f.rows().length, 21);
   assert.equal(f.control(0, "input").value, "Escape");
   assert.equal(f.control(0, "action").value, "close");
   assert.equal(f.control(8, "input").value, "Alt + F");
   assert.equal(f.control(8, "action").value, "historyForward");
   assert.equal(f.control(9, "input").value, "Alt + E");
   assert.equal(f.control(13, "input").value, "Alt + WheelDown");
+  assert.deepEqual([f.control(14, "input").value, f.control(14, "action").value, f.control(20, "input").value,
+    f.control(20, "action").value], ["ArrowUp", "searchPreviousLine", "Enter", "addNote"]);
+  // Reset takes the action's default in the row's own scope: Add note is Enter on the search page.
+  f.press(20, { key: "a", code: "KeyA", altKey: true });
+  f.control(20, "reset").click();
+  assert.deepEqual([f.keybinds[20].key, f.keybinds[20].modifiers.join(), f.keybinds[20].scopes.join()], ["Enter", "", "search"]);
 
   assert.equal(f.press(8, { key: "r", code: "KeyR", altKey: true, shiftKey: true }), true);
   assert.deepEqual(plain(f.keybinds[8]), { ...plain(DEFAULT_OPTIONS.keybinds[8]), key: "KeyR", modifiers: ["alt", "shift"] });
@@ -137,10 +151,11 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   assert.deepEqual([f.keybinds[8].key, f.keybinds[8].argument], ["PageDown", "3"], "Reset uses the action's first default");
 
   f.choose(f.control(8, "action"), "scanSelectedText");
-  const [popupScope, webScope] = f.row(8).querySelectorAll(".keybind-scope");
-  assert.deepEqual([f.keybinds[8].scopes.join(), popupScope.hidden, webScope.hidden, f.control(8, "reset").disabled], ["web", true, false, true]);
+  const [popupScope, searchScope, webScope] = f.row(8).querySelectorAll(".keybind-scope");
+  assert.deepEqual([f.keybinds[8].scopes.join(), popupScope.hidden, searchScope.hidden, webScope.hidden, f.control(8, "reset").disabled],
+    ["web", true, true, false, true]);
   f.choose(f.control(8, "action"), "toggleOption");
-  assert.deepEqual([popupScope.hidden, webScope.hidden, f.keybinds[8].scopes.join()], [false, false, "popup,web"]);
+  assert.deepEqual([popupScope.hidden, searchScope.hidden, webScope.hidden, f.keybinds[8].scopes.join()], [false, true, false, "popup,web"]);
   webScope.querySelector("input").click();
   assert.equal(f.keybinds[8].scopes.join(), "popup");
   assert.equal([...f.control(8, "option").options].find(option => option.value === "hoverEnabled").textContent, "Enable lookups");
@@ -157,7 +172,7 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   f.control(8, "enabled-input").click();
   assert.equal(f.keybinds[8].enabled, false);
   f.control(0, "remove").click();
-  assert.equal(f.rows().length, 13);
+  assert.equal(f.rows().length, 20);
   assert.equal(f.keybinds[0].action, "previousEntry");
   assert.equal(f.document.activeElement.id, "keybind-add");
   assert.equal(f.row(0).querySelector(".keybind-number").textContent, "Keybind 1");
@@ -167,15 +182,15 @@ test("keybind lists add blank rows, show an empty state and reset to the default
   const f = fixture(t);
   f.document.getElementById("keybind-add").click();
   assert.deepEqual(plain(f.keybinds.at(-1)), { action: "", argument: "", key: null, modifiers: [], scopes: ["popup"], enabled: true });
-  assert.equal(f.document.activeElement, f.control(14, "input"));
-  assert.equal(f.control(14, "input").value, "");
-  assert.ok([...f.row(14).querySelectorAll(".keybind-scope")].every(scope => scope.hidden), "None offers no scope");
+  assert.equal(f.document.activeElement, f.control(21, "input"));
+  assert.equal(f.control(21, "input").value, "");
+  assert.ok([...f.row(21).querySelectorAll(".keybind-scope")].every(scope => scope.hidden), "None offers no scope");
   f.receive([]);
   assert.equal(f.rows().length, 0);
   assert.equal(f.document.getElementById("keybind-empty").hidden, false);
   f.document.getElementById("keybind-reset-all").click();
   assert.deepEqual(plain(f.keybinds), plain(DEFAULT_OPTIONS.keybinds));
-  assert.equal(f.rows().length, 14);
+  assert.equal(f.rows().length, 21);
   assert.equal(f.document.getElementById("keybind-empty").hidden, true);
   f.control(0, "clear").click();
   assert.equal(DEFAULT_OPTIONS.keybinds[0].key, "Escape", "editing never mutates the defaults");
