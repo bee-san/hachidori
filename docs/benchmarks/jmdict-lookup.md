@@ -10,8 +10,8 @@ Both readers returned the same number of entries for every lookup.
 
 ## Results
 
-16,850 timed lookups: 5 fresh installs per reader × 5 passes × 337 lookups.
-Percentiles pool every measured lookup.
+16,850 timed lookups, 8,425 per reader: 5 fresh installs × 5 passes × 337
+lookups. Percentiles pool every measured lookup.
 
 | Metric | Hachidori | Yomitan | Ratio |
 | --- | ---: | ---: | ---: |
@@ -20,7 +20,7 @@ Percentiles pool every measured lookup.
 | Lookup p95 | 6.14 ms | 17.20 ms | 2.8× |
 | Lookup p99 | 7.84 ms | 26.25 ms | 3.3× |
 | Mean lookup | 3.11 ms | 8.53 ms | 2.7× |
-| Slowest lookup | 13.12 ms | 87.80 ms | |
+| Slowest lookup | 13.13 ms | 87.80 ms | |
 | Lookups per second, back to back | 321 | 117 | 2.7× |
 | Per-install lookup p50 | 2.37–3.46 ms | 6.80–7.60 ms | |
 | Import to first lookup, per install | 0.9–1.5 s | 39.8–69.6 s | 36× (medians) |
@@ -30,9 +30,10 @@ For the 295 lookups with fewer than 32 entries, both readers returned the same
 headwords. In 22 of the 42 lookups that reached the 32-entry limit, they kept
 different entries.
 
-An earlier run of the same workload on the same laptop, then in a slower power
-state, measured 6.5 ms vs 17.0 ms at p50 (2.6×) and 16.5 ms vs 58.1 ms at p99
-(3.5×). The absolute times moved with the machine; the ratio held.
+An earlier exploratory run of the same workload, whose data is not kept,
+measured 6.5 ms vs 17.0 ms at p50 (2.6×) and 16.5 ms vs 58.1 ms at p99 (3.5×)
+on the same laptop in a slower power state. The absolute times moved with the
+machine; the ratio held.
 
 ## Setup
 
@@ -85,4 +86,11 @@ node benchmark/jmdict-lookup.mjs --jmdict JMdict_english.zip \
 `benchmark/results/jmdict-lookup/` keeps this run: the gzip-compressed
 definition, every raw sample (each lookup's latency and response hash) and the
 failed attempts, with paths and the hostname redacted, plus `summary.json` and
-`summary.md`.
+`summary.md`. Recompute the summary from the kept files with:
+
+```sh
+mkdir /tmp/jmdict-kept
+gunzip -c benchmark/results/jmdict-lookup/definition.json.gz > /tmp/jmdict-kept/definition.json
+gunzip -c benchmark/results/jmdict-lookup/raw.jsonl.gz > /tmp/jmdict-kept/raw.jsonl
+node benchmark/jmdict-lookup.mjs --summarize-only --output /tmp/jmdict-kept
+```

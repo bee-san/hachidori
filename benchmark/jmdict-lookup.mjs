@@ -23,8 +23,9 @@ const SCAN_LENGTH = 16; // Hachidori's and Yomitan's default scan length
 const MAX_RESULTS = 32; // and default result limit
 const ATTEMPTS = 6;
 
-// Public-domain prose (Natsume Sōseki, Akutagawa, Dazai) and everyday sentences. A lookup
-// starts at every character, as a hover would, and scans the next 16 characters.
+// Public-domain prose (Natsume Sōseki, Akutagawa, Dazai) and everyday sentences. A lookup starts
+// at each character except punctuation and spaces, as a hover would, and scans up to the next 16
+// characters; a scan that repeats an earlier one is dropped.
 const TEXTS = [
   "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。",
   "親譲りの無鉄砲で小供の時から損ばかりしている。",
