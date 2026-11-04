@@ -16,8 +16,9 @@ Clipboard monitor from another tab, in a copy of the extension that holds
 `clipboardRead`, as the Chrome suite does. The captions are the script's, laid
 over the page; the red dot marks a click, which headless screenshots do not
 show. `531b7f0c` is `7d4d18bf` on the branch rebased onto #664, #661 and #654. The GIFs
-predate `5d718cd2`, which gives the dimmed neighbour rows the palette's dim
-text colour: in them those rows are fainter than they are now.
+predate two changes to the neighbour rows: in them the rows are the text's
+size and mixed toward the page, where now they are smaller (`009cb180`) and in
+the palette's dim text (`5d718cd2`).
 
 | File | Shows |
 | --- | --- |
@@ -32,13 +33,15 @@ HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo
 ## Screenshots
 
 `HACHIDORI_SEARCH_SCREENSHOTS=DIR node test/chrome-search-history.mjs` on the
-PR at `4856496b`, whose search page the head `18e7328a` keeps (it is rebased
-onto #664, #661 and #654 and only folds one branch of `stepLine`): an earlier line's visit (the searched text with its cursor, the
-dimmed neighbours and the keys) in the default, Girlypop (light), Solarized
+PR at `10d4715a`: an earlier line's visit (the searched text with its cursor,
+the neighbour rows and the keys) in the default, Girlypop (light), Solarized
 Light and High contrast palettes and with forced colours emulated, and
-Settings → Reading → Search page. Solarized Light is the palette where the
-neighbour rows were faintest before `5d718cd2` (3.10:1); the Chrome suite now
-checks those rows at 4.5:1 or more in all 42 palettes.
+Settings → Reading → Search page. The neighbour rows are set smaller than the
+searched text in every palette, and in the palette's dim text, which is dimmer
+than its text only in Default, Autumn and High contrast; Girlypop and
+Solarized Light show rows told apart by size alone. The Chrome suite checks
+the rows at 4.5:1 or more, smaller, and dimmer where the palette has a dim
+text, in all 42 palettes.
 
 ## Benchmark
 
