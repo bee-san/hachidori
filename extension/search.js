@@ -171,17 +171,10 @@ function show(shownLine) {
 // Down on an earlier line's last row shows the line after it, and past the
 // newest the current line again, its cursor where it was. An earlier line
 // opens on its first word. A press while a step waits for the history is dropped.
+// While the history is switched off, a visit can only end: Down shows the
+// searched line again.
 async function stepLine(direction) {
-  if (stepping || !shown || (direction > 0 && !visit)) return;
-  // With the history switched off, a visit can only end: Down shows the
-  // searched line again.
-  if (!options.searchHistoryEnabled) {
-    if (direction > 0) {
-      visit = null;
-      show(current);
-    }
-    return;
-  }
+  if (stepping || !shown || (direction > 0 ? !visit : !options.searchHistoryEnabled)) return;
   stepping = true;
   const from = shown;
   const earlier = found => found && line(found.text, found.id, 0);
@@ -192,7 +185,7 @@ async function stepLine(direction) {
       const older = next && earlier(await keptLine(next.id, -1, next.text));
       if (!next || shown !== from) return;
       visit = { older, newer: from, depth: (visit?.depth ?? 0) + 1 };
-    } else if (visit.newer === current) {
+    } else if (visit.newer === current || !options.searchHistoryEnabled) {
       next = current;
       visit = null;
     } else {
