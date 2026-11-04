@@ -102,8 +102,8 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `searchClickLookup` (false) | Reading → Search page | None | G |
 | `searchWindowWidthPx` (600) | Reading → Search page | None | G |
 | `searchWindowHeightPx` (640) | Reading → Search page | None | G |
-| `searchHistoryEnabled` (false) | Reading → Search page | None; the history keeps lines of every language | G |
-| `searchHistoryLimit` (10000) | Reading → Search page | None | G |
+| `searchHistoryEnabled` (false) | Advanced → Search history | None; the history keeps lines of every language | G |
+| `searchHistoryLimit` (10000) | Advanced → Search history | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
 | new `profiles` (not an option key) | Advanced → Languages | — | structure of `options` (4.1) |
 | new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Advanced → Languages (**Use for lookups**, Switch language automatically) | — | installation-local key (4.4) |

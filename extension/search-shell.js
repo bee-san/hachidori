@@ -355,6 +355,14 @@ export function templateSwitch(select, frame, api = chrome) {
   return { show };
 }
 
+// The records start() adopts once its first read is in: for each, the newest,
+// so a change that came meanwhile is not undone (main adopts its newest
+// options there too).
+export function newestRecords(first, changed, current) {
+  return [changed.options ? current.options : first.options,
+    changed.languageSelection ? current.languageSelection : first.languageSelection];
+}
+
 async function start() {
   const store = openDebugLogStore(window.indexedDB);
   captureDebugLog(window, { context: "search", store });
@@ -365,6 +373,9 @@ async function start() {
   // what the history keeps. With profiles the page reads in the active one,
   // so it takes that profile's palette and Templates (docs/languages.md 8.1).
   let storedOptions, languageSelection;
+  // The records a change has brought since the first read, whose newest
+  // values the end of start() adopts, as main adopts its newest options there.
+  const changed = { options: false, languageSelection: false };
   const nameClipboardLanguage = () => {
     const language = activeLanguage(storedOptions, languageSelection);
     const label = document.getElementById("search-clipboard").closest("label");
@@ -388,9 +399,18 @@ async function start() {
   };
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !(changes.options || changes.languageSelection)) return;
-    if (changes.options) options = Promise.resolve(normaliseOptions(changes.options.newValue));
-    adoptOptions(changes.options ? changes.options.newValue : storedOptions,
-      changes.languageSelection ? changes.languageSelection.newValue : languageSelection);
+    if (changes.options) {
+      options = Promise.resolve(normaliseOptions(changes.options.newValue));
+      changed.options = true;
+    }
+    if (changes.languageSelection) changed.languageSelection = true;
+    const selection = changes.languageSelection ? changes.languageSelection.newValue : languageSelection;
+    // A language choice made before any options were seen waits for them.
+    if (!changed.options && storedOptions === undefined) {
+      languageSelection = selection;
+      return;
+    }
+    adoptOptions(changes.options ? changes.options.newValue : storedOptions, selection);
   });
   const lines = openSearchHistory({ indexedDB: window.indexedDB });
   const history = { onChange: lines.onChange, requests: searchHistoryRequests(lines, { settings: () => options,
@@ -439,8 +459,7 @@ async function start() {
     frame.focus();
     port?.postMessage({ kind: "key", key: event.key });
   });
-  const { options: stored, languageSelection: selection } = await initial;
-  adoptOptions(stored, selection);
+  adoptOptions(...newestRecords(await initial, changed, { options: storedOptions, languageSelection }));
 }
 
 if (globalThis.document) await start();

@@ -531,6 +531,11 @@ words are read as the Japanese profile, with every value exactly as stored.
   `wasm/bindings.cpp`; the bindings now read small files with one such
   `open` (`read_file_start`), so the check reads only `flush_file`'s body,
   where the barrier is. It still fails when `flush_file` opens read-only.
+  A second: `test/chrome-settings-first-frame.mjs` (run by `chrome-e2e`)
+  sampled the screencast's frame list while a frame still in flight could
+  join it, which left that frame without samples and threw on a loaded
+  host; it now samples the frames captured when the screencast stopped. Its
+  assertions are unchanged.
 - hoshidicts' three Japanese parity tests: deinflection, text processing and
   whole lookups compared with today's code (engine contract, section 11.3),
   and Yomitan's complete Japanese conjugation corpus.
@@ -813,8 +818,11 @@ the Japanese pack carries `word-highlights.js:39-40` exactly. The
 
 - **Search page**: with profiles, the search box and the echoed query take the
   profile's `lang`; for right-to-left packs also `dir="auto"`. The leading
-  punctuation the page skips stays. The line history's rows around an earlier
-  line take the profile's `lang` and, outside Japanese, their own text's
+  punctuation the page skips stays. The line history (docs/search-history.md)
+  and its two settings, Advanced → Search history's switch and limit
+  (`searchHistoryEnabled`, `searchHistoryLimit`, global keys), are this
+  browser's and shared by every language. The rows around an earlier line
+  take the profile's `lang` and, outside Japanese, their own text's
   direction. Rubi's cursor rests on every character in Japanese, as on main;
   in a pack whose `text.scanStart` is `"word"` it rests only on word starts,
   by the pack's `wordCharacters` and `wordInternal` (a lookup there starts at
