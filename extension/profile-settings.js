@@ -41,6 +41,15 @@ function replyError(reply, fallback) {
   return new Error(reply?.error || fallback);
 }
 
+function setText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
+
+// A list's row named `key` by its `attribute` (data-profile-id, data-language).
+function rowNamed(container, attribute, key) {
+  return [...container.children].find(item => item.dataset[attribute] === key) ?? null;
+}
+
 export function createProfileSettings({ document, element, send, setStatus, readEditedProfile, readActiveProfileId,
   readOptionsRecord, readDictionaryState, readSelection, readRecords, languageName, chooseEditedProfile,
   useEditedProfileForLookups, writeAutoSwitch, settleEdits, afterProfileChange, openLanguages }) {
@@ -131,10 +140,6 @@ export function createProfileSettings({ document, element, send, setStatus, read
     if (state === null) return 0;
     if (!hasDictionaryProfiles(state)) return profileId === JAPANESE_PROFILE_ID ? state.dictionaries?.length ?? 0 : 0;
     return state.profiles?.[profileId]?.dictionaries?.length ?? 0;
-  }
-
-  function setText(node, text) {
-    if (node.textContent !== text) node.textContent = text;
   }
 
   // Replaces a select's options only when they change, and never while it is
@@ -265,10 +270,6 @@ export function createProfileSettings({ document, element, send, setStatus, read
       if (focused) rowNamed(container, attribute, focused)?.querySelector("button")?.focus();
     }
     for (const button of container.querySelectorAll("button")) button.disabled = busy;
-  }
-
-  function rowNamed(container, attribute, key) {
-    return [...container.children].find(item => item.dataset[attribute] === key) ?? null;
   }
 
   function renderProfiles() {
