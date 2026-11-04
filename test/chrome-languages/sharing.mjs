@@ -128,7 +128,8 @@ async function link(installation) {
 }
 
 // What an open page of the browser shows: the toolbar's language buttons and
-// the Settings Language menu's choices.
+// the choices of Settings → Advanced → Languages → Settings shows, which a page
+// with one language does not have.
 const toolbarLanguages = page => page.evaluate(() =>
   [...document.querySelectorAll("#language-switcher [data-profile-id]")].map(button => button.dataset.profileId));
 const menuLanguages = page => page.evaluate(() =>
@@ -164,7 +165,7 @@ try {
     JSON.stringify({ older: olderRecords.dictionaryState?.schemaVersion, wide: wideRecords.dictionaryState?.schemaVersion, wideProfiles }));
     wideToolbar = await wide.page("toolbar.html");
     wideSettings = await wide.page("settings.html#lookup");
-    await wideSettings.waitForSelector("#settings-language-select", { timeout: 30_000 });
+    await wideSettings.waitForSelector("#language-settings", { timeout: 30_000 });
   });
 
   let olderBefore = null;
@@ -237,7 +238,7 @@ try {
       return value.length === 2 ? value : null;
     }) ?? await toolbarLanguages(toolbar);
     narrowSettings = await narrow.page("settings.html#lookup");
-    await narrowSettings.waitForSelector("#settings-language-select", { timeout: 30_000 });
+    await narrowSettings.waitForSelector("#language-settings", { timeout: 30_000 });
     const menu = await until(async () => {
       const value = await menuLanguages(narrowSettings);
       return value.length === 2 ? value : null;
@@ -247,7 +248,7 @@ try {
   });
 
   await step(PLANNED[5], async () => {
-    // Every storage event and every Language menu this page ever shows.
+    // Every storage event and every Settings shows menu this page ever shows.
     await narrowSettings.evaluate(() => {
       window.arabicSeen = [];
       chrome.storage.onChanged.addListener(changes => {
