@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { activeTemplates, lookupWorthy, templateSwitch } from "../extension/search-shell.js";
+import { activeTemplates, lookupWorthy, newestRecords, templateSwitch } from "../extension/search-shell.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -64,4 +64,15 @@ test("the Clipboard monitor searches text in the language used for lookups", asy
   assert.equal(await lookupWorthy("They walk to the shop.", "ar"), false);
   assert.equal(await lookupWorthy("読む", null), true, "without profiles, today's Japanese filter");
   assert.equal(await lookupWorthy("They walk", null), false);
+});
+
+test("the search page's start adopts a change that came while it started", () => {
+  const first = { options: { revision: 1, popupTheme: "default" }, languageSelection: { revision: 1, activeProfileId: "ja" } };
+  const current = { options: { revision: 2, popupTheme: "light" }, languageSelection: { revision: 2, activeProfileId: "en" } };
+  assert.deepEqual(newestRecords(first, { options: true, languageSelection: false }, current),
+    [current.options, first.languageSelection]);
+  assert.deepEqual(newestRecords(first, { options: false, languageSelection: true }, current),
+    [first.options, current.languageSelection]);
+  assert.deepEqual(newestRecords(first, { options: false, languageSelection: false }, current),
+    [first.options, first.languageSelection], "nothing changed: the first read");
 });
