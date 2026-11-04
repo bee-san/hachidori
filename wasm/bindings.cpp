@@ -827,14 +827,26 @@ WireSegmentResponse segment(const Engine& e, std::string_view text, size_t scan_
 // of the best result there, which may cover several words. A word that no
 // result covers is no span. Word starts follow text.wordCharacters, with
 // wordInternal characters inside a word between two word characters.
+// The payload bits of the lead byte of a UTF-8 sequence `width` bytes long.
+char32_t lead_bits(std::byte lead, size_t width) {
+  switch (width) {
+    case 1: return std::to_integer<char32_t>(lead);
+    case 2: return std::to_integer<char32_t>(lead & std::byte{0x1F});
+    case 3: return std::to_integer<char32_t>(lead & std::byte{0x0F});
+    default: return std::to_integer<char32_t>(lead & std::byte{0x07});
+  }
+}
+
 std::u32string code_points(std::string_view text, const TextIndex& index) {
   std::u32string out;
   out.reserve(index.codepoints());
   for (size_t i = 0; i < index.codepoints(); ++i) {
-    const auto* bytes = reinterpret_cast<const unsigned char*>(text.data() + index.bytes[i]);
-    const size_t width = index.bytes[i + 1] - index.bytes[i];
-    char32_t c = width == 1 ? bytes[0] : width == 2 ? bytes[0] & 0x1F : width == 3 ? bytes[0] & 0x0F : bytes[0] & 0x07;
-    for (size_t k = 1; k < width; ++k) c = (c << 6) | (bytes[k] & 0x3F);
+    const size_t start = index.bytes[i];
+    const size_t width = index.bytes[i + 1] - start;
+    char32_t c = lead_bits(static_cast<std::byte>(text[start]), width);
+    for (size_t k = 1; k < width; ++k) {
+      c = (c << 6) | std::to_integer<char32_t>(static_cast<std::byte>(text[start + k]) & std::byte{0x3F});
+    }
     out.push_back(c);
   }
   return out;
@@ -842,7 +854,8 @@ std::u32string code_points(std::string_view text, const TextIndex& index) {
 
 WireSegmentResponse segment_words(const Engine& e, const hoshidicts::lang::PackData& pack, std::string_view text,
                                   size_t scan_length, const LookupOptions& options, std::string_view excluded,
-                                  LookupCopyBudget& budget, FunctionWords function_words) {
+                                  LookupCopyBudget& budget) {
+  const std::vector<std::string_view> function_words(pack.function_words.begin(), pack.function_words.end());
   const TextIndex index = index_text(text);
   const std::u32string cps = code_points(text, index);
   const size_t count = cps.size();
@@ -1740,10 +1753,12 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
           throw std::invalid_argument("unknown language " + options.language);
         }
         const auto& data = pack->data();
-        const std::vector<std::string_view> words(data.function_words.begin(), data.function_words.end());
-        response = spaces_segmentation().contains(options.language)
-            ? segment_words(engine(), data, segment_text, static_cast<size_t>(scan_length), options, excluded, budget, words)
-            : segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget, words);
+        if (spaces_segmentation().contains(options.language)) {
+          response = segment_words(engine(), data, segment_text, static_cast<size_t>(scan_length), options, excluded, budget);
+        } else {
+          const std::vector<std::string_view> words(data.function_words.begin(), data.function_words.end());
+          response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget, words);
+        }
       }
     }
     out = lookup_json(response, budget);
@@ -1790,14 +1805,12 @@ EMSCRIPTEN_KEEPALIVE int hdw_language_load(const char* language_json, const char
   clear_error();
   try {
     const std::string_view language{language_json == nullptr ? "" : language_json};
-    std::string error;
-    if (!languages().add(language, transforms_json == nullptr ? "" : transforms_json, &error)) {
+    if (std::string error; !languages().add(language, transforms_json == nullptr ? "" : transforms_json, &error)) {
       set_error(error.empty() ? "the language pack could not be loaded" : error);
       return 0;
     }
     // The descriptor parsed, so its code and text block are there.
-    WireSegmentationDescriptor descriptor;
-    if (!glz::read<glz::opts{.error_on_unknown_keys = false}>(descriptor, language)) {
+    if (WireSegmentationDescriptor descriptor; !glz::read<glz::opts{.error_on_unknown_keys = false}>(descriptor, language)) {
       if (descriptor.text.segmentation == "spaces") spaces_segmentation().insert_or_assign(descriptor.code, true);
       else spaces_segmentation().erase(descriptor.code);
     }
