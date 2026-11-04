@@ -11,8 +11,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-// The factory is in parentheses so that V8 compiles it once, as the script
-// loads, rather than preparsing it and then compiling it again for the call.
 (function (root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) {
@@ -21,7 +19,7 @@
   if (root) {
     root.HDPopup = api;
   }
-}(globalThis, (function () {
+}(globalThis, function () {
   "use strict";
 
   const DEFAULT_INITIAL_RESULT_COUNT = 1;
@@ -4768,4 +4766,4 @@
     characterEntryResult,
     metadataOptions,
   };
-})));
+}));
