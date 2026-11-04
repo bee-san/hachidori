@@ -67,7 +67,7 @@
     EDITING_SELECTOR, JAPANESE_CHARACTER_PATTERN, OPAQUE_TAGS, blockOf, candidateSignature, candidateStart,
     caretRangeAt, collectScanEntries, collectSentenceSources, computedStyleFor, expandCandidateAnchor, glyphAtPoint,
     hasVisibleContent, isEditingElement, isHiddenElement, isJapaneseToken, isLanguageToken, isScannableElement,
-    isScannableTextNode, rangeOffsetWithin, rawMatchedText, refineSentence, runEntries, sameAnchorNode,
+    isScannableTextNode, isWordLanguageToken, rangeOffsetWithin, rawMatchedText, refineSentence, runEntries, sameAnchorNode,
     selectionSentence, sentenceMatchedText, sourceOffset, textBlocks, textRuns, withSentence, wordStart,
   } = globalThis.HDContent.createPageScanner({ isOurNode });
   const MODIFIER_PROPERTIES = new Map([
@@ -236,7 +236,7 @@
     const breaks = text.highlightBreaks && typeof text.highlightBreaks === "object" ? text.highlightBreaks
       : { sentenceEnd: sentence?.terminators ?? [], clauseEnd: [] };
     return {
-      gate: value => isLanguageToken(value, pattern),
+      gate: value => (word === null ? isLanguageToken(value, pattern) : isWordLanguageToken(value, pattern, word)),
       isText: value => pattern.test(value),
       words: word === null ? null : { word, internal: patternOf(text.wordInternal), limit: MAX_SCAN_WINDOW },
       sentenceRules: sentence === null ? undefined : globalThis.HDSentence.sentenceRules(sentence),

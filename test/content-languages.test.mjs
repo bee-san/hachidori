@@ -113,6 +113,19 @@ test("an Arabic scan starts at the hovered word in logical order and gates on th
   assert.equal(scanner.isJapaneseToken("running"), false, "Japanese keeps today's gate");
 });
 
+// 8.3: a word pack's scan can start at an opening apostrophe that is a word
+// character but not a text character (Esperanto 'jes', ’Ĉu).
+test("a word pack's gate reads the token after a leading apostrophe", t => {
+  const { scanner } = page(t, "");
+  const pattern = /\p{Script=Latin}/u;
+  const word = /[\p{L}\p{M}'’]/u;
+  assert.equal(scanner.isLanguageToken("'jes' diris", pattern), false, "the plain gate sees an empty first token");
+  assert.equal(scanner.isWordLanguageToken("'jes' diris", pattern, word), true);
+  assert.equal(scanner.isWordLanguageToken("’Ĉu vi", pattern, word), true);
+  assert.equal(scanner.isWordLanguageToken("— jes", pattern, word), false, "other punctuation still ends the token");
+  assert.equal(scanner.isWordLanguageToken("' 123", pattern, word), false);
+});
+
 test("sentences end at a pack's terminators and keep its quote pairs whole", t => {
   const { window } = page(t, "");
   const { extractSentence, sentenceRules } = window.HDSentence;

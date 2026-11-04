@@ -79,6 +79,18 @@
       return pattern.test(token);
     }
 
+    // A word pack's gate (8.3): its scan can start at a word character outside
+    // its text pattern, such as Esperanto's opening apostrophe ('jes', ’Ĉu),
+    // so the token after those characters decides.
+    function isWordLanguageToken(text, pattern, word) {
+      let index = 0;
+      for (const character of text) {
+        if (!word.test(character) || pattern.test(character)) break;
+        index += character.length;
+      }
+      return isLanguageToken(text.slice(index), pattern);
+    }
+
     function computedStyleFor(element, styleCache) {
       let style = styleCache.get(element);
       if (!style) {
@@ -797,6 +809,7 @@
       EDITING_SELECTOR, JAPANESE_CHARACTER_PATTERN, OPAQUE_TAGS, blockOf, candidateSignature, candidateStart,
       caretRangeAt, collectScanEntries, collectSentenceSources, computedStyleFor, expandCandidateAnchor, glyphAtPoint,
       hasVisibleContent, isEditingElement, isHiddenElement, isJapaneseToken, isLanguageToken, isScannableElement,
+      isWordLanguageToken,
       isScannableTextNode, rangeOffsetWithin, rawMatchedText, refineSentence, runEntries, sameAnchorNode,
       selectionSentence, sentenceMatchedText, sourceOffset, textBlocks, textRuns, withSentence, wordStart,
     };
