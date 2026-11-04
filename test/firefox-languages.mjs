@@ -111,8 +111,13 @@ describe("firefox languages", () => {
     await waitFor(async () => (await readStorage(page, ["setupState"])).setupState?.stage === "practice", { timeout: 30_000 });
     await startup.close();
     // Add a language, then import into the language Settings now shows.
+    // Settings builds the Languages card once its library has loaded, so each
+    // step waits for the control it uses.
+    const offered = code => waitFor(() => page.evaluate(wanted => document.querySelector(
+      `#settings-language-add-select option[value="${wanted}"]`) !== null, code), { timeout: 30_000 });
     const add = async code => {
       await showSettingsSection(page, "advanced");
+      if (!await offered(code)) throw new Error(`Add a language does not offer ${code}`);
       await page.evaluate(wanted => {
         const select = document.getElementById("settings-language-add-select");
         select.value = wanted;
@@ -126,6 +131,7 @@ describe("firefox languages", () => {
     const arabicEdited = await add("ar");
     const arabic = await importInto("ar", ARABIC);
     await showSettingsSection(page, "advanced");
+    await waitFor(() => page.evaluate(() => document.getElementById("settings-language-select") !== null));
     await page.evaluate(() => {
       const select = document.getElementById("settings-language-select");
       select.value = "en";
