@@ -474,7 +474,8 @@ test("a link to a host without profiles says how to add a language; selection st
     const client = await linked("aware", ["ja", "en", "ar"]);
     const add = await client.engine("hd_profile_add", { language: "en", copyFrom: "ja" });
     assert.equal(add.ok, false);
-    assert.equal(add.error, "Add English on another browser first; if its Settings have no Language section, update it.");
+    assert.equal(add.error,
+      "Add English on another browser first, in Settings → Advanced → Languages; if its Settings have no Languages there, update it.");
     assert.equal(protocol.forwardableRequest({ target: "hoshidicts-worker", type: "hd_language_selection_write" }), false);
   } finally {
     relay.stop();

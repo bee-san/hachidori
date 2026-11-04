@@ -450,7 +450,7 @@ async function forwardProfileRequest(message) {
       throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
     }
     if (language !== null && profiles === undefined) {
-      throw new Error(`Add ${languageName(language)} on ${host} first; if its Settings have no Language section, update it.`);
+      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages; if its Settings have no Languages there, update it.`);
     }
     throw new Error("Add and remove languages on the linked Hachidori.");
   }
