@@ -271,7 +271,12 @@ jobs:
       HACHIDORI_IMPORT_SCREENSHOT: ${{ github.workspace }}/test/tmp/ci/dictionary-import-error.png
       HACHIDORI_OVERLAY_GROUP_SCREENSHOTS: ${{ github.workspace }}/test/tmp/ci/bee-groups
     steps:
+      # chrome-languages writes its registry of the Japanese pack and the
+      # fixture packs with sync-languages.mjs, which reads the hoshidicts packs
+      # and tools/lib/classes.mjs; the other suites need no submodule.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: ${{ matrix.suite == 'chrome-languages' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
