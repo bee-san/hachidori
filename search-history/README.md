@@ -15,10 +15,10 @@ the script builds, with glosses written for it; the lines arrive through the
 Clipboard monitor from another tab, in a copy of the extension that holds
 `clipboardRead`, as the Chrome suite does. The captions are the script's, laid
 over the page; the red dot marks a click, which headless screenshots do not
-show. `531b7f0c` is `32e49e85` on the branch rebased onto main at `353ce324`. The GIFs
+show. `531b7f0c` is `e377a2bd` on the branch rebased onto main at `353ce324`. The GIFs
 predate two changes to the neighbour rows: in them the rows are the text's
-size and mixed toward the page, where now they are smaller (`009cb180`) and in
-the palette's dim text (`67246e75`).
+size and mixed toward the page, where now they are smaller (`4fa02302`) and in
+the palette's dim text (`e5f00144`).
 
 | File | Shows |
 | --- | --- |
@@ -33,15 +33,17 @@ HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo
 ## Screenshots
 
 `HACHIDORI_SEARCH_SCREENSHOTS=DIR node test/chrome-search-history.mjs` on the
-PR at `626cd4e9`: an earlier line's visit (the searched text with its cursor,
-the neighbour rows and the keys) in the default, Girlypop (light), Solarized
-Light and High contrast palettes and with forced colours emulated, and
-Settings → Reading → Search page. The neighbour rows are dimmed (the palette's
-dim text mixed toward the page, as far as each palette keeps 4.5:1) and set
-smaller than the searched text. Solarized Light's text is at 4.65:1, so there
-only the size sets them apart. The Chrome suite checks, in all 42 palettes,
-that the rows keep 4.5:1, are smaller, and are dimmer than the searched text
-wherever it is at 4.7:1 or more.
+PR at `6700ef4a`, with the history switched on: an earlier line's visit (the
+searched text with its cursor, the neighbour rows and the keys) in the
+default, Girlypop (light), Solarized Light and High contrast palettes and with
+forced colours emulated, and Settings → Advanced → Search history, where the
+switch is off until turned on. The neighbour rows are dimmed (the palette's
+dim text mixed toward the page, less where a palette has less room above
+4.5:1) and set smaller than the searched text. Solarized Light's text is at
+4.65:1, so there only the size sets them apart. The Chrome suite checks, in
+all 42 palettes, that the rows keep 4.5:1, are at most 85% of the text's size,
+and that the text's contrast is at least 1.05 times theirs wherever it is at
+4.7:1 or more.
 
 ## Benchmark
 
