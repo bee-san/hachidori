@@ -480,7 +480,8 @@ These run separately:
   exports through a real Chrome download. This checkout restores that file
   through Settings in a fresh profile: every item must come back equal, or
   differ only by a documented rule the check asserts (switches restore by name,
-  a promoted switch becomes its setting, a newer setting keeps its default), and
+  a promoted switch becomes its setting, a newer setting keeps its default, a
+  keybind list without a search page row gains that page's default rows), and
   work in real popups, mining through a fake AnkiConnect. It then saves the
   newest blur Reveal choice its Settings offer, exports, and restores that
   backup in another fresh profile, checking the same items. Last, a fresh
@@ -511,17 +512,21 @@ These run separately:
   [search history](../docs/search-history.md) in a copy of the extension that
   holds `clipboardRead`: lines typed, pasted and copied in another tab are kept
   with their source and window and a repeat of the newest once; Up and Down in
-  the box walk them and bring the draft back; in the searched text Left and
-  Right move the cursor by the matched word and retrace, a one-row text goes
-  round for a fresh press only, Up and Down move between a long line's rows
-  keeping the column and past its top row through every earlier line, whose
-  dimmed neighbours stay at 4.5:1 in four palettes; Enter adds the word to a
-  fake AnkiConnect with its earlier line as the sentence; the keys follow a
-  rebound keybind and leave other controls alone; the history's switch, a
-  second page in the popup window, and Settings' count, lowered limit and
-  Clear history; and the texthooker user script's list, counts, times, pause,
-  edit, delete and click lookup. `HACHIDORI_SEARCH_SCREENSHOTS=DIR` saves an
-  earlier line's visit in three palettes and forced colours.
+  the box walk them and bring the draft back, and leave a selection and the
+  box's lower lines to the box; in the searched text Left and Right move the
+  cursor by the matched word and retrace, a one-row text goes round for a
+  fresh press only, Up and Down move between a long line's rows keeping the
+  column and past its top row through every earlier line, whose dimmed
+  neighbours keep 4.5:1 in every palette; Enter adds the word to a fake
+  AnkiConnect with its earlier line as the sentence; the keys follow a rebound
+  keybind and leave other controls alone; the history's switch, with Down
+  ending a visit while it is off; a second page in the popup window; Settings'
+  count, lowered limit (a refused save deletes nothing) and Clear history; and
+  the texthooker user script's list, counts, times, pause, edit, delete (an
+  emptied edit too), its click lookups (a row's last glyph, nothing beside the
+  text) and its following the newest line when reopened, after a scroll back to
+  the end and while the page above it grows. `HACHIDORI_SEARCH_SCREENSHOTS=DIR`
+  saves an earlier line's visit in four palettes and forced colours.
 - **`chrome-bulk-import.mjs`** (run by `test/run.mjs chrome-e2e`, #578)
   imports a batch of 50 archives from Settings on a fresh profile, five of them
   100,000-row frequency lists, while a second Settings page sends imports at
