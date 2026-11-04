@@ -528,7 +528,7 @@
     return docsImposter;
   }
 
-  /** The offset of the glyph under the pointer, found by bisecting an imposter's client rects. */
+  /** The offset of the glyph under the pointer, found by bisecting a text node's client rects. */
   function imposterOffsetAt(node, clientX, clientY) {
     const range = document.createRange();
     let start = 0;
@@ -579,6 +579,21 @@
     const { text, node } = docsImposterFor(rect);
     // The <text> lives inside Docs' <svg>, which the page scan treats as opaque.
     return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false);
+  }
+
+  // Netflix lays parts of its player over the subtitles, where the hit test
+  // finds them instead of the line. Where it finds no glyph under the pointer,
+  // the reader looks for one in the lines' own text, as netflix-content.js
+  // finds a hovered line for hover pause.
+  function netflixLineGlyphAt(clientX, clientY) {
+    for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
+      const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const offset = imposterOffsetAt(node, clientX, clientY);
+        if (glyphContainsPoint(node, offset, clientX, clientY)) return { node, offset };
+      }
+    }
+    return null;
   }
 
   // An <input> or <textarea> keeps its value in user-agent shadow DOM, which
@@ -768,6 +783,13 @@
     const hit = document.elementFromPoint(clientX, clientY);
     const field = scannableField(hit);
     if (field) return resolveFieldCandidate(field, clientX, clientY);
+    // The page's own glyph comes first, a Netflix menu over a line included.
+    const glyph = caretGlyphAt(hit, clientX, clientY) ?? (NETFLIX_HOST ? netflixLineGlyphAt(clientX, clientY) : null);
+    return glyph ? resolveCandidateAt(glyph.node, glyph.offset) : null;
+  }
+
+  /** The caret's glyph in `hit`, the element under the pointer, when the glyph contains the pointer. */
+  function caretGlyphAt(hit, clientX, clientY) {
     const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE || !hit?.contains(node)) return null;
@@ -775,7 +797,7 @@
     let offset = caretRange.startOffset;
     // Caret alignment can step back onto the low surrogate of a wide glyph.
     if (offset > 0 && (text.charCodeAt(offset) & 0xfc00) === 0xdc00) offset -= 1;
-    return glyphContainsPoint(node, offset, clientX, clientY) ? resolveCandidateAt(node, offset) : null;
+    return glyphContainsPoint(node, offset, clientX, clientY) ? { node, offset } : null;
   }
 
   function resolveCandidateAt(startNode, startOffset, japaneseOnly = options.onlyScanJapaneseText) {
