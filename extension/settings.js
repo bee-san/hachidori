@@ -115,6 +115,8 @@ const NUMBER_FIELDS = [
   { key: "popupScalePercent", id: "opt-popup-scale", live: true },
   { key: "popupOpacityPercent", id: "opt-popup-opacity", live: true },
   { key: "automaticBackupDays", id: "opt-automatic-backup-days" },
+  { key: "searchWindowWidthPx", id: "opt-search-window-width" },
+  { key: "searchWindowHeightPx", id: "opt-search-window-height" },
 ];
 const METADATA_FIELDS = [
   { key: "showLookupCounts", id: "opt-lookup-counts" },

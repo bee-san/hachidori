@@ -214,6 +214,13 @@
     // Reading → Search page (#610): the toolbar menu's Search button, beside
     // Settings, which opens the search page. On, as its owner asked.
     showToolbarSearchButton: true,
+    // Reading → Search page (#656): a click on a word of the search page's
+    // query or results looks it up, off as Yomitan's
+    // scanning.enablePopupSearch is; and the size of the popup window its
+    // shortcut opens, Yomitan's popupWindow width and height.
+    searchClickLookup: false,
+    searchWindowWidthPx: 600,
+    searchWindowHeightPx: 640,
     keybinds: DEFAULT_KEYBINDS,
   };
   // Word highlighting's switches stay with its Reading Settings section;
@@ -243,6 +250,11 @@
     // One snapshot per day, each a complete saved-state payload with lookup
     // statistics rows: the cap bounds how many copies the profile stores.
     automaticBackupDays: [1, 30],
+    // Chrome fits a larger window to the screen. Firefox does not: it opens a
+    // window asked to be larger than 16,384 pixels at 16,384, and one asked to
+    // be 2^31 - 1 pixels wide at its 95-pixel minimum.
+    searchWindowWidthPx: [200, 16384],
+    searchWindowHeightPx: [200, 16384],
   };
   // GSM PR #549 blurs at or above the threshold; Below is the issue #9 adaptation.
   const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];

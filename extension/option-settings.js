@@ -470,6 +470,7 @@ function renderOptions() {
   element("opt-source-highlight").checked = options.sourceHighlightEnabled;
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-toolbar-search").checked = options.showToolbarSearchButton;
+  element("opt-search-click-lookup").checked = options.searchClickLookup;
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   element("opt-smaller-anki-cards").checked = options.smallerAnkiCards;
   renderThemeChoices();
@@ -531,6 +532,10 @@ function attachOptionHandlers() {
   });
   element("opt-toolbar-search").addEventListener("change", (event) => {
     options.showToolbarSearchButton = event.target.checked;
+    writeOptions();
+  });
+  element("opt-search-click-lookup").addEventListener("change", (event) => {
+    options.searchClickLookup = event.target.checked;
     writeOptions();
   });
   element("reset-design").addEventListener("click", () => {

@@ -13,6 +13,7 @@ import "./reader-options.js";
 import { captureDebugLog, captureDocumentActions, recordUserError } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { loadReaderScripts } from "./reader-page.js";
+import { renderTemplateChoices } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 const bridge = globalThis.HDSearchBridge;
@@ -26,6 +27,7 @@ const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
 const status = document.getElementById("search-status");
+const templateChoices = document.querySelector("select.search-template");
 let reader = null;
 
 // Yomitan's search trims the box's text, shows it above the results, where
@@ -131,6 +133,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
 });
 
+// search.html's Anki Template switch lies over this header (#656). The copy
+// here lists the same Templates, invisibly, so both documents lay it out alike;
+// it is laid out before the page is shown.
+const showTemplates = (stored) => { renderTemplateChoices(templateChoices, normaliseOptions(stored).anki); };
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.options) showTemplates(changes.options.newValue);
+});
+
 // Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
 // once the reader is ready, as a user script runs at document_idle after the
 // content scripts. search.html hands it over only where the worker registered
@@ -145,6 +155,7 @@ function runCustomJavaScript(code) {
 }
 
 try {
+  showTemplates((await chrome.storage.local.get("options")).options);
   const connection = await bridge.ready;
   applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
   bridge.notify("shown");
@@ -154,6 +165,8 @@ try {
   input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
+  // Reading → Search page → Look up words with a click (#656).
+  reader.lookUpOnClick(query);
   if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;

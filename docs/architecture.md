@@ -982,8 +982,14 @@ front instead of a second one opening: the new-tab and current-tab ways take
 any open search page, the popup window only one in a popup window.
 `search-window.js` holds this for the worker's shortcuts and the menu, and
 finds the open pages with `runtime.getContexts` because tabs hide extension
-URLs. The popup window is 600 × 640, larger than Yomitan's 400 × 250 default,
-so that Design's default popup fits in it.
+URLs. The popup window is 600 × 640 by default, larger than Yomitan's
+400 × 250, so that Design's default popup fits in it. **Settings → Reading →
+Search page → Popup window width** and **Popup window height**
+(`searchWindowWidthPx`, `searchWindowHeightPx`, #656) set its size, as
+Yomitan's Popup window → Size does (`popupWindow.width` and `height`), from
+200 to 16,384 pixels. Chrome fits a larger window to the screen. Firefox does
+not: it opens a window asked to be larger than 16,384 pixels at 16,384, and one
+asked to be 2^31 − 1 pixels wide at its 95-pixel minimum.
 
 **Appearance.** The page follows the popup theme as Settings does:
 `settings-theme.js` applies the saved theme before the first paint and
@@ -1011,6 +1017,24 @@ looking up the page's text by hover still follows both. A search that finds
 nothing says **No definition found.** in the results area, with the pencil
 while the personal dictionary is on, and one that fails says **The lookup
 failed.** with **Try again**.
+
+**Clicking words.** **Settings → Reading → Search page → Look up words with a
+click** (`searchClickLookup`, #656) is off by default, as Yomitan's **Search
+terms when clicking text from the results list** (`scanning.enablePopupSearch`,
+yomidevs/yomitan@ac1d839 `ext/data/schemas/options-schema.json`) is. While it
+is on, a primary click on a word of the query above the results shows that
+word's results in the results area, as a click in Yomitan's query parser does
+(`ext/js/display/query-parser.js`, `searchOnClick`), and a click on a word in
+the results opens it in a child popup, as **Child popups → Click a word** does
+elsewhere; Yomitan replaces its results with the clicked word's instead, with
+its history to go back. Without the option those words wait for the
+activation key, as page text does, and with it the key still works. The click
+looks the word up as the key would: from the clicked character, with
+**Japanese text only**, also while lookups are off, as a search is. A press
+that travels 3 pixels or more, or that leaves a selection, is a copy and looks
+nothing up; links, buttons and disclosures in the results keep their own click;
+a Note being written or saved keeps the result; and a click on the word
+already shown looks nothing up again. A **Toggle option** keybind can switch it.
 
 **Dismissal.** The docked result is the page's content rather than a popup over
 a word, so what would close a popup closes only the child popups opened from
@@ -1074,6 +1098,29 @@ background page's engine frame.
 
 ![The search page with its Clipboard monitor on, showing 読む, copied in another tab](assets/search-clipboard-monitor.png)
 
+**Anki Template switch.** Where Yomitan's search page has its profile switch,
+before the Clipboard monitor (yomidevs/yomitan@ac1d839 `ext/search.html`,
+`#profile-select`, and `search-display-controller.js` `_updateProfileSelect`),
+the page has an **Anki Template** menu (#656). It lists the Templates and
+chooses the one the built-in Anki button uses, which is the first: choosing one
+does what **Settings → Anki → Set built-in** does, moving it first and keeping
+the others' order. What follows the first Template follows the choice too: the
+duplicate index, and the Anki statuses that word highlighting and definition
+blur read; the Relay API lists its card formats in the new order; custom Anki
+buttons keep their own Templates. As Yomitan's profile switch, it shows only
+with more than one Template, has no visible label, and names itself in its
+accessible name and in the heading of its list. The list is sorted by name
+rather than in Settings' order, so it stays put as a choice moves its Template
+first and the arrow keys can walk it. The switch is `search.html`'s, as the
+Clipboard monitor's is: the frame may write only the reader's own option. It
+writes the choice with the stored record's revision and writes it again after a
+conflict, and while one choice is saved, it saves only the last one made
+meanwhile. A choice made with the mouse or a tap hands focus back to the frame,
+as a click on the Clipboard monitor switch does; the arrow keys change the
+choice and keep focus. Yomitan's profile switch chooses a whole profile;
+Hachidori has no profiles until the multi-language work adds them (#640), which
+leaves profile switching to it.
+
 **Custom JavaScript.** **Design → Custom JavaScript** runs on the search page
 as it does on web pages (#644). Chrome and Firefox run no user script in an
 extension page: `userScripts.register` refuses a `chrome-extension:` match
@@ -1103,11 +1150,12 @@ which the reader never uses, left out of the options; and the events sent to
 the reader. The frame's debug log goes to the extension's store, measured and
 redacted again by `search.html`, and may update only the records the frame
 wrote. The Clipboard monitor's switch and its reads stay in `search.html`,
-which lays the switch over the end of the frame's header and shows it with the
-frame's themed page. Only text with a Japanese character, the reader's own
-`isLookupWorthy` test, goes on to the frame, which searches it and tells
-`search.html` when its reader is ready and when text is copied there. The
-monitor hands the user's script no other text. In Chrome, while Hachidori
+which lays the switch, and the Anki Template switch beside it, over the end of
+the frame's header, where the frame keeps both controls' room invisibly, and
+shows them with the frame's themed page. Only text with a Japanese character,
+the reader's own `isLookupWorthy` test, goes on to the frame, which searches it
+and tells `search.html` when its reader is ready and when text is copied there.
+The monitor hands the user's script no other text. In Chrome, while Hachidori
 holds `clipboardRead`, a user script can still read the clipboard itself, on
 the search page as on any web page; in Firefox it cannot. A mouse click or a
 tap on the switch, if the switch does not have focus, hands focus back to the
@@ -1123,10 +1171,11 @@ channel carries only the debug log and the Clipboard monitor.
 
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
-the setting for the maximum clipboard search length; profiles;
+the setting for the maximum clipboard search length; profiles, and so the
+profile switch (#640);
 automatic kana conversion; the query parser's word
 segmentation and readings; going back and forward between searches in the
-browser's history; the popup window's size, position and state settings;
+browser's history; the popup window's position and state settings;
 Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
 after a search, which lets PageDown scroll them. Here focus stays on the page,
 so a typed character still goes into the box; Alt+ArrowUp and Alt+ArrowDown

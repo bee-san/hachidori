@@ -18,12 +18,14 @@
     <link rel="stylesheet" href="content.css" />
   </head>
   <body class="search-page">
-    <!-- The Clipboard monitor switch is search.html's, over this header's end:
-         the label here only keeps its room, invisible (search.css), so it is
-         neither in the accessibility tree nor reached by Tab. -->
+    <!-- The Anki Template (#656) and Clipboard monitor switches are
+         search.html's, over this header's end: the controls here only keep
+         their room, invisible (search.css), so they are neither in the
+         accessibility tree nor reached by Tab. -->
     <header class="search-header">
       <img src="icons/hachidori-48.png" width="24" height="24" alt="" />
       <h1>Hachidori Search</h1>
+      <select class="search-template" aria-label="Anki Template" hidden></select>
       <label class="lookup-enable">
         <span>Clipboard monitor</span>
         <input type="checkbox" />

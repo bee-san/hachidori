@@ -253,6 +253,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     viewRequest(depth = 0) { return levels[depth]?.currentViewRequest; },
     dock: dockResults,
     search,
+    lookUpOnClick,
     resolveCandidate,
     resolveSelectedLookupCandidate,
     resolveSelectionScanCandidate,

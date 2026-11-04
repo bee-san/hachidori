@@ -125,10 +125,13 @@ const E2E_PLANNED = [
   "Get debug info reports Firefox and its IndexedDB engine",
   // search page
   "the popup window opens one search page and brings it forward instead of opening another",
+  "the popup window opens at the size set in Reading → Search page",
   "the search page looks up a typed word and docks the reader's popup under its box",
   "the search page's Clipboard monitor is off until it is switched on, which grants Hachidori clipboardRead",
   "the clipboard monitor searches Japanese copied in Firefox, and switching it off gives clipboardRead back and stops it",
   "Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
+  "a click on a word of the search page's query shows its results once Look up words with a click is on",
+  "the search page's Anki Template switch makes the chosen Template the built-in one, and the frame's copy follows",
   // audio and Anki
   "pronunciation audio plays from a URL source",
   "Anki settings list AnkiConnect's decks and note types",

@@ -757,7 +757,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/recommended-dictionaries\.js";\s*/u, "");
   const debugLog = readFileSync(resolve(EXTENSION, "debug-log.js"), "utf8").replace(/^export\s+/gmu, "");
   const errorText = readFileSync(resolve(EXTENSION, "error-text.js"), "utf8").replace(/^export\s+/gmu, "");
-  const searchWindow = readFileSync(resolve(EXTENSION, "search-window.js"), "utf8").replace(/^export\s+/gmu, "");
+  // Its options come from reader-options.js, which the sandbox runs above.
+  const searchWindow = readFileSync(resolve(EXTENSION, "search-window.js"), "utf8")
+    .replace(/^import "\.\/reader-options\.js";\n/mu, "").replace(/^export\s+/gmu, "");
   // The worker's modules run as one script, as background.js did before it was
   // split: each without its imports and exports, and each constant declared
   // before the module-load code that reads it.
