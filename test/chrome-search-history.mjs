@@ -132,6 +132,9 @@ try {
   const settings = watch(await browser.newPage(), "settings");
   await settings.goto(`chrome-extension://${extensionId}/settings.html`, { waitUntil: "domcontentloaded" });
   for (const page of await browser.pages()) if (page.url().endsWith("/startup.html")) await page.close();
+  // An import sent while the engine starts is refused ("engine-starting").
+  await settings.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready"),
+    { polling: 100, timeout: 60_000 });
   const imported = await settings.evaluate(async base64 => {
     const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
     const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
@@ -353,6 +356,27 @@ try {
   assert.equal((await view()).cursor.at, down.cursor.at, "Down on the current line's last row stays");
   await press("ArrowUp");
   await until(state => state.cursor?.at === 0, "Up back to the first row");
+  // A narrower box wraps the line sooner, and Down follows its new rows.
+  const narrowRows = await frame.$eval("#search-query", (element) => {
+    element.style.width = "60%";
+    const node = element.firstChild;
+    const range = document.createRange();
+    return Array.from(node.data, (_, at) => {
+      range.setStart(node, at);
+      range.setEnd(node, at + 1);
+      const { top, left } = range.getClientRects()[0];
+      return { top, left };
+    });
+  });
+  const narrowSecond = narrowRows.findIndex(cell => cell.top > narrowRows[0].top + 10);
+  assert.ok(narrowSecond > 0 && narrowSecond < secondRow, `the narrower box wraps sooner: ${narrowSecond} < ${secondRow}`);
+  await press("ArrowDown");
+  const narrowDown = await until(state => state.cursor?.at >= narrowSecond, "Down in the narrower box");
+  assert.ok(narrowDown.cursor.at < secondRow && Math.abs(narrowRows[narrowDown.cursor.at].left - narrowRows[0].left) < 25,
+    `Down follows the narrower box's rows: ${narrowDown.cursor.at}`);
+  await press("ArrowUp");
+  await until(state => state.cursor?.at === 0, "Up back to the narrower box's first row");
+  await frame.$eval("#search-query", (element) => { element.style.removeProperty("width"); });
   await press("ArrowUp");
   const first = await until(state => state.query === "漢字読むありがとう", "Up past the top row");
   assert.deepEqual([first.before, first.after, first.where, first.cursor?.at], ["読む", long, "Earlier line -1 · ▲ earlier · ▼ later", 0]);
@@ -443,7 +467,8 @@ try {
   const back = await until(state => state.query === long, "Down past the newest earlier line");
   assert.deepEqual([back.before, back.after, back.where, back.cursor?.at], [null, null, null, 0]);
   console.log("PASS: Up and Down move between a long line's rows keeping the column, and past its top row through the"
-    + " earlier lines, each between its neighbours' dimmed rows (4.5:1 or more), back to the current line");
+    + " earlier lines, each between its neighbours' smaller rows (4.5:1 or more), back to the current line, and Down"
+    + " follows a narrower box's rows");
 
   // Enter adds the word under the cursor to Anki, with the line it is on as the sentence; Escape goes back to the box.
   await press("ArrowUp");
