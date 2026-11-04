@@ -146,8 +146,10 @@ function follow() {
 async function lookUp(shownLine) {
   const node = query.firstChild;
   const at = shownLine.cursor;
+  shownLine.lookingUp = at;
   const length = await reader.search(node, at);
   if (shown !== shownLine || shownLine.cursor !== at || query.firstChild !== node) return;
+  shownLine.lookingUp = null;
   shownLine.match = length > 0 ? { at, end: at + length } : null;
   paintCursor();
   sayCursorWord();
@@ -155,10 +157,12 @@ async function lookUp(shownLine) {
 
 // The word the cursor rests on (what its lookup matched, or its character),
 // read out by a screen reader from a polite live region while the searched
-// text has focus: after each move's lookup, and when the text takes focus.
+// text has focus: after each move's lookup, and when the keyboard brings focus
+// to the text. A lookup still on its way writes the word when it answers, so
+// a search never reads out its first character first.
 function sayCursorWord() {
   const node = query.firstChild;
-  if (!shown || !node || document.activeElement !== query) return;
+  if (!shown || !node || document.activeElement !== query || shown.lookingUp === shown.cursor) return;
   const at = Math.min(shown.cursor, node.length);
   cursorWord.textContent = node.data.slice(at, shown.match?.at === at ? shown.match.end : characterEnd(node.data, at));
 }

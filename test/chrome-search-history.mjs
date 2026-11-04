@@ -333,9 +333,16 @@ try {
     + " the recalled line");
 
   // Left and Right move the cursor word by word, each word looked up; Left retraces the Rights.
+  // A search reads out its first word alone, once its lookup has answered.
+  await frame.evaluate(() => {
+    globalThis.said = [];
+    new MutationObserver(() => { globalThis.said.push(document.getElementById("search-cursor-word").textContent); })
+      .observe(document.getElementById("search-cursor-word"), { childList: true, characterData: true, subtree: true });
+  });
   await typeSearch("漢字読むありがとう");
   assert.ok(await shows("漢字"));
-  await until(state => state.cursor?.text === "漢字", "the first word");
+  await until(state => state.cursor?.text === "漢字" && state.announced === "漢字", "the first word");
+  assert.deepEqual(await frame.evaluate(() => globalThis.said.filter(Boolean)), ["漢字"], "a search reads out its word alone");
   // Each word the cursor reaches is read out from a polite live region.
   const step = async (key, word, at, modifiers = []) => {
     await press(key, modifiers);
