@@ -128,6 +128,7 @@ function getApiHost() {
     readDictionaries: async () => (await readDictionaryStorage()).state?.dictionaries ?? [],
     readAudioSources: async () => (await readAnkiOptions()).audioSources.filter(source => source.enabled),
     readAnkiTemplates: async () => (await readAnkiOptions()).anki.templates,
+    readSmallerAnkiCards: async () => (await readAnkiOptions()).smallerAnkiCards,
   });
   return apiHost;
 }

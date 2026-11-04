@@ -3189,7 +3189,10 @@ the outer Yomitan-compatible glossary structure are kept. The
 `small.yomitan-glossary-details` Rules/Deinflection footer of the uncompacted
 fields is not written, as Yomitan's `{glossary}` has none;
 `{part-of-speech}` and `{conjugation}` carry that information (#399). Plain
-glossary markers and the relay's `ankiFields` API are unchanged.
+glossary markers are unchanged. The relay's `ankiFields` API follows the option
+too, read on every request, so a card another app fills through it matches a
+mined one (#659). Like mining, it sends only the dictionary images its fields
+reference.
 
 First-field audio is resolved before the
 duplicate check without playback or uploads. Inside the authoritative write
