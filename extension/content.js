@@ -4017,8 +4017,10 @@
   // searchOnClick). The word is looked up as the activation key would look it
   // up, Japanese text only included, and while lookups are off, as a search
   // is. A press that travels or leaves a selection is a copy, and a Note being
-  // written or saved keeps the result.
-  function lookUpOnClick(element) {
+  // written or saved keeps the result. `clicked(node, offset)`, the search
+  // page's, can take the lookup of the character clicked on, returning true:
+  // its cursor goes there and looks the word up from it (search.js).
+  function lookUpOnClick(element, clicked = null) {
     let press = null;
     element.addEventListener("mousedown", (event) => {
       press = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
@@ -4029,6 +4031,9 @@
       if (disposed || !dock || !options.searchClickLookup || !start || event.defaultPrevented || hasProtectedNote()
           || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX) return;
       if (window.getSelection()?.isCollapsed === false) return;
+      const glyph = clicked && caretGlyphAt(document.elementFromPoint(event.clientX, event.clientY), event.clientX,
+        event.clientY);
+      if (glyph && clicked(glyph.node, glyph.offset)) return;
       const candidate = resolveCandidate(event.clientX, event.clientY);
       if (!candidate || rootHolds(candidate)) return;
       dismissPopups();

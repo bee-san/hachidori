@@ -358,12 +358,27 @@ try {
   await search.keyboard.up("ArrowRight");
   await settle(300);
   assert.equal((await view()).cursor?.at, 4, "a held Right does not go round");
+  // With Look up words with a click on (#656), a click on a word moves the cursor there and looks it up.
+  await writeOptions({ searchClickLookup: true });
+  const clickAt = await frame.$eval("#search-query", (element) => {
+    const range = document.createRange();
+    range.setStart(element.firstChild, 2);
+    range.setEnd(element.firstChild, 3);
+    const box = range.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await search.mouse.click(clickAt.x, clickAt.y);
+  assert.ok(await shows("読む"), "a clicked word is looked up");
+  await until(state => state.cursor?.at === 2 && state.cursor.text === "読む" && state.announced === "読む", "the cursor on the clicked word");
+  await step("ArrowRight", "ありがとう", 4);
+  await writeOptions({ searchClickLookup: false });
   const described = (await view()).keys;
   assert.equal(described, "Left/Right: words · Up/Down: rows and earlier lines · Enter: add to Anki · Escape: back to the box");
   assert.equal(await frame.$eval("#search-query", element => element.getAttribute("aria-describedby")), "search-where search-keys");
   assert.equal(await frame.$eval("#search-cursor-word", element => element.getAttribute("aria-live")), "polite");
   console.log("PASS: Left and Right move the cursor by the word each lookup matched, Left retraces the Rights, a one-row"
-    + " text goes round its ends for a fresh press only, each word is read out, and the keys are named beside it");
+    + " text goes round its ends for a fresh press only, each word is read out, a clicked word takes the cursor, and the"
+    + " keys are named beside it");
 
   // Up and Down go between the rows of a long line, keeping the column, and past its top row to earlier lines.
   const long = "漢字読むありがとう".repeat(6);

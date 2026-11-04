@@ -544,8 +544,19 @@ try {
   input.focus();
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
-  // Reading → Search page → Look up words with a click (#656).
-  reader.lookUpOnClick(query);
+  // Reading → Search page → Look up words with a click (#656). While the
+  // history's keys are on, the cursor goes to the clicked character and looks
+  // the word up from there, as Right would have.
+  reader.lookUpOnClick(query, (node, offset) => {
+    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild) return false;
+    shown.cursor = offset;
+    shown.match = null;
+    navigation = createNavigation();
+    void lookUp(shown);
+    query.focus({ preventScroll: true });
+    paintCursor();
+    return true;
+  });
   if (connection.customJavaScript) runCustomJavaScript(connection.customJavaScript);
   status.textContent = "Type or paste a word above, then press Enter.";
   submit.disabled = false;
