@@ -64,29 +64,28 @@ export function createProfileSettings({ document, element, send, setStatus, read
   // language land on it. Only static markup; names and values are set below.
   const card = create("fieldset", { className: "lookup-group", id: "language-settings" });
   card.innerHTML = `<legend data-search-keywords="profiles add remove">Languages</legend>
-    <p class="field-hint" id="language-settings-help">Each language has its own dictionaries and settings. Settings every language shares say All languages.</p>
+    <p class="section-note" id="language-settings-help">Each language has its own dictionaries and settings. Settings every language shares say All languages.</p>
     <ul class="language-list" id="settings-language-profiles"></ul>
     <ul class="language-list" id="settings-language-held-list" hidden></ul>
-    <div class="setting-row" id="settings-language-add-row">
-      <div class="setting-text">
-        <label class="field-label" for="settings-language-add-select">Add a language</label>
-        <p class="field-hint" id="settings-language-add-help"></p>
-      </div>
+    <div class="field" id="settings-language-add-row">
+      <label class="field-label" for="settings-language-add-select">Add a language</label>
       <div class="options-actions language-actions">
         <select id="settings-language-add-select" aria-describedby="settings-language-add-help"></select>
         <button type="button" class="ghost" aria-describedby="settings-language-add-help">Add</button>
       </div>
+      <p class="field-hint" id="settings-language-add-help"></p>
     </div>
     <output class="section-note custom-dictionary-status" id="settings-language-status" aria-live="polite"></output>`;
   element("advanced").querySelector(".options-feedback-slot").after(card);
   const intro = card.querySelector("#language-settings-help");
+  const addControls = card.querySelector("#settings-language-add-row .language-actions");
   const addSelect = card.querySelector("#settings-language-add-select");
   // No id, so search offers the row rather than a bare Add.
-  const addButton = card.querySelector("#settings-language-add-row button");
+  const addButton = addControls.querySelector("button");
 
   // The removal question, in the card only while it is asked, so search
   // never finds it.
-  const panel = create("div", { className: "setting-row language-remove", id: "settings-language-remove" });
+  const panel = create("div", { className: "setting-row", id: "settings-language-remove" });
   panel.innerHTML = `<div class="setting-text">
       <p id="settings-language-remove-text"></p>
       <label class="check-row"><input id="settings-language-erase" type="checkbox" aria-describedby="settings-language-erase-help"><span id="settings-language-erase-label"></span></label>
@@ -157,15 +156,13 @@ export function createProfileSettings({ document, element, send, setStatus, read
   let edited = null;
 
   function createEditedRows() {
-    const picker = create("div", { className: "setting-row", id: "settings-language-picker" });
-    picker.innerHTML = `<div class="setting-text">
-        <label class="field-label" for="settings-language-select">Settings shows</label>
-        <p class="field-hint" id="settings-language-select-help"></p>
-      </div>
+    const picker = create("div", { className: "field", id: "settings-language-picker" });
+    picker.innerHTML = `<label class="field-label" for="settings-language-select">Settings shows</label>
       <div class="options-actions language-actions">
         <select id="settings-language-select" aria-describedby="settings-language-select-help"></select>
         <button type="button" class="ghost" id="settings-language-use" aria-describedby="settings-language-select-help">Use for lookups</button>
-      </div>`;
+      </div>
+      <p class="field-hint" id="settings-language-select-help"></p>`;
     const select = picker.querySelector("select");
     const use = picker.querySelector("button");
     const row = create("label", { className: "lookup-enable", id: "language-auto-switch-row" });
@@ -249,36 +246,39 @@ export function createProfileSettings({ document, element, send, setStatus, read
     setText(link, `Settings shows ${languageName(readEditedProfile().language)}`);
   }
 
-  // Rebuilds a list only when its rows change, and gives focus that was on a
-  // row's button to the same row's button after a rebuild. Buttons are
-  // disabled in place while a change runs, so focus stays where it is.
-  function renderRows(container, rows) {
-    const signature = JSON.stringify(rows.map(row => row.key));
-    if (container.dataset.rows !== signature) {
-      const focused = container.contains(document.activeElement) ? document.activeElement.closest("li")?.dataset.key : null;
-      container.dataset.rows = signature;
+  // Rebuilds a list only when what its rows show changes, so a render while
+  // a change runs keeps focus where it is; buttons are disabled in place.
+  // After a rebuild, focus that was on a row's button goes to the same row's
+  // button. Each row is named by its `attribute` (data-profile-id, data-language).
+  const shownRows = new WeakMap();
+
+  function renderRows(container, attribute, rows) {
+    const shown = JSON.stringify(rows.map(row => [row.key, row.shows]));
+    if (shownRows.get(container) !== shown) {
+      const focused = container.contains(document.activeElement) ? document.activeElement.closest("li")?.dataset[attribute] : null;
+      shownRows.set(container, shown);
       container.replaceChildren(...rows.map(row => {
         const item = row.build();
-        item.dataset.key = row.key;
+        item.dataset[attribute] = row.key;
         return item;
       }));
-      if (focused) rowButton(container, focused)?.focus();
+      if (focused) rowNamed(container, attribute, focused)?.querySelector("button")?.focus();
     }
     for (const button of container.querySelectorAll("button")) button.disabled = busy;
   }
 
-  function rowButton(container, key) {
-    return [...container.children].find(item => item.dataset.key === key)?.querySelector("button") ?? null;
+  function rowNamed(container, attribute, key) {
+    return [...container.children].find(item => item.dataset[attribute] === key) ?? null;
   }
 
   function renderProfiles() {
     const list = profileList();
     // The last language cannot be removed (section 16.5).
     const removable = list.length > 1;
-    renderRows(card.querySelector("#settings-language-profiles"), list.map(profile => {
+    renderRows(card.querySelector("#settings-language-profiles"), "profileId", list.map(profile => {
       const count = countLabel(profileDictionaryCount(profile.id), "dictionary", "dictionaries");
-      return { key: JSON.stringify([profile.id, profile.language, count, removable]), build() {
-        const item = create("li", { className: "language-row", "data-profile-id": profile.id });
+      return { key: profile.id, shows: [profile.language, count, removable], build() {
+        const item = create("li", { className: "language-row" });
         const label = create("span", { className: "language-label" });
         label.append(...nameNodes(profile.language), " ", create("span", { className: "field-hint", text: count }));
         item.append(label);
@@ -302,8 +302,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
     renderChoices(addSelect, [["", "Choose a language"], ...codes.map(code => [code, optionLabel(code)])]);
     addSelect.disabled = busy;
     addButton.disabled = busy;
-    addSelect.hidden = codes.length === 0;
-    addButton.hidden = codes.length === 0;
+    addControls.hidden = codes.length === 0;
     setText(card.querySelector("#settings-language-add-help"), codes.length === 0
       ? "This Hachidori has no other language yet."
       : `A new language starts with a copy of your ${languageName(readEditedProfile().language)} settings and no`
@@ -313,8 +312,8 @@ export function createProfileSettings({ document, element, send, setStatus, read
   // Languages the records hold without a profile (section 2), each with Erase.
   function renderHeld() {
     const container = card.querySelector("#settings-language-held-list");
-    renderRows(container, held.map(({ language, entries }) => ({ key: JSON.stringify([language, entries]), build() {
-      const item = create("li", { className: "language-row", "data-language": language });
+    renderRows(container, "language", held.map(({ language, entries }) => ({ key: language, shows: entries, build() {
+      const item = create("li", { className: "language-row" });
       const label = create("span", { className: "language-label" });
       label.append(...nameNodes(language), " ", create("span", { className: "field-hint",
         text: "Removed, with its personal dictionary, lookup counts and marked words kept" }));
@@ -372,8 +371,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
     removing = null;
     panel.remove();
     if (!focused) return;
-    const row = [...card.querySelector("#settings-language-profiles").children].find(item => item.dataset.profileId === id);
-    (row?.querySelector("button") ?? addSelect).focus();
+    (rowNamed(card.querySelector("#settings-language-profiles"), "profileId", id)?.querySelector("button") ?? addSelect).focus();
   }
 
   // Runs one change at a time. A control disabled while busy gets its focus
@@ -458,7 +456,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
       await refreshHeld();
       setStatus(erase ? `Removed ${name} and erased its personal dictionary, lookup counts and marked words.`
         : `Removed ${name}. Its dictionaries, personal dictionary, lookup counts and marked words are kept.`, "ready");
-      return addSelect.hidden ? null : addSelect;
+      return addControls.hidden ? null : addSelect;
     });
   }
 
@@ -475,7 +473,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
       await afterProfileChange();
       await refreshHeld();
       setStatus(`Erased ${name}.`, "ready");
-      return addSelect.hidden ? null : addSelect;
+      return addControls.hidden ? null : addSelect;
     });
   }
 
@@ -546,6 +544,8 @@ export function createProfileSettings({ document, element, send, setStatus, read
   function render() {
     const withProfiles = hasProfiles(readOptionsRecord());
     const several = withProfiles && profileList().length > 1;
+    // Records without profiles hold no other language (section 4.5).
+    if (!withProfiles) held = [];
     renderEdited(several);
     renderLink(several);
     renderProfiles();
@@ -591,14 +591,16 @@ export function createProfileSettings({ document, element, send, setStatus, read
     // A message about the edited profile, such as its removal elsewhere.
     announce(message) { setStatus(message, "error"); },
     // Advanced is shown: the held languages and a linked host's packs are
-    // read again.
+    // read again. Only records with profiles hold another language or mirror
+    // a host with profiles, so a Japanese-only page sends today's requests.
     refresh() {
+      if (!hasProfiles(readOptionsRecord())) return;
       void refreshHeld().catch(error => setStatus(describeErrorOrJson(error), "error", error));
       void refreshHostLanguages();
     },
     // Records changed while Advanced is shown: held languages may have too.
     recordsChanged() {
-      if (shown()) void refreshHeld().catch(() => {});
+      if (shown() && hasProfiles(readOptionsRecord())) void refreshHeld().catch(() => {});
     },
   };
 }
