@@ -46,8 +46,11 @@ prepared files. A concurrent saved edit requires preparing the backup again.
 A backup made by any Hachidori version restores its dictionaries. Its settings
 are read one by one, the way a stored record is: a setting this version does
 not know or cannot read is skipped, and one the backup does not have keeps its
-default. Experimental feature switches restore by name: known switches keep
-their saved values, newer ones start off and retired ones are dropped. Lookup
+default. A keybind list with no row in the search page's scope reads with the
+search page's default keys after its own, as a saved list does
+([search history](search-history.md#keys)). Experimental feature switches
+restore by name: known switches keep their saved values, newer ones start off
+and retired ones are dropped. Lookup
 statistics this version cannot read are skipped too. Dictionary selections that
 are unavailable in the restored library are reset.
 Unsaved Settings drafts must be saved or discarded before starting an operation.
