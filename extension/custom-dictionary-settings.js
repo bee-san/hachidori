@@ -9,7 +9,7 @@ import {
   customDictionaryDocumentFor,
   normaliseCustomDictionaryDocument,
   parseCustomDictionary,
-  personalDictionaryIdentity,
+  personalDictionaryRules,
 } from "./custom-dictionary.js";
 import {
   backingUp, editedProfile, element, languageName, profileFields, send, setSectionStatus, syncNavigationStatus,
@@ -38,7 +38,7 @@ const JAPANESE_SOURCE_PLACEHOLDER = "蜂, はち, bee\n辞書, じしょ, dictio
 
 // The pack's rule for the Reading column (docs/languages.md 15).
 function sourceRules() {
-  return { readingRequired: personalDictionaryIdentity(customLanguage)?.readingRequired ?? true };
+  return personalDictionaryRules(customLanguage);
 }
 
 function setCustomDictionaryStatus(message, tone = "", completed = false, error = null) {
