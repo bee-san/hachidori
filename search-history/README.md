@@ -15,7 +15,7 @@ the script builds, with glosses written for it; the lines arrive through the
 Clipboard monitor from another tab, in a copy of the extension that holds
 `clipboardRead`, as the Chrome suite does. The captions are the script's, laid
 over the page; the red dot marks a click, which headless screenshots do not
-show. `531b7f0c` is `32e49e85` on the branch rebased onto #664, #661 and #654. The GIFs
+show. `531b7f0c` is `32e49e85` on the branch rebased onto main at `353ce324`. The GIFs
 predate two changes to the neighbour rows: in them the rows are the text's
 size and mixed toward the page, where now they are smaller (`009cb180`) and in
 the palette's dim text (`67246e75`).
