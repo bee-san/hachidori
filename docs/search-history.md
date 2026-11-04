@@ -239,9 +239,11 @@ characters, a **Times** switch for each line's time, **Pause clipboard** and
 **Resume clipboard**, and **Edit** (or a double click) and **Delete** on each
 line. Enter saves an edit, Escape gives it up, and an edit left empty deletes
 the line. A click on a word looks it up, and so does a hover with the
-activation key, as on any page. Paste the whole file into Custom JavaScript
-and switch on the search page's Clipboard monitor; a program that copies each
-new line, such as Textractor's clipboard extension, then fills the list.
+activation key, as on any page. Switch on Settings → Advanced → Search
+history, paste the whole file into Custom JavaScript and switch on the search
+page's Clipboard monitor; a program that copies each new line, such as
+Textractor's clipboard extension, then fills the list. While the history is
+off, the list shows the lines already kept and no new ones.
 
 It uses `HDSearchHistory` alone. It has no websocket client, which
 texthooker-ui has for Textractor's and mpv's plugins: the script keeps to the

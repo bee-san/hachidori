@@ -9,7 +9,8 @@
 // word with Hachidori's activation key to look it up as on any page, or click
 // it. The results show beside the lines, in the search page's results area.
 //
-// Install: paste this whole file into Settings → Design → Custom JavaScript,
+// Install: switch on Settings → Advanced → Search history, which is off until
+// you do, paste this whole file into Settings → Design → Custom JavaScript,
 // and let Hachidori run user scripts (Chrome: Allow User Scripts on the
 // extension's details page; Firefox: Settings asks). Open the search page and
 // switch on its Clipboard monitor; a program that copies each new line, such
