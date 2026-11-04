@@ -338,6 +338,8 @@ button,
 .language-row > button { margin-inline-start: auto; }
 .language-actions { width: 100%; min-width: 0; }
 .language-actions select { flex: 1 1 12em; width: auto; min-width: 0; }
+/* The card's status is a row of its own, so its rule spans the card. */
+#settings-language-status { display: block; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 .field-hint > .scope-note { display: block; }
@@ -2312,6 +2314,7 @@ textarea {
   }
   .settings-sidebar:has(.settings-language-link) .privacy-link {
     grid-column: 1;
+    margin-inline: 0;
   }
   .engine-status {
     grid-column: 1 / -1;

@@ -437,8 +437,8 @@ function forwardToHost(message, capability = null) {
 }
 
 // A linked browser adds and removes languages on its host, once the host has
-// accepted its opt-in (docs/languages.md 16.1, 17.3 item 5, 17.6); a first-run
-// choice is never forwarded, and an add names a language both have a pack for.
+// accepted its opt-in (docs/languages.md 16.3, 17.3 item 5, 17.6); an add
+// names a language both have a pack for.
 async function forwardProfileRequest(message) {
   const status = getSharingClient().status();
   if (!status.connected) throw new Error(NOT_REACHABLE);
@@ -450,7 +450,7 @@ async function forwardProfileRequest(message) {
       throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
     }
     if (language !== null && profiles === undefined) {
-      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages; if its Settings have no Languages there, update it.`);
+      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages. If its Advanced has no Languages card, update it there.`);
     }
     throw new Error("Add and remove languages on the linked Hachidori.");
   }

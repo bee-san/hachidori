@@ -91,7 +91,31 @@ function setValue(document, control, setting, value) {
 }
 
 // Builds, updates or removes the two fieldsets for `descriptor` (null: none).
-export function renderLanguageSettings({ document, descriptor, name, values, presentation, onChange }) {
+// A theme that does not declare presentation shows the stored headword, so
+// the pack's display settings would change nothing (section 11.4): the card
+// keeps its place and says so, with the way to Design, instead of its rows.
+function renderDisplayNote(document, fieldset, presentation, themeName) {
+  for (const row of fieldset.querySelectorAll(".language-setting")) {
+    if (row.hidden === presentation) row.hidden = !presentation;
+  }
+  let note = fieldset.querySelector(".language-display-note");
+  if (presentation) {
+    note?.remove();
+    return;
+  }
+  if (note === null) {
+    note = document.createElement("p");
+    note.className = "field-hint language-display-note";
+    fieldset.append(note);
+  }
+  const theme = themeName ? `The ${themeName} theme` : "The chosen theme";
+  const link = document.createElement("a");
+  link.href = "#design";
+  link.textContent = "Design";
+  note.replaceChildren(`${theme} does not use these settings. Choose another theme in `, link, ".");
+}
+
+export function renderLanguageSettings({ document, descriptor, name, values, presentation, themeName = null, onChange }) {
   const settings = Array.isArray(descriptor?.settings) ? descriptor.settings : [];
   // Each group's card follows the Languages card, or the group before it.
   let anchor = document.getElementById("language-settings");
@@ -127,8 +151,6 @@ export function renderLanguageSettings({ document, descriptor, name, values, pre
       const control = document.getElementById(`opt-pack-${setting.id}`);
       setValue(document, control, setting, settingValue(setting, values));
     }
-    // A theme that does not declare presentation shows the stored headword,
-    // so the pack's display settings would change nothing (section 11.4).
-    if (group === "display") fieldset.hidden = !presentation;
+    if (group === "display") renderDisplayNote(document, fieldset, presentation, themeName);
   }
 }

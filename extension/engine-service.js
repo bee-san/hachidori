@@ -2183,7 +2183,7 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
     state: committed };
 }
 
-// Adding a language (docs/languages.md 5.2, 6.3 and 16.1). Under the
+// Adding a language (docs/languages.md 5.2, 6.3 and 16.3). Under the
 // mutation lock the engine loads the pack and strict-loads every package that
 // enters the loaded set (a re-added language's personal package); the
 // worker's hd_profile_cas writes options and dictionaryState together; then

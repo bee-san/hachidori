@@ -380,12 +380,17 @@ test("a pack's display setting shows under Advanced → Languages for a theme th
   assert.equal(el("language-display-settings"), null);
 });
 
-test("a theme without presentation hides the pack's display settings", async t => {
+test("a theme without presentation hides the pack's display settings and says why", async t => {
   const stored = withProfiles();
   stored.options.profiles[1].settings.popupTheme = "plain";
   const settings = await open(t, { hash: "#advanced", stored });
   await settle();
-  assert.equal(settings.el("language-display-settings").hidden, true);
+  const card = settings.el("language-display-settings");
+  assert.equal(card.hidden, false);
+  assert.ok([...card.querySelectorAll(".language-setting")].every(row => row.hidden));
+  const note = card.querySelector(".language-display-note");
+  assert.match(note.textContent, /^The .+ theme does not use these settings\. Choose another theme in Design\.$/u);
+  assert.equal(note.querySelector("a").getAttribute("href"), "#design");
   assert.deepEqual(settings.search("vowel marks"), []);
 });
 
@@ -470,10 +475,14 @@ test("with two languages the sidebar names the one Settings shows and leads to S
 
 test("Switch to the next language is a keybind action once the records have profiles", async t => {
   const actionOffered = settings => [...settings.document.querySelectorAll("#keybind-list .keybind-action")]
-    .map(select => !select.querySelector('option[value="switchLanguage"]').hidden);
+    .map(select => select.querySelector('option[value="switchLanguage"]'))
+    .map(option => !option.hidden && !option.disabled);
   const japanese = await open(t, { hash: "#keybinds", stored: { options: { revision: 1 } } });
   assert.ok(actionOffered(japanese).length > 0);
   assert.ok(actionOffered(japanese).every(offered => !offered), "a Japanese-only page does not offer it");
+  // Disabled as well as hidden: Chrome's type-ahead lands on a hidden option.
+  assert.ok([...japanese.document.querySelectorAll('#keybind-list .keybind-action option[value="switchLanguage"]')]
+    .every(option => option.hidden && option.disabled));
   const languages = await open(t, { hash: "#keybinds", stored: withProfiles() });
   assert.ok(actionOffered(languages).every(Boolean));
   // A stored bind keeps showing its action.
@@ -482,4 +491,5 @@ test("Switch to the next language is a keybind action once the records have prof
   const select = stored.document.querySelector("#keybind-list .keybind-action");
   assert.equal(select.value, "switchLanguage");
   assert.equal(select.selectedOptions[0].hidden, false);
+  assert.equal(select.selectedOptions[0].disabled, false);
 });

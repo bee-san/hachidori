@@ -548,7 +548,8 @@ words are read as the Japanese profile, with every value exactly as stored.
 A Japanese-only user sees two additions, both outside what the suites pin:
 the **Languages** card at the top of Settings → Advanced (16.3), and the
 browser command *Switch to the next language* in Keybinds → Browser shortcuts
-and on Chrome's shortcuts page. The command has no suggested key, so it takes
+and on the browser's shortcuts page; Settings lists every command the browser
+has, as the browser's page does. The command has no suggested key, so it takes
 no key from pages, and the keybind action list offers it only once the
 records have profiles (16.2). Everything else that appears with a second
 language (the toolbar row, the sidebar's language link, *All languages*
@@ -1615,17 +1616,21 @@ lookups in a language Settings cannot show.
   marked words kept") with **Erase**.
 - **Add a language**: a menu of every pack not in use, by English name, and
   **Add**. Adding copies the edited profile (section 6.3), and Settings then
-  shows the new language. On a linked client the menu offers only the packs
-  the host has too (section 17.6). A client whose host's `hello` lacks the
-  capability (an older build, or one without a second language) is told
-  "Add {Language} on {host} first, in Settings → Advanced → Languages; if its
-  Settings have no Languages there, update it."; a client refused at opt-in,
+  shows the new language. On a linked client, with or without profiles, the
+  menu offers only the packs the host has too (section 17.6). A client whose
+  host's `hello` lacks the capability (an older build, or one without a second
+  language) is told "Add {Language} on {host} first, in Settings → Advanced →
+  Languages. If its Advanced has no Languages card, update it there."; a client
+  refused at opt-in,
   "Update Hachidori in this browser to use {Language} from {host}.", naming
   the languages the refusal names; and the host refuses a language it has no
   pack for with "The linked Hachidori does not have {Language}. Update it and
   try again."
 - **{Language} options** and **{Language} display**, the edited profile's
-  pack settings (section 7.5), follow the card as cards of their own.
+  pack settings (section 7.5), follow the card as cards of their own. While
+  the Design theme does not declare `presentation`, *{Language} display*
+  shows only "The {theme} theme does not use these settings. Choose another
+  theme in Design." (section 11.4), and its settings are out of search.
 
 The card's status line is one of the page's section statuses: while another
 section is open, the rail's Advanced says what needs attention, such as the
@@ -1638,7 +1643,10 @@ sidebar is today's. With two or more profiles the sidebar has one link under
 it sits in the left column under Resume setup. The other sections keep only
 what explains a shared setting: the *All languages* notes and reset hints
 (section 16.4) and the settings hidden for the edited profile's language
-(section 7.3).
+(section 7.3). Dictionaries keep the edited language's own library controls
+(Dictionaries in your other languages, Use in and Remove from {Language},
+Move to {Language} after an import, the pack's recommended dictionaries),
+Audio its voices and Keybinds its action (section 16.2).
 
 ### 16.4 Which settings are per language
 
