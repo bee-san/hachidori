@@ -203,8 +203,8 @@ let settingsSearch;
 // (docs/languages.md 4.4); the page edits one profile of the record.
 let storedOptionsRecord; // NOSONAR: shared with the other Settings modules
 let languageSelection = { revision: 0, activeProfileId: null, autoSwitch: false }; // NOSONAR: shared with the other Settings modules
-// The Language menu and its dialog (profile-settings.js), loaded once the page
-// has a language registry.
+// Advanced → Languages and the sidebar's language link (profile-settings.js),
+// loaded once the page has a language registry.
 let profileSettings = null;
 let editedProfileChosen = false;
 // The catalogue entry Design's controls follow, for the pack's display
@@ -212,6 +212,8 @@ let editedProfileChosen = false;
 // settings, loaded once a pack declares some (section 7.5).
 let designTheme;
 let languageSettings = null;
+// Advanced → Languages' status, in SECTION_STATUSES once the card exists.
+const LANGUAGE_STATUS = "settings-language-status";
 
 const SECTION_STATUSES = {
   "library-reset-status": { section: "dictionaries", label: "Dictionaries" },
@@ -568,7 +570,7 @@ function readStoredRecords(keys) {
   return chrome.storage.local.get(keys);
 }
 
-// The Language menu chooses the edited profile (section 5.3). Pending option
+// Settings shows chooses the edited profile (section 5.3). Pending option
 // edits are saved first, for the profile they were made for; the three
 // editors with explicit saves are saved or discarded by the user first.
 // Resolves with the message to show when the page stays where it is.
@@ -614,7 +616,7 @@ async function useEditedProfileForLookups() {
   throw new Error("the language changed in another page; try again");
 }
 
-// Reading → Scanning → Switch language automatically (section 16.3).
+// Advanced → Languages → Switch language automatically (section 16.3).
 async function writeAutoSwitch(enabled) {
   const reply = await send("hd_language_selection_write",
     { baseRevision: languageSelection.revision, autoSwitch: enabled }, WORKER_TARGET);
@@ -622,12 +624,23 @@ async function writeAutoSwitch(enabled) {
   if (!reply.ok) throw new Error(reply.error || "the setting could not be saved");
 }
 
-// The Language menu needs the language registry; a page without one is a
+// The sidebar's language link leads to Advanced → Languages' Settings shows.
+function openLanguages() {
+  if (window.location.hash !== "#advanced") window.history.pushState(null, "", "#advanced");
+  showSettingsSection();
+  element("settings-language-select")?.focus();
+}
+
+// Advanced → Languages needs the language registry; a page without one is a
 // Japanese-only page (section 5).
 async function loadProfileSettings() {
   if (profileSettings !== null || !globalThis.HDLanguages) return;
   const { createProfileSettings } = await import("./profile-settings.js");
   profileSettings = createProfileSettings({ document, element, send,
+    // The rail's Advanced says so when a message needs attention elsewhere,
+    // such as the edited language's removal in another page.
+    setStatus: (message, tone = "", error = null) => setSectionStatus(LANGUAGE_STATUS, message, tone, false, error),
+    openLanguages,
     readEditedProfile: () => editedProfile,
     readActiveProfileId: activeProfile,
     readOptionsRecord: () => storedOptionsRecord,
@@ -651,12 +664,16 @@ async function loadProfileSettings() {
       await refreshStatus();
     },
   });
+  SECTION_STATUSES[LANGUAGE_STATUS] = { section: "advanced", label: "Languages" };
   profileSettings.render();
+  if (activeSection === "advanced") profileSettings.refresh();
+  await renderPackSettings();
 }
 
-// A pack's own settings in Reading and Design (section 7.5); the Japanese pack
-// declares none, so a Japanese profile's page has neither fieldset.
+// A pack's own settings under Advanced → Languages (section 7.5); the Japanese
+// pack declares none, so a Japanese profile's page has neither fieldset.
 async function renderPackSettings() {
+  if (profileSettings === null) return;
   const descriptor = hasProfiles(storedOptionsRecord) ? languageDescriptor(editedProfile.language) : null;
   const declared = Array.isArray(descriptor?.settings) && descriptor.settings.length > 0;
   if (!declared && languageSettings === null) return;
@@ -723,7 +740,10 @@ function showSettingsSection(focus = false) {
   updateBackupSettings();
   updateSharingSettings();
   void renderSearchHistory();
-  if (activeSection === "advanced") refreshAdvancedMemory();
+  if (activeSection === "advanced") {
+    refreshAdvancedMemory();
+    profileSettings?.refresh();
+  }
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
@@ -1334,7 +1354,7 @@ function handleStorageChange(changes, area) {
   if (changes.dictionaryState && !handleDictionaryStateChange(changes.dictionaryState)) {
     return;
   }
-  // The Language dialog counts each language's dictionaries and lists the
+  // Advanced → Languages counts each language's dictionaries and lists the
   // languages held without a profile.
   if (changes.dictionaryState) profileSettings?.render();
   if (changes.options || changes.dictionaryState || changes[CUSTOM_DICTIONARY_SOURCE_KEY] || changes.lookupStats

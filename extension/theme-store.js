@@ -8,9 +8,7 @@
 // theme whose entry has some.
 // With the edited profile's language (docs/languages.md 11.4, 11.5): outside
 // Japanese a theme without a language declaration hides the clicked-character
-// dictionary, and the pack's display settings
-// (`[data-pack-settings-group="display"]`) show only for a theme that
-// declares `presentation`.
+// dictionary.
 export function applyDesignSettings(section, theme, { language = null } = {}) {
   const declared = Array.isArray(theme?.designSettings) ? theme.designSettings : null;
   // A language code, or a language object (11.1).
@@ -24,9 +22,6 @@ export function applyDesignSettings(section, theme, { language = null } = {}) {
   }
   for (const group of section.querySelectorAll("[data-design-group]")) {
     group.hidden = [...group.querySelectorAll("[data-design-setting]")].every(control => control.hidden);
-  }
-  for (const group of section.querySelectorAll('[data-pack-settings-group="display"]')) {
-    group.hidden = theme?.language?.presentation !== true;
   }
   const hint = section.querySelector("#popup-theme-hint");
   hint.hidden = declared === null;
