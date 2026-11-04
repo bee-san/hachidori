@@ -59,6 +59,8 @@ test("lists run from the oldest line, or page back and forward from a line", asy
   for (const bad of [{ before: 0 }, { after: "2" }, { limit: -1 }, { before: 3, after: 1 }]) {
     assert.throws(() => store.list(bad), TypeError, JSON.stringify(bad));
   }
+  assert.equal(await store.prune(2), true);
+  assert.deepEqual(texts(await store.list()), ["四", "五"], "a prune of several lines keeps the newest, as many as the limit");
 });
 
 test("lines are edited, removed, pruned and cleared, and every open page hears of it", async (t) => {

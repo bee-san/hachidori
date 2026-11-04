@@ -117,8 +117,9 @@ Up shows the newest line, and each further Up the one before it; Down goes
 forward again, and Down past the newest line brings back what the box held
 before the walk (the draft). A line equal to what the box shows is skipped. Up
 leaves the caret at the end of the line's first row and Down at its end, so the
-next press walks on. Typing in the box ends the walk, and the text in it is
-the next walk's draft. Enter searches the line shown, which is kept again as
+next press walks on. Only line breaks make rows here: in a long line the box
+wraps onto several rows, Up walks from any of them, as in a shell. Typing in
+the box ends the walk, and the text in it is the next walk's draft. Enter searches the line shown, which is kept again as
 the newest line unless it is the newest already.
 
 ### In the searched text
@@ -159,9 +160,19 @@ forward; past the newest earlier line, the searched line comes back with its
 cursor where it was. Each earlier line opens with its cursor on its first
 word, looked up. Enter on an earlier line adds its word with that line as the
 sentence, as a card from Rubi's earlier line does. A new search starts from
-the line it searched. Unlike Rubi's overlay, a visit has no 32-line cap (the
-history's limit bounds it), Escape leaves the visit shown while it focuses the
-box, and the cursor always goes by word (Rubi's Whole word mode).
+the line it searched. While the history is switched off, Down in a visit shows
+the searched line again.
+
+These differ from Rubi's overlay:
+
+- A visit has no 32-line cap; the history's limit bounds it.
+- A new line from the Clipboard monitor ends a visit and is searched. Rubi
+  holds new text until the visit ends.
+- An earlier line opens after the brackets and spaces it starts with, where a
+  search starts. Rubi's opens on its first character while Japanese characters
+  only is off.
+- Escape leaves the visit shown while it focuses the box.
+- The cursor always goes by word (Rubi's Whole word mode).
 
 Beside the text, while it has focus, a note names its keys from the keybinds,
 such as `Left/Right: words · Up/Down: rows and earlier lines · Enter: add to
@@ -220,9 +231,9 @@ new line, such as Textractor's clipboard extension, then fills the list.
 It uses `HDSearchHistory` alone. It has no websocket client, which
 texthooker-ui has for Textractor's and mpv's plugins: the script keeps to the
 history, which the Clipboard monitor fills with the lines those programs copy,
-and the search page opens no connection of its own. Its Times and pause choices last until the page
-reloads. Firefox 153 runs no Custom JavaScript on the search page, so the
-script needs Firefox 154 or later there.
+and the search page opens no connection of its own. Its Times and pause
+choices last until the page reloads. Firefox 153 runs no Custom JavaScript on
+the search page, so the script needs Firefox 154 or later there.
 
 ## Tests
 

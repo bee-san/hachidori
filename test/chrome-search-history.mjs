@@ -269,6 +269,19 @@ try {
   await press("ArrowLeft");
   const caretMoved = await view();
   assert.ok(caretMoved.caret < drafted.caret && caretMoved.cursor === null, `Left moves the box's caret: ${JSON.stringify(caretMoved)}`);
+  // Up is the box's own with text selected, or below the box's first line.
+  await frame.$eval("#search-input", box => box.setSelectionRange(0, 2));
+  await press("ArrowUp");
+  await settle(300);
+  assert.equal((await view()).value, "下書き", "Up with text selected walks nothing");
+  await frame.$eval("#search-input", (box) => {
+    box.value = "下書き\n二行目";
+    box.setSelectionRange(box.value.length, box.value.length);
+  });
+  await press("ArrowUp");
+  await settle(300);
+  const below = await view();
+  assert.ok(below.value === "下書き\n二行目" && below.caret <= 3, `Up below the first line moves the caret: ${JSON.stringify(below)}`);
   assert.equal(await popup.state().then(state => state.text.includes(GLOSSES["漢字"])), true, "the walk searched nothing");
   for (const expected of ["漢字", "読む"]) {
     await press("ArrowUp");
@@ -279,7 +292,8 @@ try {
   await until(state => state.query === "読む", "the recalled line");
   assert.deepEqual((await lines()).map(line => line.text), ["食べたかった", "読む", "漢字", "読む"], "a line again after another is kept");
   console.log("PASS: Up and Down in the box walk the lines back and forward, Down past the newest brings the draft back,"
-    + " Left and Right move the caret, and Enter searches the recalled line");
+    + " Left and Right move the caret, Up with text selected or below the first line moves the caret, and Enter searches"
+    + " the recalled line");
 
   // Left and Right move the cursor word by word, each word looked up; Left retraces the Rights.
   await typeSearch("漢字読むありがとう");
@@ -342,7 +356,7 @@ try {
   assert.ok(await shows("漢字"), "an earlier line opens on its first word");
   if (SCREENSHOTS) {
     mkdirSync(SCREENSHOTS, { recursive: true });
-    for (const theme of ["default", "girlypop", "high-contrast"]) {
+    for (const theme of ["default", "girlypop", "solarized-light", "high-contrast"]) {
       await writeOptions({ popupTheme: theme });
       await frame.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value, { polling: 100, timeout: 10_000 }, theme);
       await search.bringToFront();
@@ -471,6 +485,14 @@ try {
   assert.equal((await view()).cursor?.at, 2, "Right with focus on a button moves no cursor");
   console.log("PASS: the search page's keys follow Settings → Keybinds and leave other controls alone");
 
+  // Switched off during a visit, the history still lets Down show the searched line again.
+  const visiting = await view();
+  await press("ArrowUp");
+  await until(state => state.where !== null && state.query !== visiting.query, "a visit further back");
+  await writeOptions({ searchHistoryEnabled: false });
+  await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
+  await press("ArrowDown");
+  await until(state => state.query === long && state.where === null, "Down with the history off");
   // With the history off, nothing is kept and Up recalls nothing.
   await writeOptions({ searchHistoryEnabled: false });
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
@@ -489,7 +511,7 @@ try {
   assert.deepEqual(await lines(), before, "nothing is kept");
   await writeOptions({ searchHistoryEnabled: true });
   await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
-  console.log("PASS: with the history off a search keeps no line, and Up recalls none");
+  console.log("PASS: with the history off a search keeps no line, Up recalls none, and Down ends a visit");
 
   // A second search page, the popup window, keeps its lines with its window, and the first hears them.
   await settings.evaluate(async () => {

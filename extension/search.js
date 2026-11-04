@@ -82,8 +82,10 @@ async function keep(text, source) {
 // A line the searched text shows: its text, its history id (null when it was
 // not kept), its cursor and the word the last lookup matched there.
 const line = (text, id, cursor) => ({ text, id, cursor, match: null });
-// Where an earlier line's cursor starts, as Rubi's does: on the first
-// character it can rest on, after any brackets and spaces the line opens with.
+// Where an earlier line's cursor starts: on the first character it can rest
+// on, after any brackets and spaces the line opens with, as a search starts.
+// Rubi's starts on its first Japanese letter, or with Japanese characters
+// only off, its first character.
 function opening(text) {
   const start = globalThis.HDContent.searchStart(text);
   return firstSelectable(text, start, options.onlyScanJapaneseText) ?? start;
@@ -170,7 +172,16 @@ function show(shownLine) {
 // newest the current line again, its cursor where it was. An earlier line
 // opens on its first word. A press while a step waits for the history is dropped.
 async function stepLine(direction) {
-  if (stepping || !options.searchHistoryEnabled || !shown || (direction > 0 && !visit)) return;
+  if (stepping || !shown || (direction > 0 && !visit)) return;
+  // With the history switched off, a visit can only end: Down shows the
+  // searched line again.
+  if (!options.searchHistoryEnabled) {
+    if (direction > 0) {
+      visit = null;
+      show(current);
+    }
+    return;
+  }
   stepping = true;
   const from = shown;
   const earlier = found => found && line(found.text, found.id, 0);
@@ -202,6 +213,20 @@ async function stepLine(direction) {
   }
 }
 
+// The shown text's rows, read again only when its text or size changes:
+// textRows measures every character, which a long text makes slow for each
+// key, and a held one.
+let laidOut = null;
+function rowsOf(node) {
+  const size = `${query.clientWidth}x${query.scrollHeight}`;
+  if (laidOut?.node !== node || laidOut.data !== node.data || laidOut.size !== size) {
+    const rows = textRows(node);
+    if (!rows) return null;
+    laidOut = { node, data: node.data, size, rows };
+  }
+  return laidOut.rows;
+}
+
 // Rubi's arrow keys over the searched text (shell/overlay.cpp input_overlay):
 // Left/Right word by word, Up/Down row by row, and past the text's top row, or
 // an earlier line's last, on to another line.
@@ -210,7 +235,7 @@ function move(dx, dy, repeat) {
   const node = query.firstChild;
   if (!shownLine || !node) return false;
   const matchedEnd = shownLine.match?.at === shownLine.cursor ? shownLine.match.end : 0;
-  const { result, to } = rowKey(navigation, { text: shownLine.text, rows: textRows(node),
+  const { result, to } = rowKey(navigation, { text: shownLine.text, rows: rowsOf(node),
     japaneseOnly: options.onlyScanJapaneseText }, shownLine.cursor, matchedEnd, dx, dy);
   // A held Left/Right stops at the text's ends: only a fresh press goes round a one-row text's.
   const wentRound = dx > 0 ? to < shownLine.cursor : to > shownLine.cursor;
