@@ -44,14 +44,31 @@ function* characters(text) {
 
 const stay = to => ({ result: ROW_STAY, to });
 
+// Whether the character at `at` carries on a word begun before it, in a
+// language read word by word (`words`: the pack's word and word-internal
+// characters, read as content-scan.js's wordStart reads them). A lookup from
+// it starts at its word's first character (docs/languages.md 8.3), so it is
+// no stop of its own.
+function continuesWord(text, at, words) {
+  if (words === null || at <= 0 || at >= text.length) return false;
+  const back = from => from - (from >= 2 && text.charCodeAt(from - 1) >= 0xdc00 && text.charCodeAt(from - 1) <= 0xdfff ? 2 : 1);
+  const character = from => (from < 0 ? undefined : String.fromCodePoint(text.codePointAt(from)));
+  const isWord = value => value !== undefined && words.word.test(value);
+  const isInternal = value => value !== undefined && words.internal !== null && words.internal.test(value);
+  const here = character(at);
+  const previous = character(back(at));
+  if (isInternal(here)) return isWord(previous);
+  return isWord(here) && (isWord(previous) || (isInternal(previous) && isWord(character(back(back(at))))));
+}
+
 // The characters the cursor can rest on (its stops), in reading order, each
 // with whether a line break comes between it and the stop before it.
-function* stops(text, japaneseOnly) {
+function* stops(text, japaneseOnly, words = null) {
   let broken = false;
   for (const { at, codePoint } of characters(text)) {
     if (codePoint === 0x0a) {
       broken = true;
-    } else if (selectable(codePoint, japaneseOnly)) {
+    } else if (selectable(codePoint, japaneseOnly) && !continuesWord(text, at, words)) {
       yield { at, broken };
       broken = false;
     }
@@ -59,9 +76,19 @@ function* stops(text, japaneseOnly) {
 }
 
 // The first character the cursor can rest on at or after `from`, or null.
-export function firstSelectable(text, from, japaneseOnly) {
-  for (const { at } of stops(text, japaneseOnly)) if (at >= from) return at;
+export function firstSelectable(text, from, japaneseOnly, words = null) {
+  for (const { at } of stops(text, japaneseOnly, words)) if (at >= from) return at;
   return null;
+}
+
+// The stop a lookup from `at` starts at: `at`, or in a word the stop the
+// word begins at; null when there is none.
+export function stopAt(text, at, japaneseOnly, words = null) {
+  let start = at;
+  while (continuesWord(text, start, words)) {
+    start -= start >= 2 && text.charCodeAt(start - 1) >= 0xdc00 && text.charCodeAt(start - 1) <= 0xdfff ? 2 : 1;
+  }
+  return firstSelectable(text, start, japaneseOnly, words) === start ? start : null;
 }
 
 // A line the cursor moves over: `text`, its layout `rows` (textRows, or null
@@ -71,9 +98,9 @@ export function firstSelectable(text, from, japaneseOnly) {
 // In reading order, without the layout (vjo_text_row_step's walk): the stop a
 // step goes to, null past the text's end that way, and for an end the text's
 // first and last stops and whether a line break lies between them.
-function readingOrder({ text, japaneseOnly }, cursor, from, direction) {
+function readingOrder({ text, japaneseOnly, words = null }, cursor, from, direction) {
   const found = { to: null, first: null, last: null, split: false };
-  for (const { at, broken } of stops(text, japaneseOnly)) {
+  for (const { at, broken } of stops(text, japaneseOnly, words)) {
     if (direction > 0 && at >= from) return { ...found, to: at };
     if (direction < 0 && at >= cursor && found.to !== null) return found;
     if (direction < 0 && at < cursor) found.to = at;
@@ -113,9 +140,9 @@ export function rowStep(line, cursor, from, direction, wrap) {
 // the earlier on a tie. In reading order the rows above end at the cursor's
 // row, and the row below at the next one after it; a nearer row starts the
 // choice again. Its offset, null for no such row, or ROW_UNAVAILABLE.
-function nearestOnRow({ text, rows, japaneseOnly }, row, direction, column) {
+function nearestOnRow({ text, rows, japaneseOnly, words = null }, row, direction, column) {
   let best = null;
-  for (const { at } of stops(text, japaneseOnly)) {
+  for (const { at } of stops(text, japaneseOnly, words)) {
     const cell = rows.cell(at);
     if (!cell) return ROW_UNAVAILABLE;
     if (direction < 0 ? cell.line >= row : best !== null && cell.line > best.line) break;

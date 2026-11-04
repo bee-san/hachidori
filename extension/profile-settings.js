@@ -455,6 +455,18 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     row?.after(scopeNote("p"));
   }
 
+  // Reading → Search page's hint names what the Clipboard monitor searches:
+  // with profiles, text in the language used for lookups (section 8.2). Only
+  // the words change, in the hint's own text, so its links stay.
+  const JAPANESE_CLIPBOARD = "to search Japanese text as soon as";
+  const PROFILE_CLIPBOARD = "to search text in the language used for lookups as soon as";
+  function renderClipboardHint(withProfiles) {
+    const [from, to] = withProfiles ? [JAPANESE_CLIPBOARD, PROFILE_CLIPBOARD] : [PROFILE_CLIPBOARD, JAPANESE_CLIPBOARD];
+    const hint = element("search-page-help");
+    const node = hint && [...hint.childNodes].find(child => child.nodeType === Node.TEXT_NODE && child.data.includes(from));
+    if (node) node.data = node.data.replace(from, to);
+  }
+
   // Resets that reach every language say so (section 16.4).
   function renderResetHints(withProfiles) {
     const hints = {
@@ -483,6 +495,7 @@ export function createProfileSettings({ document, element, send, readEditedProfi
     renderAutoSwitch(withProfiles && profileList().length > 1);
     renderScopeNotes(withProfiles);
     renderResetHints(withProfiles);
+    renderClipboardHint(withProfiles);
     if (dialog.open) renderDialog();
   }
 

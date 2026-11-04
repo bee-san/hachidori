@@ -812,7 +812,18 @@ the Japanese pack carries `word-highlights.js:39-40` exactly. The
 
 - **Search page**: with profiles, the search box and the echoed query take the
   profile's `lang`; for right-to-left packs also `dir="auto"`. The leading
-  punctuation the page skips stays.
+  punctuation the page skips stays. The line history's rows around an earlier
+  line take the profile's `lang` and, outside Japanese, their own text's
+  direction. Rubi's cursor rests on every character in Japanese, as on main;
+  in a pack whose `text.scanStart` is `"word"` it rests only on word starts,
+  by the pack's `wordCharacters` and `wordInternal` (a lookup there starts at
+  the word's first letter, section 8.3), and a click inside a word puts it at
+  the word's start. In right-to-left text Left and Right go the way they
+  point. The Clipboard monitor searches text the active pack's
+  `text.pattern` accepts (Japanese's character set for Japanese and the
+  single-profile shape); its tooltip names that language, and with profiles
+  Reading → Search page's hint says it searches text in the language used for
+  lookups.
 - **Word highlighting**: each text block is segmented with the profile a
   lookup in that block would use (section 8.1). Profiles without
   `wordHighlighting` show no marks.

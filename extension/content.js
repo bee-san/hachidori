@@ -4601,8 +4601,9 @@
   // (#639): whether copied text has a Japanese character in it. search.html
   // passes the frame only text this accepts (search-shell.js, #644), testing
   // the same set: a change here must change that filter too.
+  // With profiles, text in the language used for lookups (docs/languages.md 8.2).
   function isLookupWorthy(text) {
-    return JAPANESE_CHARACTER_PATTERN.test(text);
+    return (activeReadingProfile()?.text ?? JAPANESE_TEXT_RULES).isText(text);
   }
 
   function runKeybindAction({ action, argument }, event,

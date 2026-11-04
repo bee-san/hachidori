@@ -20,7 +20,7 @@ import { captureDebugLog, captureDocumentActions, recordUserError, setDebugLogLa
 import { describeErrorMessage } from "./error-text.js";
 import { formatKeybind } from "./keybind-settings.js";
 import { loadReaderScripts } from "./reader-page.js";
-import { createNavigation, firstSelectable, ROW_STAY, rowKey, textRows } from "./search-lines.js";
+import { createNavigation, firstSelectable, ROW_STAY, rowKey, stopAt, textRows } from "./search-lines.js";
 import { renderTemplateChoices } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
@@ -97,7 +97,7 @@ const line = (text, id, cursor) => ({ text, id, cursor, match: null });
 // only off, its first character.
 function opening(text) {
   const start = globalThis.HDContent.searchStart(text);
-  return firstSelectable(text, start, japaneseOnly()) ?? start;
+  return firstSelectable(text, start, japaneseOnly(), wordRules()) ?? start;
 }
 
 // The line last searched; the line shown, which is it, or an earlier one in a
@@ -252,7 +252,7 @@ function move(dx, dy, repeat) {
   if (!shownLine || !node) return false;
   const matchedEnd = shownLine.match?.at === shownLine.cursor ? shownLine.match.end : 0;
   const { result, to } = rowKey(navigation, { text: shownLine.text, rows: rowsOf(node),
-    japaneseOnly: japaneseOnly() }, shownLine.cursor, matchedEnd, dx, dy);
+    japaneseOnly: japaneseOnly(), words: wordRules() }, shownLine.cursor, matchedEnd, dx, dy);
   // A held Left/Right stops at the text's ends: only a fresh press goes round a one-row text's.
   const wentRound = dx > 0 ? to < shownLine.cursor : to > shownLine.cursor;
   const cursor = repeat && dx && wentRound ? shownLine.cursor : to;
@@ -305,6 +305,13 @@ input.addEventListener("input", () => { walk = null; });
 // text, and there also a reader action such as Add note. Held, the moves repeat.
 const REPEATING = new Set(["searchPreviousLine", "searchNextLine", "searchPreviousWord", "searchNextWord", "searchRowUp",
   "searchRowDown"]);
+// Next and previous word go in reading order; in right-to-left text the arrow
+// keys go the way they point, as a caret's do.
+function wordDirection(action, event) {
+  const next = action === "searchNextWord" ? 1 : -1;
+  return /^Arrow(?:Left|Right)$/u.test(event.code) && getComputedStyle(query).direction === "rtl" ? -next : next;
+}
+
 function runSearchAction(action, event) {
   const inBox = document.activeElement === input;
   const inText = document.activeElement === query && shown !== null;
@@ -319,7 +326,7 @@ function runSearchAction(action, event) {
       return true;
     case "searchPreviousWord":
     case "searchNextWord":
-      return inText && move(action === "searchNextWord" ? 1 : -1, 0, event.repeat);
+      return inText && move(wordDirection(action, event), 0, event.repeat);
     case "searchRowUp":
     case "searchRowDown":
       return inText && move(0, action === "searchRowDown" ? 1 : -1, event.repeat);
@@ -493,6 +500,7 @@ function applyLanguage() {
       node.lang = "ja";
       node.removeAttribute("dir");
     }
+    for (const node of [before, after]) node.lang = "ja";
     input.placeholder = JAPANESE_PLACEHOLDER;
     delete input.dataset.language;
     setDebugLogLanguages([]);
@@ -507,6 +515,7 @@ function applyLanguage() {
     if (descriptor?.direction === "rtl") node.dir = "auto";
     else node.removeAttribute("dir");
   }
+  for (const node of [before, after]) node.lang = descriptor?.bcp47 ?? language;
   input.placeholder = JAPANESE_PLACEHOLDER.replace("Japanese", descriptor?.name ?? (language === "ja" ? "Japanese" : language));
   input.dataset.language = language;
 }
@@ -524,6 +533,29 @@ function japaneseOnly() {
   const language = hasProfiles(storedOptions)
     ? profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja" : "ja";
   return options.onlyScanJapaneseText && language === "ja";
+}
+
+// A language read word by word looks a word up from its first character
+// (docs/languages.md 8.3), so Rubi's cursor rests only there: the pack's word
+// and word-internal characters, or null.
+let wordRulesOf = null;
+function wordRules() {
+  const language = hasProfiles(storedOptions)
+    ? profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja" : "ja";
+  const text = language === "ja" ? null : globalThis.HDLanguages?.get?.(language)?.text;
+  if (text?.scanStart !== "word") return null;
+  if (wordRulesOf?.language !== language) {
+    const pattern = source => {
+      try {
+        return source ? new RegExp(source, "u") : null;
+      } catch {
+        return null;
+      }
+    };
+    const word = pattern(text.wordCharacters) ?? pattern(text.pattern);
+    wordRulesOf = { language, rules: word === null ? null : { word, internal: pattern(text.wordInternal) } };
+  }
+  return wordRulesOf.rules;
 }
 
 // search.html's Anki Template switch lies over this header (#656). The copy
@@ -621,10 +653,10 @@ try {
   reader.lookUpOnClick(query, (node, offset) => {
     // A click on the cursor's own character is the reader's too, which looks
     // up (and counts) a word it already shows no second time.
-    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild || offset === shown.cursor
-        || firstSelectable(node.data, offset, japaneseOnly()) !== offset) return false;
+    const at = node === query.firstChild ? stopAt(node.data, offset, japaneseOnly(), wordRules()) : null;
+    if (!options.searchHistoryEnabled || !shown || at === null || at === shown.cursor) return false;
     clickMoved = true;
-    shown.cursor = offset;
+    shown.cursor = at;
     shown.match = null;
     navigation = createNavigation();
     void lookUp(shown);

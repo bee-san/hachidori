@@ -18,6 +18,7 @@ import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
 import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
+import { languageName } from "./language-names.js";
 import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { openSearchHistory } from "./search-history.js";
@@ -212,14 +213,28 @@ async function userScript(api) {
 // once the frame's reader is ready.
 const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
 
-// The reader's Japanese character set, which content-scan.js publishes. It is
+// The language used for lookups (docs/languages.md 8.1, rule 4), or null in
+// the single-profile shape.
+function activeLanguage(stored, selection) {
+  const layer = globalThis.HDReaderOptions;
+  return layer.hasProfiles(stored)
+    ? layer.profileDescriptor(stored, layer.activeProfileId(stored, selection))?.language ?? "ja" : null;
+}
+
+// Text in that language, by its pack's text.pattern (8.2), or with Japanese the
+// reader's Japanese character set, which content-scan.js publishes. Either is
 // loaded once the monitor reads something, rather than as the page starts.
-async function lookupWorthy(text) {
+export async function lookupWorthy(text, language) {
+  if (language !== null && language !== "ja") {
+    await import("./vendor/languages/registry.js");
+    const source = globalThis.HDLanguages?.get?.(language)?.text?.pattern;
+    return typeof source === "string" && new RegExp(source, "u").test(text);
+  }
   await import("./content-scan.js");
   return globalThis.HDContent.JAPANESE_CHARACTER_PATTERN.test(text);
 }
 
-function clipboardMonitor(clipboardSwitch, search) {
+function clipboardMonitor(clipboardSwitch, search, language) {
   let ready = false;
   const monitor = createClipboardMonitor({
     async read() {
@@ -228,7 +243,7 @@ function clipboardMonitor(clipboardSwitch, search) {
     },
     // Not once the switch is off, which it may be by the time the import ends.
     async change(text) {
-      if (await lookupWorthy(text) && monitor.running) search(text);
+      if (await lookupWorthy(text, language()) && monitor.running) search(text);
     },
   });
   async function show() {
@@ -350,6 +365,12 @@ async function start() {
   // what the history keeps. With profiles the page reads in the active one,
   // so it takes that profile's palette and Templates (docs/languages.md 8.1).
   let storedOptions, languageSelection;
+  const nameClipboardLanguage = () => {
+    const language = activeLanguage(storedOptions, languageSelection);
+    const label = document.getElementById("search-clipboard").closest("label");
+    const title = `Search ${language === null ? "Japanese" : languageName(language)} text as soon as you copy it, in any tab or program`;
+    if (label.title !== title) label.title = title;
+  };
   const initial = chrome.storage.local.get(["options", "languageSelection"]);
   let options = initial.then(({ options: stored }) => normaliseOptions(stored));
   const adoptOptions = (stored, selection = languageSelection) => {
@@ -359,6 +380,11 @@ async function start() {
     applyPageTheme(document, layer.hasProfiles(stored)
       ? layer.projectOptions(stored, layer.activeProfileId(stored, selection)) : normaliseOptions(stored));
     templates.show(activeTemplates(stored, selection).anki);
+    // The Clipboard monitor's tooltip names the language it searches; another
+    // language's name comes from the registry, loaded for it.
+    const language = activeLanguage(stored, selection);
+    if (language === null || language === "ja") nameClipboardLanguage();
+    else void import("./vendor/languages/registry.js").then(nameClipboardLanguage, nameClipboardLanguage);
   };
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !(changes.options || changes.languageSelection)) return;
@@ -374,7 +400,8 @@ async function start() {
   frame.title = "Hachidori Search";
   let port = null;
   const clipboardSwitch = document.getElementById("search-clipboard");
-  const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); });
+  const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); },
+    () => activeLanguage(storedOptions, languageSelection));
   connectSearchFrame({ window, frame,
     serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page, history); },
     connection: sandboxed => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest(),

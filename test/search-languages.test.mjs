@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { activeTemplates, templateSwitch } from "../extension/search-shell.js";
+import { activeTemplates, lookupWorthy, templateSwitch } from "../extension/search-shell.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -56,4 +56,12 @@ test("a choice is written into the active profile, naming it", async () => {
   assert.equal(writes[0].profileId, "en");
   assert.equal(writes[0].baseRevision, 7);
   assert.deepEqual(writes[0].options.anki.templates.map(({ id }) => id), ["en-sentences", "en-words"]);
+});
+
+test("the Clipboard monitor searches text in the language used for lookups", async () => {
+  assert.equal(await lookupWorthy("They walk to the shop.", "en"), true);
+  assert.equal(await lookupWorthy("読む", "en"), false, "Japanese text is not English");
+  assert.equal(await lookupWorthy("They walk to the shop.", "ar"), false);
+  assert.equal(await lookupWorthy("読む", null), true, "without profiles, today's Japanese filter");
+  assert.equal(await lookupWorthy("They walk", null), false);
 });
