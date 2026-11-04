@@ -713,6 +713,26 @@ try {
   console.log("PASS: Settings shows how many lines are kept, keeps only the newest when the limit is lowered, clears"
     + " them, and turns the history off and on");
 
+  // A click on a character the cursor does not rest on is the reader's
+  // lookup alone: the cursor stays. The line is removed again after.
+  await writeOptions({ searchClickLookup: true });
+  await typeSearch("漢字、読む");
+  await until(state => state.query === "漢字、読む" && state.cursor?.text === "漢字", "a line with a comma");
+  const comma = await frame.$eval("#search-query", (element) => {
+    const range = document.createRange();
+    range.setStart(element.firstChild, 2);
+    range.setEnd(element.firstChild, 3);
+    const box = range.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await search.mouse.click(comma.x, comma.y);
+  await settle(500);
+  assert.equal((await view()).cursor?.at, 0, "a click on the comma leaves the cursor on 漢字");
+  await writeOptions({ searchClickLookup: false });
+  const [commaLine] = await lines();
+  await frame.evaluate(id => globalThis.HDSearchHistory.remove(id), commaLine.id);
+  assert.deepEqual(await lines(), []);
+
   // The texthooker user script, which Custom JavaScript runs once Chrome allows user scripts.
   const allowUserScripts = async (allowed) => {
     const extensions = await browser.newPage();

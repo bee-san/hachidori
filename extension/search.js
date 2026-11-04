@@ -549,10 +549,12 @@ try {
   reader = await loadReaderScripts(document, chrome, "searchReader");
   reader.dock(document.getElementById("search-results"));
   // Reading → Search page → Look up words with a click (#656). While the
-  // history's keys are on, the cursor goes to the clicked character and looks
-  // the word up from there, as Right would have.
+  // history's keys are on, a click on a character the cursor can rest on moves
+  // the cursor there and looks the word up from it; any other click is the
+  // reader's, as it always was.
   reader.lookUpOnClick(query, (node, offset) => {
-    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild) return false;
+    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild
+        || firstSelectable(node.data, offset, options.onlyScanJapaneseText) !== offset) return false;
     shown.cursor = offset;
     shown.match = null;
     navigation = createNavigation();
