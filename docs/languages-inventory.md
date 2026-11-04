@@ -99,6 +99,9 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `dictionaryEntryStorage` (auto) | Advanced → Memory | None | G |
 | `dictionaryIndexStorage` (auto) | Advanced → Memory | None | G |
 | `showToolbarSearchButton` (true) | Reading → Search page | None | G |
+| `searchClickLookup` (false) | Reading → Search page | None | G |
+| `searchWindowWidthPx` (600) | Reading → Search page | None | G |
+| `searchWindowHeightPx` (640) | Reading → Search page | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
 | new `profiles` (not an option key) | Settings Language menu and dialog | — | structure of `options` (4.1) |
 | new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Settings **Use for lookups**, Reading → Scanning | — | installation-local key (4.4) |

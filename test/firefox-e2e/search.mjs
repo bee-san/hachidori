@@ -1,9 +1,10 @@
 /*
  * The search page (#610) in Firefox: the popup window that the Open the popup
  * window shortcut and the toolbar menu's Search open through search-window.js,
- * a typed word's lookup docked under the search box, its clipboard monitor
- * (#639), whose switch asks Firefox for the clipboardRead permission, and
- * Custom JavaScript there (#644). The page itself is search-frame.html, the
+ * at the size Settings sets, a typed word's lookup docked under the search
+ * box, its clipboard monitor (#639), whose switch asks Firefox for the
+ * clipboardRead permission, Custom JavaScript there (#644), and its click
+ * lookups and Anki Template switch (#656). The page itself is search-frame.html, the
  * frame search.html holds, so each read of it goes to that frame.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -13,14 +14,16 @@ import "./settings.mjs";
 import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import {
-  activate, bidiSession, browser, childFrame, evaluateInChrome, evaluateJson, extensionUrl, findPage,
-  openExtensionPage, page, readPopup, reloadPage, sleep, waitFor, writeOptions,
+  activate, bidiSession, browser, characterPoint, childFrame, evaluateInChrome, evaluateJson, extensionUrl, findPage,
+  openExtensionPage, page, readPopup, readStorage, reloadPage, sleep, waitFor, writeOptions,
 } from "./session.mjs";
 
 // The open search pages, from the extension's own documents as search-window.js finds them.
 const searchPages = () => evaluateJson(page, async url => JSON.stringify(await Promise.all((await chrome.runtime.getContexts({
-  contextTypes: ["TAB"], documentUrls: [url] })).map(async ({ tabId, windowId }) => ({ tabId, windowId,
-  type: (await chrome.windows.get(windowId)).type })))), extensionUrl("search.html"));
+  contextTypes: ["TAB"], documentUrls: [url] })).map(async ({ tabId, windowId }) => {
+  const window = await chrome.windows.get(windowId);
+  return { tabId, windowId, type: window.type, size: [window.width, window.height] };
+}))), extensionUrl("search.html"));
 
 // The search page's own document, in search.html's frame.
 const searchFrame = target => childFrame(target, "search-frame.html");
@@ -35,17 +38,22 @@ const openSearchPage = mode => evaluateJson(page, async requested => {
 describe("search page", () => {
   step("the search page in a popup window", async () => {
     await activate(page);
+    // Reading → Search page sets the window's size (#656).
+    await writeOptions(page, { searchWindowWidthPx: 520, searchWindowHeightPx: 480 });
     const opened = await openSearchPage("popup");
     const first = await waitFor(async () => {
       const pages = await searchPages();
       return pages.some(entry => entry.type === "popup") ? pages : false;
     }, { timeout: 15_000 });
+    await writeOptions(page, { searchWindowWidthPx: 600, searchWindowHeightPx: 640 });
     // A second request brings the open search page forward instead of opening another.
     await openSearchPage("popup");
     const second = await searchPages();
     check("the popup window opens one search page and brings it forward instead of opening another",
       opened?.type === "popup" && first?.length === 1 && JSON.stringify(second) === JSON.stringify(first),
       JSON.stringify({ opened, first, second }));
+    check("the popup window opens at the size set in Reading → Search page",
+      JSON.stringify(first?.[0]?.size) === "[520,480]", JSON.stringify(first));
 
     const search = await searchFrame(await findPage("search.html"));
     const ready = await waitFor(() => search.evaluate(() => !document.getElementById("search-submit").disabled || false),
@@ -180,5 +188,57 @@ describe("search page", () => {
         sentAfter, after }));
     await search.close();
     await activate(page);
+  });
+
+  // Reading → Search page → Look up words with a click and the Anki Template
+  // switch (#656), with the reader in Firefox's frame and the switch in search.html.
+  step("the search page's click lookups and Anki Template switch", async () => {
+    const before = await evaluateJson(page, async () => JSON.stringify(globalThis.HDReaderOptions
+      .normaliseOptions((await chrome.storage.local.get("options")).options)));
+    const original = before.anki;
+    const twoTemplates = await evaluateJson(page, json => {
+      const anki = JSON.parse(json);
+      return JSON.stringify(globalThis.HDReaderOptions.normaliseAnki({ url: anki.url, apiKey: anki.apiKey,
+        templates: [anki.templates[0], { ...anki.templates[0], id: "e2e-words", name: "Words" }] }));
+    }, JSON.stringify(original));
+    // Page lookups wait for the activation key, which nothing here holds.
+    await writeOptions(page, { searchClickLookup: true, lookupMode: "activationSticky", anki: twoTemplates });
+    const search = await openExtensionPage("search.html");
+    let evidence;
+    try {
+      const frame = await searchFrame(search);
+      await waitFor(() => frame.evaluate(() => !document.getElementById("search-submit").disabled || false), { timeout: 30_000 });
+      await frame.evaluate(() => {
+        document.getElementById("search-input").value = "漢字を読む";
+        document.getElementById("search-form").requestSubmit();
+      });
+      const searched = await waitFor(async () => ((await readPopup(frame))?.headword === "漢字" ? true : false),
+        { timeout: 20_000 });
+      // 読 is the query's fourth character; the frame fills the page.
+      const point = await characterPoint(frame, "#search-query", 3);
+      await search.mouse.click(point.x, point.y);
+      const clicked = await waitFor(async () => {
+        const popup = await readPopup(frame);
+        return popup?.headword === "読む" ? popup : false;
+      }, { timeout: 20_000 });
+      const shown = await waitFor(() => search.evaluate(() => !document.getElementById("search-template").hidden || false),
+        { timeout: 10_000 });
+      await search.select("#search-template", "e2e-words");
+      const chosen = await waitFor(async () => {
+        const { templates } = (await readStorage(page, ["options"])).options.anki;
+        const copy = await frame.evaluate(() => document.querySelector("select.search-template").value);
+        return templates[0].id === "e2e-words" && copy === "e2e-words" ? templates.map(({ id }) => id) : false;
+      }, { timeout: 10_000 });
+      evidence = { searched, clicked: clicked?.plain?.slice(0, 60) ?? null, shown, chosen };
+    } finally {
+      await writeOptions(page, { searchClickLookup: before.searchClickLookup, lookupMode: before.lookupMode, anki: original });
+      await search.close();
+      await activate(page);
+    }
+    check("a click on a word of the search page's query shows its results once Look up words with a click is on",
+      evidence.searched === true && evidence.clicked?.includes("to read"), JSON.stringify(evidence));
+    check("the search page's Anki Template switch makes the chosen Template the built-in one, and the frame's copy follows",
+      evidence.shown === true && JSON.stringify(evidence.chosen) === JSON.stringify(["e2e-words", original.templates[0].id]),
+      JSON.stringify(evidence));
   });
 });

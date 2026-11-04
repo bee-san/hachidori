@@ -10,7 +10,8 @@
 // more: the requests a content script's reader sends, the stored keys it
 // reads and the events sent to it. This page keeps the header, whose
 // Clipboard monitor switch asks for a permission: Firefox grants one only to
-// the document that handles the click.
+// the document that handles the click. Its Anki Template switch writes the
+// options, which the frame may not.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
@@ -18,6 +19,7 @@ import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.
 import { describeErrorMessage } from "./error-text.js";
 import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
+import { renderTemplateChoices, withBuiltinTemplate } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 // The requests the reader sends, by target. test/search-bridge.test.mjs keeps
@@ -237,15 +239,97 @@ function clipboardMonitor(clipboardSwitch, search) {
   };
 }
 
+// The Anki Template switch (#656): the Template the built-in Anki button
+// uses, which is the first, as Settings → Anki → Set built-in makes it. The
+// frame may write only the reader's own option, so this page writes the
+// choice, with the stored record's revision, and again if another page wrote
+// in between. While one choice is saved, only the last one made meanwhile is
+// saved after it, and the switch shows it. A choice made with the mouse or a
+// tap hands focus back to the frame, as a click on the Clipboard monitor
+// switch does; the arrow keys change the choice and keep focus.
+const WORKER_TARGET = "hoshidicts-worker";
+
+// The Templates the switch lists and the fields its write names: once the
+// records have profiles, the active profile's, as the search page reads in
+// the active profile (docs/languages.md 5.2, 8.1, 12); otherwise today's.
+export function activeTemplates(stored, selection) {
+  const layer = globalThis.HDReaderOptions;
+  if (!layer.hasProfiles(stored)) return { anki: layer.normaliseOptions(stored).anki, fields: {} };
+  const profileId = layer.activeProfileId(stored, selection);
+  return { anki: layer.projectOptions(stored, profileId).anki, fields: { profileId } };
+}
+
+// Moves Template `id` first, and resolves whether that wrote the options.
+async function chooseTemplate(api, id) {
+  const { options: stored, languageSelection } = await api.storage.local.get(["options", "languageSelection"]);
+  const { anki: current, fields } = activeTemplates(stored, languageSelection);
+  const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
+  if (next === null) return false;
+  const reply = await api.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
+    baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
+    options: { anki: next }, ...fields });
+  if (reply?.conflict === true) return chooseTemplate(api, id);
+  if (!reply?.ok) throw new Error(reply?.error || "Hachidori did not reply.");
+  return true;
+}
+
+// The switch `select` in this page's header, handing focus back to `frame`;
+// `show(anki)` lists the stored Templates.
+export function templateSwitch(select, frame, api = chrome) {
+  let anki = null;
+  let wanted = null;
+  let saving = Promise.resolve();
+  const show = (next = anki) => {
+    anki = next;
+    renderTemplateChoices(select, anki, wanted ?? anki.templates[0].id);
+  };
+  // Saves the last choice, unless a save before it already has. A write
+  // shows itself through its storage change, unless that has come already.
+  async function saveWanted() {
+    const id = wanted;
+    if (id === null) return;
+    let wrote = false;
+    try {
+      wrote = await chooseTemplate(api, id);
+    } catch (error) {
+      console.error("hachidori: could not choose the Anki Template:", describeErrorMessage(error));
+    }
+    if (wanted !== id) return;
+    wanted = null;
+    if (!wrote || anki.templates[0].id === id) show();
+  }
+  let handBack = false;
+  select.addEventListener("pointerdown", () => { handBack = select.ownerDocument.activeElement !== select; });
+  select.addEventListener("keydown", () => { handBack = false; });
+  select.addEventListener("change", () => {
+    wanted = select.value;
+    saving = saving.then(saveWanted);
+    if (!handBack) return;
+    handBack = false;
+    setTimeout(() => { frame.focus(); }, 0);
+  });
+  return { show };
+}
+
 async function start() {
   const store = openDebugLogStore(window.indexedDB);
   captureDebugLog(window, { context: "search", store });
   const { normaliseOptions } = globalThis.HDReaderOptions;
+  const frame = document.createElement("iframe");
+  const templates = templateSwitch(document.getElementById("search-template"), frame);
+  let storedOptions, languageSelection;
+  const adoptOptions = (stored, selection = languageSelection) => {
+    storedOptions = stored;
+    languageSelection = selection;
+    applyPageTheme(document, normaliseOptions(stored));
+    templates.show(activeTemplates(stored, selection).anki);
+  };
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.options) applyPageTheme(document, normaliseOptions(changes.options.newValue));
+    if (area !== "local" || !(changes.options || changes.languageSelection)) return;
+    adoptOptions(changes.options ? changes.options.newValue : storedOptions,
+      changes.languageSelection ? changes.languageSelection.newValue : languageSelection);
   });
   const customJavaScript = await userScript(chrome);
-  const frame = document.createElement("iframe");
   frame.className = "search-frame";
   frame.title = "Hachidori Search";
   let port = null;
@@ -288,7 +372,8 @@ async function start() {
     frame.focus();
     port?.postMessage({ kind: "key", key: event.key });
   });
-  applyPageTheme(document, normaliseOptions((await chrome.storage.local.get("options")).options));
+  const initial = await chrome.storage.local.get(["options", "languageSelection"]);
+  adoptOptions(initial.options, initial.languageSelection);
 }
 
 if (globalThis.document) await start();

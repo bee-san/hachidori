@@ -12,9 +12,10 @@
 // <capture.jsonl> holds one {"fn", "suite", "json"} line per call, written by a
 // run of `node test/run.mjs node` and `node test/run.mjs smoke` with a preload
 // that hands HDReaderOptions a recorder in every realm. <reader-options.js> is
-// the file of the commit the golden describes (multi-language base 99960c7c).
-// The goldens were recorded once, before reader-options.js changed; running this
-// on a later reader-options.js records that file's behaviour instead.
+// the file of the commit the golden describes: main's, without the profile
+// layer (99960c7c at first, main 67a4e968 since main added the search page's
+// keys in #663). The capture is a run of main's suites at that commit; running
+// this on the branch's reader-options.js records that file's behaviour instead.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -90,7 +91,7 @@ writeFileSync(output, `${JSON.stringify({
     + "recorded from reader-options.js before the profile layer (docs/languages.md 6.2). "
     + "`normalised` lists the keys of normaliseOptions' result that differ from `defaults`; the SHA-256 values are of "
     + "JSON.stringify of the complete results of normaliseOptions and projectStoredOptions, so key order is pinned too.",
-  recordedFrom: "bee-san/hachidori feat/multi-language 99960c7c extension/reader-options.js",
+  recordedFrom: "bee-san/hachidori main 67a4e968 extension/reader-options.js",
   defaults,
   entries: [],
 }).slice(0, -3)}[\n${body}\n]}\n`);
