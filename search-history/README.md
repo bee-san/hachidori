@@ -15,10 +15,12 @@ the script builds, with glosses written for it; the lines arrive through the
 Clipboard monitor from another tab, in a copy of the extension that holds
 `clipboardRead`, as the Chrome suite does. The captions are the script's, laid
 over the page; the red dot marks a click, which headless screenshots do not
-show. `531b7f0c` is `e377a2bd` on the branch rebased onto main at `353ce324`. The GIFs
-predate two changes to the neighbour rows: in them the rows are the text's
-size and mixed toward the page, where now they are smaller (`4fa02302`) and in
-the palette's dim text (`e5f00144`).
+show. `531b7f0c` is `e377a2bd` on the branch rebased onto main at `67a4e968`.
+The GIFs predate later changes to the neighbour rows: in them the rows are the
+text's size and its dim text mixed 22% toward the page in every palette, where
+now they are smaller and mixed less where a palette has less room above 4.5:1
+(`da31d1a8`). They also predate Settings → Advanced → Search history, which
+must now be switched on first.
 
 | File | Shows |
 | --- | --- |
