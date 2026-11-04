@@ -33,7 +33,7 @@ export const KEYBIND_OPTION_LABELS = {
   searchClickLookup: "Look up words with a click on the search page",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
-const SCOPE_LABELS = { popup: "While a popup is open", web: "Anywhere on the page" };
+const SCOPE_LABELS = { popup: "While a popup is open", search: "On the search page", web: "Anywhere on the page" };
 
 // Yomitan's HotkeyUtil display: modifiers first, a letter key without "Key".
 export function formatKeybind(key, modifiers) {
@@ -72,7 +72,10 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
   const rows = [];
 
   const copy = bind => ({ ...bind, modifiers: [...bind.modifiers], scopes: [...bind.scopes] });
-  const defaultFor = action => DEFAULT_OPTIONS.keybinds.find(bind => bind.action === action);
+  // The action's first default in the row's scopes, else its first: Add note
+  // is Alt+E in a popup and Enter on the search page.
+  const defaultFor = ({ action, scopes }) => DEFAULT_OPTIONS.keybinds.find(bind => bind.action === action
+    && bind.scopes.join() === scopes.join()) ?? DEFAULT_OPTIONS.keybinds.find(bind => bind.action === action);
 
   function change(row, patch) {
     editKeybinds(readKeybinds().map((bind, index) => index === row.index ? { ...bind, ...patch } : bind));
@@ -148,7 +151,7 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     row.input.addEventListener("wheel", event => captureWheel(row, event), { passive: false });
     row.clear.addEventListener("click", () => change(row, { key: null, modifiers: [] }));
     row.reset.addEventListener("click", () => {
-      const fallback = defaultFor(readKeybinds()[row.index].action);
+      const fallback = defaultFor(readKeybinds()[row.index]);
       if (fallback) change(row, { key: fallback.key, modifiers: [...fallback.modifiers], argument: fallback.argument });
     });
     row.remove.addEventListener("click", () => {
@@ -230,7 +233,7 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     setValue(row.action, bind.action);
     renderArgument(row, action, bind);
     renderScopes(row, action, bind);
-    row.reset.disabled = !defaultFor(bind.action);
+    row.reset.disabled = !defaultFor(bind);
     labelControl(row.enabled, `Enable ${number}`);
     labelControl(row.input, `Keys for ${number}: press a key combination`);
     for (const [key, label] of [["clear", "Clear keys"], ["reset", "Reset"], ["remove", "Remove"]]) {

@@ -59,10 +59,12 @@ async function dockedCase() {
     escape(window);
     harness.emitState(harness.state(2));
     const searched = await answer(harness, [harness.term(anchor.textContent)]);
-    await searching;
+    const matched = await searching;
     outcomes["a search looks its text up from the first character and fills the results area, through Escape and a dictionary change while it is out"] =
       searched?.text === anchor.textContent && !popup.hidden && placed() && harness.render().kind === "terms"
         && harness.take("hd_lookup") === null;
+    // The search page's cursor goes past what the result matched (search.js).
+    outcomes["a search resolves to the length of the text its result matched"] = matched === anchor.textContent.length;
     outcomes["the docked popup's host sits in the results area"] =
       harness.dockElement.contains(window.document.querySelector("hachidori-host"));
 
@@ -78,7 +80,7 @@ async function dockedCase() {
     window.document.body.append(ellipsis);
     const punctuationOnly = driver.search(ellipsis.firstChild);
     const punctuationSearch = await answer(harness, []);
-    await punctuationOnly;
+    const unmatched = await punctuationOnly;
     ellipsis.remove();
     // Windows IMEs type the wave dash as a full-width tilde.
     const tilde = window.document.createElement("p");
@@ -90,6 +92,16 @@ async function dockedCase() {
     outcomes["a search skips a line's opening brackets, spaces and wave dashes, and looks up punctuation alone as it is"] =
       bracketedSearch?.text.startsWith("食べた") === true && punctuationSearch?.text === "…"
         && tildeSearch?.text.startsWith("食べた") === true;
+    // The searched text's cursor looks a line up from where it is.
+    const later = window.document.createElement("p");
+    later.textContent = "これは食べた";
+    window.document.body.append(later);
+    const fromCursor = driver.search(later.firstChild, 3);
+    const cursorSearch = await answer(harness, [harness.term("食べた")]);
+    const cursorMatched = await fromCursor;
+    later.remove();
+    outcomes["a search from an offset looks the text up from there, and one that shows nothing resolves to 0"] =
+      cursorSearch?.text.startsWith("食べた") === true && cursorMatched === 3 && unmatched === 0;
     // A scan runs on into following text, so the anchor's lookups below must not see these.
     line.remove();
     tilde.remove();
@@ -383,7 +395,7 @@ async function undockedCase() {
     const pressed = popup.hidden;
     const unanswered = driver.search(anchor.firstChild);
     const sent = harness.take("hd_lookup") !== null;
-    return { resizable, unclicked, escaped, pressed, searchedWithoutDock: sent || (await unanswered) !== false };
+    return { resizable, unclicked, escaped, pressed, searchedWithoutDock: sent || (await unanswered) !== 0 };
   } finally {
     harness.close();
   }

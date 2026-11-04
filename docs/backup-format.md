@@ -14,6 +14,7 @@ reader/Design/audio/Anki settings, update schedules, local lookup counts and the
 words marked as known or ignored for word highlighting. The archive is
 unencrypted and can contain personal notes, custom URLs and API keys. Keep it
 private. It does not contain browser history, downloads, cached runtime results,
+the search page's line history ([why](search-history.md#where-the-lines-are-kept)),
 or Anki's own collection/media database.
 
 Update eligibility is preserved, not inferred from Yomitan's `isUpdatable` flag
@@ -45,8 +46,11 @@ prepared files. A concurrent saved edit requires preparing the backup again.
 A backup made by any Hachidori version restores its dictionaries. Its settings
 are read one by one, the way a stored record is: a setting this version does
 not know or cannot read is skipped, and one the backup does not have keeps its
-default. Experimental feature switches restore by name: known switches keep
-their saved values, newer ones start off and retired ones are dropped. Lookup
+default. A keybind list with no row in the search page's scope reads with the
+search page's default keys after its own, as a saved list does
+([search history](search-history.md#keys)). Experimental feature switches
+restore by name: known switches keep their saved values, newer ones start off
+and retired ones are dropped. Lookup
 statistics this version cannot read are skipped too. Dictionary selections that
 are unavailable in the restored library are reset.
 Unsaved Settings drafts must be saved or discarded before starting an operation.

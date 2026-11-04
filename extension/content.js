@@ -61,7 +61,7 @@
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
   const {
     mergeKanjiGroupResults, nativeKanjiEntries, normalizeDictionaryState, projectResultsToDictionary, sameDictionaries,
-    sameDictionaryContents,
+    sameDictionaryContents, searchStart,
   } = globalThis.HDContent;
   const {
     EDITING_SELECTOR, JAPANESE_CHARACTER_PATTERN, OPAQUE_TAGS, blockOf, candidateSignature, candidateStart,
@@ -4551,18 +4551,18 @@
   }
 
   // Yomitan's search looks its query up from the first character, as a hover
-  // there would, and shows the results in the page. A pasted line often opens
-  // with a bracket, an ellipsis, a space or a wave dash (〜, or ～ from a
-  // Windows IME), which no word starts with, so the lookup starts after them. The reader typed the query, so Japanese text
-  // only does not apply, nor does the lookup switch.
-  const LEADING_PUNCTUATION_PATTERN = /^[\p{P}\p{Z}\s～]+/u;
-  function search(node) {
-    const text = node?.nodeValue ?? "";
-    const skipped = text.match(LEADING_PUNCTUATION_PATTERN)?.[0].length ?? 0;
-    const candidate = disposed || !dock ? null : resolveCandidateAt(node, skipped < text.length ? skipped : 0, false);
-    if (!candidate) return Promise.resolve(false);
+  // there would, and shows the results in the page: from `offset`, or after the
+  // brackets, ellipses, spaces and wave dashes a pasted line opens with
+  // (searchStart). The reader typed the query, so Japanese text only does not
+  // apply, nor does the lookup switch. Resolves to the length of the text the
+  // shown result matched there, which the search page's cursor goes past
+  // (search.js), or 0 when nothing was shown for it.
+  async function search(node, offset = searchStart(node?.nodeValue ?? "")) {
+    const candidate = disposed || !dock ? null : resolveCandidateAt(node, offset, false);
+    if (!candidate) return 0;
     dismissPopups();
-    return runLookup(candidate);
+    const shown = await runLookup(candidate);
+    return shown === true && rootLevel.activeTermRender?.candidate === candidate ? rootLevel.activeHighlightText.length : 0;
   }
 
   // Reading → Search page → Look up words with a click (#656): a primary click
@@ -4572,8 +4572,10 @@
   // searchOnClick). The word is looked up as the activation key would look it
   // up, Japanese text only included, and while lookups are off, as a search
   // is. A press that travels or leaves a selection is a copy, and a Note being
-  // written or saved keeps the result.
-  function lookUpOnClick(element) {
+  // written or saved keeps the result. `clicked(node, offset)`, the search
+  // page's, can take the lookup of the character clicked on, returning true:
+  // its cursor goes there and looks the word up from it (search.js).
+  function lookUpOnClick(element, clicked = null) {
     let press = null;
     element.addEventListener("mousedown", (event) => {
       press = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
@@ -4584,6 +4586,9 @@
       if (disposed || !dock || !options.searchClickLookup || !start || event.defaultPrevented || hasProtectedNote()
           || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX) return;
       if (window.getSelection()?.isCollapsed === false) return;
+      const glyph = clicked && caretGlyphAt(document.elementFromPoint(event.clientX, event.clientY), event.clientX,
+        event.clientY);
+      if (glyph && clicked(glyph.node, glyph.offset)) return;
       const candidate = resolveCandidate(event.clientX, event.clientY);
       if (!candidate || rootHolds(candidate)) return;
       dismissPopups();
@@ -4687,11 +4692,17 @@
     return true;
   }
 
-  // A browser shortcut runs its keybind action here; entry moves go one entry.
+  // A keybind action without its key, as a browser shortcut or the search
+  // page's searched text runs it; entry moves go one entry. Anything but false
+  // is handled, as runKeybinds counts it.
+  function runAction(action) {
+    return runKeybindAction({ action, argument: ["nextEntry", "previousEntry"].includes(action) ? "1" : "" },
+      { preventDefault() {}, stopPropagation() {} }) !== false;
+  }
+
   function onReaderCommand(message) {
     if (disposed || message?.target !== READER_TARGET || message.type !== "hd_reader_command") return false;
-    runKeybindAction({ action: message.action, argument: ["nextEntry", "previousEntry"].includes(message.action) ? "1" : "" },
-      { preventDefault() {}, stopPropagation() {} });
+    runAction(message.action);
     return false;
   }
 
@@ -5149,9 +5160,10 @@
     let storageReady;
     // The search page's clipboard monitor searches only lookup-worthy text, and
     // nothing while a Note is being written or saved (#639). Its echoed query
-    // takes click lookups (#656).
+    // takes click lookups (#656), and runs keybind actions such as Add note on
+    // Enter (search.js).
     const reader = Object.freeze({ scanSelectedText, dock: dockResults, search, lookUpOnClick, isLookupWorthy,
-      holdsNote: () => hasProtectedNote() });
+      holdsNote: () => hasProtectedNote(), act: runAction });
     globalThis.HDReaderReady = new Promise(resolve => {
       storageReady = () => { resolveStoredOptions(); resolve(reader); };
     });

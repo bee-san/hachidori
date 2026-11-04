@@ -86,8 +86,10 @@ test("search page browser commands open the search page in a new tab, the curren
 });
 
 test("popup-action browser commands reach the active tab's reader as keybind actions", () => {
+  // The search page's own actions act on its box and searched text, never on a tab's reader.
   const argumentFree = globalThis.HDReaderOptions.KEYBIND_ACTIONS
-    .filter(({ id, argument }) => id !== "" && id !== "toggleOption" && !["audioSource", "option"].includes(argument))
+    .filter(({ id, argument, scopes }) => id !== "" && id !== "toggleOption" && !["audioSource", "option"].includes(argument)
+      && scopes.some(scope => scope !== "search"))
     .map(({ id }) => id);
   const readerCommands = Object.keys(manifest.commands)
     .filter(name => !["toggleTextScanning", "openSettingsPage", ...Object.keys(SEARCH_COMMANDS)].includes(name));

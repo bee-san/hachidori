@@ -51,7 +51,8 @@
     { id: "previousEntryDifferentDictionary", label: "Go to previous dictionary" },
     { id: "historyBackward", label: "Navigate backward in history" },
     { id: "historyForward", label: "Navigate forward in history" },
-    { id: "addNote", label: "Add note" },
+    // On the search page, Enter adds the word under the searched text's cursor.
+    { id: "addNote", label: "Add note", scopes: ["popup", "search"] },
     { id: "viewNotes", label: "View notes" },
     { id: "playAudio", label: "Play audio" },
     { id: "playAudioFromSource", label: "Play audio from source", argument: "audioSource" },
@@ -68,11 +69,20 @@
     // Makes the next language this browser's active profile (docs/languages.md
     // 16.2). Not Yomitan's profileNext, which Hachidori drops.
     { id: "switchLanguage", label: "Switch to the next language", scopes: ["web"] },
+    // The search page's (docs/search-history.md): in its box, the lines of its
+    // history, as a shell's Up and Down; in the searched text, Rubi's cursor.
+    { id: "searchPreviousLine", label: "Previous line in the search history", scopes: ["search"] },
+    { id: "searchNextLine", label: "Next line in the search history", scopes: ["search"] },
+    { id: "searchPreviousWord", label: "Previous word in the searched text", scopes: ["search"] },
+    { id: "searchNextWord", label: "Next word in the searched text", scopes: ["search"] },
+    { id: "searchRowUp", label: "Row above, or the earlier line", scopes: ["search"] },
+    { id: "searchRowDown", label: "Row below, or the later line", scopes: ["search"] },
   ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,
-  // so it means "while a popup is open or opening". Web is anywhere on the page.
-  const KEYBIND_SCOPES = ["popup", "web"];
+  // so it means "while a popup is open or opening". Search is the search page,
+  // as Yomitan's; web is anywhere on the page.
+  const KEYBIND_SCOPES = ["popup", "search", "web"];
   const KEYBIND_MODIFIERS = ["meta", "ctrl", "alt", "shift"];
   // Pressing only these codes records or matches a keybind with a null key.
   const KEYBIND_MODIFIER_CODES = new Set(["AltLeft", "AltRight", "ControlLeft", "ControlRight",
@@ -88,6 +98,8 @@
   }
   // Yomitan's default hotkeys without the actions Hachidori has no feature for,
   // then the one-entry moves Yomitan's popup gives Alt+wheel outside its hotkeys.
+  const keybind = scopes => ([action, argument, key, modifiers]) =>
+    ({ action, argument, key, modifiers, scopes, enabled: true });
   const DEFAULT_KEYBINDS = [
     ["close", "", "Escape", []],
     ["previousEntry", "3", "PageUp", ["alt"]],
@@ -103,7 +115,19 @@
     ["viewNotes", "", "KeyV", ["alt"]],
     ["previousEntry", "1", "WheelUp", ["alt"]],
     ["nextEntry", "1", "WheelDown", ["alt"]],
-  ].map(([action, argument, key, modifiers]) => ({ action, argument, key, modifiers, scopes: ["popup"], enabled: true }));
+  ].map(keybind(["popup"]));
+  // The search page's keys (docs/search-history.md): Rubi's arrows and Enter.
+  // Each acts only where it applies (the box, or the searched text with focus),
+  // so an arrow is free for its usual work everywhere else.
+  const SEARCH_KEYBINDS = [
+    ["searchPreviousLine", "", "ArrowUp", []],
+    ["searchNextLine", "", "ArrowDown", []],
+    ["searchPreviousWord", "", "ArrowLeft", []],
+    ["searchNextWord", "", "ArrowRight", []],
+    ["searchRowUp", "", "ArrowUp", []],
+    ["searchRowDown", "", "ArrowDown", []],
+    ["addNote", "", "Enter", []],
+  ].map(keybind(["search"]));
   const DEFAULT_OPTIONS = {
     scanLength: 16,
     maxResults: 32,
@@ -224,13 +248,18 @@
     searchClickLookup: false,
     searchWindowWidthPx: 600,
     searchWindowHeightPx: 640,
-    keybinds: DEFAULT_KEYBINDS,
+    // Advanced → Search history (docs/search-history.md), off until switched
+    // on: keep each line the search page searches, up to this many, oldest
+    // first out, and move through them with the search page's keys.
+    searchHistoryEnabled: false,
+    searchHistoryLimit: 10000,
+    keybinds: [...DEFAULT_KEYBINDS, ...SEARCH_KEYBINDS],
   };
   // Word highlighting's switches stay with its Reading Settings section;
   // a page shows or hides its marks with Toggle word highlights instead. The
-  // toolbar's Search button is not a reader behaviour.
+  // toolbar's Search button and the search history are not reader behaviours.
   const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "useLessRamByDefault", "smallerAnkiCards", "wordHighlightEnabled", "wordHighlightUnknown",
-    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored", "showToolbarSearchButton"]);
+    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored", "showToolbarSearchButton", "searchHistoryEnabled"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {
@@ -258,6 +287,8 @@
     // be 2^31 - 1 pixels wide at its 95-pixel minimum.
     searchWindowWidthPx: [200, 16384],
     searchWindowHeightPx: [200, 16384],
+    // Lines the search history keeps (docs/search-history.md): as many as the user sets.
+    searchHistoryLimit: [1, Number.MAX_SAFE_INTEGER],
   };
   // GSM PR #549 blurs at or above the threshold; Below is the issue #9 adaptation.
   const DEFINITION_BLUR_DIRECTIONS = ["atLeast", "below"];
@@ -910,6 +941,13 @@
     }
     options.customLinks = customLinksFromButtons(options.customButtons);
     options.experimental = { ...options.experimental };
+    // A keybind list saved before the search page had keys has no search row:
+    // it gains the search page's defaults, so its Up recalls a line whatever was
+    // saved. Settings saves them with the next keybind edit. A list with any
+    // search row is the user's own.
+    if (!options.keybinds.some(bind => bind.scopes.includes("search"))) {
+      options.keybinds = [...options.keybinds, ...SEARCH_KEYBINDS];
+    }
     return options;
   }
 
@@ -957,6 +995,7 @@
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
     "showToolbarSearchButton", "searchClickLookup", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",
+    "searchHistoryEnabled", "searchHistoryLimit",
   ]);
   const GLOBAL_KEYS = new Set(GLOBAL_OPTION_KEYS);
   const PROFILE_OPTION_KEYS = Object.freeze(OPTION_KEYS.filter(key => !GLOBAL_KEYS.has(key) && key !== "anki"));

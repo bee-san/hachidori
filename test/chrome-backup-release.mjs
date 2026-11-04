@@ -686,7 +686,9 @@ async function releasedLeg() {
 // newer start off, retired are dropped); a retired switch that became a
 // setting of the same name carries its value (reader-options.js, "Keep the
 // existing mining choice when the experiment becomes an Anki option"); a
-// setting the backup lacks keeps its default (docs/backup-format.md).
+// setting the backup lacks keeps its default (docs/backup-format.md); a
+// keybind list without a search page row reads with the search page's
+// default rows after its own (docs/search-history.md).
 function compareOptions(source, restored) {
   const unexplained = [];
   const rules = [];
@@ -709,7 +711,10 @@ function compareOptions(source, restored) {
   for (const key of new Set([...Object.keys(source.view), ...Object.keys(restored.view)])) {
     if (key === "experimental") continue;
     if (Object.hasOwn(source.view, key) && Object.hasOwn(restored.view, key)) {
-      if (!isDeepStrictEqual(source.view[key], restored.view[key])) unexplained.push(key);
+      if (isDeepStrictEqual(source.view[key], restored.view[key])) continue;
+      if (key === "keybinds" && gainsSearchRows(source.view.keybinds, restored)) {
+        rules.push("keybinds: a list without a search page row gains the search page's default rows");
+      } else unexplained.push(key);
     } else if (!Object.hasOwn(restored.view, key)) {
       unexplained.push(`${key}: missing after restore`);
     } else if (typeof sourceFlags[key] === "boolean" && !known.includes(key)) {
@@ -730,6 +735,10 @@ function compareOptions(source, restored) {
   }
   return { unexplained, rules };
 }
+
+const searchRows = keybinds => keybinds.filter(bind => bind.scopes.includes("search"));
+const gainsSearchRows = (keybinds, restored) => searchRows(keybinds).length === 0
+  && isDeepStrictEqual(restored.view.keybinds, [...keybinds, ...searchRows(restored.defaults.keybinds)]);
 
 const withoutRevision = ({ revision: _revision, ...value }) => value;
 const withoutPaths = state => ({ ...withoutRevision(state), dictionaries: state.dictionaries.map(({ path: _path, ...entry }) => entry) });

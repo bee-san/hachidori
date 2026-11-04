@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import { connectSearchFrame, READER_EVENTS, READER_REQUESTS, readerKey, serveSearchFrame } from "../extension/search-shell.js";
+import { connectSearchFrame, READER_EVENTS, READER_REQUESTS, readerKey, searchHistoryRequests, serveSearchFrame }
+  from "../extension/search-shell.js";
 
 const EXTENSION = new URL("../extension/", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", EXTENSION), "utf8"));
@@ -154,6 +155,56 @@ test("search.html answers the frame's reader requests and refuses the rest", asy
   assert.equal(api.listeners.message.size + api.listeners.changed.size, 0);
 });
 
+// The search page's line history (docs/search-history.md) is search.html's: it
+// keeps a line only while the history is on, up to its limit and with the
+// page's window, lists, edits and removes lines, refuses anything else, and
+// tells the frame of every change until the channel closes.
+test("search.html keeps the frame's lines while the history is on, and tells the frame of each change", async () => {
+  const api = fakeApi();
+  const { port1, port2 } = new MessageChannel();
+  const calls = [];
+  const listeners = new Set();
+  const lines = {
+    async add(line, { limit }) { calls.push(["add", line, limit]); return { line: { id: 7, ...line }, added: true }; },
+    async list(args) { calls.push(["list", args]); return [{ id: 1, text: "一" }]; },
+    async edit(id, text) { calls.push(["edit", id, text]); return { id, text }; },
+    async remove(id) { calls.push(["remove", id]); return true; },
+    onChange: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+  let settings = { searchHistoryEnabled: true, searchHistoryLimit: 50 };
+  const history = { onChange: lines.onChange,
+    requests: searchHistoryRequests(lines, { settings: async () => settings, page: async () => "popup" }) };
+  const close = serveSearchFrame(api, port1, { write: async () => [] }, {}, history);
+  const replies = [];
+  port2.onmessage = ({ data }) => replies.push(data);
+  const ask = (id, op, args) => port2.postMessage({ kind: "history", id, op, args });
+  // The page is search.html's to say, and the id the store's.
+  ask(1, "add", { text: "食べる", source: "typed", page: "tab", id: 99 });
+  ask(2, "list", { before: 5, limit: 1, extra: true });
+  ask(3, "edit", { id: 1, text: "壱" });
+  ask(4, "remove", { id: 1 });
+  ask(5, "clear", {});
+  ask(6, "constructor", {});
+  await settle();
+  settings = { ...settings, searchHistoryEnabled: false };
+  ask(7, "add", { text: "読む", source: "clipboard" });
+  for (const listener of listeners) listener({ type: "remove", id: 1 });
+  await settle();
+  const reply = id => replies.find(data => data.kind === "reply" && data.id === id);
+  assert.deepEqual(reply(1).value, { id: 7, text: "食べる", source: "typed", page: "popup" });
+  assert.deepEqual(reply(2).value, [{ id: 1, text: "一" }]);
+  assert.deepEqual(reply(3).value, { id: 1, text: "壱" });
+  assert.equal(reply(4).value, true);
+  assert.match(reply(5).error, /cannot ask its history to clear/u);
+  assert.match(reply(6).error, /cannot ask its history to constructor/u);
+  assert.equal(reply(7).value, null, "nothing is kept while the history is off");
+  assert.deepEqual(calls, [["add", { text: "食べる", source: "typed", page: "popup" }, 50],
+    ["list", { before: 5, after: undefined, limit: 1 }], ["edit", 1, "壱"], ["remove", 1]]);
+  assert.deepEqual(replies.filter(data => data.kind === "history"), [{ kind: "history", change: { type: "remove", id: 1 } }]);
+  close();
+  assert.equal(listeners.size, 0);
+});
+
 // search.html takes the port its own frame offers, once, and starts again when
 // the frame's code loads another document. Only a sandboxed frame, whose origin
 // is opaque, is given the user's script.
@@ -225,6 +276,7 @@ test("the frame offers search.html one port, to the extension's origin, and its 
     if (data.kind === "get") port.postMessage({ kind: "reply", id: data.id, value: { options: { revision: 1 } } });
     if (data.kind === "send" && data.message.type === "hd_lookup") port.postMessage({ kind: "reply", id: data.id, value: { ok: true } });
     if (data.kind === "send" && data.message.type === "hd_kanji") port.postMessage({ kind: "reply", id: data.id, error: "Extension context invalidated." });
+    if (data.kind === "history") port.postMessage({ kind: "reply", id: data.id, value: [{ id: 3, text: data.op }] });
   };
   port.postMessage({ kind: "connect", id: "hachidori", manifest: { version: "1" }, customJavaScript: "code" });
   // A second connect changes nothing.
@@ -255,6 +307,16 @@ test("the frame offers search.html one port, to the extension's origin, and its 
   assert.deepEqual(messages, ["hd_reader_command"]);
   assert.deepEqual(JSON.parse(JSON.stringify(changes)), [[["options"], "local"]]);
 
+  // The history is search.html's: a request goes there, and so do its changes come back.
+  assert.deepEqual(await context.HDSearchBridge.history("list", { limit: 1 }), [{ id: 3, text: "list" }]);
+  const historyChanges = [];
+  context.HDSearchBridge.onHistory(change => historyChanges.push(change));
+  port.postMessage({ kind: "history", change: { type: "clear" } });
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(historyChanges)), [{ type: "clear" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.find(data => data.kind === "history"))),
+    { kind: "history", id: requests.find(data => data.kind === "history").id, op: "list", args: { limit: 1 } });
+
   // What search.html's Clipboard monitor read, and the page's word back.
   const clipboard = [], keys = [];
   context.HDSearchBridge.onClipboard(text => clipboard.push(text));
@@ -268,7 +330,7 @@ test("the frame offers search.html one port, to the extension's origin, and its 
   assert.deepEqual(clipboard, ["読む"]);
   assert.deepEqual(keys, ["Escape"]);
   assert.deepEqual(requests.slice(-2).map(data => data.kind), ["ready", "copied"]);
-  assert.ok(requests.every(data => ["get", "send", "ready", "copied"].includes(data.kind)));
+  assert.ok(requests.every(data => ["get", "send", "history", "ready", "copied"].includes(data.kind)));
   port.close();
 });
 

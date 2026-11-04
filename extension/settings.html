@@ -1312,7 +1312,7 @@
           </div>
           <div class="options-feedback-slot"></div>
           <div class="lookup-group" id="keybind-settings">
-            <p class="section-note">Select a Keys field and press the combination to use. To use the mouse wheel, hold a modifier key and scroll over the selected field; wheel keybinds act on the popup under the pointer. Popup keybinds act on the current entry: the first one, or the last one you moved to or clicked.</p>
+            <p class="section-note">Select a Keys field and press the combination to use. To use the mouse wheel, hold a modifier key and scroll over the selected field; wheel keybinds act on the popup under the pointer. Popup keybinds act on the current entry: the first one, or the last one you moved to or clicked. The On the search page keys act only while <a href="#advanced">Advanced → Search history</a> is on, and come back while no row has that scope; to turn one off, untick its row's Enable box.</p>
             <div class="keybind-table">
               <div class="keybind-columns" aria-hidden="true"><span>Keys</span><span>Action</span><span>Where</span></div>
               <ol id="keybind-list" class="keybind-list"></ol>
@@ -1444,7 +1444,7 @@
         <section class="card" id="advanced" aria-labelledby="advanced-heading" hidden>
           <div class="card-head">
             <h1 id="advanced-heading" tabindex="-1" data-search-keywords="experimental beta labs flags preview">Advanced</h1>
-            <p class="hint">Memory use, features that are still changing, and debug info for bug reports.</p>
+            <p class="hint">Memory use, the search page's history, features that are still changing, and debug info for bug reports.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <fieldset class="lookup-group" id="memory-settings">
@@ -1486,6 +1486,29 @@
             </label>
             <p class="field-hint" id="opt-low-memory-mode-help">Imports on one thread to reduce peak memory and restarts the idle engine after dictionary changes to return unused memory. Imports are slower and dictionaries reload briefly after a change. Entries are always read from disk while this is on.</p>
             <p class="hint" id="low-memory-mode-unavailable" hidden>Low memory mode needs the threaded engine, which this browser does not run.</p>
+          </fieldset>
+          <fieldset class="lookup-group" id="search-history-settings">
+            <legend data-search-keywords="search page history lines texthooker">Search history</legend>
+            <label class="lookup-enable">
+              <span>Keep a history of searched lines</span>
+              <input type="checkbox" id="opt-search-history" aria-describedby="search-history-help" data-search-keywords="history lines recall up arrow texthooker clipboard rubi keyboard" />
+            </label>
+            <p class="field-hint" id="search-history-help">Off by default. While it is on, the search page keeps each line it searches, typed, pasted or copied, in this browser only: Up and Down in its box bring back earlier lines, and in the searched text the arrow keys move between words, rows and earlier lines and Enter adds the word to Anki (set the keys in <a href="#keybinds">Keybinds</a>, On the search page). User scripts read the lines through HDSearchHistory, as the guide describes. Backups and linked browsers do not include these lines, and turning this off keeps the ones already kept. <a href="https://github.com/bee-san/hachidori/blob/main/docs/search-history.md" target="_blank" rel="noopener noreferrer">The search history</a></p>
+            <label class="field">
+              <span class="field-label">Lines kept</span>
+              <span class="input-suffix">
+                <input id="opt-search-history-limit" type="number" min="1" step="1" inputmode="numeric" />
+                <span class="suffix">lines</span>
+              </span>
+              <span class="field-hint">Past this number, the oldest lines are removed.</span>
+            </label>
+            <div class="setting-row">
+              <p class="field-hint" id="search-history-count"></p>
+              <div class="options-actions">
+                <button type="button" class="ghost danger" id="search-history-clear" aria-describedby="search-history-count" data-search-keywords="delete erase history lines texthooker">Clear history</button>
+                <output class="custom-dictionary-status" id="search-history-status" aria-live="polite"></output>
+              </div>
+            </div>
           </fieldset>
           <fieldset class="lookup-group" id="experimental-settings">
             <legend>Experimental features</legend>

@@ -119,6 +119,13 @@ body.search-page {
   min-height: var(--search-control-height);
   padding: 0;
 }
+/* The searched text, and in a visit to an earlier line its neighbours' rows
+   and where it is (docs/search-history.md). */
+.search-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .search-query {
   margin: 0;
   max-height: 25vh;
@@ -127,6 +134,84 @@ body.search-page {
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  border-radius: var(--radius-control);
+}
+/* A neighbour shows one row, Rubi's: the last of the line before, the first
+   of the line after, dimmed: the palette's dim text mixed toward the page by
+   --search-neighbour-fade, less where a palette has less room above 4.5:1. It
+   is also set smaller, which keeps it apart from the searched text where a
+   palette has little or no room to dim (Solarized Light's text is at
+   4.65:1). Its text
+   is generated content, which no lookup, selection or screen reader reads. */
+:root {
+  --search-neighbour-fade: 20%;
+}
+/* The palettes with less room keep 4.5:1 with less fade; Autumn's own dim
+   text is already dimmer than its text. */
+:root[data-hoshidicts-theme="retro"] {
+  --search-neighbour-fade: 15%;
+}
+:root[data-hoshidicts-theme="valentine"] {
+  --search-neighbour-fade: 15%;
+}
+:root[data-hoshidicts-theme="solarized-dark"] {
+  --search-neighbour-fade: 8%;
+}
+:root[data-hoshidicts-theme="autumn"],
+:root[data-hoshidicts-theme="solarized-light"] {
+  --search-neighbour-fade: 0%;
+}
+.search-neighbour {
+  margin: 0;
+  max-height: 1.6em;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text-dim), var(--bg) var(--search-neighbour-fade));
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.search-neighbour::before {
+  content: attr(data-text);
+}
+.search-neighbour-before {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+/* The cursor's word, for a screen reader: the searched text's caret does not
+   move with the cursor, so the word is announced here. */
+.search-cursor-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.search-line-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-caption);
+}
+/* The keys are named while the searched text has focus. The line keeps its
+   room meanwhile: a press that takes focus from the text must not move what
+   is under the pointer before its release. */
+.search-lines:not(:focus-within) .search-keys {
+  visibility: hidden;
+}
+/* The cursor, while the searched text has focus. Under forced colours the
+   browser paints a highlight in Highlight and HighlightText. */
+::highlight(hd-search-cursor) {
+  text-decoration-line: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.25em;
+}
+@media (forced-colors: active) {
+  .search-neighbour {
+    color: GrayText;
+  }
 }
 .search-results {
   flex: 1;
