@@ -523,7 +523,8 @@ try {
   const popupWindow = watch(await windowTarget.page(), "popup-window");
   await popupWindow.waitForFrame(frameUrl, { timeout: 30_000 });
   const windowFrame = popupWindow.frames().find(candidate => candidate.url() === frameUrl);
-  await windowFrame.waitForFunction(() => !document.getElementById("search-submit").disabled, { polling: 100, timeout: 30_000 });
+  await windowFrame.waitForFunction(() => document.getElementById("search-submit")?.disabled === false,
+    { polling: 100, timeout: 30_000 });
   await windowFrame.$eval("#search-input", (box) => {
     box.value = "食べる";
     box.form.requestSubmit();
