@@ -206,6 +206,7 @@ const PLANNED = [
   "the native kanji view mines character, readings, strokes, glossary and source context, then opens the saved note",
   "a note mined from a texthooker line carries that one line as its sentence and its full page address, and highlights only the word",
   "a note mined from a selection takes the hover's sentence without the hidden text inside it",
+  "an update from a word typed alone on the search page leaves the note's Append sentence as it was, and a reading page's sentence still appends",
   "Popup audio is silent by default and manually falls back through enabled sources and playable candidates",
   "Popup pronunciation choices open beside Audio from a right-click and Down, preserve source identity and warm replay reuses native cached media",
   "Popup autoplay is optional and does not replay after presentation updates or Back",
