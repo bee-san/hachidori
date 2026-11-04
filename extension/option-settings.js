@@ -34,9 +34,11 @@ let activationController;
 let frequencyDirectionRequest = 0;
 
 // Reading → Search page's history (docs/search-history.md): how many lines it
-// keeps, Clear history, and its limit, applied here at once when it is
-// lowered (the search page applies it with its next line). The history is
-// this browser's IndexedDB, which Settings opens when Reading first shows.
+// keeps, Clear history, and its limit, applied here at once when the saved
+// limit is lowered (the search page applies it with its next line). Only the
+// saved limit prunes: a draft whose save is refused must not delete lines. The
+// history is this browser's IndexedDB, which Settings opens when Reading first
+// shows.
 let searchHistory = null;
 let searchHistoryLimit = null;
 
@@ -55,8 +57,8 @@ async function renderSearchHistory() {
   const clear = element("search-history-clear");
   try {
     const store = await openedSearchHistory();
-    if (options.searchHistoryLimit !== searchHistoryLimit) {
-      searchHistoryLimit = options.searchHistoryLimit;
+    if (savedOptions.searchHistoryLimit !== searchHistoryLimit) {
+      searchHistoryLimit = savedOptions.searchHistoryLimit;
       await store.prune(searchHistoryLimit);
     }
     const kept = await store.count();

@@ -510,6 +510,26 @@ try {
     await settings.screenshot({ path: resolve(SCREENSHOTS, "settings-search-history.png"), clip: fieldset });
   }
   assert.equal(await settings.$eval("#opt-search-history", input => input.checked), true);
+  // A lowered limit whose save is refused deletes nothing: another page saves
+  // first, so this one's save meets a newer revision.
+  await settings.bringToFront();
+  await settings.evaluate(async () => {
+    const input = document.getElementById("opt-search-history-limit");
+    input.value = "1";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    const { options } = await chrome.storage.local.get("options");
+    await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision,
+      options: { popupOpacityPercent: options.popupOpacityPercent === 90 ? 91 : 90 } });
+  });
+  await settings.waitForFunction(() => !document.getElementById("options-conflict-actions").hidden,
+    { polling: 50, timeout: 15_000 });
+  await settle(300);
+  assert.equal(await settings.$eval("#search-history-count", count => count.textContent), "7 lines kept.",
+    "a refused save keeps every line");
+  assert.equal((await lines()).length, 7);
+  await settings.click("#options-use-saved");
+  await settings.waitForFunction(() => document.getElementById("options-conflict-actions").hidden
+    && document.getElementById("opt-search-history-limit").value === "10000", { polling: 50, timeout: 15_000 });
   await settings.$eval("#opt-search-history-limit", (input) => {
     input.value = "3";
     input.dispatchEvent(new Event("change", { bubbles: true }));
