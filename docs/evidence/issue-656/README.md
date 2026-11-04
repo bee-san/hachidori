@@ -7,7 +7,8 @@ Template switch and popup window size, taken in Chrome for Testing
 | File | What it shows |
 | --- | --- |
 | `search-600x640.png` | The default popup window size with three Templates: the switch fits the header on one line. |
-| `search-420x600.png` | A narrow window: the menu is down to 6em, and the title and the Clipboard monitor's label wrap. |
+| `search-420x600.png` | A narrow window before audit-hachi-issue-656-b's FIX 2: the menu down to 6em, and the title and the Clipboard monitor's label wrapped. |
+| `header-narrow-420.png`, `-320.png`, `-240.png` | After FIX 2: with the menu shown, a header too narrow for one line moves the Clipboard monitor to a second row at its end, then the menu, and nothing passes the window's edge (`scripts/sweep.mjs` sweeps 640 to 200 px: no overflow, the frame's copies 0 px from search.html's controls; `scripts/fflayout.test.mjs` the same in Firefox 159). |
 | `header-long-name-600.png`, `header-long-name-480.png` | A 34-character Template name at 600 and 480 px: the menu gives way and cuts the name, and the title and label keep one line. The menu grows from nothing up to its own width into the room they leave, so they shrink only once it is down to 6em (about 467 px with default fonts). `scripts/long.mjs` measures it (also with a 20 px default or minimum font size, through the profile's preferences); `scripts/lines.mjs` counts the lines as the chrome-e2e step does; `scripts/fflayout.test.mjs` measures it in Firefox 159 (one line at 600, 512 and 480 px; the copy under the menu). |
 
 Contrast of the switch (`scripts/contrast.mjs`, computed styles painted on a

@@ -11,7 +11,7 @@ test("probe", async () => {
     return JSON.stringify(globalThis.HDReaderOptions.normaliseAnki({ url: anki.url, apiKey: anki.apiKey, templates: [
       { ...anki.templates[0], name: "Sentences with audio and a picture" }, { ...anki.templates[0], id: "words", name: "Words" }] }));
   }) });
-  for (const width of [600, 512, 480, 420]) {
+  for (const width of (process.env.WIDTHS || "600,512,480,420").split(",").map(Number)) {
     await session.evaluateJson(session.page, async (w) => {
       const url = chrome.runtime.getURL("search.html");
       for (const context of await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentUrls: [url] })) {
@@ -31,13 +31,15 @@ test("probe", async () => {
         return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
       };
       const select = document.querySelector("select.search-template");
+      const header = document.querySelector(".search-header");
       return { width: Math.round(select.getBoundingClientRect().width), left: Math.round(select.getBoundingClientRect().left),
-        lines: [lines(document.querySelector(".search-header h1")), lines(document.querySelector(".search-header .lookup-enable span"))] };
+        lines: [lines(document.querySelector(".search-header h1")), lines(document.querySelector(".search-header .lookup-enable span"))],
+        height: Math.round(header.getBoundingClientRect().height), overflow: header.scrollWidth > header.clientWidth + 0.5 };
     });
     const shell = await session.evaluateJson(search, () => JSON.stringify({
       width: Math.round(document.getElementById("search-template").getBoundingClientRect().width),
       left: Math.round(document.getElementById("search-template").getBoundingClientRect().left),
-      right: Math.round(document.querySelector(".search-shell-header .lookup-enable").getBoundingClientRect().right),
+      right: Math.round(document.querySelector(".search-shell-header .lookup-enable input").getBoundingClientRect().right),
       viewport: innerWidth }));
     console.log("PROBE", width, JSON.stringify({ copy, shell }));
   }
