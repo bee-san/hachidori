@@ -72,6 +72,10 @@ test("a Japanese-only page has languages only in Advanced, and sends today's req
     /^A new language starts with a copy of your Japanese settings and no dictionaries/u);
   assert.deepEqual(settings.search("add a language"), ["Languages", "Add a language"]);
   assert.deepEqual(settings.search("settings shows"), []);
+  settings.navigate("advanced");
+  await settle();
+  assert.deepEqual(settings.messages.filter(message => /^hd_(?:profile|language_selection|sharing_status)/u.test(message.type)), [],
+    "showing Advanced sends no language request");
   el("opt-scan-length").value = "20";
   el("opt-scan-length").dispatchEvent(new settings.window.Event("change", { bubbles: true }));
   await settle(250);
@@ -439,7 +443,7 @@ test("while linked, Add a language lists only the packs the host has too", async
   const { el } = settings;
   await settle(100);
   assert.deepEqual(rowsOf(settings, "settings-language-profiles"), ["Japanese", "Arabic"]);
-  assert.equal(el("settings-language-add-select").hidden, true, "the host has no English pack");
+  assert.ok(el("settings-language-add-select").closest("[hidden]"), "the host has no English pack");
   assert.equal(el("settings-language-add-help").textContent, "This Hachidori has no other language yet.");
 });
 
