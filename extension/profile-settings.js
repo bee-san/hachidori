@@ -167,8 +167,10 @@ export function createProfileSettings({ document, element, send, readEditedProfi
 
   function renderAvailable() {
     const used = new Set(profileList().map(profile => profile.language));
+    // By English name, as a reader looks for one among many.
     const codes = (Array.isArray(registry.codes) ? registry.codes : [])
-      .filter(code => !used.has(code) && (hostLanguages === null || hostLanguages.has(code)));
+      .filter(code => !used.has(code) && (hostLanguages === null || hostLanguages.has(code)))
+      .sort((a, b) => languageName(a).localeCompare(languageName(b), "en"));
     const container = dialog.querySelector("#settings-language-available");
     container.replaceChildren(...codes.map(code => {
       const item = create("li", { className: "language-row" });
