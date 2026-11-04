@@ -2293,23 +2293,40 @@ async function removeProfile(message) {
   requireEngine();
   const request = removedLanguage(message);
   for (let attempt = 0; ; attempt += 1) {
-    const stored = (await requestDictionaryStorage()).state?.stored;
-    if (!stored) throw new Error("The last language cannot be removed.");
-    if (request.profileId !== undefined && !stored.profiles[request.profileId]) {
-      throw profileRequestError(profileMessages().profileRemoved, "profile-missing");
-    }
+    const stored = await storedForRemoval(request);
     const next = removedProfileState(stored, request);
-    let baseDocumentRevision;
-    if (request.erase) {
-      const { document } = await readCustomStorage(request.language);
-      if (document.revision !== request.confirmed) return changedAfterConfirmation(document);
-      baseDocumentRevision = document.revision;
-    }
-    const reply = await askProfileRemove(request, stored, next, baseDocumentRevision);
-    if (reply.ok === true) return adoptRemovedProfile(reply, request.erase);
-    if (reply.stale === true) return { ...changedAfterConfirmation(reply.document), state: publicState(reply.state ?? null) };
-    if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) return profileFailure(reply, "the language could not be removed");
+    const confirmation = await eraseConfirmation(request);
+    if (confirmation.stale) return changedAfterConfirmation(confirmation.document);
+    const reply = await askProfileRemove(request, stored, next, confirmation.revision);
+    const outcome = removalOutcome(reply, request, attempt);
+    if (outcome !== null) return outcome;
   }
+}
+
+async function storedForRemoval(request) {
+  const stored = (await requestDictionaryStorage()).state?.stored;
+  if (!stored) throw new Error("The last language cannot be removed.");
+  if (request.profileId !== undefined && !stored.profiles[request.profileId]) {
+    throw profileRequestError(profileMessages().profileRemoved, "profile-missing");
+  }
+  return stored;
+}
+
+// An erase removes the personal source its confirmation read; a newer one
+// is kept and the removal stops.
+async function eraseConfirmation(request) {
+  if (!request.erase) return { stale: false, revision: undefined };
+  const { document } = await readCustomStorage(request.language);
+  return document.revision === request.confirmed
+    ? { stale: false, revision: document.revision } : { stale: true, document };
+}
+
+// The removal's reply, or null to try again after a storage conflict.
+function removalOutcome(reply, request, attempt) {
+  if (reply.ok === true) return adoptRemovedProfile(reply, request.erase);
+  if (reply.stale === true) return { ...changedAfterConfirmation(reply.document), state: publicState(reply.state ?? null) };
+  if (reply.conflict !== true || attempt + 1 >= STORAGE_ATTEMPTS) return profileFailure(reply, "the language could not be removed");
+  return null;
 }
 
 function removedLanguage(message) {
@@ -2648,7 +2665,7 @@ async function cleanupCommittedDictionaries() {
 
 // `request` is the prepared import request; `target` names the profile the
 // package joins, and whether it joins even when it was installed already.
-async function commitImportedGeneration(generationRoot, report, request, target = { profileId: JAPANESE_PROFILE_ID, joins: false }) {
+async function commitImportedGeneration(generationRoot, report, request, target) {
   const { recommendedSource, managedSource, expectedRevision, importDecision } = request;
   const { profileId, joins: joinsProfile } = target;
   let generated = await packageFromIndex(`${generationRoot}/${dictionaryFolderName(report.title)}`);

@@ -424,33 +424,34 @@ export function createProfileSettings({ document, element, send, readEditedProfi
       return;
     }
     if (existing.length > 0) return;
-    for (const selector of SHARED_GROUPS) {
-      const group = document.querySelector(selector);
-      if (!group) continue;
-      const heading = group.localName === "fieldset" ? group.querySelector(":scope > legend")
-        : group.querySelector(".card-head");
-      if (group.localName === "fieldset") heading.after(scopeNote("p"));
-      else heading.append(scopeNote("p"));
+    for (const selector of SHARED_GROUPS) addGroupScopeNote(document.querySelector(selector));
+    for (const id of SHARED_CONTROLS) addControlScopeNote(id);
+  }
+
+  function addGroupScopeNote(group) {
+    if (!group) return;
+    if (group.localName === "fieldset") group.querySelector(":scope > legend").after(scopeNote("p"));
+    else group.querySelector(".card-head").append(scopeNote("p"));
+  }
+
+  function addControlScopeNote(id) {
+    const control = element(id);
+    const label = control?.closest("label.field") ?? null;
+    // A control with a hint gets the note as the hint's last line, so a
+    // field keeps its grid and a switch keeps its description under it.
+    const hint = label?.querySelector(":scope > .field-hint")
+      ?? element(control?.getAttribute("aria-describedby")?.split(" ")[0] ?? "");
+    if (hint) {
+      hint.append(create("span", { className: "scope-note", text: "All languages", "data-scope-note": "" }));
+      return;
     }
-    for (const id of SHARED_CONTROLS) {
-      const control = element(id);
-      const label = control?.closest("label.field") ?? null;
-      // A control with a hint gets the note as the hint's last line, so a
-      // field keeps its grid and a switch keeps its description under it.
-      const hint = label?.querySelector(":scope > .field-hint")
-        ?? element(control?.getAttribute("aria-describedby")?.split(" ")[0] ?? "");
-      if (hint) {
-        hint.append(create("span", { className: "scope-note", text: "All languages", "data-scope-note": "" }));
-        continue;
-      }
-      if (label !== null) {
-        label.append(scopeNote("span"));
-        continue;
-      }
-      // A switch row or a stand-alone label: the note follows it.
-      const row = control?.closest("label") ?? document.querySelector(`label[for="${id}"]`);
-      row?.after(scopeNote("p"));
+    if (label !== null) {
+      label.append(scopeNote("span"));
+      return;
     }
+    // A switch row or a stand-alone label: the note follows it.
+    const row = control?.closest("label") ?? document.querySelector(`label[for="${id}"]`);
+    row?.after(scopeNote("p"));
   }
 
   // Resets that reach every language say so (section 16.4).

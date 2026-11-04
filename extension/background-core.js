@@ -123,8 +123,13 @@ async function withProfileFields(message) {
   return resolvesRequestLanguage(looked) ? resolveRequestLanguage(looked) : looked;
 }
 
+// A request of a profile carries its fields before it reaches the engine
+// (docs/languages.md 9.3).
 async function relay(message, stillCurrent = null) {
-  if (resolvesProfile(message)) message = await withProfileFields(message);
+  return relayToOffscreen(resolvesProfile(message) ? await withProfileFields(message) : message, stillCurrent);
+}
+
+async function relayToOffscreen(message, stillCurrent) {
   let failure = null;
   for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
     // ensureOffscreen() costs a getContexts() round trip to the browser process

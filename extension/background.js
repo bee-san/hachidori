@@ -128,16 +128,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // may still show.
 let languageBadge = null;
 
+// The badge is best effort: a failed read or write leaves it as it was.
 async function syncLanguageBadge(api, { hadProfiles = false } = {}) {
   if (typeof api.action?.setBadgeText !== "function") return;
-  const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
-  const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
-  const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
-  const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
-  const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
-  if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;
-  languageBadge = text;
-  await api.action.setBadgeText({ text });
+  try {
+    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
+    const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
+    const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
+    const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
+    const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
+    if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;
+    languageBadge = text;
+    await api.action.setBadgeText({ text });
+  } catch {
+    // The next change of the records tries again.
+  }
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -146,7 +151,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const options = changes[OPTIONS_KEY];
   const hadProfiles = hasProfiles(options?.oldValue);
   if (!changes[LANGUAGE_SELECTION_KEY] && !(options && (hadProfiles || hasProfiles(options.newValue)))) return;
-  void syncLanguageBadge(chrome, { hadProfiles }).catch(() => {});
+  void syncLanguageBadge(chrome, { hadProfiles });
 });
 
 // The profile map relay() resolves lookups with (docs/languages.md 9.3).
@@ -615,11 +620,9 @@ sharingReady = initialiseSharing().catch((error) => {
 });
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
-const startupOptions = chrome.storage.local.get(OPTIONS_KEY);
-// The toolbar badge names the active language once the records have profiles.
-void startupOptions.then(stored => (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY]) ? syncLanguageBadge(chrome) : null))
-  .catch(() => {});
-void startupOptions.then(stored => {
+void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
+  // The toolbar badge names the active language once the records have profiles.
+  if (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY])) void syncLanguageBadge(chrome);
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);

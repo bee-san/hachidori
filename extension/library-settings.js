@@ -783,6 +783,21 @@ function collectReusableDictionaryRows(list, reuseRows) {
   return reusableRows;
 }
 
+// 辞 is Japanese's own icon; another language's library shows the dictionary
+// icon instead. With profiles the row's Remove from {Language} leaves a
+// language, so the bulk action that deletes from Hachidori says Delete, as
+// the row's does (docs/languages.md 14).
+function renderLanguageLabels(japanese) {
+  const icon = element("dict-empty").querySelector(".empty-state-icon");
+  if (japanese && icon.textContent !== "辞") icon.replaceChildren("辞");
+  if (!japanese && !icon.querySelector(".hd-icon")) {
+    icon.replaceChildren(Object.assign(document.createElement("span"), { className: "hd-icon" }));
+    icon.firstChild.dataset.icon = "book-search";
+  }
+  const bulkLabel = libraryHasProfiles() ? "Delete" : "Remove";
+  if (element("dict-bulk-remove").textContent.trim() !== bulkLabel) element("dict-bulk-remove").textContent = bulkLabel;
+}
+
 function renderDictionaries(reuseRows = false) {
   // A queued reorder changes only the order and the index-dependent controls,
   // so its rows can be reappended in the new order and refreshed instead of
@@ -835,18 +850,7 @@ function renderDictionaries(reuseRows = false) {
       : "Download a recommended dictionary from Add dictionaries, or bring your own Yomitan ZIP files.";
   }
   element("dict-empty-description").textContent = emptyDescription;
-  // 辞 is Japanese's own icon; another language's library shows the
-  // dictionary icon instead.
-  const icon = empty.querySelector(".empty-state-icon");
-  if (japanese && icon.textContent !== "辞") icon.replaceChildren("辞");
-  if (!japanese && !icon.querySelector(".hd-icon")) {
-    icon.replaceChildren(Object.assign(document.createElement("span"), { className: "hd-icon" }));
-    icon.firstChild.dataset.icon = "book-search";
-  }
-  // With profiles the row's Remove from {Language} leaves a language, so the
-  // bulk action that deletes from Hachidori says Delete, as the row's does.
-  const bulkLabel = libraryHasProfiles() ? "Delete" : "Remove";
-  if (element("dict-bulk-remove").textContent.trim() !== bulkLabel) element("dict-bulk-remove").textContent = bulkLabel;
+  renderLanguageLabels(japanese);
   if (element("empty-install-recommended").hidden === japanese) element("empty-install-recommended").hidden = !japanese;
   element("dict-empty-actions").hidden = !isEmpty;
   element("empty-clear-search").hidden = isEmpty;
