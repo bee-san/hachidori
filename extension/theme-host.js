@@ -28,7 +28,7 @@
   // Compiled the first time it is used, like glossary.js's patterns: a
   // property escape in a literal costs every frame at injection.
   let hanPattern = null;
-  const HAN = () => hanPattern ??= /\p{Script=Han}/u;
+  const HAN = () => hanPattern ??= new RegExp(String.raw`\p{Script=Han}`, "u"); // NOSONAR: a literal is parsed, with its character set, at every injection
   const FIRST_STRONG_ISOLATE = "\u2068", POP_ISOLATE = "\u2069";
   const registryPack = code => globalThis.HDLanguages?.get?.(code) ?? null;
 

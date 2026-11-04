@@ -345,6 +345,8 @@ button,
 .language-remove { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
   border-radius: var(--radius-surface); background: var(--surface-sunken); }
 .language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+/* A row whose one button is hidden takes no space in the dialog's grid. */
+.language-dialog-buttons:has(> [hidden]:only-child) { display: none; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 .field-hint > .scope-note { display: block; }
@@ -1436,6 +1438,10 @@ textarea {
   color: var(--accent);
   font-size: var(--font-page-title);
 }
+.empty-state-icon .hd-icon {
+  width: 28px;
+  height: 28px;
+}
 .library-empty h2 {
   color: var(--text);
   font-size: var(--font-large);
@@ -2348,6 +2354,11 @@ textarea {
 @media (max-width: 620px) {
   .lookup-group {
     container-type: inline-size;
+  }
+  /* Too narrow for the two buttons side by side: they stack, full width. */
+  .settings-language-actions {
+    grid-auto-flow: row;
+    justify-content: stretch;
   }
   /* On a phone a switch's description may run under the switch's column. */
   .lookup-enable + .field-hint {

@@ -379,7 +379,9 @@
       // The reader reads another language: the kept manifests' tracks of it
       // are posted instead (docs/languages.md 8.5).
       subtitleLanguage = command.language;
-      for (const [movieId, textTracks] of manifests) {
+      // A copy: readTracks() → retain() deletes the other movies' manifests
+      // while the loop runs, and each kept manifest is posted again.
+      for (const [movieId, textTracks] of [...manifests]) { // NOSONAR: the copy is needed, see above
         posted.set(movieId, new Map());
         readTracks({ movieId, textTracks });
       }

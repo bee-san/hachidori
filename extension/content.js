@@ -420,7 +420,7 @@
       label.className = "gsm-hoshidicts-profile-label";
       label.lang = "en";
       // The popup's own text colour at 11px, legible in every palette (WCAG AA).
-      label.style.cssText = "display:block;margin:2px 8px 0;text-align:end;pointer-events:none;"
+      label.style.cssText = "display:block;order:-1;margin:2px 8px 0;text-align:end;pointer-events:none;"
         + "font-size:11px;line-height:1.4;color:var(--hoshidicts-text,currentColor);";
       level.profileLabel = label;
     }

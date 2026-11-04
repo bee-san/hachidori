@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Settings' Language menu (docs/languages.md 5.3 and 16.3-16.5): the menu that
-// chooses the profile this page edits, Use for lookups, the Add or remove
-// languages dialog with the languages held without a profile, the All
+// chooses the profile this page edits, Use for lookups, the Manage languages
+// dialog with the languages held without a profile, the All
 // languages notes beside shared settings and Reading → Scanning's automatic
 // switch. settings.js loads this module once the page has a language
 // registry and owns what a profile change does to the rest of the page.

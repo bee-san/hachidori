@@ -22,7 +22,7 @@ captureDocumentActions(document, captureDebugLog(window, {
   context: "search", store: bridge.debugLogStore, version: async () => (await bridge.ready).manifest.version,
 }));
 
-const { normaliseOptions, hasProfiles, profiles, profileDescriptor, activeProfileId, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
+const { normaliseOptions, hasProfiles, profiles, profileDescriptor, activeProfileId, projectOptions, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
 const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const query = document.getElementById("search-query");
@@ -161,13 +161,19 @@ function applyLanguage() {
   input.dataset.language = language;
 }
 
+// The page reads in the active profile, and so takes its palette, as the
+// shell around it does (search-shell.js).
+function pageOptions(stored) {
+  return hasProfiles(stored) ? projectOptions(stored, activeProfileId(stored, selection)) : normaliseOptions(stored);
+}
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.options) {
-    storedOptions = changes.options.newValue;
-    applyPageTheme(document, normaliseOptions(changes.options.newValue));
-  }
+  if (changes.options) storedOptions = changes.options.newValue;
   if (changes[LANGUAGE_SELECTION_KEY]) selection = changes[LANGUAGE_SELECTION_KEY].newValue ?? null;
+  if (changes.options || (changes[LANGUAGE_SELECTION_KEY] && hasProfiles(storedOptions))) {
+    applyPageTheme(document, pageOptions(storedOptions));
+  }
   if (changes.options || changes[LANGUAGE_SELECTION_KEY]) applyLanguage();
 });
 
@@ -198,7 +204,7 @@ try {
   const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
   storedOptions ??= stored.options;
   selection ??= stored[LANGUAGE_SELECTION_KEY] ?? null;
-  applyPageTheme(document, normaliseOptions(stored.options));
+  applyPageTheme(document, pageOptions(stored.options));
   applyLanguage();
   bridge.notify("shown");
   // The page opens ready to type into, as Yomitan's focuses its box. It is

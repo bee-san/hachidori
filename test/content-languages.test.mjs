@@ -234,7 +234,8 @@ async function netflixPage() {
   context.window = context;
   vm.runInContext(source, context);
   const command = message => document.dispatchEvent(new CustomEvent("hachidori-netflix-command", { detail: JSON.stringify(message) }));
-  const read = tracks => vm.runInContext(`JSON.parse(${JSON.stringify(JSON.stringify({ result: { movieId: 81000001, textTracks: tracks } }))})`, context);
+  const read = (tracks, movieId = 81000001) => vm.runInContext(
+    `JSON.parse(${JSON.stringify(JSON.stringify({ result: { movieId, textTracks: tracks } }))})`, context);
   return { posted, command, read };
 }
 
@@ -259,6 +260,19 @@ test("Netflix posts the reading language's subtitle tracks: Japanese until the r
   command({ type: "language", language: "../x" });
   await tick();
   assert.deepEqual(posted, [], "a malformed language changes nothing");
+});
+
+test("a language switch on Netflix posts the tracks of every kept manifest, the next episode's too", async () => {
+  const { posted, command, read } = await netflixPage();
+  read([vttTrack("a-ja", "ja", "https://cdn.example/ja.vtt"), vttTrack("a-en", "en", "https://cdn.example/en.vtt")]);
+  // Netflix prepares the next episode while the first plays.
+  read([vttTrack("b-ja", "ja", "https://cdn.example/ja.vtt"), vttTrack("b-en", "en", "https://cdn.example/en.vtt")], 81000002);
+  await tick();
+  posted.length = 0;
+  command({ type: "language", language: "en" });
+  await tick();
+  assert.deepEqual(posted.filter(message => message.kind === "subtitle").map(message => `${message.movieId}:${message.trackId}`),
+    ["81000001:a-en", "81000002:b-en"]);
 });
 
 test("a Netflix cue's lines are joined with the language's joiner", t => {

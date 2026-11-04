@@ -55,6 +55,7 @@ const PLANNED = [
   "pitch accent, the clicked-kanji dictionary and Anki's note-type setup hide for English and show for Japanese",
   "the Arabic-English dictionary's block takes its targetLanguage as its default lang",
   "a popup that automatic switching gives English shows English's display name, custom buttons, theme and target language",
+  "the search page and its frame take the active profile's palette and follow a switch",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -542,6 +543,33 @@ try {
     check(PLANNED[16], english.pitch && english.kanji && english.anki && english.japaneseOnly === "English text only"
       && !japanese.pitch && !japanese.kanji && !japanese.anki && japanese.japaneseOnly === "Japanese text only",
     JSON.stringify({ english, japanese }));
+  });
+  await step(PLANNED[19], async () => {
+    // English reads in Light; Japanese keeps the Hachidori palette.
+    let stored = await storage(["options"]);
+    await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision, profileId: "en",
+      options: { popupTheme: "light" } });
+    await until(async () => {
+      stored = await storage(["options"]);
+      return stored.options.profiles.find(profile => profile.id === "en")?.settings.popupTheme === "light";
+    });
+    await chooseInToolbar("en");
+    const search = await extensionPage("search.html");
+    const palettes = async () => {
+      const frame = search.frames().find(candidate => candidate.url().includes("search-frame.html"));
+      const theme = target => target?.evaluate(() => document.documentElement.dataset.hoshidictsTheme ?? null).catch(() => null);
+      return { shell: await theme(search.mainFrame()), frame: await theme(frame) };
+    };
+    const settled = async (wanted) => until(async () => {
+      const value = await palettes();
+      return value.shell === wanted && value.frame === wanted ? value : null;
+    }) ?? await palettes();
+    const english = await settled("light");
+    await chooseInToolbar("ja");
+    const japanese = await settled("default");
+    await search.close();
+    check(PLANNED[19], english.shell === "light" && english.frame === "light"
+      && japanese.shell === "default" && japanese.frame === "default", JSON.stringify({ english, japanese }));
   });
 } finally {
   await browser.close().catch(() => {});
