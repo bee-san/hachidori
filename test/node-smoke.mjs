@@ -1710,24 +1710,28 @@ check('a frequency that separates the readings still outranks dictionary order',
   );
 });
 
-check('words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620)', () => {
+check('words only frequency and pitch dictionaries have, with metadataOnlyTerms (#620, #658)', () => {
   // 東京 has a definition; 東京タワー only a frequency row and a pitch row. With
   // the option off (and from an options string without the key) a lookup shows
   // what the definitions give; on, 東京タワー comes first with both rows and
-  // no glossaries, and 東京 keeps its own result.
+  // no glossaries, and 東京 keeps its own result. 銃五 is defined without a
+  // reading, as JMnedict stores names, and its rows name じゅうご (#658).
   const TERMS = 'metadata-only-terms';
   const FREQ = 'metadata-only-frequency';
   const PITCH = 'metadata-only-pitch';
   const archives = [
-    [TERMS, buildTitledZip(TERMS, { terms: [['東京', 'とうきょう', '', '', 0, ['Tokyo'], 1, '']] })],
+    [TERMS, buildTitledZip(TERMS, { terms: [['東京', 'とうきょう', '', '', 0, ['Tokyo'], 1, ''],
+      ['銃五', '', '', '', 0, ['Jūgo, a surname'], 2, '']] })],
     [FREQ, buildTitledZip(FREQ, {
       banks: false,
       frequencyMode: 'rank-based',
-      termMeta: [['東京タワー', 'freq', { reading: 'とうきょうタワー', frequency: { value: 5000, displayValue: '5000' } }]],
+      termMeta: [['東京タワー', 'freq', { reading: 'とうきょうタワー', frequency: { value: 5000, displayValue: '5000' } }],
+        ['銃五', 'freq', { reading: 'じゅうご', frequency: { value: 12000, displayValue: '12000' } }]],
     })],
     [PITCH, buildTitledZip(PITCH, {
       banks: false,
-      termMeta: [['東京タワー', 'pitch', { reading: 'とうきょうタワー', pitches: [{ position: 5 }] }]],
+      termMeta: [['東京タワー', 'pitch', { reading: 'とうきょうタワー', pitches: [{ position: 5 }] }],
+        ['銃五', 'pitch', { reading: 'じゅうご', pitches: [{ position: 1 }] }]],
     })],
   ];
   for (const [title, bytes] of archives) {
@@ -1758,6 +1762,16 @@ check('words only frequency and pitch dictionaries have, with metadataOnlyTerms 
     transcriptions: [] }], 'pitches');
   same(terms(lookupDictionary('東京タワー', `/dicts/${TERMS}`, 32, 16, on)), ['東京/とうきょう'],
     'hdw_lookup_dictionary answers its one term dictionary');
+  // A reading no definition has for a defined word follows it as a result of
+  // its own, with the rows that name it; the defined word keeps its place.
+  same(terms(lookup('銃五', 32, 16, off)), ['銃五/銃五'], '銃五, metadataOnlyTerms false');
+  const name = lookup('銃五', 32, 16, on);
+  same(terms(name), ['銃五/銃五', '銃五/じゅうご*'], '銃五, metadataOnlyTerms true');
+  same(name.results[1].term.frequencies, [{ dictionary: FREQ, frequencies: [{ value: 12000, displayValue: '12000' }] }],
+    '銃五/じゅうご frequencies');
+  same(name.results[1].term.pitches, [{ dictionary: PITCH, pitches: [{ position: 1, pattern: '', nasal: [], devoice: [] }],
+    transcriptions: [] }], '銃五/じゅうご pitches');
+  same(terms(lookup('銃五', 1, 16, on)), ['銃五/銃五'], '銃五, maxResults 1 keeps the defined word');
 });
 
 G('long keys beyond the scan length');

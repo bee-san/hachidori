@@ -277,6 +277,43 @@ function validateProductionEvidence(row, engineDefinition) {
   });
 }
 
+// One adapter row's lookups: its query fixture, the excluded warmup pass and
+// every measured pass against the query expectations, one result signature
+// within the sample, and a first lookup that hit. Returns that signature.
+export function validateLookupEvidence(row, config) {
+  const queries = selectedComparisonQueries(config, row.corpus);
+  if (row.lookup?.warmupExcluded !== true
+    || row.lookup.queryFixtureSha256 !== sha256Canonical(queries)
+    || canonicalJson(row.lookup.queryIds) !== canonicalJson(queries.map((query) => query.id))) {
+    throw new Error(`${row.runId} lookup fixture evidence is invalid`);
+  }
+  const warmSignature = validateLookupDataset(
+    row.lookup.warmup,
+    queries,
+    row.engine,
+    row.corpus,
+    `${row.runId} lookup warmup`,
+    undefined,
+  );
+  if (!Array.isArray(row.lookup.passes) || row.lookup.passes.length !== config.lookupPasses) {
+    throw new Error(`${row.runId} measured lookup pass count is invalid`);
+  }
+  row.lookup.passes.forEach((pass, index) => {
+    const signature = validateLookupDataset(
+      pass,
+      queries,
+      row.engine,
+      row.corpus,
+      `${row.runId} lookup pass ${index}`,
+      index,
+    );
+    if (signature !== warmSignature) throw new Error(`${row.runId} lookup semantics drift within the sample`);
+  });
+  if (row.lookup.semanticSha256 !== warmSignature) throw new Error(`${row.runId} lookup signature is inconsistent`);
+  validateFirstLookup(row.firstLookup, queries, row.engine, row.corpus, `${row.runId} first lookup`);
+  return warmSignature;
+}
+
 function validateSuccessfulRow(row, item, definition, baselines) {
   const config = definition.config;
   const corpus = config.corpora.find((entry) => entry.id === row.corpus);
@@ -310,36 +347,7 @@ function validateSuccessfulRow(row, item, definition, baselines) {
       throw new Error(`${row.runId} core import exceeds import-to-usable timing`);
     }
   }
-  const queries = selectedComparisonQueries(config, row.corpus);
-  if (row.lookup?.warmupExcluded !== true
-    || row.lookup.queryFixtureSha256 !== sha256Canonical(queries)
-    || canonicalJson(row.lookup.queryIds) !== canonicalJson(queries.map((query) => query.id))) {
-    throw new Error(`${row.runId} lookup fixture evidence is invalid`);
-  }
-  const warmSignature = validateLookupDataset(
-    row.lookup.warmup,
-    queries,
-    row.engine,
-    row.corpus,
-    `${row.runId} lookup warmup`,
-    undefined,
-  );
-  if (!Array.isArray(row.lookup.passes) || row.lookup.passes.length !== config.lookupPasses) {
-    throw new Error(`${row.runId} measured lookup pass count is invalid`);
-  }
-  row.lookup.passes.forEach((pass, index) => {
-    const signature = validateLookupDataset(
-      pass,
-      queries,
-      row.engine,
-      row.corpus,
-      `${row.runId} lookup pass ${index}`,
-      index,
-    );
-    if (signature !== warmSignature) throw new Error(`${row.runId} lookup semantics drift within the sample`);
-  });
-  if (row.lookup.semanticSha256 !== warmSignature) throw new Error(`${row.runId} lookup signature is inconsistent`);
-  validateFirstLookup(row.firstLookup, queries, row.engine, row.corpus, `${row.runId} first lookup`);
+  const warmSignature = validateLookupEvidence(row, config);
   if (metrics.importUsableWallMs < row.firstLookup.latencyMs) {
     throw new Error(`${row.runId} import-to-usable timing excludes its first lookup`);
   }

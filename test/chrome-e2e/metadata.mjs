@@ -572,17 +572,22 @@ async function checkLaterEntryPitch(settings, tab, popup) {
 // dictionaries have. 東京 has a definition and 東京タワー only a frequency row
 // and a pitch row. Off, a hover on 東京タワー shows 東京; on, 東京タワー is the
 // first entry, with both dictionaries' tags and no definition card, and 東京
-// keeps its card after it.
+// keeps its card after it. #658: 銃五 is defined without a reading, as
+// JMnedict stores names, and the rows name じゅうご. Off, a hover on 銃五 shows
+// the defined word alone; on, じゅうご follows it as an entry of its own.
 async function checkMetadataOnlyResults(settings, tab, popup) {
   const terms = "Metadata-only words";
   const frequency = "Metadata-only frequency";
   const pitch = "Metadata-only pitch";
   const reading = "とうきょうタワー";
   const archives = [
-    [terms, { terms: [["東京", "とうきょう", "", "", 0, ["Tokyo (metadata-only fixture)"], 1, ""]] }],
+    [terms, { terms: [["東京", "とうきょう", "", "", 0, ["Tokyo (metadata-only fixture)"], 1, ""],
+      ["銃五", "", "", "", 0, ["Jūgo, a surname (metadata-only fixture)"], 2, ""]] }],
     [frequency, { banks: false, frequencyMode: "rank-based", termMeta: [["東京タワー", "freq",
-      { reading, frequency: { value: 5000, displayValue: "5000" } }]] }],
-    [pitch, { banks: false, termMeta: [["東京タワー", "pitch", { reading, pitches: [{ position: 5 }] }]] }],
+      { reading, frequency: { value: 5000, displayValue: "5000" } }],
+    ["銃五", "freq", { reading: "じゅうご", frequency: { value: 12000, displayValue: "12000" } }]] }],
+    [pitch, { banks: false, termMeta: [["東京タワー", "pitch", { reading, pitches: [{ position: 5 }] }],
+      ["銃五", "pitch", { reading: "じゅうご", pitches: [{ position: 1 }] }]] }],
   ];
   const original = await readSettingsControls(settings, ["opt-metadata-only-results", "opt-pitch-badge",
     "opt-average-frequency", "opt-max-results"]);
@@ -590,18 +595,26 @@ async function checkMetadataOnlyResults(settings, tab, popup) {
   const status = () => settings.evaluate(() => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" }));
   const before = await status();
   const installed = [];
-  // Every entry of a hover on 東京タワー whose first entry is `first`.
-  async function entries(first, accept) {
+  // Every entry of a hover on #verb whose first entry is `first`, and of
+  // `count` entries when it is given.
+  async function entries(first, accept, count = null) {
     await tab.bringToFront();
     await tab.keyboard.press("Escape");
     await hoverForPopup(tab, popup, "#verb", { accept });
     await popup.click(".gsm-hoshidicts-show-more");
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const value = await popup.dictionaryTabs();
-      if (value && !value.hidden && !value.showMore && value.entries[0]?.expression === first) return value.entries;
+      if (value && !value.hidden && !value.showMore && value.entries[0]?.expression === first
+        && (count === null || value.entries.length === count)) return value.entries;
       await new Promise(resolve => setTimeout(resolve, 40));
     }
-    throw new Error(`東京タワー did not settle: ${JSON.stringify(await popup.dictionaryTabs())}`);
+    throw new Error(`${first} did not settle: ${JSON.stringify(await popup.dictionaryTabs())}`);
+  }
+  const hoverText = text => tab.$eval("#verb", (element, value) => { element.textContent = value; }, text);
+  // The popup's text once 銃五 settled: it shows じゅうご only on its own entry.
+  async function nameEntries(count) {
+    const list = shown(await entries("銃五", value => value.plain.includes("銃五"), count));
+    return { entries: list, reading: (await popup.state()).text.includes("じゅうご") };
   }
   const shown = list => list?.map(entry => ({ expression: entry.expression, cards: entry.cards.map(card => card.dictionary),
     frequencyDictionaries: entry.frequencyDictionaries, pitchDictionaries: entry.pitchDictionaries }));
@@ -613,6 +626,8 @@ async function checkMetadataOnlyResults(settings, tab, popup) {
   };
   let off;
   let on;
+  let nameOff;
+  let nameOn;
   let cleaned;
   try {
     for (const [title, options] of archives) {
@@ -623,9 +638,12 @@ async function checkMetadataOnlyResults(settings, tab, popup) {
     // come after one that has none.
     await editSettingsControls(settings, { "opt-metadata-only-results": false, "opt-pitch-badge": true,
       "opt-average-frequency": false, "opt-max-results": "32" });
-    await tab.$eval("#verb", element => { element.textContent = "東京タワー"; });
+    await hoverText("東京タワー");
     off = shown(await entries("東京", value => !value.plain.includes("タワー")));
     await capturePopup("popup-off");
+    await hoverText("銃五");
+    nameOff = await nameEntries(1);
+    await capturePopup("name-off");
     await editSettingsControls(settings, { "opt-metadata-only-results": true });
     if (screenshots) {
       await settings.bringToFront();
@@ -633,8 +651,12 @@ async function checkMetadataOnlyResults(settings, tab, popup) {
         document.getElementById("opt-metadata-only-results").closest("fieldset"));
       await results.screenshot({ path: `${screenshots}/settings.png` });
     }
+    await hoverText("東京タワー");
     on = shown(await entries("東京タワー", value => value.plain.includes("タワー")));
     await capturePopup("popup-on");
+    await hoverText("銃五");
+    nameOn = await nameEntries(2);
+    await capturePopup("name-on");
   } finally {
     await tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb);
     await editSettingsControls(settings, original);
@@ -656,6 +678,13 @@ async function checkMetadataOnlyResults(settings, tab, popup) {
       ])
       && cleaned,
     JSON.stringify({ off, on, cleaned }));
+  const defined = { expression: "銃五", cards: [terms], frequencyDictionaries: [], pitchDictionaries: [] };
+  check("a reading only frequency and pitch dictionaries have follows the word a dictionary defines, only while Settings asks for it (#658)",
+    JSON.stringify(nameOff) === JSON.stringify({ entries: [defined], reading: false })
+      && JSON.stringify(nameOn) === JSON.stringify({ entries: [defined, { expression: "銃五", cards: [],
+        frequencyDictionaries: [frequency], pitchDictionaries: [pitch] }], reading: true })
+      && cleaned,
+    JSON.stringify({ nameOff, nameOn, cleaned }));
 }
 
 describe("frequency, metadata and audio", () => {
