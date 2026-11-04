@@ -245,9 +245,10 @@
     searchClickLookup: false,
     searchWindowWidthPx: 600,
     searchWindowHeightPx: 640,
-    // Reading → Search page: keep each line the search page searches, up to
-    // this many, oldest first out (docs/search-history.md).
-    searchHistoryEnabled: true,
+    // Advanced → Search history (docs/search-history.md), off until switched
+    // on: keep each line the search page searches, up to this many, oldest
+    // first out, and move through them with the search page's keys.
+    searchHistoryEnabled: false,
     searchHistoryLimit: 10000,
     keybinds: [...DEFAULT_KEYBINDS, ...SEARCH_KEYBINDS],
   };

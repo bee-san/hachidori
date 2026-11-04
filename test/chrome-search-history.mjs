@@ -244,6 +244,22 @@ try {
     }
   });
 
+  // Off by default (Settings → Advanced → Search history), the page is as it
+  // was: a search keeps no line and leaves the box, the searched text is no
+  // text box, and Up in the box is the box's.
+  await typeSearch("読む");
+  assert.ok(await shows("読む"), "a search with the history off by default");
+  const plain = await until(state => state.query === "読む", "the default search");
+  assert.deepEqual([plain.focused, plain.cursor, await frame.$eval("#search-query", element => element.getAttribute("role")),
+    await frame.$eval("#search-keys", element => element.hidden)], ["body", null, null, true], "the plain search page");
+  await frame.focus("#search-input");
+  await press("ArrowUp");
+  await settle(300);
+  assert.equal((await view()).value, "読む", "Up recalls nothing while the history is off");
+  assert.deepEqual(await lines(), [], "nothing is kept by default");
+  await writeOptions({ searchHistoryEnabled: true });
+  await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled
+    && document.getElementById("search-query").getAttribute("role") === "textbox", { polling: 50, timeout: 10_000 });
   // Lines are kept from the box, a paste and the Clipboard monitor, a repeat of the newest once.
   await typeSearch("食べたかった");
   assert.ok(await shows("食べる"), "a typed line is searched");
@@ -265,7 +281,8 @@ try {
   assert.ok(kept.every((line, index) => index === 0 || (line.id > kept[index - 1].id && line.at >= kept[index - 1].at)), JSON.stringify(kept));
   assert.deepEqual((await frame.evaluate(() => globalThis.heard)).map(({ type, detail }) => [type, detail.text]),
     [["line", "食べたかった"], ["line", "読む"], ["line", "漢字"]]);
-  console.log("PASS: lines typed, pasted and copied are kept with their source and window, a repeat of the newest once");
+  console.log("PASS: off by default the page keeps nothing and is as before; on, lines typed, pasted and copied are kept"
+    + " with their source and window, a repeat of the newest once");
 
   // Up and Down in the box walk the lines as a shell's do, and bring the draft back.
   await press("Escape");
@@ -541,14 +558,13 @@ try {
   assert.equal((await view()).cursor?.at, 2, "Right with focus on a button moves no cursor");
   console.log("PASS: the search page's keys follow Settings → Keybinds and leave other controls alone");
 
-  // Switched off during a visit, the history still lets Down show the searched line again.
+  // Switched off during a visit, the page shows the searched line again.
   const visiting = await view();
   await press("ArrowUp");
   await until(state => state.where !== null && state.query !== visiting.query, "a visit further back");
   await writeOptions({ searchHistoryEnabled: false });
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
-  await press("ArrowDown");
-  await until(state => state.query === long && state.where === null, "Down with the history off");
+  await until(state => state.query === long && state.where === null, "the searched line once the history is off");
   // With the history off, nothing is kept and Up recalls nothing.
   await writeOptions({ searchHistoryEnabled: false });
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
@@ -564,24 +580,28 @@ try {
   await press("ArrowUp");
   await settle(300);
   assert.equal((await view()).value, "ありがとう", "Up in the box recalls nothing");
-  // A line searched while another control has focus leaves nothing to read
-  // out until the searched text takes focus.
-  await frame.focus("#search-clear");
-  await frame.evaluate(() => {
-    const data = new DataTransfer();
-    data.setData("text/plain", "読む漢字");
-    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
-  });
-  assert.ok(await shows("読む"));
-  const pasted = await until(state => state.query === "読む漢字" && state.cursor === null, "a paste with focus on a button");
-  assert.deepEqual([pasted.focused, pasted.announced], ["search-clear", ""], "nothing read out without focus");
-  await frame.focus("#search-query");
-  await until(state => state.announced === "読む", "the word read out as the text takes focus");
   assert.deepEqual(await lines(), before, "nothing is kept");
   await writeOptions({ searchHistoryEnabled: true });
   await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
-  console.log("PASS: with the history off a search keeps no line, Up recalls none, and Down ends a visit; a line searched"
-    + " with focus elsewhere is read out once the searched text takes focus");
+  // A line searched while another control has focus leaves nothing to read
+  // out until the searched text takes focus. The newest line again, so
+  // nothing more is kept.
+  await frame.focus("#search-query");
+  await until(state => state.announced !== "", "a word read out");
+  const newest = (await lines()).at(-1).text;
+  await frame.focus("#search-clear");
+  await frame.evaluate((value) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", value);
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, newest);
+  const pasted = await until(state => state.query === newest && state.cursor === null, "a paste with focus on a button");
+  await settle(300);
+  assert.deepEqual([pasted.focused, (await view()).announced], ["search-clear", ""], "nothing read out without focus");
+  await frame.focus("#search-query");
+  await until(state => state.announced !== "" && state.announced === state.cursor?.text, "the word read out as the text takes focus");
+  console.log("PASS: with the history off a search keeps no line and Up recalls none, and switching it off ends a visit;"
+    + " a line searched with focus elsewhere is read out once the searched text takes focus");
 
   // A second search page, the popup window, keeps its lines with its window, and the first hears them.
   await settings.evaluate(async () => {
@@ -607,14 +627,14 @@ try {
   console.log("PASS: the popup window's lines are kept with its window, and the search page in a tab hears them");
 
   // Settings counts the lines, applies a lowered limit at once and clears them.
-  await settings.goto(`chrome-extension://${extensionId}/settings.html#lookup`, { waitUntil: "domcontentloaded" });
+  await settings.goto(`chrome-extension://${extensionId}/settings.html#advanced`, { waitUntil: "domcontentloaded" });
   await settings.waitForFunction(() => document.getElementById("search-history-count").textContent === "7 lines kept.",
     { polling: 100, timeout: 15_000 });
   if (SCREENSHOTS) {
     await settings.bringToFront();
     await settings.setViewport({ width: 1100, height: 900 });
     // Clips are page coordinates: add the scroll after scrollIntoView.
-    const fieldset = await settings.$eval("#search-page-settings", (element) => {
+    const fieldset = await settings.$eval("#search-history-settings", (element) => {
       element.scrollIntoView({ block: "center" });
       const { x, y, width, height } = element.getBoundingClientRect();
       return { x: x + scrollX, y: y + scrollY, width, height };

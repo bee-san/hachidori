@@ -888,8 +888,9 @@ takes focus, so here the popup scope means a popup is open or its lookup is
 pending. The page scope applies anywhere. The search scope is the search
 page's own keys ([search history](search-history.md#keys)): Up and Down walk
 its box's history, and in its searched text the arrows move the cursor and
-Enter runs Add note. Its default rows are the plain arrows and Enter, and a
-keybind list saved before the scope existed gains them when read. Settings offers the scopes Yomitan's
+Enter runs Add note, while Advanced → Search history is on. Its default rows
+are the plain arrows and Enter, and a keybind list saved before the scope
+existed gains them when read. Settings offers the scopes Yomitan's
 controller offers for each action. Toggle option adds the page scope, because no
 popup exists while lookups are off.
 
@@ -1173,12 +1174,13 @@ Firefox has sandboxed pages from 154; in Firefox 153 the frame is an ordinary
 extension page, with its own API, where the script does not run and the
 channel carries only the debug log and the Clipboard monitor.
 
-**History.** The page keeps each line it searches, typed, pasted or read by
+**History.** While Settings → Advanced → Search history is on (it is off until
+switched on), the page keeps each line it searches, typed, pasted or read by
 the Clipboard monitor, in the IndexedDB database `hachidori-search-history`,
 which `search.html` serves to its frame and Settings counts, limits and clears
-(`search-history.js`). Up and Down in the box walk the lines as a shell's do.
-The searched text takes focus after a search; there the arrow keys move Rubi's
-cursor by word and row (`search-lines.js`, a port of Rubi's
+(`search-history.js`), and its keys act. Up and Down in the box walk the lines
+as a shell's do. The searched text takes focus after a search; there the arrow
+keys move Rubi's cursor by word and row (`search-lines.js`, a port of Rubi's
 `core/text_rows.c`), each word looked up, and past the top row on to earlier
 lines between their neighbours' dimmed rows, and Enter adds the word to Anki.
 User scripts reach the lines through `HDSearchHistory`, and

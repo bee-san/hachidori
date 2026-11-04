@@ -247,6 +247,8 @@ describe("search page", () => {
   // box's walk, the searched text's cursor and an earlier line, and the
   // texthooker user script where Custom JavaScript runs on the search page.
   step("the search page's history and its keys", async () => {
+    // Off by default: Settings → Advanced → Search history.
+    await writeOptions(page, { searchHistoryEnabled: true });
     const search = await activate(await openExtensionPage("search.html"));
     let frame = await searchFrame(search);
     const ready = target => waitFor(() => target.evaluate(() => !document.getElementById("search-submit").disabled || false),
@@ -342,7 +344,7 @@ describe("search page", () => {
       clicked = await waitFor(async () => ((await readPopup(frame))?.headword === "読む" ? "読む" : false), { timeout: 15_000 });
     }
     const all = (await lines()).map(line => line.text);
-    await writeOptions(page, { customPopupJavascript: "" });
+    await writeOptions(page, { customPopupJavascript: "", searchHistoryEnabled: false });
     check("the texthooker user script lists the kept lines and looks up a clicked word from Firefox 154, where Custom JavaScript runs on the search page",
       registered === true && (sandboxes ? JSON.stringify(listed) === JSON.stringify(all) && clicked === "読む" : listed === true),
       JSON.stringify({ sandboxes, registered, listed, all, clicked }));

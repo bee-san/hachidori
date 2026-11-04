@@ -33,11 +33,11 @@ let optionsEditRevision = null; // NOSONAR: shared with the other Settings modul
 let activationController;
 let frequencyDirectionRequest = 0;
 
-// Reading → Search page's history (docs/search-history.md): how many lines it
-// keeps, Clear history, and its limit, applied here at once when the saved
-// limit is lowered (the search page applies it with its next line). Only the
-// saved limit prunes: a draft whose save is refused must not delete lines. The
-// history is this browser's IndexedDB, which Settings opens when Reading first
+// Advanced → Search history (docs/search-history.md): how many lines it keeps,
+// Clear history, and its limit, applied here at once when the saved limit is
+// lowered (the search page applies it with its next line). Only the saved
+// limit prunes: a draft whose save is refused must not delete lines. The
+// history is this browser's IndexedDB, which Settings opens when Advanced first
 // shows.
 let searchHistory = null;
 let searchHistoryLimit = null;
@@ -52,7 +52,7 @@ function openedSearchHistory() {
 }
 
 async function renderSearchHistory() {
-  if (activeSection !== "lookup") return;
+  if (activeSection !== "advanced") return;
   const count = element("search-history-count");
   const clear = element("search-history-clear");
   try {

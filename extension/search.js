@@ -42,13 +42,20 @@ const keys = document.getElementById("search-keys");
 const cursorWord = document.getElementById("search-cursor-word");
 const status = document.getElementById("search-status");
 const templateChoices = document.querySelector("select.search-template");
-// The searched text is a read-only text box, which takes focus and its arrow
-// keys (a screen reader passes it them) and is described by its keys and, in a
-// visit, where it is. It stays a text node in the page, not a textarea, so the
-// reader looks its words up and the cursor's highlight can paint them.
-for (const [name, value] of Object.entries({ tabindex: "0", role: "textbox", "aria-readonly": "true",
-  "aria-multiline": "true", "aria-label": "Searched text", "aria-describedby": "search-where search-keys" })) {
-  query.setAttribute(name, value);
+// While Advanced → Search history is on, the searched text is a read-only
+// text box, which takes focus and its arrow keys (a screen reader passes it
+// them) and is described by its keys and, in a visit, where it is. It stays a
+// text node in the page, not a textarea, so the reader looks its words up and
+// the cursor's highlight can paint them. Off, it is the plain echoed query it
+// was before, and the keys' note takes no room.
+const TEXT_BOX = { tabindex: "0", role: "textbox", "aria-readonly": "true", "aria-multiline": "true",
+  "aria-label": "Searched text", "aria-describedby": "search-where search-keys" };
+function adoptFeature() {
+  for (const [name, value] of Object.entries(TEXT_BOX)) {
+    if (options.searchHistoryEnabled) query.setAttribute(name, value);
+    else query.removeAttribute(name);
+  }
+  keys.hidden = !options.searchHistoryEnabled;
 }
 let reader = null;
 let options = normaliseOptions(undefined);
@@ -69,7 +76,7 @@ async function keptLine(id, direction, unlike, newest = null) {
 }
 
 // Keeps a line searched from `source` (typed, paste or clipboard), while
-// Reading → Search page keeps a history; resolves to its id, or null.
+// Advanced → Search history is on; resolves to its id, or null.
 async function keep(text, source) {
   if (!options.searchHistoryEnabled) return null;
   try {
@@ -319,6 +326,7 @@ function runSearchAction(action, event) {
 }
 
 function runSearchKeybinds(event) {
+  if (!options.searchHistoryEnabled) return false;
   const key = KEYBIND_MODIFIER_CODES.has(event.code) ? null : event.code;
   const modifiers = keybindModifiers(event).join();
   return options.keybinds.some(bind => bind.enabled && bind.action !== "" && bind.scopes.includes("search")
@@ -355,12 +363,19 @@ function search(source = "typed") {
   const searched = line(text, null, globalThis.HDContent.searchStart(text));
   current = searched;
   show(searched);
-  if ([input, query, document.body, null].includes(focused)) query.focus({ preventScroll: true });
+  if (!options.searchHistoryEnabled) input.blur();
+  else if ([input, query, document.body, null].includes(focused)) query.focus({ preventScroll: true });
   void keep(text, source).then((id) => { searched.id = id; });
 }
+// A press on the text gives it focus before its click, which may move the
+// cursor (Look up words with a click): only focus from the keyboard reads the
+// word out here.
+let pressed = false;
+query.addEventListener("mousedown", () => { pressed = document.activeElement !== query; });
 query.addEventListener("focus", () => {
   paintCursor();
-  sayCursorWord();
+  if (!pressed) sayCursorWord();
+  pressed = false;
 });
 query.addEventListener("blur", paintCursor);
 
@@ -457,11 +472,24 @@ window.addEventListener("paste", (event) => {
   search("paste");
 });
 
+// search.html's Anki Template switch lies over this header (#656). The copy
+// here lists the same Templates, invisibly, so both documents lay it out alike;
+// it is laid out before the page is shown.
+const showTemplates = () => { renderTemplateChoices(templateChoices, options.anki); };
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.options) return;
+  const wasOn = options.searchHistoryEnabled;
   options = normaliseOptions(changes.options.newValue);
   applyPageTheme(document, options);
   describeKeys();
+  showTemplates();
+  adoptFeature();
+  // Switched off, a visit ends on the searched line, which no key could reach now.
+  if (wasOn && !options.searchHistoryEnabled && visit && current) {
+    visit = null;
+    show(current);
+  }
 });
 
 // The history for user scripts (docs/search-history.md): its lines, oldest
@@ -488,13 +516,6 @@ bridge.onHistory((change) => {
     : new CustomEvent("change", { detail: change }));
 });
 
-// search.html's Anki Template switch lies over this header (#656). The copy
-// here lists the same Templates, invisibly, so both documents lay it out alike;
-// it is laid out before the page is shown.
-const showTemplates = (stored) => { renderTemplateChoices(templateChoices, normaliseOptions(stored).anki); };
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.options) showTemplates(changes.options.newValue);
-});
 
 // Design → Custom JavaScript, the user script web pages run (custom-javascript.js),
 // once the reader is ready, as a user script runs at document_idle after the
@@ -510,9 +531,10 @@ function runCustomJavaScript(code) {
 }
 
 try {
-  showTemplates((await chrome.storage.local.get("options")).options);
-  const connection = await bridge.ready;
   options = normaliseOptions((await chrome.storage.local.get("options")).options);
+  showTemplates();
+  adoptFeature();
+  const connection = await bridge.ready;
   applyPageTheme(document, options);
   describeKeys();
   bridge.notify("shown");

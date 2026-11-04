@@ -36,10 +36,15 @@ A line that repeats the newest line is not kept again (A, A is one line); a
 line that comes back after another one is (A, B, A). Edited lines keep their
 id, time, source and page.
 
-**Settings → Reading → Search page** has the controls:
+**Settings → Advanced → Search history** has the controls. The feature is off
+until you switch it on:
 
-- **Keep a history of searched lines** (`searchHistoryEnabled`, on). Off, the
-  page keeps no line and Up recalls none, and the lines already kept stay.
+- **Keep a history of searched lines** (`searchHistoryEnabled`, off). On, the
+  page keeps its lines and its keys act: Up and Down in the box, and the
+  searched text's cursor below. Off, the page is as it was before the history:
+  it keeps no line, a search leaves the box, the searched text is no text box
+  and the search page's keys do nothing; the lines already kept stay. Switched
+  off during a visit, the page shows the searched line again.
 - **Lines kept** (`searchHistoryLimit`, 10,000; any number from 1). Past it,
   the oldest lines are removed. The search page applies it with each new line,
   and Settings applies a lowered limit at once.
@@ -202,7 +207,7 @@ read, edit and delete the history's lines through it, which no web page can.
 | `edit(id, text)` | gives the line new text, trimmed (not empty); resolves to the line, or `null` when there is none |
 | `remove(id)` | deletes the line; resolves to whether there was one |
 | `lookUp(node, offset)` | looks up the word at `offset` in the text node `node` of the page, as the cursor does, and shows it in the results area; resolves to the length of the text the result matched there, 0 when nothing was shown |
-| `enabled` | whether Reading → Search page keeps a history |
+| `enabled` | whether Advanced → Search history is on |
 | `clipboardPaused` | set to `true` to stop searching and keeping the Clipboard monitor's text, `false` to go on; it lasts until the page reloads |
 | `"line"` event | `event.detail` is a line just kept, on this search page or another one |
 | `"change"` event | `event.detail` is `{ type: "edit", line }`, `{ type: "remove", id }`, `{ type: "clear" }` or `{ type: "prune", before }` once the lines older than the id `before` are gone |

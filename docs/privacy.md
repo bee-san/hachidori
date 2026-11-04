@@ -23,14 +23,15 @@ off gives the permission back. A copy it searches is a search like any other:
 it adds to your lookup counts, and a browser linked to another Hachidori looks
 it up there (see **Sharing between browsers** below).
 
-The search page keeps each line it searches, typed, pasted or read by the
-Clipboard monitor, with when and how it came in, so that Up can bring it back
-([search history](search-history.md)). With the Clipboard monitor on, that is
+While Settings → Advanced → Search history is on (it is off until you switch
+it on), the search page keeps each line it searches, typed, pasted or read by
+the Clipboard monitor, with when and how it came in, so that Up can bring it
+back ([search history](search-history.md)). With the Clipboard monitor on, that is
 every text with Japanese you copy while a search page is open. The lines stay
 in this browser profile: they are not sent anywhere, linked browsers do not
-share them, and backups do not include them. Settings → Reading → Search page
-turns this off (the lines already kept stay), sets how many lines are kept
-(10,000 unless you change it) and has **Clear history**, which deletes them.
+share them, and backups do not include them. The same Settings section turns
+this off (the lines already kept stay), sets how many lines are kept (10,000
+unless you change it) and has **Clear history**, which deletes them.
 Custom JavaScript you save can read and change them on the search page.
 
 Your browser profile stores imported dictionaries and their indexes, personal

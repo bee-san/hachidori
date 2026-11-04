@@ -74,7 +74,7 @@ function readerRequest({ target, type, options } = {}) {
 
 // The history requests the frame may make (docs/search-history.md), each
 // checked here, as the frame shares its globals with the user's script: add a
-// line, while Reading → Search page keeps a history and up to its limit;
+// line, while Advanced → Search history is on and up to its limit;
 // list, edit or remove lines. `settings()` resolves to the options, `page()`
 // to the window the page is in.
 export function searchHistoryRequests(history, { settings, page }) {
