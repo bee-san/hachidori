@@ -143,9 +143,17 @@ async function lookUp(shownLine) {
   if (shown !== shownLine || shownLine.cursor !== at || query.firstChild !== node) return;
   shownLine.match = length > 0 ? { at, end: at + length } : null;
   paintCursor();
-  // The word the cursor rests on, read out by a screen reader once its
-  // lookup has matched it, while the searched text has focus.
-  if (document.activeElement === query) cursorWord.textContent = node.data.slice(at, shownLine.match?.end ?? characterEnd(node.data, at));
+  sayCursorWord();
+}
+
+// The word the cursor rests on (what its lookup matched, or its character),
+// read out by a screen reader from a polite live region while the searched
+// text has focus: after each move's lookup, and when the text takes focus.
+function sayCursorWord() {
+  const node = query.firstChild;
+  if (!shown || !node || document.activeElement !== query) return;
+  const at = Math.min(shown.cursor, node.length);
+  cursorWord.textContent = node.data.slice(at, shown.match?.at === at ? shown.match.end : characterEnd(node.data, at));
 }
 
 // Shows a line, between its neighbours in a visit, and looks up its cursor's word.
@@ -153,6 +161,7 @@ function show(shownLine) {
   shown = shownLine;
   navigation = createNavigation();
   query.textContent = shownLine.text;
+  cursorWord.textContent = "";
   before.dataset.text = visit?.older?.text ?? "";
   before.hidden = !visit?.older;
   after.dataset.text = visit?.newer.text ?? "";
@@ -349,7 +358,10 @@ function search(source = "typed") {
   if ([input, query, document.body, null].includes(focused)) query.focus({ preventScroll: true });
   void keep(text, source).then((id) => { searched.id = id; });
 }
-query.addEventListener("focus", paintCursor);
+query.addEventListener("focus", () => {
+  paintCursor();
+  sayCursorWord();
+});
 query.addEventListener("blur", paintCursor);
 
 // The reader's popup keeps its own keys and pastes, its Note form's among

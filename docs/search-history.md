@@ -127,7 +127,8 @@ the newest line unless it is the newest already.
 After a search the searched text has focus, unless focus was in the popup or
 another control. A click or Tab gives it focus too. It is a read-only text
 box, so a screen reader passes it the arrow keys, and each word the cursor
-reaches is read out from a polite live region once it is looked up. Its cursor
+reaches is read out from a polite live region once it is looked up, and again
+when the text takes focus. Its cursor
 is the underlined word, the one the results show.
 
 This is Rubi's overlay cursor (bee-san/Rubi_for_vita@6b5e276:

@@ -549,10 +549,24 @@ try {
   await press("ArrowUp");
   await settle(300);
   assert.equal((await view()).value, "ありがとう", "Up in the box recalls nothing");
+  // A line searched while another control has focus leaves nothing to read
+  // out until the searched text takes focus.
+  await frame.focus("#search-clear");
+  await frame.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "読む漢字");
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  assert.ok(await shows("読む"));
+  const pasted = await until(state => state.query === "読む漢字" && state.cursor === null, "a paste with focus on a button");
+  assert.deepEqual([pasted.focused, pasted.announced], ["search-clear", ""], "nothing read out without focus");
+  await frame.focus("#search-query");
+  await until(state => state.announced === "読む", "the word read out as the text takes focus");
   assert.deepEqual(await lines(), before, "nothing is kept");
   await writeOptions({ searchHistoryEnabled: true });
   await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
-  console.log("PASS: with the history off a search keeps no line, Up recalls none, and Down ends a visit");
+  console.log("PASS: with the history off a search keeps no line, Up recalls none, and Down ends a visit; a line searched"
+    + " with focus elsewhere is read out once the searched text takes focus");
 
   // A second search page, the popup window, keeps its lines with its window, and the first hears them.
   await settings.evaluate(async () => {
