@@ -219,13 +219,20 @@ async function main() {
 
   const puppeteer = await import(pathToFileURL(puppeteerPath).href);
   const launch = puppeteer.default?.launch ? puppeteer.default : puppeteer;
-  const done = new Set(existsSync(rawPath)
-    ? readFileSync(rawPath, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line).runId)
+  const failuresPath = resolve(output, "failures.jsonl");
+  const records = (path) => (existsSync(path)
+    ? readFileSync(path, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line))
     : []);
+  const done = new Set(records(rawPath).map((row) => row.runId));
+  const failures = records(failuresPath);
   for (const item of definition.schedule) {
     if (done.has(item.runId)) continue;
     const run = item.engine === "hachidori" ? runHachidoriSample : runYomitanSample;
-    for (let attempt = 0; ; attempt += 1) {
+    // The adapters clear an attempt's directory before using it, so a resumed cell numbers its
+    // attempts after the failed ones, whose profiles and diagnostics stay for diagnosis.
+    const failed = failures.filter((entry) => entry.runId === item.runId).map((entry) => entry.attempt);
+    const first = failed.length === 0 ? 0 : Math.max(...failed) + 1;
+    for (let attempt = first; ; attempt += 1) {
       process.stdout.write(`run  ${item.runId} attempt ${attempt}\n`);
       try {
         const result = await run({ item: { ...item, attempt }, corpus: config.corpora[0], config, definition, output, launch });
@@ -241,10 +248,10 @@ async function main() {
         break;
       } catch (error) {
         const message = error?.message ?? String(error);
-        appendFileSync(resolve(output, "failures.jsonl"),
+        appendFileSync(failuresPath,
           `${JSON.stringify({ runId: item.runId, attempt, error: message, at: new Date().toISOString() })}\n`);
         process.stdout.write(`fail ${item.runId} attempt ${attempt}: ${message.split("\n")[0]}\n`);
-        if (attempt + 1 >= ATTEMPTS) throw error;
+        if (attempt + 1 - first >= ATTEMPTS) throw error;
       }
     }
   }
