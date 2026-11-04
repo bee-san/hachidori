@@ -138,9 +138,10 @@ body.search-page {
 }
 /* A neighbour shows one row, Rubi's: the last of the line before, the first
    of the line after, dimmed: the palette's dim text mixed toward the page by
-   --search-neighbour-fade, which each palette keeps at 4.5:1 or more. It is
-   also set smaller, which keeps it apart from the searched text where a
-   palette has no room to dim (Solarized Light's text is at 4.65:1). Its text
+   --search-neighbour-fade, less where a palette has less room above 4.5:1. It
+   is also set smaller, which keeps it apart from the searched text where a
+   palette has little or no room to dim (Solarized Light's text is at
+   4.65:1). Its text
    is generated content, which no lookup, selection or screen reader reads. */
 :root {
   --search-neighbour-fade: 20%;
@@ -151,7 +152,7 @@ body.search-page {
   --search-neighbour-fade: 15%;
 }
 :root[data-hoshidicts-theme="valentine"] {
-  --search-neighbour-fade: 10%;
+  --search-neighbour-fade: 15%;
 }
 :root[data-hoshidicts-theme="solarized-dark"] {
   --search-neighbour-fade: 8%;

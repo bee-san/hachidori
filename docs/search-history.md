@@ -162,9 +162,11 @@ Up on the text's top row opens Rubi's line history
 ([`docs/line-history.md`](https://github.com/bee-san/Rubi_for_vita/blob/main/docs/line-history.md)):
 the line before it takes its place, between the last row of the line before
 that and the first row of the line after it, both dimmed and in smaller type,
-which no lookup, selection or screen reader reads. Each palette dims them as
-far as it keeps 4.5:1; Solarized Light, whose text is at 4.65:1, has no room,
-so there only the size sets them apart. A note under them says where it is:
+which no lookup, selection or screen reader reads. Each palette dims them,
+less where it has less room above 4.5:1. Solarized Light, whose text is at
+4.65:1, has no room, and Solarized Dark and Valentine have little, so there
+the size does most of the work; a minimum font size of 20 px or more removes
+it. A note under them says where it is:
 `Earlier line -2 · ▲ earlier · ▼ later`, without `▲ earlier` on the oldest
 line. Up on its top row goes further back, and Down on its last row comes
 forward; past the newest earlier line, the searched line comes back with its

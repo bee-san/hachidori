@@ -451,10 +451,11 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-history-visit-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
-  // The neighbours' rows are set apart from the searched text, smaller and
-  // dimmer, and still legible: 4.5:1 in every palette against what is painted
-  // behind them. A palette whose text is under 4.7:1 has no room to dim.
-  // Automatic is Dark or Light.
+  // The neighbours' rows are set apart from the searched text, at most 85% of
+  // its size and dimmer (its contrast at least 1.05 times theirs), and still
+  // legible: 4.5:1 in every palette against what is painted behind them. A
+  // palette whose text is under 4.7:1 has no room to dim. Automatic is Dark or
+  // Light.
   const palettes = await frame.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS
     .flatMap(group => group.themes.map(theme => theme.id)).filter(id => id !== "auto"));
   const faint = [];
@@ -494,8 +495,8 @@ try {
         return (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05);
       };
       const [rows, searched] = [ratio(rowStyle.color), ratio(queryStyle.color)];
-      return { ratio: rows, smaller: parseFloat(rowStyle.fontSize) < parseFloat(queryStyle.fontSize),
-        dimmed: rows < searched || searched < 4.7 };
+      return { ratio: rows, smaller: parseFloat(rowStyle.fontSize) <= parseFloat(queryStyle.fontSize) * 0.85,
+        dimmed: searched / rows >= 1.05 || searched < 4.7 };
     });
     if (!(contrast.ratio >= 4.5)) faint.push(`${theme} ${contrast.ratio.toFixed(2)}:1`);
     if (!contrast.smaller || !contrast.dimmed) alike.push(theme);
@@ -525,8 +526,8 @@ try {
   const back = await until(state => state.query === long, "Down past the newest earlier line");
   assert.deepEqual([back.before, back.after, back.where, back.cursor?.at], [null, null, null, 0]);
   console.log("PASS: Up and Down move between a long line's rows keeping the column, and past its top row through the"
-    + " earlier lines, each between its neighbours' smaller rows (4.5:1 or more), back to the current line, and Down"
-    + " follows a narrower box's rows");
+    + " earlier lines, each between its neighbours' smaller, dimmed rows (4.5:1 or more), back to the current line, and"
+    + " Down follows a narrower box's rows");
 
   // Enter adds the word under the cursor to Anki, with the line it is on as the sentence; Escape goes back to the box.
   await press("ArrowUp");

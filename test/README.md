@@ -510,19 +510,22 @@ These run separately:
   shows the prompt.
 - **`chrome-search-history.mjs`** (run by `test/run.mjs chrome-e2e`) is the
   [search history](../docs/search-history.md) in a copy of the extension that
-  holds `clipboardRead`: lines typed, pasted and copied in another tab are kept
+  holds `clipboardRead`: off by default the page keeps nothing and is as it
+  was; switched on, lines typed, pasted and copied in another tab are kept
   with their source and window and a repeat of the newest once; Up and Down in
   the box walk them and bring the draft back, and leave a selection and the
   box's lower lines to the box; in the searched text Left and Right move the
   cursor by the matched word and retrace, a one-row text goes round for a
-  fresh press only, Up and Down move between a long line's rows keeping the
+  fresh press only, a clicked word takes the cursor (Look up words with a
+  click), Up and Down move between a long line's rows keeping the
   column, also in a narrower box, and past its top row through every earlier
-  line, whose neighbours' rows are smaller and dimmer than the searched text
-  and keep 4.5:1 in every palette; each word is read out from a live region,
-  and only while the searched text has focus; Enter adds the word to a fake
+  line, whose neighbours' rows are smaller and keep 4.5:1 in every palette,
+  and dimmer than the searched text in every palette with room; each word is
+  read out from a live region, alone once its lookup answers and only while
+  the searched text has focus; Enter adds the word to a fake
   AnkiConnect with its earlier line as the sentence; the keys follow a rebound
-  keybind and leave other controls alone; the history's switch, with Down
-  ending a visit while it is off; a second page in the popup window; Settings'
+  keybind and leave other controls alone; the history's switch, which ends a
+  visit when turned off; a second page in the popup window; Settings → Advanced's
   count, lowered limit (a refused save deletes nothing) and Clear history; and
   the texthooker user script's list, counts, times, pause, edit, delete (an
   emptied edit too), its click lookups (a row's last glyph, a character of
