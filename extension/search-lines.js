@@ -44,6 +44,14 @@ function* characters(text) {
 
 const stay = to => ({ result: ROW_STAY, to });
 
+// The offset of the character before `at`: one code unit back, or two when
+// the unit before `at` ends a surrogate pair (codePointAt there gives that
+// low surrogate's own value).
+function previousCharacter(text, at) {
+  const unit = at >= 2 ? text.codePointAt(at - 1) : 0;
+  return at - (unit >= 0xdc00 && unit <= 0xdfff ? 2 : 1);
+}
+
 // Whether the character at `at` carries on a word begun before it, in a
 // language read word by word (`words`: the pack's word and word-internal
 // characters, read as content-scan.js's wordStart reads them). A lookup from
@@ -51,7 +59,7 @@ const stay = to => ({ result: ROW_STAY, to });
 // no stop of its own.
 function continuesWord(text, at, words) {
   if (words === null || at <= 0 || at >= text.length) return false;
-  const back = from => from - (from >= 2 && text.charCodeAt(from - 1) >= 0xdc00 && text.charCodeAt(from - 1) <= 0xdfff ? 2 : 1);
+  const back = from => previousCharacter(text, from);
   const character = from => (from < 0 ? undefined : String.fromCodePoint(text.codePointAt(from)));
   const isWord = value => value !== undefined && words.word.test(value);
   const isInternal = value => value !== undefined && words.internal !== null && words.internal.test(value);
@@ -86,7 +94,7 @@ export function firstSelectable(text, from, japaneseOnly, words = null) {
 export function stopAt(text, at, japaneseOnly, words = null) {
   let start = at;
   while (continuesWord(text, start, words)) {
-    start -= start >= 2 && text.charCodeAt(start - 1) >= 0xdc00 && text.charCodeAt(start - 1) <= 0xdfff ? 2 : 1;
+    start = previousCharacter(text, start);
   }
   return firstSelectable(text, start, japaneseOnly, words) === start ? start : null;
 }
