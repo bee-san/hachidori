@@ -255,8 +255,8 @@ pinned/latest package commands and the schema-only boundary.
   regression, all four kinds, lookups by structure and value, kanji, styles,
   tags, media, error paths, reset, import staging, every on-disk layout,
   interrupted-install recovery, dictionary-scoped lookups, words that only
-  frequency and pitch dictionaries have (`metadataOnlyTerms`, #620), response
-  and media bounds, MDX import, definition order, `hdw_segment` against
+  frequency and pitch dictionaries have (`metadataOnlyTerms`, #620, #658),
+  response and media bounds, MDX import, definition order, `hdw_segment` against
   `segmentation-reference.mjs`, and the Yomitan conjugation rules through the
   importer: historical kana, emphatic negatives, one-character stems,
   whole-word honorifics, kanji variants and excluded spellings (the engine's
@@ -380,7 +380,7 @@ Its steps run in this order, in one profile:
 | `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup, and Dark Reader isolation in a tab of its own. |
 | `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |
 | `popup.mjs`, `nested.mjs`, `tabs.mjs`, `layout.mjs` | Frames and fullscreen, staying in place, tab switches, deinflection, cards, links, furigana; nested lookups; dictionary tabs, columns and kanji groups; compact summaries, glossaries, tables, the action row, dynamic headwords, count layout, the audio chooser. |
-| `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, a word that only frequency and pitch dictionaries have shown first without definitions only while Reading → Results asks for it (#620), popup audio; mining to a fake AnkiConnect. |
+| `activation.mjs`, `metadata.mjs`, `anki.mjs` | Activation keys and selections, the source-highlight fallback; frequency direction, metadata, a later entry's pitch accents after twelve frequency tags, a word that only frequency and pitch dictionaries have shown first without definitions only while Reading → Results asks for it (#620), and a reading only they have after the word a dictionary defines (#658), popup audio; mining to a fake AnkiConnect. |
 | `kanji.mjs`, `popup-content.mjs`, `notes.mjs` | Clicked-kanji navigation, Back and Forward on Alt+B and Alt+F; the hover highlight, Escape, structured content, non-Japanese text, Note drafts; term and kanji Notes. |
 | `search.mjs` | The search page (#610): its shortcuts, the toolbar's Search and Reading's switch for it, the popup window, its Clipboard monitor off by default with nothing read from the clipboard (#639), real results docked under the box through clicks and Escape, typing and pasting, a miss, and live theme changes; Custom JavaScript there (#644), which runs only once Allow User Scripts is on and reaches the docked result. |
 | `updates.mjs` | Managed updates: scoped checks, Check now, Update all, the global and per-dictionary schedules, real alarms, a failed update, hovering through an update, alarm recreation after a worker restart. |

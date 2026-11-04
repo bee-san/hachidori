@@ -736,6 +736,42 @@ latency and semantic response hash, engine-specific production-path evidence,
 input identities before and after every cell, the exact schedule, validation
 verdict, summary, CSV, report, and a checksum manifest.
 
+## Hachidori vs Yomitan on JMdict
+
+`jmdict-lookup.mjs` compares Hachidori and Yomitan alone on one real
+dictionary, each on its shipped defaults (16-character scan, 32 results). It
+reuses the `hachidori.mjs` and `yomitan.mjs` adapters above without JL:
+
+```bash
+gh release download -R yomidevs/jmdict-yomitan -p JMdict_english.zip
+gh release download -R yomidevs/yomitan -p yomitan-chrome.zip
+node benchmark/jmdict-lookup.mjs --jmdict JMdict_english.zip \
+  --yomitan yomitan-chrome.zip --output /tmp/jmdict-lookup
+```
+
+The lookups imitate reading: one starts at each character of a few
+public-domain and everyday sentences, except at 、 and 。, and scans up to the
+next 16 characters, as a hover would; a scan that repeats an earlier one is
+dropped. Every sample imports the archive into a fresh profile through
+Settings, then times five passes after one excluded warmup pass. Defaults are
+one excluded warmup install and five measured installs per reader
+(`--warmups`, `--samples`, `--passes`). Each sample's lookups go through the
+lookup checks `compare.mjs` uses: 食べる and 食べたかった must find 食べる, 日本
+must find 日本 and the emoji nothing, and every pass must return the warmup
+pass's results.
+A failed attempt is recorded in `failures.jsonl`, keeps its profile for
+diagnosis and is repeated in a fresh profile, up to six attempts per cell each
+time the command runs. A successful attempt's profile is deleted once its row
+is in `raw.jsonl`. Rerunning the command resumes from `raw.jsonl`, numbering a
+cell's new attempts after those in `failures.jsonl`, and ends with
+`summary.json` and `summary.md`; `--summarize-only` rewrites them. Resuming
+compares nothing with `definition.json`, so resume only with the same
+checkout, archives, browser and options.
+`HACHIDORI_CHROME` and `HACHIDORI_PUPPETEER` choose the browser and Puppeteer
+as for the other suites. The
+[report](../docs/benchmarks/jmdict-lookup.md) uses the run kept in
+`results/jmdict-lookup/`.
+
 ## Custom real-corpus configuration
 
 Create a JSON file outside the repository or below the ignored

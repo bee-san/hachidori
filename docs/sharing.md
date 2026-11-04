@@ -305,8 +305,10 @@ in the relay's repository), and this browser advertises `hoshidicts-api-v1` in
 its hello so the relay knows it can. The relay's own connection uses the origin
 `relay://yomitan-api`; Settings → Sharing does not count it as a linked
 browser. Anki fields are rendered by the same code as mining, so `{audio}`
-brings the selected pronunciation source's file and dictionary images arrive
-as media the caller writes into Anki. There is no MeCab: `/tokenize` scans with
+brings the selected pronunciation source's file, **Settings → Anki → Smaller
+Anki cards** compacts the rich glossary markers while it is on, and the
+dictionary images the fields show arrive as media the caller writes into Anki.
+There is no MeCab: `/tokenize` scans with
 the dictionaries. Like the relay, the API has no authentication; it listens
 on this computer only unless **Also with my other computers** is on.
 
