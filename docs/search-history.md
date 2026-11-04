@@ -44,7 +44,8 @@ until you switch it on:
   searched text's cursor below. Off, the page is as it was before the history:
   it keeps no line, a search leaves the box, the searched text is no text box
   and the search page's keys do nothing; the lines already kept stay. Switched
-  off during a visit, the page shows the searched line again.
+  off during a visit, the page shows the searched line again, and during a
+  walk in the box, the box shows its draft again.
 - **Lines kept** (`searchHistoryLimit`, 10,000; any number from 1). Past it,
   the oldest lines are removed. The search page applies it with each new line,
   and Settings applies a lowered limit at once.
@@ -173,8 +174,7 @@ forward; past the newest earlier line, the searched line comes back with its
 cursor where it was. Each earlier line opens with its cursor on its first
 word, looked up. Enter on an earlier line adds its word with that line as the
 sentence, as a card from Rubi's earlier line does. A new search starts from
-the line it searched. While the history is switched off, Down in a visit shows
-the searched line again.
+the line it searched.
 
 These differ from Rubi's overlay:
 

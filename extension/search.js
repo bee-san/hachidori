@@ -195,10 +195,8 @@ function show(shownLine) {
 // Down on an earlier line's last row shows the line after it, and past the
 // newest the current line again, its cursor where it was. An earlier line
 // opens on its first word. A press while a step waits for the history is dropped.
-// While the history is switched off, a visit can only end: Down shows the
-// searched line again.
 async function stepLine(direction) {
-  if (stepping || !shown || (direction > 0 ? !visit : !options.searchHistoryEnabled)) return;
+  if (stepping || !shown || (direction > 0 && !visit)) return;
   stepping = true;
   const from = shown;
   const earlier = found => found && line(found.text, found.id, 0);
@@ -209,7 +207,7 @@ async function stepLine(direction) {
       const older = next && earlier(await keptLine(next.id, -1, next.text));
       if (!next || shown !== from) return;
       visit = { older, newer: from, depth: (visit?.depth ?? 0) + 1 };
-    } else if (visit.newer === current || !options.searchHistoryEnabled) {
+    } else if (visit.newer === current) {
       next = current;
       visit = null;
     } else {
@@ -311,7 +309,7 @@ function runSearchAction(action, event) {
   const inText = document.activeElement === query && shown !== null;
   switch (action) {
     case "searchPreviousLine":
-      if (!inBox || !options.searchHistoryEnabled || !onFirstRow()) return false;
+      if (!inBox || !onFirstRow()) return false;
       void walkHistory(-1);
       return true;
     case "searchNextLine":
@@ -371,11 +369,11 @@ function search(source = "typed") {
   else if ([input, query, document.body, null].includes(focused)) query.focus({ preventScroll: true });
   void keep(text, source).then((id) => { searched.id = id; });
 }
-// A press on the text gives it focus before its click, which may move the
-// cursor (Look up words with a click): only focus from the keyboard reads the
-// word out here.
+// A press on the text gives it focus before its click, which moves the cursor
+// while Look up words with a click is on: then the click's lookup reads the
+// word out, not the focus.
 let pressed = false;
-query.addEventListener("mousedown", () => { pressed = document.activeElement !== query; });
+query.addEventListener("mousedown", () => { pressed = document.activeElement !== query && options.searchClickLookup; });
 query.addEventListener("focus", () => {
   paintCursor();
   if (!pressed) sayCursorWord();
@@ -489,10 +487,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
   describeKeys();
   showTemplates();
   adoptFeature();
-  // Switched off, a visit ends on the searched line, which no key could reach now.
-  if (wasOn && !options.searchHistoryEnabled && visit && current) {
-    visit = null;
-    show(current);
+  // Switched off, a visit ends on the searched line and a walk in the box on
+  // its draft, which no key could reach now, and the spoken word goes.
+  if (wasOn && !options.searchHistoryEnabled) {
+    if (visit && current) {
+      visit = null;
+      show(current);
+    }
+    if (walk) input.value = walk.draft;
+    walk = null;
+    cursorWord.textContent = "";
   }
 });
 
@@ -553,7 +557,9 @@ try {
   // the cursor there and looks the word up from it; any other click is the
   // reader's, as it always was.
   reader.lookUpOnClick(query, (node, offset) => {
-    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild
+    // A click on the cursor's own character is the reader's too, which looks
+    // up (and counts) a word it already shows no second time.
+    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild || offset === shown.cursor
         || firstSelectable(node.data, offset, options.onlyScanJapaneseText) !== offset) return false;
     shown.cursor = offset;
     shown.match = null;

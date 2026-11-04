@@ -581,13 +581,27 @@ try {
   assert.equal((await view()).cursor?.at, 2, "Right with focus on a button moves no cursor");
   console.log("PASS: the search page's keys follow Settings → Keybinds and leave other controls alone");
 
-  // Switched off during a visit, the page shows the searched line again.
+  // Switched off during a walk in the box, the box shows its draft again.
+  await frame.focus("#search-input");
+  await frame.$eval("#search-input", (box) => {
+    box.value = "下書き";
+    box.setSelectionRange(3, 3);
+  });
+  await press("ArrowUp");
+  await until(state => state.value !== "下書き", "a walk from the draft");
+  await writeOptions({ searchHistoryEnabled: false });
+  await until(state => state.value === "下書き", "the draft once the history is off");
+  await writeOptions({ searchHistoryEnabled: true });
+  await frame.waitForFunction(() => globalThis.HDSearchHistory.enabled
+    && document.getElementById("search-query").getAttribute("tabindex") === "0", { polling: 50, timeout: 10_000 });
+  await frame.focus("#search-query");
+  // Switched off during a visit, the page shows the searched line again, and the spoken word goes.
   const visiting = await view();
   await press("ArrowUp");
   await until(state => state.where !== null && state.query !== visiting.query, "a visit further back");
   await writeOptions({ searchHistoryEnabled: false });
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
-  await until(state => state.query === long && state.where === null, "the searched line once the history is off");
+  await until(state => state.query === long && state.where === null && state.announced === "", "the searched line once the history is off");
   // With the history off, nothing is kept and Up recalls nothing.
   await writeOptions({ searchHistoryEnabled: false });
   await frame.waitForFunction(() => !globalThis.HDSearchHistory.enabled, { polling: 50, timeout: 10_000 });
