@@ -29,3 +29,9 @@ write: the switch's first write met the conflict, its retry wrote the choice,
 and the other write and the AnkiConnect key were kept; a failed write left
 the stored Template and the menu went back to it. `preview.mjs`, `keys.mjs`,
 `evidence.mjs` and `contrast.mjs` produced the rest.
+
+`paint.mjs` times the first Settings frame check's "read held" scenario
+(Settings opened with every storage read parked, then released): from the
+release to Settings' first paint, 15 runs each, alternating, at a load
+average of 37-40, `main` `4c14c92d` took 10-30 ms and the head `8adc54cf`
+11-19 ms, so the pull request does not slow that paint.
