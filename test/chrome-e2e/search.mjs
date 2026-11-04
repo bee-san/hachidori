@@ -172,6 +172,13 @@ describe("search page", () => {
       { timeout: 15_000 });
     await openPopupWindow();
     searchPopup = await (await windowOpened).page();
+    // The new tab's target can come before chrome.runtime.getContexts lists its
+    // document, as the toolbar menu's Search waits for above.
+    await page.waitForFunction(async url => {
+      const contexts = await chrome.runtime.getContexts({ contextTypes: ["TAB"], documentUrls: [url] });
+      const windows = await Promise.all(contexts.map(({ windowId }) => chrome.windows.get(windowId)));
+      return windows.some(window => window.type === "popup");
+    }, { polling: 100, timeout: 10_000 }, searchUrl()).catch(() => {});
     const once = await searchPages();
     await editSettingsControls(page, { "opt-search-window-width": "600", "opt-search-window-height": "640" });
     await searchTab.bringToFront();
