@@ -1177,12 +1177,15 @@ and vertical text; exact selections and the reader's boxed-glyph drag keep their
 own selection rules.
 
 Netflix lays its player's controls over the subtitles, where the hit test finds
-the controls instead of the line. On `www.netflix.com` the reader first looks
-for the glyph under the pointer in the lines' own text (each
+the controls instead of the line. On `www.netflix.com`, where the hit test finds
+no glyph under the pointer, as over a transparent control or a panel's
+background, the reader looks for one in the lines' own text (each
 `.player-timedtext .player-timedtext-text-container`), bisecting each text
-node's client rects as the Google Docs path does, and scans from that glyph
-whatever covers it. As anywhere, the glyph must contain the pointer within two
-CSS pixels. The player's own text elsewhere is hit-tested as on any other page.
+node's client rects as the Google Docs path does, and scans from that glyph. As
+anywhere, the glyph must contain the pointer within two CSS pixels. The
+player's own text, a menu over a line included, is hit-tested first as on any
+other page. A line is found the same way when Netflix's subtitle layer takes no
+pointer events.
 
 An `<input>` of type `text` or `search` (Chrome reports a missing or unknown
 type as `text`) or a `<textarea>` keeps its value in user-agent shadow DOM that
