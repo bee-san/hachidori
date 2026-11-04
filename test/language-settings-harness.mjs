@@ -195,7 +195,7 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
     ["error-text.js", ["describeErrorOrJson"]],
     ["custom-dictionary.js", ["CUSTOM_DICTIONARY_ID", "CUSTOM_DICTIONARY_TITLE", "CUSTOM_DICTIONARY_SOURCE_KEY",
       "normaliseCustomDictionaryDocument", "parseCustomDictionary", "customDictionaryDocumentFor",
-      "personalDictionaryIdentity", "personalDictionaryLanguage"]],
+      "personalDictionaryIdentity", "personalDictionaryLanguage", "languageEntryCount"]],
     ["profile-state.js", ["heldLanguages", "isPersonalPackage", "profileLanguages", "optionsWithProfiles",
       "dictionaryStateWithProfiles", "mergeDictionaryView", "newProfileSettings", "packSettingDefaults"]],
     ["recommended-dictionaries.js", ["RECOMMENDED_DICTIONARIES"]],

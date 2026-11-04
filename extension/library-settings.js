@@ -11,9 +11,8 @@ import {
   CUSTOM_DICTIONARY_SOURCE_KEY,
   customDictionaryDocumentFor,
   normaliseCustomDictionaryDocument,
-  parseCustomDictionary,
-  personalDictionaryIdentity,
   personalDictionaryLanguage,
+  languageEntryCount,
 } from "./custom-dictionary.js";
 import {
   backingUp, characterViewName, dictionaryGroupController, editedProfile, element, languageName, listOf, memorySettings,
@@ -1204,8 +1203,7 @@ function setLibraryResetStatus(message, tone = "", completed = false, error = nu
 }
 
 function removeAllConfirmation(count, personal, erasePersonal) {
-  const readingRequired = personalDictionaryIdentity(editedProfile.language)?.readingRequired ?? true;
-  const entries = personal === null ? 0 : parseCustomDictionary(personal.text, { readingRequired }).entries.length;
+  const entries = personal === null ? 0 : languageEntryCount(personal.text, editedProfile.language);
   const source = `the personal dictionary source and its ${countLabel(entries, "entry", "entries")}`;
   const packages = countLabel(count, "imported dictionary", "imported dictionaries");
   const parts = count === 0 ? [`Erase ${source}?`] : [
@@ -1267,9 +1265,8 @@ async function personalSources() {
   return languages.flatMap(language => {
     const document_ = customDictionaryDocumentFor(record, language);
     if (document_.text === "") return [];
-    const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
     return [{ language, revision: document_.revision,
-      count: parseCustomDictionary(document_.text, { readingRequired }).entries.length,
+      count: languageEntryCount(document_.text, language),
       profileId: profiles.find(profile => profile.language === language)?.id ?? null }];
   });
 }

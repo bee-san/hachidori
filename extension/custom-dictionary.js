@@ -261,6 +261,12 @@ export function parseCustomDictionary(value, { readingRequired = true } = {}) {
   return { entries, errors };
 }
 
+// How many valid entries a language's personal document holds, read by that
+// language's rules (whether an entry needs a reading; docs/languages.md 14).
+export function languageEntryCount(text, language = "ja") {
+  return parseCustomDictionary(text, personalDictionaryIdentity(language) ?? undefined).entries.length;
+}
+
 export function serializeCustomDictionaryEntry(value, rules = {}) {
   const { term, reading, definition } = normaliseEntry(value, rules);
   const encodedDefinition = definition

@@ -7,7 +7,7 @@ import {
   EMPTY_CUSTOM_DICTIONARY_SEMANTIC_REVISION, assertCustomSourceState,
   customDictionaryDocumentFor, customDictionaryDocumentLanguages, customDictionaryMetadataMatches,
   customDictionarySemanticRevision, emptyCustomDictionaryDocument, normaliseCustomDictionaryDocument,
-  parseCustomDictionary, personalDictionaryIdentity, personalDictionaryLanguage,
+  languageEntryCount, parseCustomDictionary, personalDictionaryIdentity, personalDictionaryLanguage,
 } from "./custom-dictionary.js";
 import { assertDictionaryUpdateSchedule, assertRecommendedDictionary, normaliseUpdateSettings, recommendedDictionarySource } from "./managed-dictionary-source.js";
 import { sameJsonValue } from "./json-value.js";
@@ -494,11 +494,10 @@ export function backupEngineDictionaries(plan, fresh = new Map()) {
 
 // Personal entries of every language a backup restores.
 export function personalEntryCount(snapshot, profiles) {
-  let count = parseCustomDictionary(normaliseCustomDictionaryDocument(snapshot.document).text).entries.length;
+  let count = languageEntryCount(normaliseCustomDictionaryDocument(snapshot.document).text);
   for (const [code, part] of Object.entries(profiles?.languages ?? {})) {
-    const identity = hasLanguagePack(code) ? personalDictionaryIdentity(code) : null;
-    if (identity !== null && typeof part?.document?.text === "string") {
-      count += parseCustomDictionary(part.document.text, identity).entries.length;
+    if (hasLanguagePack(code) && personalDictionaryIdentity(code) !== null && typeof part?.document?.text === "string") {
+      count += languageEntryCount(part.document.text, code);
     }
   }
   return count;
