@@ -774,3 +774,30 @@ test("an erase whose confirmed document revision is older keeps the document", a
   assert.deepEqual(stored("customDictionarySource"), records.customDictionarySource);
   assert.deepEqual(stored("options"), records.options);
 });
+
+// Design 4.4 and 16.5: removing the active profile moves lookups to Japanese
+// in the same write, so adding the language back does not make it active
+// (audit-hachi-lang-multi MINOR-1).
+test("removing the active profile moves lookups to Japanese", async () => {
+  const records = profileRecords();
+  records.options.profiles.push({ id: "en", language: "en", settings: {}, packSettings: {} });
+  records.dictionaryState.profiles.en = { dictionaries: [], groups: [] };
+  records.languageSelection = { revision: 3, activeProfileId: "en", autoSwitch: true };
+  const { fromEngine, stored } = backgroundWorker(records);
+  const state = stored("dictionaryState");
+  const reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "en", language: "en",
+    baseRevision: state.revision, state: { dictionaries: state.dictionaries, profiles: { ja: state.profiles.ja, ar: state.profiles.ar } } });
+  assert.equal(reply.ok, true, reply.error);
+  assert.deepEqual(stored("languageSelection"), { revision: 4, activeProfileId: "ja", autoSwitch: true });
+});
+
+// The Japanese view is today's shape, without `targetLanguage`; an older
+// linked browser writing it back keeps the host's field (design 4.2, 17.1).
+test("the Japanese view leaves out targetLanguage, and a view written back keeps the stored one", () => {
+  const state = schema2();
+  state.dictionaries = state.dictionaries.map(row => ({ ...row, targetLanguage: "en" }));
+  const view = profileState.japaneseDictionaryView(state);
+  assert.equal(view.dictionaries.some(row => Object.hasOwn(row, "targetLanguage")), false);
+  const merged = profileState.mergeDictionaryView(state, "ja", view, { legacy: true });
+  assert.ok(merged.dictionaries.every(row => row.targetLanguage === "en"), JSON.stringify(merged.dictionaries));
+});

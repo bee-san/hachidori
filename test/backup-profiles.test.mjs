@@ -772,3 +772,23 @@ test("re-importing another profile's dictionary from Japanese adds it to Japanes
   assert.deepEqual(titles("en"), ["English words"]);
   assert.equal(state.dictionaries.filter(row => row.title === "English words").length, 1);
 });
+
+// Design 4.5 and 16.5: removing the last other language converts the records
+// back to today's bytes, `targetLanguage` included, and a language can be
+// added again afterwards (audit-hachi-lang-multi BLOCKER-3).
+test("converting back restores today's package rows, and a language can be added again", async () => {
+  const { accepted, request, stored } = await engineInstallation();
+  await accepted("hd_import", { fileName: "japanese.zip",
+    blobUrl: createObjectURL(buildTitledZip("Japanese words", { indexOverrides: { sourceLanguage: "ja", targetLanguage: "en" } })) });
+  const before = stored("dictionaryState");
+  assert.equal(before.dictionaries.some(row => Object.hasOwn(row, "targetLanguage")), false);
+  await accepted("hd_profile_add", { language: "en", copyFrom: "ja" });
+  assert.equal(stored("dictionaryState").dictionaries[0].targetLanguage, "en", "rows with profiles carry it");
+  await accepted("hd_profile_remove", { profileId: "en" });
+  const after = stored("dictionaryState");
+  assert.equal(after.schemaVersion, 1);
+  assert.deepEqual({ ...after, revision: before.revision }, before, "today's rows, byte for byte but the revision");
+  await accepted("hd_profile_add", { language: "en", copyFrom: "ja" });
+  assert.equal((await request("hd_status")).ok, true);
+  assert.deepEqual(Object.keys(stored("dictionaryState").profiles).sort((a, b) => a.localeCompare(b)), ["en", "ja"]);
+});

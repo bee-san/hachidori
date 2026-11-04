@@ -16,7 +16,7 @@ import {
 } from "./lookup-stats.js";
 import { withOverlayLookupDefault } from "./setup-state.js";
 import {
-  dictionaryStateWithoutProfiles, heldLanguages, optionsWithProfiles, optionsWithoutProfiles, packageRow,
+  dictionaryStateWithoutProfiles, heldLanguages, optionsWithProfiles, optionsWithoutProfiles, packageRow, singleProfileRow,
   singleProfileShape,
 } from "./profile-state.js";
 import { japaneseView } from "./japanese-view.js";
@@ -355,7 +355,7 @@ async function viewOmissions(snapshot, state, held) {
   const rows = new Map(state.dictionaries.map(row => [row.id, row]));
   for (const row of snapshot.state.dictionaries) {
     const source = rows.get(row.id);
-    if (source === undefined || !sameJsonValue(row, packageWithEnabled(source, row.enabled))) throw invalidProfiles();
+    if (source === undefined || !sameJsonValue(row, singleProfileRow(packageWithEnabled(source, row.enabled)))) throw invalidProfiles();
   }
   const listed = new Set(snapshot.state.dictionaries.map(row => row.id));
   const personal = new Map();

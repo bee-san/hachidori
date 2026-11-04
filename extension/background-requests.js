@@ -311,8 +311,10 @@ function convertingComparable(converting) {
 // A language request changes no package; an erase removes the language's
 // personal package (`erasedId`) and nothing else.
 function assertPackagesKept(current, state, erasedId) {
-  const before = new Map(dictionaryStateWithProfiles(current).dictionaries.map(row => [row.id, row]));
+  // Both sides, so single-profile rows that an earlier build left with the
+  // field compare too.
   const comparable = convertingComparable(!hasDictionaryProfiles(current));
+  const before = new Map(dictionaryStateWithProfiles(current).dictionaries.map(row => [row.id, comparable(row)]));
   if (state.dictionaries.some(row => !sameJsonValue(before.get(row.id), comparable(row)))) {
     throw new Error("adding or removing a language changes no dictionary");
   }
@@ -354,6 +356,18 @@ function convertedBackRemovals(values, document, stored) {
   if (stored[LANGUAGE_SELECTION_KEY] !== undefined) removals.push(LANGUAGE_SELECTION_KEY);
   for (const key of removals) delete values[key];
   return removals;
+}
+
+// Removing the active profile moves lookups to Japanese, else to the first
+// profile left, in the same write (docs/languages.md 4.4, 16.5), so adding
+// the language back later does not make it active again.
+function selectionAfterRemoval(stored, profileId, options) {
+  const selection = stored[LANGUAGE_SELECTION_KEY];
+  const current = normaliseLanguageSelection(selection);
+  if (selection === undefined || profileId === undefined || current.activeProfileId !== profileId) return {};
+  const left = optionProfiles(options);
+  const next = left.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? left[0]?.id ?? null;
+  return { [LANGUAGE_SELECTION_KEY]: { ...current, revision: current.revision + 1, activeProfileId: next } };
 }
 
 async function removeErasedLookupRows() {
@@ -404,6 +418,7 @@ async function profileCas(message) {
     wordStatusOverrides: records.marks });
   values[OPTIONS_KEY] = { ...(converted ? optionsWithoutProfiles(options) : options), revision: optionsRevision(stored[OPTIONS_KEY]) + 1 };
   values[DICTIONARY_STATE_KEY] = converted ? dictionaryStateWithoutProfiles(state) : state;
+  if (!converted && message.action === "remove") Object.assign(values, selectionAfterRemoval(stored, message.profileId, options));
   const removals = converted ? convertedBackRemovals(values, records.document, stored) : [];
   await writeLocalState(values);
   if (removals.length > 0) await chrome.storage.local.remove(removals);

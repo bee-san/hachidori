@@ -153,7 +153,16 @@ export function japaneseDictionaryView(state) {
   for (const row of rows) {
     if (!listed.has(row.id) && !isPersonalPackage(row)) dictionaries.push(packageWithEnabled(row, false));
   }
-  return { schemaVersion: 1, revision: state.revision, dictionaries, groups: japanese?.groups ?? [] };
+  return { schemaVersion: 1, revision: state.revision, dictionaries: dictionaries.map(singleProfileRow), groups: japanese?.groups ?? [] };
+}
+
+// The Japanese view is today's shape, so its rows leave out what only the
+// rows of records with profiles carry: `targetLanguage` (section 4.2).
+export function singleProfileRow(row) {
+  if (!Object.hasOwn(row, "targetLanguage")) return row;
+  const result = { ...row };
+  delete result.targetLanguage;
+  return result;
 }
 
 // The schema-1 state a schema-2 state with only Japanese held returns to.
@@ -170,6 +179,14 @@ export function dictionaryStateWithoutProfiles(state) {
  * profile keeps its own packages in the view's order with the view's flags
  * and gains another only if the view enables it. The revision is the state's.
  */
+// `targetLanguage` comes from the package's index (section 4.2): a view
+// written by code that does not carry it, such as an older linked browser's
+// Japanese view, keeps the stored one.
+function withStoredTargetLanguage(row, stored) {
+  if (Object.hasOwn(row, "targetLanguage") || stored?.targetLanguage === undefined) return row;
+  return { ...row, targetLanguage: stored.targetLanguage };
+}
+
 export function mergeDictionaryView(state, profileId, view, { legacy = false } = {}) {
   const rows = (Array.isArray(view?.dictionaries) ? view.dictionaries : []).filter(row => plainObject(row) !== null);
   const current = plainObject(state.profiles?.[profileId]) ?? { dictionaries: [], groups: [] };
@@ -179,7 +196,7 @@ export function mergeDictionaryView(state, profileId, view, { legacy = false } =
     throw new Error("the dictionary state write lists a dictionary that is not installed");
   }
   const listed = legacy ? rows.filter(row => own.has(row.id) || row.enabled !== false) : rows;
-  for (const row of rows) packages.set(row.id, packageRow(row));
+  for (const row of rows) packages.set(row.id, withStoredTargetLanguage(packageRow(row), packages.get(row.id)));
   return {
     schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA,
     revision: state.revision,

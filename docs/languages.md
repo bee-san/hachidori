@@ -539,10 +539,11 @@ words are read as the Japanese profile, with every value exactly as stored.
   byte-identical engine requests, runtime messages and sharing frames; and
   that no write happens on upgrade.
 
-A Japanese-only user sees two additions, both outside what the suites pin:
-the Settings sidebar's **Language** menu with **Add or remove languages**, and
-the browser command *Switch to the next language* in Keybinds → Browser
-shortcuts, on Chrome's shortcuts page and in the keybind action list. The
+A Japanese-only user sees three additions, all outside what the suites pin:
+the Settings sidebar's **Language** menu with **Add or remove languages**, the
+welcome card's *I'm learning* menu (16.1), and the browser command *Switch to
+the next language* in Keybinds → Browser shortcuts, on Chrome's shortcuts page
+and in the keybind action list. The
 command has no suggested key, so it takes no key from pages. Everything else
 that appears with a second language (the toolbar row, *All languages* notes,
 automatic switching, **Use for lookups**, *{Language} options*) is rendered at
@@ -554,6 +555,14 @@ installation, the design changes, not the test. For example, `chrome-e2e`
 pins the nine Settings rail links, so language management is not a new rail
 section; the extension smoke suite pins the welcome card's text and action
 ids, so the language choice sits outside them (section 16.1).
+
+
+The records, messages and frames are today's bytes; the dictionary files a
+new import writes are not. The engine's importer since hoshidicts #53 fills a
+term record slot that today's importer leaves 0 with the term's form-of
+flags, so a newly imported dictionary, and a backup of its files, differ from
+today's in those bytes. Today's engine skips the slot, and lookups and popup
+markup are the same.
 
 ### 6.3 New profiles
 
