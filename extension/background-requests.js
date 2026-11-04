@@ -55,7 +55,9 @@ import {
   assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
 } from "./background-core.js";
-import { trackAnkiOperation, readAnkiOptions, readAnkiProfile, sendAnkiRequest, answerAnkiRequest } from "./background-anki.js";
+import {
+  trackAnkiOperation, readAnkiOptions, readAnkiOptionsAndProfile, readAnkiProfile, sendAnkiRequest, answerAnkiRequest,
+} from "./background-anki.js";
 import {
   getBackupDownloads, assertBackupEngineSender, readBackupPayload, automaticBackupSummary, relayEngineRequest,
 } from "./background-backup.js";
@@ -1140,6 +1142,7 @@ function getAnkiMining() {
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
       readProfile: readAnkiProfile,
+      readOptionsAndProfile: readAnkiOptionsAndProfile,
       duplicateIndex: getAnkiDuplicateIndex(),
       // The dictionaries of the profile a note is for (docs/languages.md 5.4).
       readDictionaries: async profileId => {

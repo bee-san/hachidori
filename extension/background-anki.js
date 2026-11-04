@@ -37,8 +37,7 @@ function waitForAnkiIdle() {
 
 // The options of the profile an Anki request is for (docs/languages.md 5.4),
 // or, for one that names none, today's.
-async function readAnkiOptions(profileId) {
-  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+function ankiOptionsOf(stored, profileId) {
   let options;
   if (profileId === undefined) options = normaliseOptions(stored);
   else {
@@ -55,12 +54,27 @@ async function readAnkiOptions(profileId) {
 // decide how its notes are written and which note types its duplicate index
 // recognises (docs/languages.md 12): null in the single-profile shape. A
 // request that names none means the Japanese profile (5.2).
-async function readAnkiProfile(profileId) {
-  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+function ankiProfileOf(stored, profileId) {
   const layer = globalThis.HDReaderOptions;
   if (!layer.hasProfiles(stored)) return null;
   const profile = layer.profileDescriptor(stored, profileId ?? layer.JAPANESE_PROFILE_ID);
   return profile === null ? null : { language: profile.language, packSettings: profile.packSettings };
+}
+
+const readStoredOptions = async () => (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+
+async function readAnkiOptions(profileId) {
+  return ankiOptionsOf(await readStoredOptions(), profileId);
+}
+
+async function readAnkiProfile(profileId) {
+  return ankiProfileOf(await readStoredOptions(), profileId);
+}
+
+// Both from one read of the record, for the operations that need both.
+async function readAnkiOptionsAndProfile(profileId) {
+  const stored = await readStoredOptions();
+  return [ankiOptionsOf(stored, profileId), ankiProfileOf(stored, profileId)];
 }
 
 const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
@@ -389,6 +403,7 @@ function singleProfileStatus(message, status) {
 }
 
 export {
-  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
+  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, readAnkiOptionsAndProfile,
+  broadcastWordStatus, indexRevision, applyAnkiIndexRole,
   reconcileAnkiIndex, handleAnkiRequest, sendAnkiRequest, answerAnkiRequest,
 };
