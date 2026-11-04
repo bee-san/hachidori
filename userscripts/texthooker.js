@@ -200,9 +200,11 @@
   }
 
   // A click on a word looks it up, unless it ends a selection or an edit. The
-  // caret falls between two characters: the glyph clicked is the one after it
+  // caret falls between two characters (graphemes: a kana and its voiced mark,
+  // a kanji and its variation selector): the glyph clicked is the one after it
   // or, for a click on a glyph's right half, the one before it, which can end
   // the row above the caret's. A click beside the text looks up nothing.
+  const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
   function lookUpAt(kept, { clientX, clientY }) {
     if (kept.text.isContentEditable || getSelection()?.isCollapsed === false) return;
     const caret = document.caretPositionFromPoint?.(clientX, clientY);
@@ -210,17 +212,17 @@
     const node = caret?.offsetNode ?? range?.startContainer;
     if (node?.nodeType !== Node.TEXT_NODE || !kept.text.contains(node)) return;
     const offset = caret?.offset ?? range.startOffset;
+    const segments = graphemes.segment(node.data);
     const glyph = document.createRange();
-    const clicked = (at) => {
-      if (at < 0 || at >= node.length) return false;
-      glyph.setStart(node, at);
-      glyph.setEnd(node, at + (node.data.codePointAt(at) > 0xffff ? 2 : 1));
+    const clicked = (segment) => {
+      if (!segment) return false;
+      glyph.setStart(node, segment.index);
+      glyph.setEnd(node, segment.index + segment.segment.length);
       const { left, right, top, bottom } = glyph.getBoundingClientRect();
       return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom;
     };
-    const before = offset - (offset > 1 && node.data.codePointAt(offset - 2) > 0xffff ? 2 : 1);
-    const at = [offset, before].find(clicked);
-    if (at !== undefined) void history.lookUp(node, at);
+    const hit = [segments.containing(offset), offset > 0 ? segments.containing(offset - 1) : undefined].find(clicked);
+    if (hit) void history.lookUp(node, hit.index);
   }
 
   times.addEventListener("change", () => { panel.classList.toggle("hd-th-times", times.checked); });
