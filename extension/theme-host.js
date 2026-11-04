@@ -666,5 +666,5 @@
       get renderer() { return current?.name ?? null; },
     };
   }
-  globalThis.HDThemeHost = { createThemeHost, createLanguage, JAPANESE };
+  globalThis.HDThemeHost = { createThemeHost, createLanguage };
 }());

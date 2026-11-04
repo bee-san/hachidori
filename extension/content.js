@@ -158,8 +158,10 @@
     const registry = globalThis.HDLanguages;
     const profileId = registry && layer.hasProfiles(storedOptionsRecord) ? request?.profileId ?? "ja" : null;
     const profile = profileId ? layer.profileDescriptor(storedOptionsRecord, profileId) : null;
+    // The pack settings are the options the language reads; the dictionary
+    // state gives the target languages.
     const key = profileId ? JSON.stringify([profileId, profile?.language ?? null, profile?.packSettings ?? null,
-      optionsStorageRevision, dictionaryStateRevision]) : "single-profile";
+      dictionaryStateRevision]) : "single-profile";
     if (renderLanguageCache.key !== key) {
       const descriptor = profile ? registry.get?.(profile.language) ?? null : null;
       // A dictionary's target language belongs to its package, so every
