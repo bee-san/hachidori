@@ -93,7 +93,10 @@ function createView(options) {
     if (before.length > 5) before = "…" + slice(before, before.length - 3);
     if (after.length > 5) after = slice(after, 0, 3) + "…";
     const source = node("div", "nazeka-original");
-    const excerpt = [document.createTextNode(before), node("strong", "nazeka-lookup", text), document.createTextNode(after)];
+    // Outside Japanese the bold match is the sentence's own slice, so a match
+    // that ends inside a grapheme takes all of it and the excerpt reads whole.
+    const lookup = language && language.code !== "ja" && moreText !== text ? slice(moreText, index, index + text.length) : text;
+    const excerpt = [document.createTextNode(before), node("strong", "nazeka-lookup", lookup), document.createTextNode(after)];
     if (marked()) {
       // The sentence keeps its own direction; Close and Back stay outside it.
       const sentence = setAttributes(node("span", "nazeka-excerpt"), language.sourceAttributes());

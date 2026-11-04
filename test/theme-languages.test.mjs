@@ -553,3 +553,19 @@ test("the labelling pass labels text beside interface controls without relabelli
     assert.deepEqual(outside.map(control => control.className), []);
   } finally { run.dom.window.close(); }
 });
+
+// Render review minor 6: Nazeka's excerpt around a match that ends inside a
+// grapheme reads as the sentence does.
+test("Nazeka's excerpt keeps a grapheme that the match ends inside", async () => {
+  const dom = languageDom();
+  try {
+    const language = scenarioLanguage(dom.window, SCENARIOS.en);
+    const rendering = await themeView(dom, "nazeka", { language });
+    const results = SCENARIOS.en.results.map(result => ({ ...result, matched: "cafe" }));
+    rendering.view.renderResults(results, { query: "cafe", sentence: "a cafe\u0301 au", matchOffset: 2 },
+      renderContext(SCENARIOS.en, { language }));
+    await settle(50);
+    assert.equal(rendering.popup.querySelector(".nazeka-original")?.textContent.normalize(), "a café au");
+    rendering.view.destroy();
+  } finally { dom.window.close(); }
+});

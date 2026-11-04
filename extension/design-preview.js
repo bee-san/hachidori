@@ -305,7 +305,13 @@
         renderSample();
         popup.querySelectorAll(".gsm-hoshidicts-kanji-link")[clickedKanjiIndex]?.focus({ preventScroll: true });
       } };
-      const languageCharacter = language.code !== "ja" ? packSample?.character ?? null : null;
+      // A pack's sample character in the shape the renderers read: `stats`
+      // as [{ name, value }], also when the pack writes { name: value }.
+      const packCharacter = language.code !== "ja" ? packSample?.character ?? null : null;
+      const packStats = packCharacter?.stats;
+      const languageCharacter = packCharacter === null ? null : { ...packCharacter,
+        stats: Array.isArray(packStats) ? packStats : packStats && typeof packStats === "object"
+          ? Object.entries(packStats).map(([name, value]) => ({ name, value: String(value) })) : [] };
       const nativeSample = (dictionary) => languageCharacter ? { ...languageCharacter, dictionary }
         : { dictionary, onyomi: "ショク ジキ", kunyomi: "た.べる く.う", tags: "常用",
           definitions: ["eat", "food"], stats: [{ name: "strokes", value: "9" }, { name: "grade", value: "2" }] };
