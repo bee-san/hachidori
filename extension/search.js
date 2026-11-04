@@ -39,6 +39,7 @@ const query = document.getElementById("search-query");
 const after = document.getElementById("search-after");
 const where = document.getElementById("search-where");
 const keys = document.getElementById("search-keys");
+const cursorWord = document.getElementById("search-cursor-word");
 const status = document.getElementById("search-status");
 const templateChoices = document.querySelector("select.search-template");
 // The searched text is a read-only text box, which takes focus and its arrow
@@ -142,6 +143,9 @@ async function lookUp(shownLine) {
   if (shown !== shownLine || shownLine.cursor !== at || query.firstChild !== node) return;
   shownLine.match = length > 0 ? { at, end: at + length } : null;
   paintCursor();
+  // The word the cursor rests on, read out by a screen reader once its
+  // lookup has matched it, while the searched text has focus.
+  if (document.activeElement === query) cursorWord.textContent = node.data.slice(at, shownLine.match?.end ?? characterEnd(node.data, at));
 }
 
 // Shows a line, between its neighbours in a visit, and looks up its cursor's word.

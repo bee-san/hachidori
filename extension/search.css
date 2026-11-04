@@ -137,15 +137,17 @@ body.search-page {
   border-radius: var(--radius-control);
 }
 /* A neighbour shows one row, Rubi's: the last of the line before, the first
-   of the line after, dimmed to the palette's dim text, which keeps 4.5:1. Its
-   text is generated content, which no lookup, selection or screen reader
-   reads. */
+   of the line after. It is set apart from the searched text in every palette
+   by its smaller size, and also by the palette's dim text where that is
+   dimmer than its text (most palettes' is the same, and none has room for a
+   dimmer colour at 4.5:1). Its text is generated content, which no lookup,
+   selection or screen reader reads. */
 .search-neighbour {
   margin: 0;
   max-height: 1.6em;
   overflow: hidden;
   color: var(--text-dim);
-  font-size: 20px;
+  font-size: 16px;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -157,6 +159,16 @@ body.search-page {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+}
+/* The cursor's word, for a screen reader: the searched text's caret does not
+   move with the cursor, so the word is announced here. */
+.search-cursor-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .search-line-note {
   margin: 0;

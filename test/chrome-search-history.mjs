@@ -190,6 +190,7 @@ try {
       after: text("search-after").hidden ? null : text("search-after").dataset.text,
       where: text("search-where").hidden ? null : text("search-where").textContent,
       keys: text("search-keys").textContent,
+      announced: text("search-cursor-word").textContent,
       cursor: cursor ? { at: cursor.startOffset, text: cursor.toString() } : null,
     };
   });
@@ -299,10 +300,11 @@ try {
   await typeSearch("漢字読むありがとう");
   assert.ok(await shows("漢字"));
   await until(state => state.cursor?.text === "漢字", "the first word");
+  // Each word the cursor reaches is read out from a polite live region.
   const step = async (key, word, at, modifiers = []) => {
     await press(key, modifiers);
     assert.ok(await shows(word), `${key} looks up ${word}`);
-    return until(state => state.cursor?.at === at && state.cursor.text === word, `${key} to ${word}`);
+    return until(state => state.cursor?.at === at && state.cursor.text === word && state.announced === word, `${key} to ${word}`);
   };
   await step("ArrowRight", "読む", 2);
   await step("ArrowRight", "ありがとう", 4);
@@ -323,8 +325,9 @@ try {
   const described = (await view()).keys;
   assert.equal(described, "Left/Right: words · Up/Down: rows and earlier lines · Enter: add to Anki · Escape: back to the box");
   assert.equal(await frame.$eval("#search-query", element => element.getAttribute("aria-describedby")), "search-where search-keys");
+  assert.equal(await frame.$eval("#search-cursor-word", element => element.getAttribute("aria-live")), "polite");
   console.log("PASS: Left and Right move the cursor by the word each lookup matched, Left retraces the Rights, a one-row"
-    + " text goes round its ends for a fresh press only, and the keys are named beside it");
+    + " text goes round its ends for a fresh press only, each word is read out, and the keys are named beside it");
 
   // Up and Down go between the rows of a long line, keeping the column, and past its top row to earlier lines.
   const long = "漢字読むありがとう".repeat(6);
@@ -369,11 +372,14 @@ try {
     await search.screenshot({ path: resolve(SCREENSHOTS, "search-history-visit-forced-colors.png") });
     await cdp.send("Emulation.setEmulatedMedia", { features: [] });
   }
-  // The neighbours' rows are dimmed, and still legible: 4.5:1 in every
-  // palette against what is painted behind them. Automatic is Dark or Light.
+  // The neighbours' rows are set apart from the searched text (smaller, and
+  // dimmer where the palette's dim text is), and still legible: 4.5:1 in
+  // every palette against what is painted behind them. Automatic is Dark or
+  // Light.
   const palettes = await frame.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS
     .flatMap(group => group.themes.map(theme => theme.id)).filter(id => id !== "auto"));
   const faint = [];
+  const alike = [];
   for (const theme of palettes) {
     await writeOptions({ popupTheme: theme });
     await frame.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value, { polling: 100, timeout: 10_000 }, theme);
@@ -403,12 +409,18 @@ try {
         .map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
         .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
       const [text, page] = [paint([...layers, getComputedStyle(row).color]), paint(layers)].map(luminance);
-      return (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05);
+      const [rowStyle, queryStyle] = [row, document.getElementById("search-query")].map(node => getComputedStyle(node));
+      const dimText = rowStyle.getPropertyValue("--text-dim").trim() !== rowStyle.getPropertyValue("--text").trim();
+      return { ratio: (Math.max(text, page) + 0.05) / (Math.min(text, page) + 0.05),
+        smaller: parseFloat(rowStyle.fontSize) < parseFloat(queryStyle.fontSize),
+        dimmed: !dimText || rowStyle.color !== queryStyle.color };
     });
-    if (!(contrast >= 4.5)) faint.push(`${theme} ${contrast.toFixed(2)}:1`);
+    if (!(contrast.ratio >= 4.5)) faint.push(`${theme} ${contrast.ratio.toFixed(2)}:1`);
+    if (!contrast.smaller || !contrast.dimmed) alike.push(theme);
   }
   assert.ok(palettes.length > 40, `every palette: ${palettes.length}`);
-  assert.deepEqual(faint, [], "the dimmed rows keep 4.5:1 in every palette");
+  assert.deepEqual(faint, [], "the neighbours' rows keep 4.5:1 in every palette");
+  assert.deepEqual(alike, [], "the neighbours' rows are smaller than the searched text, and dimmer where the palette has a dim text");
   await writeOptions({ popupTheme: "default" });
   // Up again goes further back, to the oldest line, and Down comes forward to the current line, its cursor where it was.
   await press("ArrowUp");

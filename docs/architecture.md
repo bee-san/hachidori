@@ -1180,7 +1180,7 @@ which `search.html` serves to its frame and Settings counts, limits and clears
 The searched text takes focus after a search; there the arrow keys move Rubi's
 cursor by word and row (`search-lines.js`, a port of Rubi's
 `core/text_rows.c`), each word looked up, and past the top row on to earlier
-lines between their neighbours' dimmed rows, and Enter adds the word to Anki.
+lines between their neighbours' smaller rows, and Enter adds the word to Anki.
 User scripts reach the lines through `HDSearchHistory`, and
 `userscripts/texthooker.js` turns the page into a texthooker view. The lines
 are in no backup. [Search history](search-history.md) has the details.

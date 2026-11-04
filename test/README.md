@@ -516,8 +516,9 @@ These run separately:
   box's lower lines to the box; in the searched text Left and Right move the
   cursor by the matched word and retrace, a one-row text goes round for a
   fresh press only, Up and Down move between a long line's rows keeping the
-  column and past its top row through every earlier line, whose dimmed
-  neighbours keep 4.5:1 in every palette; Enter adds the word to a fake
+  column, also in a narrower box, and past its top row through every earlier
+  line, whose neighbours' rows are smaller and keep 4.5:1 in every palette;
+  each word is read out from a live region; Enter adds the word to a fake
   AnkiConnect with its earlier line as the sentence; the keys follow a rebound
   keybind and leave other controls alone; the history's switch, with Down
   ending a visit while it is off; a second page in the popup window; Settings'

@@ -126,8 +126,9 @@ the newest line unless it is the newest already.
 
 After a search the searched text has focus, unless focus was in the popup or
 another control. A click or Tab gives it focus too. It is a read-only text
-box, so a screen reader passes it the arrow keys. Its cursor is the
-underlined word, the one the results show.
+box, so a screen reader passes it the arrow keys, and each word the cursor
+reaches is read out from a polite live region once it is looked up. Its cursor
+is the underlined word, the one the results show.
 
 This is Rubi's overlay cursor (bee-san/Rubi_for_vita@6b5e276:
 `core/text_rows.c` `vjo_word_step`, `vjo_text_row_step`,
@@ -152,7 +153,8 @@ This is Rubi's overlay cursor (bee-san/Rubi_for_vita@6b5e276:
 Up on the text's top row opens Rubi's line history
 ([`docs/line-history.md`](https://github.com/bee-san/Rubi_for_vita/blob/main/docs/line-history.md)):
 the line before it takes its place, between the last row of the line before
-that and the first row of the line after it, both dimmed, which no lookup,
+that and the first row of the line after it, both in smaller type, and dimmer
+where the palette's dim text is dimmer than its text, which no lookup,
 selection or screen reader reads. A note under them says where it is:
 `Earlier line -2 · ▲ earlier · ▼ later`, without `▲ earlier` on the oldest
 line. Up on its top row goes further back, and Down on its last row comes
