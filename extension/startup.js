@@ -92,12 +92,11 @@ const announced = new Map();
 let dictionaryProgress;
 let practice;
 // The languages (docs/languages.md 16.1): the stored options record, this
-// browser's choice, the welcome card's choice and each pack's samples and
-// recommended dictionaries from its vendored language.json.
+// browser's choice and each pack's samples and recommended dictionaries from
+// its vendored language.json.
 let storedOptionsRecord;
 let storedDictionaryRecord = null;
 let languageSelection = null;
-let chosenLanguage = "ja";
 const packFiles = new Map();
 let languageImport = null;
 const installation = createRecommendedInstallClient({
@@ -1046,114 +1045,6 @@ async function findSharedHachidori() {
   }
 }
 
-// The welcome card's I'm learning menu (docs/languages.md 16.1): every pack,
-// Japanese first and selected, in its own element after the actions. A build
-// without another pack keeps today's card.
-function languageChoices() {
-  const codes = Array.isArray(globalThis.HDLanguages?.codes) ? globalThis.HDLanguages.codes : [];
-  const others = codes.filter(code => code !== "ja").sort((a, b) => languageName(a).localeCompare(languageName(b)));
-  return others.length === 0 ? [] : ["ja", ...others];
-}
-
-function renderLanguageMenu(stage) {
-  let menu = element("setup-language");
-  const choices = stage === "welcome" ? languageChoices() : [];
-  if (choices.length === 0) {
-    menu?.remove();
-    return;
-  }
-  if (menu === null) {
-    menu = document.createElement("label");
-    menu.className = "setup-language";
-    menu.id = "setup-language";
-    const caption = document.createElement("span");
-    caption.className = "field-label";
-    caption.textContent = "I'm learning";
-    const select = document.createElement("select");
-    select.id = "setup-language-select";
-    select.dataset.focusKey = "setup-language-select";
-    select.addEventListener("change", () => { chosenLanguage = select.value; });
-    menu.append(caption, select);
-    element("setup-actions").before(menu);
-  }
-  const select = element("setup-language-select");
-  if (select.options.length !== choices.length) {
-    select.replaceChildren(...choices.map(code => {
-      const descriptor = globalThis.HDLanguages?.get?.(code);
-      const native = descriptor?.nativeName && descriptor.nativeName !== languageName(code) ? ` (${descriptor.nativeName})` : "";
-      return new Option(`${languageName(code)}${native}`, code);
-    }));
-  }
-  if (!choices.includes(chosenLanguage)) chosenLanguage = "ja";
-  select.value = chosenLanguage;
-  select.disabled = saving;
-}
-
-// Waits for the linked mirror to hold a profile of `language`; it arrives in a
-// change frame, not in a reply (16.1).
-async function mirroredProfile(language) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const stored = await chrome.storage.local.get("options"); // NOSONAR: the mirror is polled until the profile arrives
-    const profile = hasProfiles(stored.options)
-      ? optionProfiles(stored.options).find(candidate => candidate.language === language) : undefined;
-    if (profile) return profile.id;
-    await wait(100); // NOSONAR: polled
-  }
-  throw new Error(`the linked Hachidori did not add ${languageName(language)}`);
-}
-
-// Another language on a linked browser: the host's profile when it has one,
-// else one the host adds, chosen in this browser (16.1).
-async function chooseLinkedLanguage(language) {
-  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
-  let id = hasProfiles(stored.options)
-    ? optionProfiles(stored.options).find(profile => profile.language === language)?.id : undefined;
-  if (id === undefined) {
-    // The new profile copies the active one's settings (section 5.2); a host
-    // set up in another language may have no Japanese profile to copy.
-    const copyFrom = hasProfiles(stored.options) ? activeProfileId(stored.options, stored[LANGUAGE_SELECTION_KEY]) : undefined;
-    const reply = await send("hd_profile_add", { language, ...(copyFrom === undefined ? {} : { copyFrom }) }, ENGINE_TARGET);
-    if (!reply.ok) throw new Error(reply.error || `${languageName(language)} could not be added`);
-    id = await mirroredProfile(language);
-  }
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const current = (await chrome.storage.local.get(LANGUAGE_SELECTION_KEY))[LANGUAGE_SELECTION_KEY]; // NOSONAR: a conflict reads again
-    const reply = await send("hd_language_selection_write", { baseRevision: current?.revision ?? 0, activeProfileId: id });
-    if (reply.ok) return;
-    if (reply.conflict !== true) throw new Error(reply.error || "the language could not be chosen");
-  }
-}
-
-// Start setup, Set up separately and Set up manually in the chosen language.
-// Another language is set up before the stage moves; a failure keeps the
-// welcome card with its error.
-async function startIn(stage) {
-  const language = chosenLanguage;
-  if (language === "ja" || saving || setupState === null) return advance(stage);
-  saving = true;
-  for (const control of element("setup-card").querySelectorAll("button, select")) control.disabled = true;
-  setStatus(`Setting up ${languageName(language)}…`);
-  try {
-    const linked = typeof (await chrome.storage.local.get("sharing")).sharing?.client?.address === "string";
-    if (linked) await chooseLinkedLanguage(language);
-    else {
-      const reply = await send("hd_profile_add", { language, firstRun: true }, ENGINE_TARGET);
-      if (!reply.ok) throw new Error(reply.error || `${languageName(language)} could not be set up`);
-    }
-    const stored = await chrome.storage.local.get(["options", "dictionaryState", LANGUAGE_SELECTION_KEY]);
-    languageSelection = stored[LANGUAGE_SELECTION_KEY] ?? null;
-    adoptOptions(stored.options);
-    adoptDictionaryState(stored.dictionaryState);
-  } catch (error) {
-    saving = false;
-    setStatus(`Could not set up ${languageName(language)}: ${describeErrorMessage(error)}`, "error", error);
-    render();
-    return false;
-  }
-  saving = false;
-  return advance(stage);
-}
-
 // Linking mirrors the shared library here, and setup then has nothing left to do.
 async function useSharedHachidori() {
   if (saving || setupState === null || sharedHost === null) return;
@@ -1169,22 +1060,8 @@ async function useSharedHachidori() {
     render();
     return;
   }
-  // The link first, then the chosen language (16.1). The link stays when the
-  // language cannot be added; setup finishes in Japanese and says why.
-  let languageFailure = null;
-  if (chosenLanguage !== "ja") {
-    try {
-      await chooseLinkedLanguage(chosenLanguage);
-    } catch (error) {
-      languageFailure = error;
-    }
-  }
   saving = false;
-  const completed = await advance("complete");
-  if (completed && languageFailure !== null) {
-    setStatus(`Linked. ${languageName(chosenLanguage)} could not be added, so Hachidori reads Japanese: `
-      + `${describeErrorMessage(languageFailure)} Add it later from the Language menu in Settings.`, "error", languageFailure);
-  }
+  await advance("complete");
 }
 
 function welcomeView() {
@@ -1199,8 +1076,8 @@ function welcomeView() {
       ],
       actions: [
         button("setup-use-shared", `Use the Hachidori in ${name}`, () => { void useSharedHachidori(); }),
-        button("setup-start", "Set up separately", () => { void startIn("dictionaries"); }, "ghost"),
-        button("setup-manual", "Set up manually", () => { void startIn("practice"); }, "ghost"),
+        button("setup-start", "Set up separately", () => { void advance("dictionaries"); }, "ghost"),
+        button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
       ],
     };
   }
@@ -1211,8 +1088,8 @@ function welcomeView() {
       settingsNote("Already using Hachidori in another browser, on this computer or another one? Link to it from ", "settings.html#sharing", " instead of setting up again."),
     ],
     actions: [
-      button("setup-start", "Start Setup", () => { void startIn("dictionaries"); }),
-      button("setup-manual", "Set up manually", () => { void startIn("practice"); }, "ghost"),
+      button("setup-start", "Start Setup", () => { void advance("dictionaries"); }),
+      button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
     ],
   };
 }
@@ -1303,7 +1180,6 @@ function render() {
   const view = currentView();
   recoverRecordedAnkiOutcome(view);
   renderSteps(stage);
-  renderLanguageMenu(stage);
   const heading = element("setup-heading");
   if (heading.textContent !== view.heading) heading.textContent = view.heading;
   renderBody(view.body);
