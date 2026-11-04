@@ -48,6 +48,21 @@ const EXTENSION = resolve(ROOT, "test/tmp/search-history-extension");
 const PROFILE = resolve(tmpdir(), `hachidori-e2e-profile-search-history-${process.pid}`);
 const SCREENSHOTS = process.env.HACHIDORI_SEARCH_SCREENSHOTS;
 const TEXTHOOKER = readFileSync(resolve(ROOT, "userscripts/texthooker.js"), "utf8");
+// Run before the texthooker: records each offset it asks HDSearchHistory to
+// look up, and passes every call on.
+const RECORD_LOOKUPS = `(() => {
+  const history = globalThis.HDSearchHistory;
+  globalThis.hdLookUps = [];
+  globalThis.HDSearchHistory = new Proxy(history, {
+    get(target, key) {
+      if (key === "lookUp") return (node, at) => { globalThis.hdLookUps.push(at); return target.lookUp(node, at); };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    set: (target, key, value) => Reflect.set(target, key, value, target),
+  });
+})();
+`;
 const GLOSSES = { 漢字: "Chinese character", 読む: "to read", ありがとう: "thank you", 食べる: "to eat" };
 const settle = ms => new Promise(done => { setTimeout(done, ms); });
 
@@ -665,7 +680,7 @@ try {
     }
   };
   await allowUserScripts(true);
-  await writeOptions({ customPopupJavascript: TEXTHOOKER });
+  await writeOptions({ customPopupJavascript: RECORD_LOOKUPS + TEXTHOOKER });
   await settings.waitForFunction(async () => (await chrome.userScripts.getScripts({ ids: ["hachidori-custom-javascript"] }))
     .length === 1, { polling: 100, timeout: 15_000 });
   await search.close();
@@ -853,6 +868,24 @@ try {
   await hooked.tab.mouse.click(rowEnd.x, rowEnd.y);
   assert.ok(await hooked.popup.waitForVisible(15_000, state => state.text.includes(GLOSSES["読む"])),
     "a click on a row's last glyph looks it up");
+  // A click on the right half of a character of several code points looks
+  // up from its first: が as か and a combining mark, and 葛 with a variation
+  // selector.
+  for (const [text, end] of [["か\u3099いこく", 2], ["葛\u{E0100}城", 3]]) {
+    await keepLine(text);
+    const point = await hookFrame.$eval("#hd-texthooker li:last-child .hd-th-text", (element, cluster) => {
+      element.scrollIntoView({ block: "center" });
+      const range = document.createRange();
+      range.setStart(element.firstChild, 0);
+      range.setEnd(element.firstChild, cluster);
+      const box = range.getBoundingClientRect();
+      return { x: box.right - box.width / 4, y: box.y + box.height / 2 };
+    }, end);
+    const before = await hookFrame.evaluate(() => globalThis.hdLookUps.length);
+    await hooked.tab.mouse.click(point.x, point.y);
+    await hookFrame.waitForFunction(count => globalThis.hdLookUps.length > count, { polling: 50, timeout: 5_000 }, before);
+    assert.equal(await hookFrame.evaluate(() => globalThis.hdLookUps.at(-1)), 0, `a right-half click on ${text}'s first character`);
+  }
   // An edit left empty deletes its line.
   await hookFrame.$eval("#hd-texthooker li:first-child .hd-th-text", text => text.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
   await hookFrame.waitForFunction(() => document.activeElement?.isContentEditable, { polling: 50, timeout: 5_000 });
@@ -864,7 +897,8 @@ try {
   await allowUserScripts(false);
   console.log("PASS: the texthooker user script lists the lines, newest at the bottom, scrolling along and again once"
     + " scrolled back to its end, with their counts and times, pauses the Clipboard monitor, edits and deletes lines"
-    + " (an emptied edit too) and looks up a clicked glyph, a row's last included, and nothing beside the text");
+    + " (an emptied edit too) and looks up a clicked glyph from its first character, a row's last included, and nothing"
+    + " beside the text");
 
   passed = true;
 } finally {
