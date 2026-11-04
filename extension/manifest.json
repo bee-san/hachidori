@@ -100,6 +100,9 @@
     },
     "ignoreWord": {
       "description": "Ignore the current popup entry's word"
+    },
+    "switchLanguage": {
+      "description": "Switch to the next language"
     }
   },
   "action": {
@@ -118,6 +121,7 @@
       "run_at": "document_idle",
       "all_frames": true,
       "js": [
+        "vendor/languages/registry-reader.js",
         "reader-options.js",
         "dictionary-group-state.js",
         "lookup-stats-identity.js",
@@ -128,6 +132,7 @@
         "anki-content.js",
         "render/glossary.js",
         "render/popup.js",
+        "language-text.js",
         "theme-host.js",
         "word-status-overrides.js",
         "word-highlights.js",

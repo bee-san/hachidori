@@ -53,7 +53,9 @@ else()
 endif()
 
 # The engine links glaze PRIVATE, so its include dirs do not propagate here.
-target_link_libraries(hoshidicts_wasm PRIVATE hoshidicts glaze::glaze)
+# The language pack headers (src/languages/pack.hpp, for segmentation and
+# hdw_deinflect) include unordered_dense's.
+target_link_libraries(hoshidicts_wasm PRIVATE hoshidicts glaze::glaze unordered_dense::unordered_dense)
 
 # src/ is not in the engine's public include set. hdw_import reaches into it for
 # zip/zip.hpp so it can read the archive's declared title before handing the
@@ -76,7 +78,7 @@ target_link_options(hoshidicts_wasm PRIVATE
     -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=8MB
     -sFORCE_FILESYSTEM=1
-    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_remove_dict,_hdw_set_dict_order,_hdw_lookup,_hdw_lookup_dictionary,_hdw_segment,_hdw_kanji,_hdw_styles,_hdw_tags,_hdw_media,_hdw_media_data,_hdw_page_cache_bytes,_hdw_memory_stats,_hdw_hash_index_paged,_hdw_last_error
+    -sEXPORTED_FUNCTIONS=_malloc,_free,_hdw_init_storage,_hdw_import,_hdw_reset,_hdw_add_dict,_hdw_remove_dict,_hdw_set_dict_order,_hdw_lookup,_hdw_lookup_dictionary,_hdw_segment,_hdw_kanji,_hdw_kanji_with_options,_hdw_language_load,_hdw_languages,_hdw_deinflect,_hdw_styles,_hdw_tags,_hdw_media,_hdw_media_data,_hdw_page_cache_bytes,_hdw_memory_stats,_hdw_hash_index_paged,_hdw_last_error
 )
 
 # The pool is sized when the module starts: the bounded import worker group

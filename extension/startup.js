@@ -21,7 +21,7 @@ import {
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { applyPageTheme, showErrorCopy } from "./settings-dom.js";
 import { describeErrorMessage } from "./error-text.js";
-import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { findLocalAudioSource } from "./local-audio-source.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
@@ -51,7 +51,10 @@ const ANKI_PROGRESS_STEPS = 3;
 // counted, so a long generation cleanup cannot exhaust these attempts.
 const PROBE_RETRY_MS = 400;
 const PROBE_ATTEMPTS = 5;
-const { normaliseOptions } = globalThis.HDReaderOptions;
+const {
+  normaliseOptions, hasProfiles, profiles: optionProfiles, projectOptions, projectDictionaryState, activeProfileId,
+  LANGUAGE_SELECTION_KEY,
+} = globalThis.HDReaderOptions;
 
 let setupState = null;
 let setupError = null;
@@ -88,6 +91,15 @@ let ankiProgressTimer = null;
 const announced = new Map();
 let dictionaryProgress;
 let practice;
+// The languages (docs/languages.md 16.1): the stored options record, this
+// browser's choice, the welcome card's choice and each pack's samples and
+// recommended dictionaries from its vendored language.json.
+let storedOptionsRecord;
+let storedDictionaryRecord = null;
+let languageSelection = null;
+let chosenLanguage = "ja";
+const packFiles = new Map();
+let languageImport = null;
 const installation = createRecommendedInstallClient({
   send: sourceIds => send("hd_setup_install", { sourceIds }, SETUP_TARGET),
   onChange() { if (!saving) render(); },
@@ -128,11 +140,40 @@ function adoptSetupState(value) {
   return true;
 }
 
+// With profiles the page reads the active profile's view and options
+// (docs/languages.md 5.1, 16.1).
+function activeProfile() {
+  return hasProfiles(storedOptionsRecord) ? activeProfileId(storedOptionsRecord, languageSelection) : null;
+}
+
+function activeLanguage() {
+  const id = activeProfile();
+  return id === null ? "ja" : optionProfiles(storedOptionsRecord).find(profile => profile.id === id)?.language ?? "ja";
+}
+
+function profileFields() {
+  const id = activeProfile();
+  return id === null ? {} : { profileId: id };
+}
+
+function projectDictionaries() {
+  const id = activeProfile();
+  const view = id === null ? storedDictionaryRecord : projectDictionaryState(storedDictionaryRecord, id);
+  dictionaries = Array.isArray(view?.dictionaries) ? view.dictionaries : [];
+}
+
+function projectReaderOptions() {
+  const id = activeProfile();
+  options = id === null ? normaliseOptions(storedOptionsRecord) : projectOptions(storedOptionsRecord, id);
+  applyPageTheme(document, options);
+}
+
 function adoptDictionaryState(value) {
   const revision = Number.isInteger(value?.revision) ? value.revision : 0;
   if (revision <= dictionaryRevision) return false;
   dictionaryRevision = revision;
-  dictionaries = Array.isArray(value?.dictionaries) ? value.dictionaries : [];
+  storedDictionaryRecord = value ?? null;
+  projectDictionaries();
   return true;
 }
 
@@ -140,9 +181,37 @@ function adoptOptions(value) {
   const revision = Number.isInteger(value?.revision) && value.revision >= 0 ? value.revision : 0;
   if (revision <= optionsRevision) return false;
   optionsRevision = revision;
-  options = normaliseOptions(value);
-  applyPageTheme(document, options);
+  // This page's debug log redacts the profiles' languages too (docs/languages.md
+  // 8.5); records without profiles leave it as it is.
+  if (hasProfiles(value) || hasProfiles(storedOptionsRecord)) {
+    setDebugLogLanguages(optionProfiles(value).map(profile => profile.language));
+  }
+  storedOptionsRecord = value;
+  projectReaderOptions();
+  projectDictionaries();
   return true;
+}
+
+// The pack's name, else the platform's, as language-names.js gives it (the
+// test harnesses load this page without that module).
+function languageName(code) {
+  const name = globalThis.HDLanguages?.get?.(code)?.name;
+  if (typeof name === "string") return name;
+  if (code === "ja") return "Japanese";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+// A pack's language.json, for its samples and recommended dictionaries.
+function packFile(code) {
+  if (!packFiles.has(code)) {
+    packFiles.set(code, fetch(new URL(`vendor/languages/${code}/language.json`, document.baseURI))
+      .then(response => (response.ok ? response.json() : null)).catch(() => null));
+  }
+  return packFiles.get(code);
 }
 
 function setStatus(message, tone = "", error = null) {
@@ -403,9 +472,124 @@ function incompleteView(rows, importNote, missing) {
   };
 }
 
+// Another language's dictionary stage (docs/languages.md 16.1): its pack's
+// recommended dictionaries as links, and an import into its profile.
+function languageDictionariesView() {
+  const language = activeLanguage();
+  const name = languageName(language);
+  const list = document.createElement("ul");
+  list.className = "recommended-dictionary-list";
+  list.id = "setup-language-recommendations";
+  void packFile(language).then(pack => {
+    const links = (Array.isArray(pack?.host?.recommendedDictionaries) ? pack.host.recommendedDictionaries : [])
+      .filter(entry => typeof entry?.name === "string" && String(entry?.url ?? "").startsWith("https://"));
+    list.replaceChildren(...links.map(entry => {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.className = "recommended-dictionary-link";
+      link.href = entry.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = entry.name;
+      const description = document.createElement("span");
+      description.textContent = [entry.description, entry.licence].filter(value => typeof value === "string" && value).join(" · ");
+      item.append(link, description);
+      return item;
+    }));
+  });
+  const picker = document.createElement("label");
+  picker.className = "file-button";
+  picker.dataset.focusKey = "setup-language-import";
+  const caption = document.createElement("span");
+  caption.textContent = "Choose dictionary files";
+  const input = document.createElement("input");
+  input.type = "file";
+  input.id = "setup-language-import";
+  input.accept = ".zip,application/zip";
+  input.multiple = true;
+  input.disabled = languageImport !== null;
+  input.addEventListener("change", () => {
+    const files = [...(input.files ?? [])];
+    input.value = "";
+    if (files.length > 0) void importLanguageDictionaries(files);
+  });
+  picker.append(caption, input);
+  const installed = dictionaries.filter(entry => entry.termCount > 0).length;
+  return {
+    heading: `Add ${name} dictionaries`,
+    body: [
+      paragraph(`Hachidori does not install ${name} dictionaries for you. Open one of these pages, download its Yomitan ZIP file and import it here.`),
+      list, picker, languageImportRows(),
+      paragraph(languageImport ?? installedLine(installed)),
+      settingsNote("You can also import dictionaries later in ", "settings.html#add-dictionaries"),
+    ],
+    actions: [button("setup-continue", "Continue setup", () => { void advance("anki", { continued: true }); },
+      installed > 0 ? "primary-button" : "ghost")],
+  };
+}
+
+// "1 dictionary" or "3 dictionaries".
+function dictionaryCount(count) {
+  return count === 1 ? "1 dictionary" : `${count} dictionaries`;
+}
+
+function installedLine(installed) {
+  return installed > 0 ? `${dictionaryCount(installed)} installed.` : "No dictionary installed yet.";
+}
+
+// One result row per chosen file, as Settings and the Japanese stage show.
+let languageImportProgress = null;
+
+function languageImportRows() {
+  languageImportProgress ??= createDictionaryProgressList({
+    document,
+    ariaLabel: "Dictionary import progress",
+    idPrefix: "setup-language-import",
+  });
+  return languageImportProgress.element;
+}
+
+// Imports the chosen archives one at a time into the active profile. The
+// progress and the outcome go through the live status, as the Japanese
+// stage's do.
+async function importLanguageDictionaries(files) {
+  let imported = 0;
+  let failed = null;
+  languageImportRows();
+  languageImportProgress.setEntries(files.map((file, index) => ({ id: index, name: file.name })));
+  for (const [index, file] of files.entries()) {
+    languageImport = `Importing ${file.name} (${index + 1} of ${files.length})…`;
+    render();
+    setStatus(languageImport);
+    languageImportProgress.update(index, { text: "Importing…", progress: { value: null } });
+    const blobUrl = URL.createObjectURL(file);
+    try {
+      const reply = await send("hd_import", { blobUrl, fileName: file.name, ...profileFields() }, ENGINE_TARGET); // NOSONAR: one archive at a time
+      if (!reply.ok) throw new Error(reply.error || "the dictionary could not be imported");
+      imported += 1;
+      languageImportProgress.update(index, { text: `Imported ${reply.report?.title ?? file.name}.`, tone: "ok" });
+    } catch (error) {
+      failed = { file, error };
+      languageImportProgress.update(index, { text: `Failed: ${describeErrorMessage(error)}`, tone: "error" });
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  }
+  languageImport = null;
+  const stored = await chrome.storage.local.get("dictionaryState");
+  adoptDictionaryState(stored.dictionaryState);
+  render();
+  if (failed !== null) {
+    setStatus(`Could not import ${failed.file.name}: ${describeErrorMessage(failed.error)}`, "error", failed.error);
+  } else {
+    setStatus(`${dictionaryCount(imported)} imported.`);
+  }
+}
+
 // Every source without a recorded outcome is requested on its own; the run's
 // live rows and the recorded result follow.
 function dictionariesView() {
+  if (activeLanguage() !== "ja") return languageDictionariesView();
   const attaching = installation.pending;
   const rows = dictionaryRows();
   const importNote = settingsNote("Import your own dictionary ZIPs in ", "settings.html#add-dictionaries");
@@ -645,7 +829,20 @@ function stagedConfiguredAnkiView(anki) {
 
 // Detection runs once per installation; its recorded outcome stays readable
 // for three seconds before setup moves on by itself.
+// Detection looks for note types of the families the pack lists (16.1).
+function ankiDetectable() {
+  const families = globalThis.HDLanguages?.get?.(activeLanguage())?.host?.anki?.noteTypeFamilies;
+  return activeLanguage() === "ja" || (Array.isArray(families) && families.length > 0);
+}
+
 function ankiView() {
+  if (!ankiDetectable()) {
+    cancelCountdown();
+    return { heading: "Set up Anki later",
+      body: [settingsNote(`Hachidori has no note types to look for in ${languageName(activeLanguage())}. Choose a deck and note type in `,
+        "settings.html#anki", " → Anki whenever you want to add cards.")],
+      actions: [button("setup-continue", "Continue setup", () => { void advance("practice"); })] };
+  }
   const anki = setupState.anki;
   if (anki === null) return pendingAnkiView();
   // A fast local AnkiConnect response can finish before the browser paints.
@@ -711,6 +908,7 @@ async function probePracticeText(signature, text, exact = false) {
       scanLength: exact ? [...text].length : options.scanLength,
       maxResults: exact ? options.maxResults : 1,
       options: { frequencyDictionary: options.frequencyDictionary, frequencyOrder: options.frequencyOrder, primaryReading: "" },
+      ...profileFields(),
     }, ENGINE_TARGET);
   } catch {
     return "refused";
@@ -790,10 +988,26 @@ function probePractice() {
 
 // Preserve the reviewed scene while the current library is proved answerable.
 // Finish and saved-page guidance remain available throughout the probe.
+// Another language's exercise is its pack's practice sentence (16.1); it
+// waits for the pack's file.
+let practiceSample;
+
 function practiceView() {
+  const language = activeLanguage();
+  if (!practice && language !== "ja" && practiceSample === undefined) {
+    void packFile(language).then(pack => {
+      const sample = pack?.host?.sample?.practice;
+      const descriptor = globalThis.HDLanguages?.get?.(language);
+      practiceSample = typeof sample?.text === "string" && typeof sample.lookup === "string"
+        ? { text: sample.text, lookup: sample.lookup, bcp47: descriptor?.bcp47 ?? language,
+          direction: descriptor?.direction ?? "ltr", name: languageName(language) } : null;
+      render();
+    });
+    return { heading: "Preparing your first lookup…", body: [], actions: [] };
+  }
   if (!practice) {
     practice = createPracticeView({ document, loadReader, onReaderSettled: render,
-      onDismiss: () => { element("setup-finish")?.focus(); } });
+      onDismiss: () => { element("setup-finish")?.focus(); }, ...(practiceSample ? { sample: practiceSample } : {}) });
     globalThis.HDVisualNovel.initialize(practice.node.querySelector(".vn-scene"));
   }
   if (!practiceReadiness(options, dictionaries).canProbe) {
@@ -832,6 +1046,114 @@ async function findSharedHachidori() {
   }
 }
 
+// The welcome card's I'm learning menu (docs/languages.md 16.1): every pack,
+// Japanese first and selected, in its own element after the actions. A build
+// without another pack keeps today's card.
+function languageChoices() {
+  const codes = Array.isArray(globalThis.HDLanguages?.codes) ? globalThis.HDLanguages.codes : [];
+  const others = codes.filter(code => code !== "ja").sort((a, b) => languageName(a).localeCompare(languageName(b)));
+  return others.length === 0 ? [] : ["ja", ...others];
+}
+
+function renderLanguageMenu(stage) {
+  let menu = element("setup-language");
+  const choices = stage === "welcome" ? languageChoices() : [];
+  if (choices.length === 0) {
+    menu?.remove();
+    return;
+  }
+  if (menu === null) {
+    menu = document.createElement("label");
+    menu.className = "setup-language";
+    menu.id = "setup-language";
+    const caption = document.createElement("span");
+    caption.className = "field-label";
+    caption.textContent = "I'm learning";
+    const select = document.createElement("select");
+    select.id = "setup-language-select";
+    select.dataset.focusKey = "setup-language-select";
+    select.addEventListener("change", () => { chosenLanguage = select.value; });
+    menu.append(caption, select);
+    element("setup-actions").before(menu);
+  }
+  const select = element("setup-language-select");
+  if (select.options.length !== choices.length) {
+    select.replaceChildren(...choices.map(code => {
+      const descriptor = globalThis.HDLanguages?.get?.(code);
+      const native = descriptor?.nativeName && descriptor.nativeName !== languageName(code) ? ` (${descriptor.nativeName})` : "";
+      return new Option(`${languageName(code)}${native}`, code);
+    }));
+  }
+  if (!choices.includes(chosenLanguage)) chosenLanguage = "ja";
+  select.value = chosenLanguage;
+  select.disabled = saving;
+}
+
+// Waits for the linked mirror to hold a profile of `language`; it arrives in a
+// change frame, not in a reply (16.1).
+async function mirroredProfile(language) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const stored = await chrome.storage.local.get("options"); // NOSONAR: the mirror is polled until the profile arrives
+    const profile = hasProfiles(stored.options)
+      ? optionProfiles(stored.options).find(candidate => candidate.language === language) : undefined;
+    if (profile) return profile.id;
+    await wait(100); // NOSONAR: polled
+  }
+  throw new Error(`the linked Hachidori did not add ${languageName(language)}`);
+}
+
+// Another language on a linked browser: the host's profile when it has one,
+// else one the host adds, chosen in this browser (16.1).
+async function chooseLinkedLanguage(language) {
+  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
+  let id = hasProfiles(stored.options)
+    ? optionProfiles(stored.options).find(profile => profile.language === language)?.id : undefined;
+  if (id === undefined) {
+    // The new profile copies the active one's settings (section 5.2); a host
+    // set up in another language may have no Japanese profile to copy.
+    const copyFrom = hasProfiles(stored.options) ? activeProfileId(stored.options, stored[LANGUAGE_SELECTION_KEY]) : undefined;
+    const reply = await send("hd_profile_add", { language, ...(copyFrom === undefined ? {} : { copyFrom }) }, ENGINE_TARGET);
+    if (!reply.ok) throw new Error(reply.error || `${languageName(language)} could not be added`);
+    id = await mirroredProfile(language);
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const current = (await chrome.storage.local.get(LANGUAGE_SELECTION_KEY))[LANGUAGE_SELECTION_KEY]; // NOSONAR: a conflict reads again
+    const reply = await send("hd_language_selection_write", { baseRevision: current?.revision ?? 0, activeProfileId: id });
+    if (reply.ok) return;
+    if (reply.conflict !== true) throw new Error(reply.error || "the language could not be chosen");
+  }
+}
+
+// Start setup, Set up separately and Set up manually in the chosen language.
+// Another language is set up before the stage moves; a failure keeps the
+// welcome card with its error.
+async function startIn(stage) {
+  const language = chosenLanguage;
+  if (language === "ja" || saving || setupState === null) return advance(stage);
+  saving = true;
+  for (const control of element("setup-card").querySelectorAll("button, select")) control.disabled = true;
+  setStatus(`Setting up ${languageName(language)}…`);
+  try {
+    const linked = typeof (await chrome.storage.local.get("sharing")).sharing?.client?.address === "string";
+    if (linked) await chooseLinkedLanguage(language);
+    else {
+      const reply = await send("hd_profile_add", { language, firstRun: true }, ENGINE_TARGET);
+      if (!reply.ok) throw new Error(reply.error || `${languageName(language)} could not be set up`);
+    }
+    const stored = await chrome.storage.local.get(["options", "dictionaryState", LANGUAGE_SELECTION_KEY]);
+    languageSelection = stored[LANGUAGE_SELECTION_KEY] ?? null;
+    adoptOptions(stored.options);
+    adoptDictionaryState(stored.dictionaryState);
+  } catch (error) {
+    saving = false;
+    setStatus(`Could not set up ${languageName(language)}: ${describeErrorMessage(error)}`, "error", error);
+    render();
+    return false;
+  }
+  saving = false;
+  return advance(stage);
+}
+
 // Linking mirrors the shared library here, and setup then has nothing left to do.
 async function useSharedHachidori() {
   if (saving || setupState === null || sharedHost === null) return;
@@ -847,8 +1169,22 @@ async function useSharedHachidori() {
     render();
     return;
   }
+  // The link first, then the chosen language (16.1). The link stays when the
+  // language cannot be added; setup finishes in Japanese and says why.
+  let languageFailure = null;
+  if (chosenLanguage !== "ja") {
+    try {
+      await chooseLinkedLanguage(chosenLanguage);
+    } catch (error) {
+      languageFailure = error;
+    }
+  }
   saving = false;
-  await advance("complete");
+  const completed = await advance("complete");
+  if (completed && languageFailure !== null) {
+    setStatus(`Linked. ${languageName(chosenLanguage)} could not be added, so Hachidori reads Japanese: `
+      + `${describeErrorMessage(languageFailure)} Add it later from the Language menu in Settings.`, "error", languageFailure);
+  }
 }
 
 function welcomeView() {
@@ -863,8 +1199,8 @@ function welcomeView() {
       ],
       actions: [
         button("setup-use-shared", `Use the Hachidori in ${name}`, () => { void useSharedHachidori(); }),
-        button("setup-start", "Set up separately", () => { void advance("dictionaries"); }, "ghost"),
-        button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
+        button("setup-start", "Set up separately", () => { void startIn("dictionaries"); }, "ghost"),
+        button("setup-manual", "Set up manually", () => { void startIn("practice"); }, "ghost"),
       ],
     };
   }
@@ -875,8 +1211,8 @@ function welcomeView() {
       settingsNote("Already using Hachidori in another browser, on this computer or another one? Link to it from ", "settings.html#sharing", " instead of setting up again."),
     ],
     actions: [
-      button("setup-start", "Start Setup", () => { void advance("dictionaries"); }),
-      button("setup-manual", "Set up manually", () => { void advance("practice"); }, "ghost"),
+      button("setup-start", "Start Setup", () => { void startIn("dictionaries"); }),
+      button("setup-manual", "Set up manually", () => { void startIn("practice"); }, "ghost"),
     ],
   };
 }
@@ -967,6 +1303,7 @@ function render() {
   const view = currentView();
   recoverRecordedAnkiOutcome(view);
   renderSteps(stage);
+  renderLanguageMenu(stage);
   const heading = element("setup-heading");
   if (heading.textContent !== view.heading) heading.textContent = view.heading;
   renderBody(view.body);
@@ -1028,6 +1365,13 @@ function handleStorageChange(changes, area) {
   if (area !== "local") return;
   let changed = false;
   if (changes[SETUP_STATE_KEY]) changed = adoptSetupState(changes[SETUP_STATE_KEY].newValue) || changed;
+  // This browser's language, in commit order whatever its revision (4.4).
+  if (changes[LANGUAGE_SELECTION_KEY]) {
+    languageSelection = changes[LANGUAGE_SELECTION_KEY].newValue ?? null;
+    projectReaderOptions();
+    projectDictionaries();
+    changed = true;
+  }
   if (changes.dictionaryState) changed = adoptDictionaryState(changes.dictionaryState.newValue) || changed;
   if (changes.options) changed = adoptOptions(changes.options.newValue) || changed;
   // A write in flight renders once its reply settles.
@@ -1045,7 +1389,8 @@ async function start() {
   chrome.runtime.onMessage.addListener(message => { if (setupState?.stage === "dictionaries") installation.receive(message); });
   window.addEventListener("pagehide", installation.stop);
   window.addEventListener("pageshow", event => { if (event.persisted && setupState?.stage === "dictionaries") void requestInstall([]); });
-  const stored = await chrome.storage.local.get([SETUP_STATE_KEY, "dictionaryState", "options"]);
+  const stored = await chrome.storage.local.get([SETUP_STATE_KEY, "dictionaryState", "options", LANGUAGE_SELECTION_KEY]);
+  languageSelection = stored[LANGUAGE_SELECTION_KEY] ?? null;
   adoptSetupState(stored[SETUP_STATE_KEY]);
   adoptDictionaryState(stored.dictionaryState);
   adoptOptions(stored.options);

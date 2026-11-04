@@ -13,7 +13,7 @@ import { extensionApi as chrome, expectedBackgroundUrl, isFirefox } from "./brow
 import { engineWorkerName, createEngineRecycler } from "./engine-recycler.js";
 import { boundResponseFailure } from "./response-limits.js";
 import { decodeBase64 } from "./base64.js";
-import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure } from "./debug-log.js";
+import { captureDebugLog, openDebugLogStore, readDebugLog, recordDebugFailure, setDebugLogLanguages } from "./debug-log.js";
 import { describeError } from "./error-text.js";
 import { CLIPBOARD_TARGET, clipboardSearchText, readClipboardText } from "./search-clipboard.js";
 
@@ -48,6 +48,10 @@ const MUTATION_TYPES = new Set([
   "hd_backup_auto_cleanup",
   "hd_backup_restore",
   "hd_backup_cancel",
+  // Adding and removing a language change what the engine loads
+  // (docs/languages.md 5.2).
+  "hd_profile_add",
+  "hd_profile_remove",
 ]);
 const STAGED_MUTATION_TYPES = new Set(["hd_custom_append"]);
 const POLL_TYPES = new Set(["hd_status", "hd_memory"]);
@@ -189,28 +193,37 @@ function finishRequest(id, response) {
   // dictionaries keep the idle window open.
   if (!POLL_TYPES.has(request.message.type)) recycler.noteIdle();
   if (response?.type === "hd_status_result") {
-    lastEngineStatus = {
-      ...lastEngineStatus,
-      ok: response.ok === true,
-      error: response.error ?? null,
-      ready: response.ready === true,
-      loading: response.loading === true,
-      dictionaryCount: Number(response.dictionaryCount) || 0,
-      packageCount: Number(response.packageCount) || 0,
-      registeredKindCount: Number(response.registeredKindCount) || 0,
-      dictionaryIndexStorage: response.dictionaryIndexStorage,
-      useLessRamByDefault: response.useLessRamByDefault,
-      hashIndexStorage: response.hashIndexStorage,
-      residentHashBudgetBytes: response.residentHashBudgetBytes,
-      failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
-      generation: Number(response.generation) || 0,
-    };
+    adoptEngineStatus(response);
     // The engine cannot see the bridge's lock; Settings waits on it.
     request.sendResponse({ ...response, mutating: mutating() });
   } else {
     request.sendResponse(response);
   }
   if (mutated) admitWaiting();
+}
+
+// The engine's last status, which Settings reads while a mutation holds it.
+function adoptEngineStatus(response) {
+  lastEngineStatus = {
+    ...lastEngineStatus,
+    ok: response.ok === true,
+    error: response.error ?? null,
+    ready: response.ready === true,
+    loading: response.loading === true,
+    dictionaryCount: Number(response.dictionaryCount) || 0,
+    packageCount: Number(response.packageCount) || 0,
+    registeredKindCount: Number(response.registeredKindCount) || 0,
+    dictionaryIndexStorage: response.dictionaryIndexStorage,
+    useLessRamByDefault: response.useLessRamByDefault,
+    hashIndexStorage: response.hashIndexStorage,
+    residentHashBudgetBytes: response.residentHashBudgetBytes,
+    failedDictionaries: Array.isArray(response.failedDictionaries) ? response.failedDictionaries : [],
+    generation: Number(response.generation) || 0,
+  };
+  // Present once the records have profiles (docs/languages.md 9.2), so the
+  // single-profile reply served during a mutation stays today's.
+  if (Array.isArray(response.failedLanguages)) lastEngineStatus.failedLanguages = response.failedLanguages;
+  else delete lastEngineStatus.failedLanguages;
 }
 
 function adoptEngineProgress(progress) {
@@ -319,7 +332,13 @@ function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionary
     const data = event.data;
     if (data?.channel === "host-request") {
       Promise.resolve(chrome.runtime.sendMessage(data.message)).then(
-        (response) => worker.postMessage({ channel: "host-response", id: data.id, ok: true, response }),
+        (response) => {
+          // The records' languages, which this document's debug log redacts
+          // too (docs/languages.md 8.5). A local engine, run in this
+          // document, sets them from the same reply itself.
+          if (data.message?.type === "hd_state_read" && response?.ok === true) setDebugLogLanguages(response.languages ?? []);
+          worker.postMessage({ channel: "host-response", id: data.id, ok: true, response });
+        },
         (error) => worker.postMessage({ channel: "host-response", id: data.id, ok: false, error: describeError(error) }),
       );
       return;
@@ -642,9 +661,11 @@ async function answerUpload(message) {
     case "hd_upload_import": {
       const blobUrl = URL.createObjectURL(uploadedArchive(message.token));
       try {
+        // The import joins the profile the upload named (docs/languages.md 17.3 item 5).
         return await new Promise((resolve) => dispatchEngine({
           target: TARGET, type: "hd_import", requestId: message.requestId ?? null,
           blobUrl, fileName: message.fileName, importDecision: message.importDecision,
+          ...(message.profileId === undefined ? {} : { profileId: message.profileId }),
         }, resolve));
       } finally {
         URL.revokeObjectURL(blobUrl);

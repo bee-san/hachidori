@@ -277,40 +277,51 @@ export function hostSnapshot() {
   };
 }
 
-function readProcRows() {
-  const rows = new Map();
-  if (!existsSync("/proc")) return rows;
-  for (const name of readdirSync("/proc")) {
-    if (!/^\d+$/.test(name)) continue;
+function readStat(pid) {
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+  const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+  return {
+    parent: Number(fields[1]),
+    cpuTicks: Number(fields[11]) + Number(fields[12]),
+    startTicks: Number(fields[19]),
+  };
+}
+
+// `seen` holds the parent of every listed process a sampler has read. A
+// sample reads /proc/<pid>/stat only for processes listed since the previous
+// sample, and stat and status only for the tree's members: a process outside
+// the tree stays outside it, because its parent can only change to init or a
+// subreaper. Reading both files for every process on a shared host (over
+// 1,000 processes) takes longer than the 50 ms interval, which stalls the
+// harness's own event loop and every timing it drives. PID reuse between two
+// listings would need the PID counter to wrap within one interval.
+function sampleProcessTree(rootPid, known, seen = new Map()) {
+  const listed = existsSync("/proc")
+    ? new Set(readdirSync("/proc").filter((name) => /^\d+$/.test(name)).map(Number))
+    : new Set();
+  for (const map of [seen, known]) {
+    for (const pid of map.keys()) {
+      if (!listed.has(pid)) map.delete(pid);
+    }
+  }
+  const added = [];
+  for (const pid of listed) {
+    if (seen.has(pid)) continue;
     try {
-      const stat = readFileSync(`/proc/${name}/stat`, "utf8");
-      const closeParen = stat.lastIndexOf(")");
-      const fields = stat.slice(closeParen + 2).split(" ");
-      const status = readFileSync(`/proc/${name}/status`, "utf8");
-      const rssKiB = Number(status.match(/^VmRSS:\s+(\d+)\s+kB$/m)?.[1] ?? 0);
-      rows.set(Number(name), {
-        parent: Number(fields[1]),
-        cpuTicks: Number(fields[11]) + Number(fields[12]),
-        startTicks: Number(fields[19]),
-        rssBytes: rssKiB * 1024,
-      });
+      seen.set(pid, readStat(pid).parent);
+      added.push(pid);
     } catch {
       // A process can disappear between listing /proc and reading it.
     }
   }
-  return rows;
-}
-
-function sampleProcessTree(rootPid, known) {
-  const rows = readProcRows();
   const ids = new Set([Number(rootPid)]);
-  for (const [pid, startTicks] of known) {
-    if (rows.get(pid)?.startTicks === startTicks) ids.add(pid);
+  for (const pid of known.keys()) {
+    if (seen.has(pid)) ids.add(pid);
   }
   for (;;) {
     const before = ids.size;
-    for (const [pid, row] of rows) {
-      if (ids.has(row.parent)) ids.add(pid);
+    for (const pid of added) {
+      if (ids.has(seen.get(pid))) ids.add(pid);
     }
     if (ids.size === before) break;
   }
@@ -318,8 +329,14 @@ function sampleProcessTree(rootPid, known) {
   let cpuTicks = 0;
   const identities = [];
   for (const pid of ids) {
-    const row = rows.get(pid);
-    if (!row) continue;
+    let row;
+    try {
+      row = readStat(pid);
+      const status = readFileSync(`/proc/${pid}/status`, "utf8");
+      row.rssBytes = Number(status.match(/^VmRSS:\s+(\d+)\s+kB$/m)?.[1] ?? 0) * 1024;
+    } catch {
+      continue;
+    }
     known.set(pid, row.startTicks);
     rssBytes += row.rssBytes;
     cpuTicks += row.cpuTicks;
@@ -389,11 +406,12 @@ export function cpuDelta(before, after) {
   return delta;
 }
 
-// RSS, PSS and USS of the page renderers in a chromeProcesses() reading.
-export function pageRendererMemory(processes) {
+// RSS, PSS and USS of the page renderers (or the processes of another kind,
+// such as `extension`) in a chromeProcesses() reading.
+export function pageRendererMemory(processes, kind = "page") {
   const total = { processes: 0, rssKiB: 0, pssKiB: 0, ussKiB: 0 };
   for (const [pid, row] of processes) {
-    if (row.kind !== "page") continue;
+    if (row.kind !== kind) continue;
     try {
       const rollup = readFileSync(`/proc/${pid}/smaps_rollup`, "utf8");
       const field = (name) => Number(rollup.match(new RegExp(`^${name}:\\s+(\\d+) kB$`, "m"))?.[1] ?? 0);
@@ -413,12 +431,13 @@ export function startProcessSampler(rootPid, intervalMs = 50, { excludeInitialTr
   let peakProcessCount = 0;
   let samples = 0;
   const known = new Map();
+  const seen = new Map();
   const excludedIdentities = new Set();
   const baselineTicksByIdentity = new Map();
   const cpuDeltaTicksByIdentity = new Map();
   let initialCapture = true;
   const capture = () => {
-    const sample = sampleProcessTree(rootPid, known);
+    const sample = sampleProcessTree(rootPid, known, seen);
     if (initialCapture && excludeInitialTree) {
       for (const row of sample.identities) excludedIdentities.add(`${row.pid}:${row.startTicks}`);
     }

@@ -55,6 +55,7 @@
     normaliseActivationKey,
     popupRenderer,
     projectContentOptions,
+    LANGUAGE_SELECTION_KEY,
   } = globalThis.HDReaderOptions;
   const { normaliseLookupTerm, lookupStatsKey } = globalThis.HDLookupStats;
   const { normaliseDictionaryTab: normalizedDictionaryTab } = globalThis.HDPopup;
@@ -65,9 +66,9 @@
   const {
     EDITING_SELECTOR, JAPANESE_CHARACTER_PATTERN, OPAQUE_TAGS, blockOf, candidateSignature, candidateStart,
     caretRangeAt, collectScanEntries, collectSentenceSources, computedStyleFor, expandCandidateAnchor, glyphAtPoint,
-    hasVisibleContent, isEditingElement, isHiddenElement, isJapaneseToken, isScannableElement, isScannableTextNode,
-    rangeOffsetWithin, rawMatchedText, refineSentence, runEntries, sameAnchorNode, selectionSentence,
-    sentenceMatchedText, sourceOffset, textBlocks, textRuns, withSentence,
+    hasVisibleContent, isEditingElement, isHiddenElement, isJapaneseToken, isLanguageToken, isScannableElement,
+    isScannableTextNode, isWordLanguageToken, rangeOffsetWithin, rawMatchedText, refineSentence, runEntries, sameAnchorNode,
+    selectionSentence, sentenceMatchedText, sourceOffset, textBlocks, textRuns, withSentence, wordStart,
   } = globalThis.HDContent.createPageScanner({ isOurNode });
   const MODIFIER_PROPERTIES = new Map([
     ["Shift", "shiftKey"],
@@ -132,14 +133,328 @@
   const levels = [rootLevel];
   let nextLevelId = 0;
   const themeHost = globalThis.HDThemeHost.createThemeHost({
-    getOptions: () => options,
+    // The popups' look follows the root view's profile in effect (8.1).
+    getOptions: () => controlsOptions(),
     onReady() {
       styleGeneration = -1;
       appearance?.refreshHighlight();
       wordHighlights?.refreshColors();
       if (shadow) ensureDictionaryStyles(currentGeneration);
+      // A rebuilt view lost the label naming its profile in effect.
+      if (readingProfiles !== null) for (const level of levels) syncProfileLabel(level);
     },
   });
+  // The stored options record, whose `profiles` say whether the records have
+  // profiles (docs/languages.md 4.5).
+  let storedOptionsRecord = null;
+  let renderLanguageCache = { key: null, language: null };
+
+  // The language a render is for (11.1): the profile its request names, else
+  // the Japanese profile, which a request without a profile always means
+  // (5.2). In the single-profile shape, or without the registry, it is the
+  // unmarked Japanese language, with which every theme renders today's markup.
+  function renderLanguage(request = null) {
+    const layer = globalThis.HDReaderOptions;
+    const registry = globalThis.HDLanguages;
+    const profileId = registry && layer.hasProfiles(storedOptionsRecord) ? request?.profileId ?? "ja" : null;
+    const profile = profileId ? layer.profileDescriptor(storedOptionsRecord, profileId) : null;
+    // The pack settings are the options the language reads; the dictionary
+    // state gives the target languages.
+    const key = profileId ? JSON.stringify([profileId, profile?.language ?? null, profile?.packSettings ?? null,
+      dictionaryStateRevision]) : "single-profile";
+    if (renderLanguageCache.key !== key) {
+      const descriptor = profile ? registry.get?.(profile.language) ?? null : null;
+      // A dictionary's target language belongs to its package, so every
+      // package counts, also one the active profile does not use.
+      renderLanguageCache = { key, language: globalThis.HDThemeHost.createLanguage(descriptor, profileId ? {
+        marked: true, packSettings: profile?.packSettings ?? {}, dictionaries: storedDictionaryRecord?.dictionaries ?? dictionaries,
+      } : {}) };
+    }
+    return renderLanguageCache.language;
+  }
+
+  // The direction and target language of each dictionary of a mined result,
+  // as its view's language gives them (docs/languages.md 10.2, 12), so the
+  // note builder writes what the popup shows.
+  function miningLanguageFields(result, request) {
+    const language = renderLanguage(request);
+    const titles = [...new Set(result.term.glossaries.map(glossary => glossary.dictionary))];
+    return {
+      dictionaryDirections: Object.fromEntries(titles.map(title => [title, language.dictionaryDirection(title, result)])),
+      dictionaryTargetLanguages: Object.fromEntries(titles.flatMap(title => {
+        const tag = language.dictionaryLanguage(title);
+        return tag ? [[title, tag]] : [];
+      })),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Profiles (docs/languages.md 8). Once the records have profiles the reader
+  // holds every profile's projection, and each lookup uses the profile in
+  // effect: the active profile or, with automatic switching, the one whose
+  // language the hovered element's `lang` names. `options`, `dictionaries` and
+  // `dictionaryGroups` are the active profile's; each view renders with its
+  // own profile in effect (profileView), and the popups' look, one theme in
+  // one shadow root, follows the root view's. In the single-profile shape
+  // there are no reading profiles and every path below is today's.
+  // ---------------------------------------------------------------------------
+  let storedDictionaryRecord = null;
+  let languageSelection = null;
+  // Profile id → { id, language, options, dictionaries, groups, text }.
+  let readingProfiles = null;
+  // The startup and search pages read in the active profile (8.1 rule 4).
+  const READER_PAGE = location.protocol === EXTENSION_PROTOCOL;
+
+  // Today's Japanese rules: the gate, a scan from the cursor, sentence.js's
+  // tables and word-highlights.js's chunk breaks (8.2-8.4).
+  const JAPANESE_TEXT_RULES = Object.freeze({
+    gate: text => isJapaneseToken(text),
+    isText: text => JAPANESE_CHARACTER_PATTERN.test(text),
+    words: null,
+    sentenceRules: undefined,
+    highlightBreaks: null,
+    lineJoiner: "",
+  });
+
+  function patternOf(source) {
+    if (typeof source !== "string" || source === "") return null;
+    try {
+      return new RegExp(source, "u");
+    } catch {
+      return null;
+    }
+  }
+
+  // A pack's text rules (registry-reader.js holds them with class references
+  // expanded). Japanese keeps today's, whatever its pack holds.
+  function textRules(language, descriptor) {
+    const text = descriptor?.text;
+    if (language === "ja" || !text) return JAPANESE_TEXT_RULES;
+    const pattern = patternOf(text.pattern) ?? JAPANESE_CHARACTER_PATTERN;
+    const word = text.scanStart === "word" ? patternOf(text.wordCharacters) ?? pattern : null;
+    const sentence = text.sentence && typeof text.sentence === "object" ? text.sentence : null;
+    const breaks = text.highlightBreaks && typeof text.highlightBreaks === "object" ? text.highlightBreaks
+      : { sentenceEnd: sentence?.terminators ?? [], clauseEnd: [] };
+    return {
+      gate: value => (word === null ? isLanguageToken(value, pattern) : isWordLanguageToken(value, pattern, word)),
+      isText: value => pattern.test(value),
+      words: word === null ? null : { word, internal: patternOf(text.wordInternal), limit: MAX_SCAN_WINDOW },
+      sentenceRules: sentence === null ? undefined : globalThis.HDSentence.sentenceRules(sentence),
+      lineJoiner: typeof text.lineJoiner === "string" ? text.lineJoiner : "",
+      highlightBreaks: { sentenceEnd: new Set(breaks.sentenceEnd ?? []), clauseEnd: new Set(breaks.clauseEnd ?? []) },
+    };
+  }
+
+  function emptyDictionaryView(revision) {
+    return { schemaVersion: 1, revision, dictionaries: [], groups: [] };
+  }
+
+  // The highlighter reads each block with its profile once the records have
+  // profiles; it is made again when they gain or lose them, and reads every
+  // block again when a profile changes.
+  function reprofileHighlights(withProfiles) {
+    if (wordHighlights === null) return;
+    if (wordHighlights.profiled !== withProfiles) {
+      wordHighlights.stop();
+      wordHighlights = null;
+    } else if (withProfiles) wordHighlights.reprofile();
+  }
+
+  // Every profile's projection, from the stored records and the registry.
+  function rebuildReadingProfiles() {
+    const layer = globalThis.HDReaderOptions;
+    if (!layer.hasProfiles(storedOptionsRecord)) {
+      readingProfiles = null;
+      languageOverrides.clear();
+      reprofileHighlights(false);
+      return;
+    }
+    const previous = readingProfiles;
+    const revision = Number.isInteger(storedDictionaryRecord?.revision) ? storedDictionaryRecord.revision : 0;
+    readingProfiles = new Map(layer.profiles(storedOptionsRecord).map(profile => {
+      const descriptor = globalThis.HDLanguages?.get?.(profile.language) ?? null;
+      const view = storedDictionaryRecord === null ? null : layer.projectDictionaryState(storedDictionaryRecord, profile.id);
+      const state = normalizeDictionaryState(view ?? emptyDictionaryView(revision));
+      const kept = previous?.get(profile.id);
+      return [profile.id, {
+        id: profile.id,
+        language: profile.language,
+        options: applyHostCapabilities(layer.projectOptions(storedOptionsRecord, profile.id)),
+        dictionaries: state.dictionaries,
+        groups: state.groups,
+        text: kept?.language === profile.language ? kept.text : textRules(profile.language, descriptor),
+      }];
+    }));
+    reprofileHighlights(true);
+  }
+
+  function activeProfileId() {
+    return globalThis.HDReaderOptions.activeProfileId(storedOptionsRecord, languageSelection);
+  }
+
+  function activeReadingProfile() {
+    return readingProfiles?.get(activeProfileId()) ?? null;
+  }
+
+  // The fields that name a request's profile: none in the single-profile shape.
+  function profileFields(profile) {
+    return readingProfiles !== null && profile ? { profileId: profile.id } : {};
+  }
+
+  function requestProfile(request) {
+    return readingProfiles?.get(request?.profileId) ?? activeReadingProfile();
+  }
+
+  // The profile a level's view renders with: none in the single-profile shape.
+  function levelProfile(level) {
+    return readingProfiles === null ? null : requestProfile(level?.currentViewRequest);
+  }
+
+  // A profile's options and dictionary view; without one, the globals.
+  function profileView(profile) {
+    return profile ? { options: profile.options, dictionaries: profile.dictionaries, groups: profile.groups }
+      : { options, dictionaries, groups: dictionaryGroups };
+  }
+
+  function primarySubtag(tag) {
+    return typeof tag === "string" ? tag.trim().split(/[-_]/u)[0].toLowerCase() : "";
+  }
+
+  // The profile whose language a `lang` names by primary subtag (`ja-JP` →
+  // ja, `zh-Hant` → zh), or null.
+  function profileForLang(tag) {
+    const wanted = primarySubtag(tag);
+    if (wanted === "" || readingProfiles === null) return null;
+    for (const profile of readingProfiles.values()) {
+      const bcp47 = globalThis.HDLanguages?.get?.(profile.language)?.bcp47;
+      if (profile.language === wanted || primarySubtag(bcp47) === wanted) return profile;
+    }
+    return null;
+  }
+
+  function autoSwitching() {
+    return readingProfiles !== null && !READER_PAGE
+      && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
+  }
+
+  // The profile in effect for a lookup at `element` (8.1): the active profile,
+  // or with automatic switching the one the nearest `lang` names.
+  function profileForElement(element) {
+    if (readingProfiles === null) return null;
+    const active = activeReadingProfile();
+    if (!autoSwitching()) return active;
+    const labelled = element?.closest?.("[lang]") ?? element?.ownerDocument?.documentElement;
+    return profileForLang(labelled?.getAttribute?.("lang")) ?? active;
+  }
+
+  // The root view's profile in effect, else the active profile: the popups'
+  // look follows it, and so do the word-status controls' options. Anki and
+  // pronunciation have a controller per profile (perProfileControllers).
+  let controlsProfileId = null;
+
+  function controlsProfile() {
+    return readingProfiles?.get(controlsProfileId) ?? activeReadingProfile();
+  }
+
+  function controlsOptions() {
+    return controlsProfile()?.options ?? options;
+  }
+
+  function syncControls() {
+    const next = controlsOptions();
+    audio?.update(next);
+    mining?.update(next);
+    wordStatusActions?.update(next);
+  }
+
+  // One controller per profile in effect, so a popup's notes and audio use
+  // its own profile's Templates, decks and sources (docs/languages.md 5.4,
+  // 8.1). `update` gives each its profile's options; without profiles there
+  // is one controller and it gets `next`, as today.
+  function perProfileControllers(create) {
+    const controllers = new Map();
+    return {
+      of(profile) {
+        const key = profile?.id ?? null;
+        if (!controllers.has(key)) {
+          const controller = create(profile);
+          controller.update(profileView(profile).options, optionsStorageRevision >= 0);
+          controllers.set(key, controller);
+        }
+        return controllers.get(key);
+      },
+      each(run) {
+        for (const controller of controllers.values()) run(controller);
+      },
+      update(next, ready) {
+        for (const [key, controller] of controllers) {
+          controller.update(key === null ? next : readingProfiles?.get(key)?.options ?? next, ready);
+        }
+      },
+    };
+  }
+
+  // The custom buttons of a level's view are its profile in effect's.
+  function syncCustomButtons(level) {
+    const buttons = profileView(levelProfile(level)).options.customButtons;
+    const key = JSON.stringify(buttons);
+    if (!level.view || level.customButtonsKey === key) return;
+    level.customButtonsKey = key;
+    level.view.setCustomButtons(buttons);
+  }
+
+  // The popup names the profile in effect when it is not the active one
+  // (docs/languages.md 8.1): a small label on a line of its own at the top of
+  // the popup, so it never covers what a theme draws there. order:-1 keeps it
+  // first when the renderer moves its header back to the top.
+  function syncProfileLabel(level) {
+    if (!level.popup) return;
+    const profile = readingProfiles === null ? null : requestProfile(level.currentViewRequest);
+    if (profile === null || profile.id === activeProfileId()) {
+      level.profileLabel?.remove();
+      level.profileLabel = null;
+      return;
+    }
+    let label = level.profileLabel;
+    if (!label) {
+      label = document.createElement("span");
+      label.className = "gsm-hoshidicts-profile-label";
+      label.lang = "en";
+      // The popup's own text colour at 11px, legible in every palette (WCAG AA).
+      label.style.cssText = "display:block;order:-1;margin:2px 8px 0;text-align:end;pointer-events:none;"
+        + "font-size:11px;line-height:1.4;color:var(--hoshidicts-text,currentColor);";
+      level.profileLabel = label;
+    }
+    const name = globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;
+    if (label.textContent !== name) label.textContent = name;
+    if (level.popup.firstChild !== label) level.popup.prepend(label);
+  }
+
+  // Before a view renders it takes its profile's custom buttons, and a root
+  // view's profile becomes the one the look and word-status controls follow.
+  function adoptControlsProfile(request, level) {
+    if (readingProfiles === null) return;
+    syncCustomButtons(level);
+    if (level !== rootLevel) return;
+    const id = requestProfile(request)?.id ?? null;
+    if (id === controlsProfileId) return;
+    controlsProfileId = id;
+    syncControls();
+    appearance?.update(controlsOptions());
+    void themeHost.sync();
+  }
+
+  // A lookup inside a popup uses its parent's profile, or with automatic
+  // switching the one the nearest `lang` inside the popup's content names
+  // (8.1 rule 3). The popup's own `lang="en"` is its interface, not content.
+  function profileForDefinition(element, level) {
+    if (readingProfiles === null) return null;
+    const parent = requestProfile(level?.currentViewRequest);
+    if (!autoSwitching()) return parent;
+    const labelled = element?.closest?.("[lang]");
+    if (!labelled || labelled === level.popup || !level.popup?.contains(labelled)) return parent;
+    return profileForLang(labelled.getAttribute("lang")) ?? parent;
+  }
 
   function createLevelState(depth) {
     return {
@@ -183,7 +498,9 @@
   let mediaCacheBytes = 0;
   let activeMediaRequests = 0;
   let mediaQueue = [];
-  let popupImageSources = null;
+  // Profile id (null without profiles) → its effective image route.
+  const popupImageSources = new Map();
+  const popupMediaResolvers = new Map();
 
   let lastPointer = null;
   let scanTimer = null;
@@ -270,8 +587,10 @@
       const customButtonsChanged = JSON.stringify(next.customButtons) !== JSON.stringify(options.customButtons);
       const miningChanged = customButtonsChanged;
       options = next;
+      // Each profile's options carry the host's capabilities too.
+      if (customButtonsChanged && readingProfiles !== null) rebuildReadingProfiles();
       if (customButtonsChanged) {
-        for (const level of levels) level.view?.setCustomButtons(options.customButtons);
+        for (const level of levels) syncCustomButtons(level);
       }
       if (miningChanged) mining?.update(options, optionsStorageRevision >= 0);
     } catch {
@@ -290,8 +609,8 @@
 
   const projectHostOptions = stored => applyHostCapabilities(projectContentOptions(stored));
 
-  function dictionaryPresentation() {
-    return dictionaries
+  function dictionaryPresentation(profile = null) {
+    return profileView(profile).dictionaries
       .filter((entry) => entry.enabled !== false)
       .map((entry) => ({
         id: entry.id,
@@ -302,18 +621,21 @@
       }));
   }
 
-  function dictionaryTabGroups() {
-    const titles = new Map(dictionaries.filter((entry) => entry.enabled)
+  function dictionaryTabGroups(profile = null) {
+    const view = profileView(profile);
+    const titles = new Map(view.dictionaries.filter((entry) => entry.enabled)
       .map((entry) => [entry.id, entry.title]));
-    return dictionaryGroups.map((group) => ({
+    return view.groups.map((group) => ({
       id: group.id,
       name: group.name,
       dictionaries: group.dictionaryIds.filter((id) => titles.has(id)).map((id) => titles.get(id)),
     }));
   }
 
-  function selectedKanjiDictionaryCapability() {
-    return globalThis.HDReaderOptions.resolveKanjiDictionary(options.kanjiClickDictionary, dictionaries, dictionaryGroups);
+  // The clicked-character dictionary of `profile` (the active one without one).
+  function selectedKanjiDictionaryCapability(profile = null) {
+    return globalThis.HDReaderOptions.resolveKanjiDictionary((profile?.options ?? options).kanjiClickDictionary,
+      profile?.dictionaries ?? dictionaries, profile?.groups ?? dictionaryGroups);
   }
 
   function isOurNode(node) {
@@ -353,15 +675,24 @@
   const LONG_KEY_INFLECTION_SLACK = 8;
   const MAX_SCAN_WINDOW = 256;
 
-  function scanWindow() {
+  // Over the enabled packages of the profile in effect (8.3); the active
+  // profile's without one.
+  function scanWindow(profile = null) {
     let longest = 0;
-    for (const entry of dictionaries) {
+    for (const entry of profile?.dictionaries ?? dictionaries) {
       if (entry.enabled !== false && entry.termCount > 0 && entry.longKeyLength > longest) {
         longest = entry.longKeyLength;
       }
     }
-    if (longest === 0) return options.scanLength;
-    return Math.min(MAX_SCAN_WINDOW, Math.max(options.scanLength, longest + LONG_KEY_INFLECTION_SLACK));
+    const scanLength = (profile?.options ?? options).scanLength;
+    if (longest === 0) return scanLength;
+    return Math.min(MAX_SCAN_WINDOW, Math.max(scanLength, longest + LONG_KEY_INFLECTION_SLACK));
+  }
+
+  // A candidate's profile and the language rules it was read with; a Netflix
+  // cue's lines are joined with the language's joiner (8.5).
+  function profileCandidateFields(profile) {
+    return profile ? { profile, sentenceRules: profile.text.sentenceRules, lineJoiner: profile.text.lineJoiner } : {};
   }
 
   // Google Docs paints text to <canvas>. While Settings → Advanced →
@@ -393,6 +724,10 @@
   // netflix-content.js cannot read the switch, so the reader tells it whether
   // to pause Netflix while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
+  // The subtitle language last set for a profile, or null while Japanese's
+  // (today's) applies.
+  let netflixSubtitleLanguage = null;
+
   function syncNetflix() {
     if (typeof globalThis.HDNetflix?.setHoverPause !== "function") {
       loadNetflix();
@@ -402,6 +737,14 @@
     globalThis.HDNetflix.setHoverPause(enabled);
     globalThis.HDNetflix.setLineAudio(enabled);
     globalThis.HDNetflix.setSubtitleDragging(enabled);
+    // The subtitle tracks are the active language's, by its primary subtag
+    // (8.5); Japanese's again once the records have no profiles.
+    const active = activeReadingProfile();
+    if (enabled && (active !== null || netflixSubtitleLanguage !== null)) {
+      const tag = active === null ? "ja" : globalThis.HDLanguages?.get?.(active.language)?.bcp47 ?? active.language;
+      netflixSubtitleLanguage = active === null ? null : primarySubtag(tag);
+      globalThis.HDNetflix.setSubtitleLanguage?.(primarySubtag(tag));
+    }
   }
 
   // background.js registers netflix-content.js for Netflix pages that load
@@ -433,12 +776,53 @@
   // Storage events arrive in commit order, so each one is the current record,
   // whatever its revision: a linked browser's mirror starts again from the
   // host's. The first read applies only if no event has come before it.
+  // With profiles, marks are kept per language (docs/languages.md 4.3): the
+  // highlighter and the popup's buttons read the language of the profile they
+  // act for.
+  let wordStatusOverrideRecord = null;
+  const languageOverrides = new Map();
+
+  function overridesForLanguage(language = "ja") {
+    if (!languageOverrides.has(language)) {
+      languageOverrides.set(language, globalThis.HDWordStatusOverrides.wordStatusOverrideMapFor(wordStatusOverrideRecord, language));
+    }
+    return languageOverrides.get(language);
+  }
+
+  function shareWordStatusOverrides() {
+    if (readingProfiles === null) {
+      wordHighlights?.setOverrides(wordStatusOverrides);
+      wordStatusActions?.setOverrides(wordStatusOverrides);
+      return;
+    }
+    wordHighlights?.setOverrides(profile => overridesForLanguage(profile.language));
+    wordStatusActions?.setOverrides(context => overridesForLanguage(context?.language));
+  }
+
   function adoptWordStatusOverrides(value, changed) {
     if (!changed && wordStatusOverridesChanged) return;
     wordStatusOverridesChanged ||= changed;
     wordStatusOverrides = globalThis.HDWordStatusOverrides.wordStatusOverrideMap(value);
-    wordHighlights?.setOverrides(wordStatusOverrides);
-    wordStatusActions?.setOverrides(wordStatusOverrides);
+    wordStatusOverrideRecord = value ?? null;
+    languageOverrides.clear();
+    shareWordStatusOverrides();
+  }
+
+  // The profile a lookup in a block of text would use (8.5), for its marks: none
+  // when that profile does not mark words.
+  function highlightProfileOf(element) {
+    const profile = profileForElement(element);
+    if (!profile || !profile.options.wordHighlightEnabled) return null;
+    return { key: profile.id, language: profile.language, fields: profileFields(profile), options: profile.options,
+      isText: profile.text.isText, breaks: profile.text.highlightBreaks ?? undefined };
+  }
+
+  // Blocks with text in a language the frame's lookups may use.
+  function highlightText(text) {
+    if (readingProfiles === null) return JAPANESE_CHARACTER_PATTERN.test(text);
+    const candidates = autoSwitching() ? readingProfiles.values() : [activeReadingProfile()];
+    for (const profile of candidates) if (profile?.text.isText(text)) return true;
+    return false;
   }
 
   function syncWordHighlights() {
@@ -451,15 +835,17 @@
       wordHighlights = globalThis.HDWordHighlights.createWordHighlighter({
         window,
         send: sendRequest,
-        textBlocks,
+        textBlocks: readingProfiles === null ? textBlocks : root => textBlocks(root, highlightText),
         blockOf,
         textRuns,
         runEntries,
         isJapanese: (text) => JAPANESE_CHARACTER_PATTERN.test(text),
         prepare: ensureUi,
         readPalette: () => (host ? window.getComputedStyle(host) : null),
+        ...(readingProfiles === null ? {} : { profileOf: highlightProfileOf }),
       });
-      wordHighlights.setOverrides(wordStatusOverrides);
+      wordHighlights.profiled = readingProfiles !== null;
+      shareWordStatusOverrides();
     }
     if (wordHighlights.running) wordHighlights.update(options);
     else wordHighlights.start(options);
@@ -498,6 +884,13 @@
   }
 
   /** The SVG <text> carrying `rect`'s run at its position, transform and font; invisible and not hit-testable. */
+  // A run whose first letter is of a right-to-left script. Compiled the
+  // first time it is used, like glossary.js's patterns: a property escape in
+  // a literal costs every frame at injection.
+  let rightToLeftRun = null;
+  const RIGHT_TO_LEFT_RUN = () => rightToLeftRun ??= new RegExp(
+    String.raw`^\P{L}*[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}]`, "u");
+
   function docsImposterFor(rect) {
     const run = rect.getAttribute("aria-label");
     if (docsImposter?.rect === rect && docsImposter.text.isConnected && docsImposter.node.nodeValue === run) {
@@ -516,6 +909,12 @@
     important("transform", transform);
     important("font", rect.getAttribute("data-font-css") || "");
     important("text-anchor", "start");
+    // With profiles the imposter reads in the run's direction, from its first
+    // letter (docs/languages.md 8.5); a right-to-left run ends at the rect's left.
+    if (readingProfiles !== null && RIGHT_TO_LEFT_RUN().test(run)) {
+      important("direction", "rtl");
+      important("text-anchor", "end");
+    }
     rect.parentNode.append(text);
     // Docs positions the rect by its box and the <text> by its baseline.
     const box = rect.getBoundingClientRect();
@@ -552,12 +951,17 @@
    * page, and the node is the sole source, so the sentence and the highlight
    * work in it as they do in a page's text nodes.
    */
-  function imposterCandidate(anchor, node, offset, vertical) {
+  // `labelled` is the page element whose `lang` the lookup follows (8.1): the
+  // field, or the Docs run.
+  function imposterCandidate(anchor, node, offset, vertical, labelled = null) {
     const styleCache = new Map();
-    const entries = collectScanEntries(node, offset, anchor, scanWindow(), styleCache);
+    const profile = profileForElement(labelled);
+    const rules = profile?.text ?? JAPANESE_TEXT_RULES;
+    const start = rules.words === null ? { offset } : wordStart(node, offset, anchor, rules.words, styleCache);
+    const entries = collectScanEntries(node, start.offset, anchor, scanWindow(profile), styleCache, rules.words);
     if (entries.length === 0) return null;
     const query = entries.map((entry) => entry.text).join("");
-    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) return null;
+    if ((profile?.options ?? options).onlyScanJapaneseText && !rules.gate(query)) return null;
     const first = entries[0];
     const anchorRange = document.createRange();
     anchorRange.setStart(node, first.offset);
@@ -570,6 +974,7 @@
       sourceDepth: -1,
       sourceElements: [node],
       vertical,
+      ...profileCandidateFields(profile),
     }, first.offset, first.sourceLength, styleCache);
   }
 
@@ -578,7 +983,7 @@
     if (!rect) return null;
     const { text, node } = docsImposterFor(rect);
     // The <text> lives inside Docs' <svg>, which the page scan treats as opaque.
-    return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false);
+    return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false, rect);
   }
 
   // Netflix lays parts of its player over the subtitles, where the hit test
@@ -752,7 +1157,7 @@
     if (x < clip.left || x > clip.right || y < clip.top || y > clip.bottom) return null;
     const offset = imposterOffsetAt(node, clientX, clientY);
     return glyphContainsPoint(node, offset, clientX, clientY)
-      ? imposterCandidate(imposter, node, offset, vertical)
+      ? imposterCandidate(imposter, node, offset, vertical, field)
       : null;
   }
 
@@ -800,23 +1205,32 @@
     return glyphContainsPoint(node, offset, clientX, clientY) ? { node, offset } : null;
   }
 
-  function resolveCandidateAt(startNode, startOffset, japaneseOnly = options.onlyScanJapaneseText) {
+  // `japaneseOnly` defaults to the text gate of the profile in effect, which is
+  // `profile`, or the one `startNode`'s element chooses (8.1, 8.2).
+  function resolveCandidateAt(startNode, startOffset, japaneseOnly = undefined, profile = undefined) {
     const styleCache = new Map();
     if (!isScannableTextNode(startNode, styleCache)) {
       return null;
     }
+    const reading = profile === undefined ? profileForElement(startNode.parentElement) : profile;
+    const rules = reading?.text ?? JAPANESE_TEXT_RULES;
+    const offset = Math.min(startOffset, (startNode.nodeValue || "").length);
+    // A language read word by word starts at the hovered word (8.3).
+    const start = rules.words === null ? { node: startNode, offset }
+      : wordStart(startNode, offset, document.body, rules.words, styleCache);
     const entries = collectScanEntries(
-      startNode,
-      Math.min(startOffset, (startNode.nodeValue || "").length),
+      start.node,
+      start.offset,
       document.body,
-      scanWindow(),
-      styleCache
+      scanWindow(reading),
+      styleCache,
+      rules.words,
     );
     if (entries.length === 0) {
       return null;
     }
     const query = entries.map((entry) => entry.text).join("");
-    if (japaneseOnly && !isJapaneseToken(query)) {
+    if ((japaneseOnly ?? (reading?.options ?? options).onlyScanJapaneseText) && !rules.gate(query)) {
       return null;
     }
 
@@ -847,6 +1261,7 @@
       sourceElements,
       vertical: computedStyleFor(first.node.parentElement, styleCache)
         .writingMode.startsWith("vertical"),
+      ...profileCandidateFields(reading),
     }, matchStart, first.sourceLength, styleCache);
   }
 
@@ -902,12 +1317,18 @@
         return null;
       }
     }
+    const profile = profileForDefinition(startNode.parentElement, level);
+    const rules = profile?.text ?? JAPANESE_TEXT_RULES;
+    const caretOffset = Math.min(caretRange.startOffset, (startNode.nodeValue || "").length);
+    const start = rules.words === null ? { node: startNode, offset: caretOffset }
+      : wordStart(startNode, caretOffset, lookupText, rules.words, styleCache);
     let entries = collectScanEntries(
-      startNode,
-      Math.min(caretRange.startOffset, (startNode.nodeValue || "").length),
+      start.node,
+      start.offset,
       lookupText,
-      scanWindow(),
-      styleCache
+      scanWindow(profile),
+      styleCache,
+      rules.words,
     );
     const linkBoundary = entries.findIndex((entry) =>
       entry.node.parentElement?.closest("a")
@@ -919,7 +1340,7 @@
       return null;
     }
     const query = entries.map((entry) => entry.text).join("");
-    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) {
+    if ((profile?.options ?? options).onlyScanJapaneseText && !rules.gate(query)) {
       return null;
     }
     const first = entries[0];
@@ -948,6 +1369,7 @@
       sourceElements: [lookupText],
       vertical: computedStyleFor(lookupText, styleCache)
         .writingMode.startsWith("vertical"),
+      ...profileCandidateFields(profile),
     }, matchStart, first.sourceLength, styleCache);
   }
 
@@ -955,15 +1377,20 @@
     return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
   }
 
-  function resolveSelectedLookupCandidate(selection = window.getSelection()) {
+  // A selection is read in the profile its anchor chooses, or in `profile`
+  // (keybinds read in the active profile, 8.1 rule 4). It is never moved to a
+  // word start (8.3).
+  function resolveSelectedLookupCandidate(selection = window.getSelection(), profile = undefined) {
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
     const range = selection.getRangeAt(0);
     const styleCache = new Map();
     if (!isScannableElement(selectionBoundaryElement(range.startContainer), styleCache)
         || !isScannableElement(selectionBoundaryElement(range.endContainer), styleCache)) return null;
     const query = selection.toString();
-    if (!query.trim() || (options.onlyScanJapaneseText && !isJapaneseToken(query))) return null;
     const anchor = selectionBoundaryElement(range.commonAncestorContainer);
+    const reading = profile === undefined ? profileForElement(anchor) : profile;
+    const rules = reading?.text ?? JAPANESE_TEXT_RULES;
+    if (!query.trim() || ((reading?.options ?? options).onlyScanJapaneseText && !rules.gate(query))) return null;
     for (const control of anchor.querySelectorAll(EDITING_SELECTOR)) {
       if (isEditingElement(control) && range.intersectsNode(control)
           && hasVisibleContent(control, styleCache)) return null;
@@ -980,6 +1407,7 @@
       sourceElements: [anchor],
       vertical: computedStyleFor(anchor, styleCache).writingMode.startsWith("vertical"),
       ...selectionSentence(range, styleCache),
+      ...profileCandidateFields(reading),
     }, rangeOffsetWithin(anchor, range.startContainer, range.startOffset), rawSelectionText.length, styleCache);
   }
 
@@ -988,7 +1416,9 @@
   function resolveSelectionScanCandidate(selection = window.getSelection()) {
     if (!selection || selection.rangeCount !== 1 || selection.isCollapsed) return null;
     const query = selection.toString();
-    if (options.onlyScanJapaneseText && !isJapaneseToken(query)) return null;
+    // A keybind scan reads in the active profile (8.1 rule 4).
+    const active = activeReadingProfile();
+    if (options.onlyScanJapaneseText && !(active?.text ?? JAPANESE_TEXT_RULES).gate(query)) return null;
     const range = selection.getRangeAt(0);
     let node = range.startContainer, offset = range.startOffset;
     if (node.nodeType !== Node.TEXT_NODE) {
@@ -996,7 +1426,7 @@
       do node = walker.nextNode(); while (node && !range.intersectsNode(node));
       offset = 0;
     }
-    const candidate = node ? resolveCandidateAt(node, offset) : null;
+    const candidate = node ? resolveCandidateAt(node, offset, undefined, readingProfiles === null ? undefined : active) : null;
     return candidate && { ...candidate, selectionRange: range.cloneRange(), selectionText: query };
   }
 
@@ -1278,17 +1708,22 @@
     return job.promise;
   }
 
-  function imageSourceContext() {
-    const next = globalThis.HDReaderOptions.resolvePopupImageSources(options.popupImageSource, dictionaries, dictionaryGroups);
+  function imageSourceContext(profile = null) {
+    const key = profile?.id ?? null;
+    const view = profileView(profile);
+    const next = globalThis.HDReaderOptions.resolvePopupImageSources(view.options.popupImageSource, view.dictionaries, view.groups);
     // Keep the effective route's identity through alias/name-only changes.
     // In-flight consumers capture it, independently of broad storage revisions.
-    if (next !== popupImageSources && !sameDictionaries(next, popupImageSources)) popupImageSources = next;
-    return { popupImageSources, resolveMedia: resolvePopupMedia };
+    const previous = popupImageSources.get(key) ?? null;
+    if (!popupImageSources.has(key) || (next !== previous && !sameDictionaries(next, previous))) popupImageSources.set(key, next);
+    if (!popupMediaResolvers.has(key)) popupMediaResolvers.set(key, request => resolvePopupMedia(request, key));
+    return { popupImageSources: popupImageSources.get(key), resolveMedia: popupMediaResolvers.get(key) };
   }
 
-  function resolvePopupMedia(request) {
-    const sources = popupImageSources;
-    const isCurrent = () => sources === popupImageSources && request.generation === currentGeneration && request.isCurrent();
+  function resolvePopupMedia(request, key = null) {
+    const sources = popupImageSources.get(key) ?? null;
+    const isCurrent = () => sources === (popupImageSources.get(key) ?? null) && request.generation === currentGeneration
+      && request.isCurrent();
     const ownedRequest = { ...request, isCurrent };
     if (sources !== null) return resolveRoutedMedia(ownedRequest, sources);
     // Automatic retains the direct cache/queue path without candidate scans.
@@ -1835,33 +2270,94 @@
     buildLevelUi(rootLevel);
   }
 
-  function buildLevelUi(level) {
-    mining ??= globalThis.HDAnki.createAnkiController({
-      send: (type, fields) => sendRequest(type, fields, "hachidori-anki"),
+  // The popups' Anki controls: a controller per profile in effect, bound by
+  // each view's profile (perProfileControllers).
+  function ankiControllers() {
+    const set = perProfileControllers(profile => globalThis.HDAnki.createAnkiController({
+      send: async (type, fields) => {
+        const reply = await sendRequest(type, { ...fields, ...profileFields(profile) }, "hachidori-anki");
+        // The empty-deck hint is for a new profile's Templates (docs/languages.md
+        // 6.3); without profiles the button stays as it is today (4.5).
+        if (type !== "hd_anki_status" || readingProfiles !== null || reply?.emptyDeck === undefined) return reply;
+        const { emptyDeck: _emptyDeck, ...today } = reply;
+        return today;
+      },
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
       recordNetflixLine: (cue, templateId, options) => globalThis.HDNetflix.record(cue, {
         send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId, ...options }),
-    });
-    mining.update(options, optionsStorageRevision >= 0);
-    audio ??= globalThis.HDAudio.createAudioController({ window, popupRect,
-      send: (type, fields) => sendRequest(type, fields, "hachidori-audio"),
-      // The chooser places itself inside its pane. Open, it is that pane's
-      // interaction, so a child pane that would cover its choices closes.
-      onMenuChange(owner) {
-        cancelCandidateScan();
-        clearHideTimer();
-        if (audio.hasMenu(owner) && levels.length > owner.depth + 1 && !hasProtectedNote(owner.depth + 1)) {
-          dismissLevels(owner.depth + 1, false);
-        }
+      // A Template that names no deck opens Settings → Anki on the profile in
+      // effect (docs/languages.md 6.3); an overlay's host opens Settings itself.
+      openSettings: overlayMode ? null : () => {
+        // A lost reply may follow a successful open, so never retry it.
+        void sendRequest("hd_open_settings", { section: "anki", ...profileFields(profile) }, WORKER_TARGET)
+          .catch(error => console.debug("hachidori: Settings could not be opened", error));
       },
-      onSelectionChange: owner => mining.refresh(owner),
+    }));
+    return {
+      bind: (items, context) => set.of(levelProfile(context.owner)).bind(items, context),
+      retire: owner => set.each(controller => controller.retire(owner)),
+      refresh: owner => set.each(controller => controller.refresh(owner)),
+      update: (next, ready) => set.update(next, ready),
+    };
+  }
+
+  // The popups' pronunciation controls, a controller per profile in effect;
+  // one chooser is open at a time.
+  function audioControllers() {
+    const set = perProfileControllers(profile => {
+      const controller = globalThis.HDAudio.createAudioController({ window, popupRect,
+        send: (type, fields) => sendRequest(type, { ...fields, ...profileFields(profile) }, "hachidori-audio"),
+        // The chooser places itself inside its pane. Open, it is that pane's
+        // interaction, so a child pane that would cover its choices closes.
+        onMenuChange(owner) {
+          if (controller.hasMenu()) set.each(other => { if (other !== controller) other.closeMenu(false); });
+          cancelCandidateScan();
+          clearHideTimer();
+          if (audio.hasMenu(owner) && levels.length > owner.depth + 1 && !hasProtectedNote(owner.depth + 1)) {
+            dismissLevels(owner.depth + 1, false);
+          }
+        },
+        onSelectionChange: owner => mining.refresh(owner),
+      });
+      return controller;
     });
-    audio.update(options, optionsStorageRevision >= 0);
+    const some = test => {
+      let found = false;
+      set.each(controller => { found ||= Boolean(test(controller)); });
+      return found;
+    };
+    return {
+      bind: (items, context) => set.of(levelProfile(context.owner)).bind(items, context),
+      retire: owner => set.each(controller => controller.retire(owner)),
+      dispose: () => set.each(controller => controller.dispose()),
+      closeMenu: (...args) => {
+        let closed = false;
+        set.each(controller => { closed = controller.closeMenu(...args) || closed; });
+        return closed;
+      },
+      hasMenu: owner => some(controller => controller.hasMenu(owner)),
+      positionMenu: owner => set.each(controller => controller.positionMenu(owner)),
+      playButton: (...args) => some(controller => controller.playButton(...args)),
+      selectionFor(result) {
+        let selection = null;
+        set.each(controller => { selection ??= controller.selectionFor(result); });
+        return selection;
+      },
+      settleAutoplay: (owner, request) => set.each(controller => controller.settleAutoplay(owner, request)),
+      update: (next, ready) => set.update(next, ready),
+    };
+  }
+
+  function buildLevelUi(level) {
+    mining ??= ankiControllers();
+    mining.update(controlsOptions(), optionsStorageRevision >= 0);
+    audio ??= audioControllers();
+    audio.update(controlsOptions(), optionsStorageRevision >= 0);
     wordStatusActions ??= globalThis.HDWordHighlights.createWordStatusActions({
       send: (type, fields) => sendRequest(type, fields, WORKER_TARGET),
     });
-    wordStatusActions.update(options);
+    wordStatusActions.update(controlsOptions());
     wordStatusActions.setOverrides(wordStatusOverrides);
     const popup = document.createElement("div");
     popup.className = "gsm-hoshidicts-popup";
@@ -1929,6 +2425,8 @@
     shadow.appendChild(popup);
     level.popup = popup;
     level.highlighter = highlighter.scope(level);
+    const customButtons = profileView(levelProfile(level)).options.customButtons;
+    level.customButtonsKey = JSON.stringify(customButtons);
     level.view = themeHost.createView({
       onRendererRetired() {
         audio.retire(level);
@@ -1936,6 +2434,9 @@
         wordStatusActions.retire(level);
         level.noteEditing = false;
       },
+      // One-time work (font warm-up) for the active profile's language; each
+      // render carries its own (11.1).
+      language: renderLanguage({ profileId: activeProfileId() }),
       appendExpressionRuby: globalThis.HDGlossary.appendExpressionRuby,
       createPronunciationPitchAccent: globalThis.HDGlossary.createPronunciationPitchAccent,
       appendTextOnlyGlossary: globalThis.HDGlossary.appendTextOnlyGlossary,
@@ -1943,13 +2444,13 @@
       document,
       getPageZoom: () => pageZoom,
       getPopupScalePercent: () => options.popupScalePercent,
-      getPopupColumns: () => options.popupColumns,
-      getImageHoverPreview: () => options.imageHoverPreview,
+      getPopupColumns: () => profileView(levelProfile(level)).options.popupColumns,
+      getImageHoverPreview: () => profileView(levelProfile(level)).options.imageHoverPreview,
       // The docked root's size is the search page's results area.
       onResizeStart: level === rootLevel && dock ? null : event => startPopupResize(event, level),
       onResizeMove: movePopupResize,
       onResizeEnd: stopPopupResize,
-      customButtons: options.customButtons,
+      customButtons,
       highlightName: HIGHLIGHT_NAME,
       idPrefix: level === rootLevel ? "hoshidicts" : `hoshidicts-${nextLevelId += 1}`,
       onAddCustomEntry: (entry) => appendCustomEntry(entry, level),
@@ -2013,6 +2514,8 @@
     mining.bind(rendered.miningActions, { ...context, getRequest: result => {
       const candidate = level.activeCandidate;
       const selection = shadow.getSelection?.() ?? window.getSelection();
+      // The view's own profile's dictionaries (docs/languages.md 8.1).
+      const { dictionaries } = profileView(readingProfiles === null ? null : requestProfile(request));
       const frequencyModes = new Map(dictionaries.map(item => [item.title, item.frequencyMode]));
       const term = { ...result.term, frequencies: result.term.frequencies.map(group =>
         ({ ...group, frequencyMode: frequencyModes.get(group.dictionary) })) };
@@ -2026,6 +2529,9 @@
         dictionaryAliases: Object.fromEntries(dictionaries.filter(item => item.displayName).map(item => [item.title, item.displayName])),
         dictionaryIds: Object.fromEntries(dictionaries.map(item => [item.title, item.id])),
         frequencyDictionaries: dictionaries.filter(item => item.enabled && item.frequencyCount > 0).map(item => item.title),
+        // Once the records have profiles, each dictionary's direction and
+        // target language travel beside its display name (docs/languages.md 12).
+        ...(readingProfiles === null ? {} : miningLanguageFields(result, request)),
         // Experimental Netflix mining: the root popup's pinned cue, and for the
         // root lookup the whole cue as its sentence.
         ...(netflixMiningEnabled() ? globalThis.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,
@@ -2034,7 +2540,20 @@
     } });
     // Only Default's stylesheet styles Mark as known and Ignore; elsewhere
     // their keybinds act alone.
-    wordStatusActions.bind(rendered.miningActions, { ...context, buttons: themeHost.renderer === "default" });
+    wordStatusActions.bind(rendered.miningActions, { ...context, buttons: themeHost.renderer === "default",
+      ...(readingProfiles === null ? {} : { fields: profileFields(requestProfile(request)),
+        language: requestProfile(request)?.language ?? "ja" }) });
+  }
+
+  // Counts are kept per language (docs/languages.md 4.3): Japanese's
+  // generation is the descriptor's own, another language's is its entry under
+  // `languages`. Without profiles every entry is Japanese.
+  function statsGeneration(descriptor, language = "ja") {
+    return language === "ja" ? descriptor?.generation ?? null : descriptor?.languages?.[language] ?? null;
+  }
+
+  function statsKey(descriptor, entry) {
+    return lookupStatsKey({ generation: statsGeneration(descriptor, entry.language) }, entry);
   }
 
   // A count on its way keeps its slot's place, so its arrival moves nothing.
@@ -2047,7 +2566,8 @@
     if (request !== level.currentViewRequest
         || !requestCanRender(level.lookupToken, level.activeCandidate, level) || !level.lookupStatsElement?.isConnected) return;
     const entry = request?.lookupStats;
-    const statistics = entry?.payload?.descriptor.generation === lookupStatsDescriptor.generation
+    const statistics = entry?.payload
+      && statsGeneration(entry.payload.descriptor, entry.language) === statsGeneration(lookupStatsDescriptor, entry.language)
       ? entry.payload.statistics : null;
     const onItsWay = Boolean(entry) && (entry.needsRefresh || (entry.pending && !settled));
     level.view.setLookupStats(level.lookupStatsElement, statistics, onItsWay);
@@ -2059,14 +2579,17 @@
           && (typeof descriptor.generation !== "string" || descriptor.generation === ""))) return;
     const sameGeneration = descriptor.generation === lookupStatsDescriptor.generation;
     if (descriptor.revision < lookupStatsDescriptor.revision && !sameGeneration) return;
-    const replaced = descriptor.generation !== lookupStatsDescriptor.generation;
+    const previous = lookupStatsDescriptor;
     if (descriptor.revision >= lookupStatsDescriptor.revision) lookupStatsDescriptor = descriptor;
     for (const level of levels) {
       const request = level.currentViewRequest;
       const entry = request?.lookupStats;
       if (!entry) continue;
-      const row = changes[lookupStatsKey(descriptor, entry)]?.newValue;
-      if (row && (!entry.payload || entry.payload.descriptor.generation !== descriptor.generation
+      // Only a language whose generation changed reads its counts again.
+      const replaced = statsGeneration(descriptor, entry.language) !== statsGeneration(previous, entry.language);
+      const row = changes[statsKey(descriptor, entry)]?.newValue;
+      if (row && (!entry.payload
+          || statsGeneration(entry.payload.descriptor, entry.language) !== statsGeneration(descriptor, entry.language)
           || entry.payload.descriptor.revision < descriptor.revision)) {
         entry.payload = { descriptor, statistics: row };
         entry.needsRefresh = false;
@@ -2081,7 +2604,8 @@
   // The count that decides definition blur: null while unknown or unavailable.
   function currentLookupCount(entry) {
     const payload = entry.payload;
-    if (!payload || payload.descriptor.generation !== lookupStatsDescriptor.generation) return null;
+    if (!payload || statsGeneration(payload.descriptor, entry.language)
+        !== statsGeneration(lookupStatsDescriptor, entry.language)) return null;
     return payload.statistics?.lookupCount ?? null;
   }
 
@@ -2094,10 +2618,10 @@
     entry.needsRefresh = false;
     const requestedOptionsRevision = optionsStorageRevision;
     void sendRequest(record ? "hd_lookup_stats_record" : "hd_lookup_stats_read", {
-      term: entry.term, reading: entry.reading,
+      term: entry.term, reading: entry.reading, ...entry.fields,
     }, "hoshidicts-worker").then(payload => {
       adoptLookupStatsDescriptor(payload.descriptor);
-      if (payload.descriptor.generation !== lookupStatsDescriptor.generation) {
+      if (statsGeneration(payload.descriptor, entry.language) !== statsGeneration(lookupStatsDescriptor, entry.language)) {
         entry.needsRefresh = true;
         return;
       }
@@ -2127,9 +2651,13 @@
     const { term, reading } = normaliseLookupTerm(results[0].term.expression, results[0].term.reading);
     const firstVisit = !request.lookupStats;
     let entry = request.lookupStats;
+    // A count belongs to the language of the view's profile, which its requests name.
+    const profile = readingProfiles === null ? null : requestProfile(request);
     if (!entry || entry.term !== term || entry.reading !== reading) {
-      entry = request.lookupStats = { term, reading, pending: false, payload: null, needsRefresh: true };
-    } else if (entry.payload && entry.payload.descriptor.generation !== lookupStatsDescriptor.generation) {
+      entry = request.lookupStats = { term, reading, pending: false, payload: null, needsRefresh: true,
+        language: profile?.language ?? "ja", fields: profileFields(profile) };
+    } else if (entry.payload && statsGeneration(entry.payload.descriptor, entry.language)
+        !== statsGeneration(lookupStatsDescriptor, entry.language)) {
       entry.needsRefresh = true;
     }
     // The descriptor owns one visit, including a visit while counts are off.
@@ -2147,7 +2675,8 @@
     if (blur.awaitingOptions || !options.definitionBlurAnkiMature || blur.ankiCheck !== undefined) return;
     const check = blur.ankiCheck = { epoch: ankiMaturityEpoch };
     const { expression, reading } = level.activeTermRender.results[0].term;
-    void sendRequest("hd_anki_maturity", { request: { term: { expression, reading } } }, "hachidori-anki")
+    void sendRequest("hd_anki_maturity", { request: { term: { expression, reading } },
+      ...profileFields(readingProfiles === null ? null : requestProfile(request)) }, "hachidori-anki")
       .then(payload => payload.mature === true, () => false).then(mature => {
         if (blur.ankiCheck !== check) return;
         blur.ankiMature = check.epoch === ankiMaturityEpoch && mature;
@@ -2674,10 +3203,18 @@
     else hideTimer = window.setTimeout(dismiss, options.popupHideDelayMs);
   }
 
-  function compactSummaryOptions() {
-    return { showCompactDefinitionSummary: options.showCompactDefinitionSummary,
-      compactDefinitionSummaryCount: options.compactDefinitionSummaryCount,
-      compactDefinitionSummaryDictionary: options.compactDefinitionSummaryDictionary };
+  function compactSummaryOptions(source = options) {
+    return { showCompactDefinitionSummary: source.showCompactDefinitionSummary,
+      compactDefinitionSummaryCount: source.compactDefinitionSummaryCount,
+      compactDefinitionSummaryDictionary: source.compactDefinitionSummaryDictionary };
+  }
+
+  // What a view's dictionaries look like: its profile in effect's display
+  // names, favourites, frequency modes, tab groups, summary and metadata.
+  function presentationContext(profile = null) {
+    const own = profileView(profile).options;
+    return { dictionaryPresentation: dictionaryPresentation(profile), dictionaryTabGroups: dictionaryTabGroups(profile),
+      ...compactSummaryOptions(own), ...imageSourceContext(profile), ...globalThis.HDPopup.metadataOptions(own) };
   }
 
   function openExternalLink({ url, active }) {
@@ -2696,14 +3233,11 @@
   function renderContextFor(level = rootLevel) {
     return {
       definitionBlurState: level.currentViewRequest?.blur?.state ?? "revealed",
-      dictionaryPresentation: dictionaryPresentation(),
-      dictionaryTabGroups: dictionaryTabGroups(),
       generation: currentGeneration,
+      language: renderLanguage(level.currentViewRequest),
       onExternalLink: openExternalLink,
       onInternalLink: (link) => onInternalLink(link, level),
-      ...imageSourceContext(),
-      ...compactSummaryOptions(),
-      ...globalThis.HDPopup.metadataOptions(options),
+      ...presentationContext(levelProfile(level)),
     };
   }
 
@@ -2842,6 +3376,7 @@
       results,
       token,
     };
+    adoptControlsProfile(request, level);
     try {
       level.view.renderResults(results, candidate, {
         ...renderContextFor(level),
@@ -2860,6 +3395,7 @@
       return false;
     }
     level.activeHighlightText = matchedText;
+    syncProfileLabel(level);
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
     if (!replayOptions?.preserveViewControls
@@ -2970,20 +3506,24 @@
   // only, as with the option off.
   const DEFINITION_ONLY_RENDERERS = new Set(["jl", "bee", "plain", "crystal"]);
 
-  // A term lookup's engine request, from the current options.
-  function termPayload(text, exactMatch, primaryReading) {
+  // A term lookup's engine request, from the options of the profile in effect
+  // (the active profile's without one), which it names (docs/languages.md 5.4).
+  // The renderer is the frame's.
+  function termPayload(text, exactMatch, primaryReading, profile = null) {
+    const lookup = profile?.options ?? options;
     return {
-      maxResults: options.maxResults,
+      maxResults: lookup.maxResults,
       options: {
-        frequencyDictionary: options.frequencyDictionary,
-        frequencyOrder: options.frequencyOrder,
-        metadataOnlyTerms: options.showMetadataOnlyResults
+        frequencyDictionary: lookup.frequencyDictionary,
+        frequencyOrder: lookup.frequencyOrder,
+        metadataOnlyTerms: lookup.showMetadataOnlyResults
           && !DEFINITION_ONLY_RENDERERS.has(popupRenderer(options.popupTheme)),
-        personalDictionary: options.personalDictionaryEnabled,
+        personalDictionary: lookup.personalDictionaryEnabled,
         primaryReading,
       },
-      scanLength: exactMatch ? clampOption("scanLength", Array.from(text).length) : options.scanLength,
+      scanLength: exactMatch ? clampOption("scanLength", Array.from(text).length) : lookup.scanLength,
       text,
+      ...profileFields(profile),
     };
   }
 
@@ -2991,15 +3531,20 @@
     const text = typeof overrides.text === "string" ? overrides.text : candidate.query;
     const exactSelection = candidate.exactSelection === true && overrides.text === undefined;
     const exactMatch = exactSelection || candidate.linkAnchor === true;
+    // A candidate read in a profile looks up in it; one without (a keybind's
+    // or the search page's, before the records had profiles) in the active one.
+    const profile = readingProfiles === null ? null : candidate.profile ?? activeReadingProfile();
     return executeTermRequest({
       candidate,
       exactSelection,
       highlightText: overrides.keepHighlight === true ? level.activeHighlightText : undefined,
       kind: "term",
-      payload: termPayload(text, exactMatch, typeof overrides.primaryReading === "string" ? overrides.primaryReading : ""),
+      payload: termPayload(text, exactMatch, typeof overrides.primaryReading === "string" ? overrides.primaryReading : "",
+        profile),
       previous: overrides.previous ?? null,
       returnFocus: overrides.returnFocus ?? null,
       selectedDictionaryTab: normalizedDictionaryTab(overrides.selectedDictionaryTab),
+      ...profileFields(profile),
     }, level);
   }
 
@@ -3089,6 +3634,7 @@
     // and the whole of it is the match, so it is its own sentence.
     const candidate = withSentence({
       anchor, linkAnchor: true, query, sourceElements: [anchor], sourceDepth: level.depth, vertical: false,
+      ...profileCandidateFields(profileForDefinition(anchor, level)),
     }, 0, (anchor.textContent || "").length, new Map());
     return openChildLookup(candidate, level, {
       focusChild,
@@ -3167,6 +3713,7 @@
     level.deferredDictionaryInvalidationRevision = -1;
     level.retainedView = false;
     pruneLevels(level.depth + 1);
+    adoptControlsProfile(request, level);
     try {
       level.view.renderKanji({ ...kanji, entries }, candidate, {
         ...renderContextFor(level),
@@ -3183,6 +3730,7 @@
       console.warn("hachidori: could not render kanji", error);
       return handleLookupFailure(token, error, level, request, true);
     }
+    syncProfileLabel(level);
     ensureDictionaryStyles(currentGeneration);
     positionPopup(level);
     if (!replayOptions?.preserveViewControls) focusPopupControl(".gsm-hoshidicts-kanji-back", level);
@@ -3193,7 +3741,10 @@
     if (!level.activeCandidate || typeof character !== "string" || !character) {
       return;
     }
-    const capability = selectedKanjiDictionaryCapability();
+    // The character view belongs to the profile of the view it opens from.
+    const profile = readingProfiles === null ? null : requestProfile(level.currentViewRequest);
+    const lookup = profile?.options ?? options;
+    const capability = selectedKanjiDictionaryCapability(profile);
     const termSources = capability?.kind === "group"
       ? capability.members.filter((member) => member.kind === "term")
       : capability?.kind === "term" ? [capability] : [];
@@ -3202,23 +3753,25 @@
       capability,
       character,
       highlightText: level.activeHighlightText || character,
-      kanjiPayload: { character },
+      kanjiPayload: { character, ...profileFields(profile) },
       kind: "kanji",
       previous: termViewSnapshot(level),
       returnFocus: kanjiLinkFocusTarget(sourceLink, character, level),
       selectedDictionaryTab: normalizedDictionaryTab(level.currentViewRequest?.selectedDictionaryTab),
       termPayloads: termSources.map((source) => ({
         dictionary: source.title,
-        maxResults: options.maxResults,
+        maxResults: lookup.maxResults,
         options: {
-          frequencyDictionary: options.frequencyDictionary,
-          frequencyOrder: options.frequencyOrder,
-          personalDictionary: options.personalDictionaryEnabled,
+          frequencyDictionary: lookup.frequencyDictionary,
+          frequencyOrder: lookup.frequencyOrder,
+          personalDictionary: lookup.personalDictionaryEnabled,
           primaryReading: "",
         },
         scanLength: 1,
         text: character,
+        ...profileFields(profile),
       })),
+      ...profileFields(profile),
     }, level);
   }
 
@@ -3248,7 +3801,8 @@
     const expectedView = level.currentViewRequest;
     level.pendingCustomAppends += 1;
     try {
-      const reply = await sendRequest("hd_custom_append", { entry });
+      const reply = await sendRequest("hd_custom_append", { entry,
+        ...profileFields(readingProfiles === null ? null : requestProfile(expectedView)) });
       const adoption = adoptDictionaryState(reply.state);
       if (adoption.dictionaryChanged) invalidateStoredState(true);
       else if (adoption.presentationChanged) updateDictionaryPresentation();
@@ -3980,7 +4534,9 @@
 
   function scanSelectedText() {
     if (disposed || !options.hoverEnabled) return false;
-    const candidate = resolveSelectedLookupCandidate();
+    // A keybind scan reads in the active profile (8.1 rule 4).
+    const candidate = resolveSelectedLookupCandidate(window.getSelection(),
+      readingProfiles === null ? undefined : activeReadingProfile());
     if (!candidate) return false;
     startSelectionLookup(candidate);
     return true;
@@ -4045,8 +4601,9 @@
   // (#639): whether copied text has a Japanese character in it. search.html
   // passes the frame only text this accepts (search-shell.js, #644), testing
   // the same set: a change here must change that filter too.
+  // With profiles, text in the language used for lookups (docs/languages.md 8.2).
   function isLookupWorthy(text) {
-    return JAPANESE_CHARACTER_PATTERN.test(text);
+    return (activeReadingProfile()?.text ?? JAPANESE_TEXT_RULES).isText(text);
   }
 
   function runKeybindAction({ action, argument }, event,
@@ -4062,11 +4619,23 @@
     }
     if (action === "toggleOption") {
       if (!argument || optionsStorageRevision < 0) return false;
+      // A profile key toggles in the profile of the popup the keybind acts on,
+      // or the active one, and only when that language has what the key
+      // needs (docs/languages.md 7.3).
+      const layer = globalThis.HDReaderOptions;
+      const profile = readingProfiles === null ? null
+        : (level?.view && !level.popup.hidden ? requestProfile(level.currentViewRequest) : activeReadingProfile());
+      const requirement = layer.OPTION_REQUIREMENTS[argument];
+      const scoped = profile !== null && layer.PROFILE_OPTION_KEYS.includes(argument);
+      if (scoped && requirement && !layer.optionRequirementMet(requirement.requires, profile.language,
+        layer.profileDescriptor(storedOptionsRecord, profile.id)?.packSettings ?? {})) return false;
+      const current = (scoped ? profile.options : options)[argument];
       // A conflicting write changes nothing; the storage event carries the result.
       void sendRequest("hd_options_write", { baseRevision: optionsStorageRevision,
-        options: { [argument]: !options[argument] } }, WORKER_TARGET).catch(() => {});
+        options: { [argument]: !current }, ...(scoped ? profileFields(profile) : {}) }, WORKER_TARGET).catch(() => {});
       return true;
     }
+    if (action === "switchLanguage") return switchLanguage();
     if (action === "toggleWordHighlights") {
       if (!options.hoverEnabled || !options.wordHighlightEnabled) return false;
       wordHighlightsHidden = !wordHighlightsHidden;
@@ -4109,6 +4678,20 @@
       default:
         return false;
     }
+  }
+
+  // Switch to the next language (docs/languages.md 16.2): the profile after the
+  // active one, in the records' order, becomes this browser's active profile.
+  function switchLanguage() {
+    if (readingProfiles === null || readingProfiles.size < 2) return false;
+    const ids = [...readingProfiles.keys()];
+    const next = ids[(ids.indexOf(activeProfileId()) + 1) % ids.length];
+    // A choice made meanwhile in another page wins the race; its storage event
+    // moves this reader, and the next press goes on from there.
+    void sendRequest("hd_language_selection_write", {
+      baseRevision: globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).revision, activeProfileId: next,
+    }, WORKER_TARGET).catch(() => {});
+    return true;
   }
 
   // A keybind action without its key, as a browser shortcut or the search
@@ -4307,11 +4890,15 @@
 
   // A presentation update can replace a compact summary without a render.
   function updateDictionaryPresentation() {
-    const context = { dictionaryPresentation: dictionaryPresentation(), dictionaryTabGroups: dictionaryTabGroups(),
-      ...compactSummaryOptions(), ...imageSourceContext(), ...globalThis.HDPopup.metadataOptions(options) };
+    const contexts = new Map();
+    const context = profile => {
+      if (!contexts.has(profile)) contexts.set(profile, presentationContext(profile));
+      return contexts.get(profile);
+    };
+    context(levelProfile(rootLevel));
     for (const level of levels) {
       if (!level.popup || level.popup.hidden) continue;
-      level.view.updateDictionaryPresentation(context);
+      level.view.updateDictionaryPresentation(context(levelProfile(level)));
       level.definitionReveal.sync();
     }
   }
@@ -4324,11 +4911,27 @@
     }
   }
 
+  // The active profile's view of a stored state (docs/languages.md 5.1); the
+  // state itself in the single-profile shape.
+  function activeDictionaryView(stored) {
+    if (readingProfiles === null) return stored;
+    const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
+    return globalThis.HDReaderOptions.projectDictionaryState(stored ?? null, activeProfileId())
+      ?? emptyDictionaryView(revision);
+  }
+
   function adoptDictionaryState(stored) {
-    const next = normalizeDictionaryState(stored);
-    if (next.revision <= dictionaryStateRevision) {
+    const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
+    if (revision <= dictionaryStateRevision) {
       return { adopted: false, dictionaryChanged: false, presentationChanged: false };
     }
+    storedDictionaryRecord = stored ?? null;
+    rebuildReadingProfiles();
+    return adoptDictionaryView(normalizeDictionaryState(activeDictionaryView(stored)));
+  }
+
+  // The reader's dictionaries become `next`, the active profile's view.
+  function adoptDictionaryView(next) {
     const dictionaryChanged = !sameDictionaryContents(next.dictionaries, dictionaries);
     const presentationChanged = !sameDictionaries(next.dictionaries, dictionaries)
       || !sameDictionaries(next.groups, dictionaryGroups);
@@ -4350,16 +4953,39 @@
     const previousLevelCount = levels.length;
     let dictionaryChanged = false;
     let presentationChanged = false;
+    // This browser's language choice is adopted in commit order whatever its
+    // revision (docs/languages.md 4.4), before the records it applies to.
+    const activeBefore = readingProfiles === null ? null : activeProfileId();
+    if (changes[LANGUAGE_SELECTION_KEY]) languageSelection = changes[LANGUAGE_SELECTION_KEY].newValue ?? null;
+    let optionsAdopted = false;
+    let stateAdopted = false;
     if (changes.options) {
       const adoption = adoptOptions(changes.options.newValue);
+      optionsAdopted = adoption.adopted === true;
       changed = adoption.lookupChanged;
       presentationChanged = adoption.presentationChanged;
     }
     if (changes.dictionaryState) {
       const adoption = adoptDictionaryState(changes.dictionaryState.newValue);
+      stateAdopted = adoption.adopted;
       dictionaryChanged = adoption.dictionaryChanged;
       presentationChanged ||= adoption.presentationChanged;
       changed ||= dictionaryChanged;
+    }
+    // Another active profile: the reader takes its options and dictionaries.
+    if (readingProfiles !== null && activeBefore !== null && activeProfileId() !== activeBefore) {
+      reprofileHighlights(true);
+      if (!optionsAdopted) {
+        const adoption = applyReaderOptions(activeReadingProfile().options, optionsStorageRevision);
+        changed ||= adoption.lookupChanged;
+        presentationChanged ||= adoption.presentationChanged;
+      }
+      if (!stateAdopted) {
+        const adoption = adoptDictionaryView(normalizeDictionaryState(activeDictionaryView(storedDictionaryRecord)));
+        dictionaryChanged ||= adoption.dictionaryChanged;
+        presentationChanged ||= adoption.presentationChanged;
+        changed ||= adoption.dictionaryChanged;
+      }
     }
     if (changes.lookupStats) adoptLookupStatsDescriptor(changes.lookupStats.newValue, changes);
     if (changes.wordStatusOverrides) adoptWordStatusOverrides(changes.wordStatusOverrides.newValue, true);
@@ -4375,7 +5001,13 @@
   function adoptOptions(stored) {
     const revision = Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0;
     if (revision <= optionsStorageRevision) return { lookupChanged: false, presentationChanged: false };
-    const next = projectHostOptions(stored);
+    storedOptionsRecord = stored ?? null;
+    rebuildReadingProfiles();
+    // With profiles the reader's options are the active profile's (8.1).
+    return { ...applyReaderOptions(activeReadingProfile()?.options ?? projectHostOptions(stored), revision), adopted: true };
+  }
+
+  function applyReaderOptions(next, revision) {
     const personalChanged = next.personalDictionaryEnabled !== options.personalDictionaryEnabled;
     const lookupChanged = next.scanLength !== options.scanLength || next.maxResults !== options.maxResults
       || next.frequencyDictionary !== options.frequencyDictionary || next.frequencyOrder !== options.frequencyOrder
@@ -4421,8 +5053,8 @@
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
     syncNetflix();
-    if (customButtonsChanged) {
-      for (const level of levels) level.view?.setCustomButtons(options.customButtons);
+    if (customButtonsChanged || readingProfiles !== null) {
+      for (const level of levels) syncCustomButtons(level);
     }
     if (countsChanged) {
       for (const level of levels) {
@@ -4456,10 +5088,8 @@
     }
     // The reveal mode decides whether blurred definitions are buttons.
     if (optionsArrived || blurChanged) for (const level of levels) level.definitionReveal?.sync();
-    audio?.update(options);
-    mining?.update(options);
-    wordStatusActions?.update(options);
-    appearance?.update(options);
+    syncControls();
+    appearance?.update(controlsOptions());
     void themeHost.sync();
     // After the appearance, so a changed theme's palette is on the host.
     syncWordHighlights();
@@ -4545,9 +5175,10 @@
       chrome.runtime.onMessage?.addListener(onReaderCommand);
       chrome.runtime.onMessage?.addListener(onWordStatusChanged);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null,
-        wordStatusOverrides: null }, (stored) => {
+        wordStatusOverrides: null, [LANGUAGE_SELECTION_KEY]: null }, (stored) => {
         try {
           if (disposed || chrome.runtime.lastError) return;
+          languageSelection ??= stored?.[LANGUAGE_SELECTION_KEY] ?? null;
           adoptWordStatusOverrides(stored?.wordStatusOverrides, false);
           const optionsAdoption = adoptOptions(stored && stored.options);
           const adoption = adoptDictionaryState(stored && stored.dictionaryState);

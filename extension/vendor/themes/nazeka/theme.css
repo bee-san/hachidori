@@ -6,7 +6,10 @@
   position: fixed; z-index: 2147483647; pointer-events: auto;
   box-sizing: border-box; overflow: hidden; padding: 5px;
   color: #ccc; background: #111; border: 1px solid #ccc; border-radius: 3px;
-  font: 13px/1.45 "Noto Sans CJK JP", "Noto Sans JP", Meiryo, sans-serif; text-align: left; white-space: normal;
+  /* A language pack may name its own font and line breaking (docs/languages.md 10.1). */
+  font: 13px/1.45 var(--hd-language-font-family, "Noto Sans CJK JP", "Noto Sans JP", Meiryo, sans-serif);
+  text-align: left; white-space: normal;
+  word-break: var(--hd-language-word-break, normal); line-break: var(--hd-language-line-break, auto);
   zoom: calc(var(--gsm-hoshidicts-page-zoom, 1) * var(--gsm-hoshidicts-popup-scale, 100%));
 }
 .gsm-hoshidicts-popup [hidden], .gsm-hoshidicts-popup[hidden] { display: none !important; }
@@ -42,3 +45,9 @@
 .gsm-hoshidicts-entry [data-definition-reveal]:focus-visible { outline: none; }
 .gsm-hoshidicts-popup [data-definition-reveal] { cursor: pointer; }
 .gsm-hoshidicts-resize-handle { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none; }
+
+/* Logical spacing and start alignment apply only in marked popups (records
+   with profiles, docs/languages.md 10.1-10.2). A popup without profiles keeps
+   the physical rules above, so a Japanese-only popup on a right-to-left page
+   lays out exactly as before. :where() keeps each rule at its base specificity. */
+.gsm-hoshidicts-popup:where([data-hd-language]) { text-align: start; }

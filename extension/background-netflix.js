@@ -7,6 +7,13 @@ import { getAnkiMining } from "./background-requests.js";
 import { sharingLinked } from "./background-sharing.js";
 import { sharingReady } from "./background.js";
 import { NETFLIX_SCRIPTS } from "./netflix.js";
+import { profileTemplateKey } from "./anki-worker.js";
+
+// The Template a Netflix request holds media for: once the records have
+// profiles the request names its profile (docs/languages.md 5.4).
+function netflixTemplate(message) {
+  return message.profileId === undefined ? message.templateId : profileTemplateKey(message.profileId, message.templateId);
+}
 
 // Experimental Netflix mining (docs/architecture.md, Netflix mining). The
 // player page cuts a line's sentence audio from what the viewer heard and
@@ -160,10 +167,10 @@ async function finishNetflixRecording(message, sender) {
   // The GIF, when the recorder made one, is held like the WAV: on its own token
   // for the {gif} field, independent of whether the audio was silent. A
   // recording for a {gif} field alone has no WAV to hold.
-  const gif = typeof clip.gif === "string" ? await mining.gifImage(clip.gif, message.templateId) : null;
+  const gif = typeof clip.gif === "string" ? await mining.gifImage(clip.gif, netflixTemplate(message)) : null;
   let audio = null;
   if (clip.silent === true) audio = { unavailable: "silent" };
-  else if (typeof clip.data === "string") audio = await mining.sentenceAudio(clip.data, message.templateId);
+  else if (typeof clip.data === "string") audio = await mining.sentenceAudio(clip.data, netflixTemplate(message));
   return { audio, gif };
 }
 
@@ -180,7 +187,7 @@ function cancelNetflixRecording(message, sender) {
 async function holdNetflixLineAudio(message, sender) {
   if (sharingLinked) return { unavailable: "linked" };
   await netflixPlayerTab(sender);
-  return getAnkiMining().sentenceAudio(message.data, message.templateId);
+  return getAnkiMining().sentenceAudio(message.data, netflixTemplate(message));
 }
 
 // Chrome adds a registered script only to pages that load after it was

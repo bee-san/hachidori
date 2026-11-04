@@ -57,12 +57,15 @@ function defaultMarker(list) {
 
 // Only content-bearing attributes survive. `data-sc-content` is what Lapis,
 // Kiku and Senren select dictionary sections by; a language is written only
-// where it changes.
+// where it changes. A direction is written only where it changes already: the
+// paragraph rule of docs/languages.md 10.2 marks a block of the other
+// direction, and only once the records have profiles.
 function keptAttributes(node) {
   const kept = [];
   for (const name of ["rowspan", "colspan"]) if (node.hasAttribute(name)) kept.push([name, node.getAttribute(name)]);
   const lang = node.getAttribute("lang");
   if (lang !== null && lang !== node.parentElement?.closest("[lang]")?.getAttribute("lang")) kept.push(["lang", lang]);
+  if (node.hasAttribute("dir")) kept.push(["dir", node.getAttribute("dir")]);
   if (node.dataset.scContent !== undefined) kept.push(["data-sc-content", node.dataset.scContent]);
   return kept;
 }
@@ -98,8 +101,10 @@ function changedMarker(tag, node, style, parentStyle) {
 }
 
 // `document` is the live extension document, whose cascade the popup shares;
-// `root` is the exported glossary, still in its inert document.
-export function compactAnkiGlossary(document, root) {
+// `root` is the exported glossary, still in its inert document. `textAlign` is
+// the root's alignment: `start` under the right-to-left rules of
+// docs/languages.md 12, else today's `left`.
+export function compactAnkiGlossary(document, root, { textAlign = "left" } = {}) {
   const inert = root.ownerDocument;
   const view = document.defaultView;
   // The exporter has already turned dictionary newlines into <br> (#359);
@@ -183,6 +188,11 @@ export function compactAnkiGlossary(document, root) {
     for (const [key, value] of kept) output.setAttribute(key, value);
     const marker = changedMarker(flat.tag, node, style, parentStyle);
     if (marker !== null) output.style.listStyleType = marker;
+    // A list that holds an item of the other direction pads both sides, so
+    // every marker stays inside the field (docs/languages.md 12).
+    if ((flat.tag === "ol" || flat.tag === "ul") && nodes.some(child => child.localName === "li" && child.hasAttribute("dir"))) {
+      output.style.paddingInline = "40px";
+    }
     output.append(...nodes);
     return [output];
   }
@@ -196,6 +206,9 @@ export function compactAnkiGlossary(document, root) {
     for (const [index, body] of styled.querySelectorAll(".gsm-hoshidicts-glossary-content").entries()) {
       const style = view.getComputedStyle(body);
       const replacement = inert.createElement("div");
+      // The dictionary's target language, which its text is labelled against,
+      // and a row's own direction (docs/languages.md 12).
+      for (const name of ["lang", "dir"]) if (body.hasAttribute(name)) replacement.setAttribute(name, body.getAttribute(name));
       replacement.append(...[...body.childNodes].flatMap(child => compact(child, style, [], [])));
       replacement.normalize();
       // Margins and dictionary text can meet as doubled spaces.
@@ -207,6 +220,6 @@ export function compactAnkiGlossary(document, root) {
     shell.remove();
   }
   for (const style of root.querySelectorAll("style")) style.remove();
-  root.style.cssText = "text-align: left;";
+  root.style.cssText = `text-align: ${textAlign};`;
   return root.outerHTML;
 }

@@ -221,12 +221,13 @@
   }
 
   // The whole cue as the note's sentence, its lines joined without a separator
-  // as Japanese subtitles wrap. The match stays where the reader's sentence put
-  // it; null keeps the reader's sentence when that sentence is not exactly once
-  // in the cue.
-  function cueSentence(cueText, sentence, matchOffset) {
+  // as Japanese subtitles wrap, or with a language pack's `lineJoiner` (a
+  // space for languages written with spaces, docs/languages.md 8.5). The match
+  // stays where the reader's sentence put it; null keeps the reader's sentence
+  // when that sentence is not exactly once in the cue.
+  function cueSentence(cueText, sentence, matchOffset, joiner = "") {
     if (typeof sentence !== "string" || sentence === "" || !Number.isSafeInteger(matchOffset)) return null;
-    const whole = String(cueText).split("\n").map(line => line.trim()).join("");
+    const whole = String(cueText).split("\n").map(line => line.trim()).join(typeof joiner === "string" ? joiner : "");
     const at = whole.indexOf(sentence);
     if (at < 0 || whole.includes(sentence, at + 1)) return null;
     return { sentence: whole, matchOffset: at + matchOffset };

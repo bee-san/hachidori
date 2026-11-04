@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "code": "zh",
+  "iso639_3": "zho",
+  "name": "Chinese",
+  "nativeName": "中文",
+  "bcp47": "zh-Hans",
+  "scripts": [
+    "Hans",
+    "Hant"
+  ],
+  "direction": "ltr",
+  "classes": {
+    "hanzi": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]"
+  },
+  "text": {
+    "pattern": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u3100-\\u312F\\u31A0-\\u31BF]",
+    "scanStart": "cursor",
+    "segmentation": "scan",
+    "wordCharacters": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        "。",
+        "！",
+        "？"
+      ],
+      "quotePairs": [
+        [
+          "“",
+          "”"
+        ],
+        [
+          "「",
+          "」"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": ""
+  },
+  "lookup": {
+    "searchResolution": "character",
+    "preprocessors": [],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": null,
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "optional",
+    "ruby": {
+      "alignment": "syllable"
+    },
+    "pitchAccent": false,
+    "characterView": {
+      "name": "Hanzi",
+      "pattern": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+      "readingLabels": {
+        "onyomi": "Pinyin",
+        "kunyomi": "Other readings"
+      },
+      "readingSeparator": ", "
+    },
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {},
+    "displayTransforms": {
+      "zhuyin": [
+        {
+          "map": {
+            "xué": "ㄒㄩㄝˊ",
+            "xiào": "ㄒㄧㄠˋ"
+          }
+        }
+      ]
+    }
+  },
+  "settings": [
+    {
+      "id": "readings",
+      "type": "enum",
+      "default": "pinyin",
+      "values": [
+        {
+          "id": "pinyin",
+          "label": "Pinyin"
+        },
+        {
+          "id": "zhuyin",
+          "label": "Zhuyin"
+        }
+      ],
+      "label": "Readings",
+      "description": "Show readings in pinyin or zhuyin.",
+      "group": "display",
+      "effect": {
+        "display": {
+          "fields": [
+            "reading"
+          ],
+          "when": "zhuyin",
+          "transform": "zhuyin"
+        }
+      }
+    }
+  ],
+  "host": {
+    "ttsLanguage": "zh-CN",
+    "audioLanguage": "zh",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "CC-CEDICT",
+        "url": "https://cc-cedict.org",
+        "description": "Chinese-English.",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "学校",
+      "practice": {
+        "text": "我们去学校。",
+        "lookup": "学校"
+      },
+      "entry": {
+        "expression": "学校",
+        "reading": "xué xiào",
+        "glossary": [
+          "school"
+        ],
+        "definitionTags": "n",
+        "matched": "学校",
+        "trace": []
+      },
+      "character": {
+        "character": "学",
+        "onyomi": "xué",
+        "kunyomi": "",
+        "definitions": [
+          "learn"
+        ],
+        "stats": []
+      }
+    }
+  }
+}

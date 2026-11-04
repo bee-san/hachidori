@@ -72,7 +72,11 @@ that interprets a missing mode does. Sampling runs only for these Settings actio
 and a newer choice cancels its result. Explicit ascending/descending choices stay fixed.
 
 - **Dictionaries and stored state.** `reader-options.js` is the one stored
-  options view every context reads. `dictionary-group-state.js` and
+  options view every context reads, and the profile layer of
+  [Languages and profiles](../docs/languages.md) (projections, the one
+  options writer, capability masking); `profile-state.js` converts records
+  between the single-profile shape and records with profiles and builds the
+  Japanese view, for the service worker and the engine. `dictionary-group-state.js` and
   `dictionary-groups.js` hold the group rules and their Settings controls,
   `dictionary-name-drafts.js` the autosaved names, `dictionary-progress.js`
   the import progress. `managed-dictionary-source.js` and
@@ -117,12 +121,19 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
   text-to-speech.
 - **Backup.** `backup-archive.js` is the manual ZIP format, `backup-state.js`
-  the shared snapshot rules, `backup-automatic.js` the two-record daily
+  the shared snapshot rules (with version 4's `profiles`, docs/languages.md
+  17.2), `backup-automatic.js` the two-record daily
   retention, cadence and age rules, `backup-downloads.js` the pending downloads,
   and `backup-settings.js` the manual and automatic restore controls.
+  `japanese-view.js` builds the Japanese view of records with profiles
+  (17.1), which backups, older linked browsers and the relay's dictionary
+  download read; `language-names.js` names languages in their messages, also
+  ones this build has no pack for.
 - **Sharing.** `sharing-protocol.js` is the wire contract both sides import;
   `sharing-host.js` and `sharing-client.js` are the two roles in the service
-  worker; `sharing-settings.js` is the Settings section. `linked-import.js`
+  worker; `sharing-languages.js` holds what a host with language profiles
+  sends each linked browser (17.3-17.6); `sharing-settings.js` is the Settings
+  section. `linked-import.js`
   sends a dictionary archive to a host in chunks and, on the host, holds the
   upload until it imports it ([docs/sharing.md](../docs/sharing.md#imports-from-linked-browsers)). `anki-addon.js` pins
   and downloads the compatible `.ankiaddon` release from
@@ -180,7 +191,10 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   their autosave) are the page's own modules: they import from `settings.js`
   and from each other, and assign a binding only in the module that declares
   it; `experimental-settings.js` renders the Advanced → Experimental features
-  switches from the registry in `reader-options.js`; `memory-settings.js`
+  switches from the registry in `reader-options.js`; `profile-settings.js`
+  the Language menu, **Use for lookups** and the Manage languages
+  dialog, and `language-settings.js` the settings a language pack defines
+  (docs/languages.md 5.3, 7.5, 16.3-16.5); `memory-settings.js`
   the Advanced → Memory readout and each Dictionaries row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
   with credentials redacted and reader content reduced to counts, and
@@ -204,6 +218,8 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `vendor/themes/index.json` and lists its colour variants under Colours.
   `theme-host.js` selects Default or a bundled Nazeka, Plain, JL, Bee or Crystal view before constructing
   content and applies only its CSS. See the [renderer contract](../docs/themes/README.md).
+  `language-text.js` applies a language pack's display transforms to the text
+  a popup shows (docs/languages.md 10.4).
 - **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
   came from where.
@@ -222,6 +238,9 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `vendor/hoshidicts-threaded-idbfs.{mjs,wasm}` and
   `vendor/hoshidicts.{mjs,wasm}` are the three builds of the hoshidicts engine
   from `wasm/build.sh`, and `vendor/zip.js` the pinned zip.js runtime.
+  `vendor/languages/` is the language packs of `third_party/hoshidicts` with
+  `registry.js` and `registry-reader.js`, written by
+  `scripts/sync-languages.mjs` after each submodule bump.
   `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
   mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
   `vendor/yomitan/structured-content-style.js` is Yomitan's

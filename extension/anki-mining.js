@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
+import { ANKI_DECK_UNSET, ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
-import { ankiSetupFamily } from "./anki-setup.js";
+import { ankiListedFamily } from "./anki-setup.js";
 import { ankiBrowseQuery, ankiNoteIdsQuery, ankiNoteOptions, canonicalAnkiFields, checkAnkiDuplicate, explainAnkiRefusal,
   ankiUpdateKeepsField, findAnkiDuplicateNotes, isAnkiDuplicateError, overwriteAnkiFields, validateAnkiNote, validateAnkiNotes } from "./anki-duplicates.js";
 
@@ -22,7 +22,8 @@ const netflixRequest = (config, request) => config.netflixMining === true
 // never changed.
 function requestConfiguration(current, request) {
   if (!netflixRequest(current.config, request)) return current;
-  const field = SENTENCE_AUDIO_FIELDS[ankiSetupFamily(current.config.model)];
+  const families = Array.isArray(current.config.noteTypeFamilies) ? current.config.noteTypeFamilies : null;
+  const field = SENTENCE_AUDIO_FIELDS[ankiListedFamily(current.config.model, families)];
   const template = field === undefined ? undefined : current.resolved.templates[field];
   if (template === undefined || template.value.trim() !== "") return current;
   return { ...current, resolved: { ...current.resolved,
@@ -270,7 +271,10 @@ export function createAnkiMiningService({
 
   async function status(templateId) {
     const current = await configuration(templateId);
-    return { available: current.errors.length === 0, configKey: current.configKey, error: current.errors.join("\n") };
+    return { available: current.errors.length === 0, configKey: current.configKey, error: current.errors.join("\n"),
+      // Only a deck is missing: the popup's Anki button then opens Settings →
+      // Anki (docs/languages.md 6.3).
+      ...(current.errors.length === 1 && current.errors[0] === ANKI_DECK_UNSET ? { emptyDeck: true } : {}) };
   }
 
   async function view(request) {

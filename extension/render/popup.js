@@ -302,7 +302,7 @@
       : [];
   }
 
-  function buildDeinflectionDisclosure(documentRef, result, locale) {
+  function buildDeinflectionDisclosure(documentRef, result, locale, language = null) {
     const { matched, deinflected } = result;
     if (typeof matched !== "string" || !matched
         || typeof deinflected !== "string" || !deinflected || matched === deinflected) return null;
@@ -329,6 +329,8 @@
       }
       const value = documentRef.createElement("span");
       value.className = "gsm-hoshidicts-deinflection-endpoint";
+      // Language text keeps its own order inside the English trail (10.1).
+      if (language?.marked === true) setAttributes(value, language.sourceAttributes());
       value.textContent = truncateUtf8(endpoint);
       path.appendChild(value);
     }
@@ -520,7 +522,8 @@
     group,
     dictionaryDisplayName,
     frequencies,
-    showDictionaryName = false
+    showDictionaryName = false,
+    language = null
   ) {
     const tag = createTag(documentRef, "", group.dictionary, "frequency");
     tag.dataset.dictionary = group.dictionary;
@@ -528,7 +531,7 @@
     if (showDictionaryName) {
       const source = documentRef.createElement("span");
       source.className = "gsm-hoshidicts-frequency-source";
-      source.textContent = dictionaryDisplayName;
+      updateLabel(source, dictionaryDisplayName, language);
       tag.appendChild(source);
     }
 
@@ -588,7 +591,8 @@
     averageFrequency = false,
     showFrequencyDictionaryNames = false,
     compactFrequencyNumbers = false,
-    showFrequencyTagsWithAverage = false
+    showFrequencyTagsWithAverage = false,
+    language = null
   ) {
     const averageTags = [];
     if (averageFrequency) {
@@ -650,7 +654,8 @@
           group,
           dictionaryDisplayNames.get(group.dictionary) || group.dictionary,
           frequencies,
-          showFrequencyDictionaryNames
+          showFrequencyDictionaryNames,
+          language
         ));
       }
     }
@@ -1539,9 +1544,28 @@
       === (right.size === 0 || right.has(dictionary)));
   }
 
-  function updateLabel(element, label) {
-    if (element.textContent === label) return false;
-    element.textContent = label;
+  function setAttributes(element, attributes) {
+    for (const [name, value] of Object.entries(attributes ?? {})) element.setAttribute(name, value);
+    return element;
+  }
+
+  // A name (a dictionary title or display name, a group name, a frequency
+  // label) in its element. Once the records have profiles, a name that the
+  // language marks (10.1) sits alone in an inline element with its
+  // attributes, so layout cannot widen the box `dir="auto"` aligns in.
+  function updateLabel(element, label, language = null) {
+    const attributes = language?.marked === true ? language.nameAttributes(label) : {};
+    if (Object.keys(attributes).length === 0) {
+      if (element.textContent === label) return false;
+      element.textContent = label;
+      return true;
+    }
+    const inner = element.firstElementChild;
+    if (element.childNodes.length === 1 && inner?.localName === "span" && inner.textContent === label
+        && Object.entries(attributes).every(([name, value]) => inner.getAttribute(name) === value)) return false;
+    const span = setAttributes(element.ownerDocument.createElement("span"), attributes);
+    span.textContent = label;
+    element.replaceChildren(span);
     return true;
   }
 
@@ -1604,13 +1628,13 @@
 
   // A native kanji entry as one structured-content glossary, so a clicked-kanji
   // group can lay it out beside its term dictionaries' cards.
-  function kanjiEntryGlossary(entry) {
+  function kanjiEntryGlossary(entry, [onyomi, kunyomi] = ["On", "Kun"], separator = " · ") {
     const tokens = (value) => Array.isArray(value) ? value : globalThis.HDGlossary.parseTagList(value);
     const tags = tokens(entry.tags);
-    const readings = [["On", tokens(entry.onyomi)], ["Kun", tokens(entry.kunyomi)]]
+    const readings = [[onyomi, tokens(entry.onyomi)], [kunyomi, tokens(entry.kunyomi)]]
       .filter(([, values]) => values.length > 0)
       .map(([label, values]) => ({ tag: "div", data: { content: "reading" },
-        content: [{ tag: "strong", content: label }, ` ${values.join(" · ")}`] }));
+        content: [{ tag: "strong", content: label }, ` ${values.join(separator)}`] }));
     const definitions = Array.isArray(entry.definitions) ? entry.definitions : [];
     const stats = Array.isArray(entry.stats) ? entry.stats : [];
     return JSON.stringify([{ type: "structured-content", content: [
@@ -1627,11 +1651,25 @@
   // consumers (Anki mining, lookup statistics, audio, Note) read the engine's
   // LookupResult contract; a kanji card has no reading, rules, tags, trace or score.
   function kanjiEntryResult(character, entry) {
+    return characterResult(character, entry, kanjiEntryGlossary(entry));
+  }
+
+  function characterResult(character, entry, glossary) {
     return {
       matched: character, deinflected: character, trace: [], preprocessorSteps: 0,
       term: { expression: character, reading: "", rules: "", score: 0, frequencies: [], pitches: [],
-        glossaries: [{ dictionary: entry.dictionary, glossary: kanjiEntryGlossary(entry), definitionTags: "", termTags: "", kanji: entry }] },
+        glossaries: [{ dictionary: entry.dictionary, glossary, definitionTags: "", termTags: "", kanji: entry }] },
     };
+  }
+
+  // 11.2: kanjiEntryResult with the language's character-view reading labels
+  // and separator. Japanese, and a caller without a language, keep
+  // kanjiEntryResult exactly.
+  function characterEntryResult(character, entry, language = null) {
+    const labels = language?.labels;
+    if (!labels || language.code === "ja" || !labels.onyomi) return kanjiEntryResult(character, entry);
+    return characterResult(character, entry,
+      kanjiEntryGlossary(entry, [labels.onyomi, labels.kunyomi], labels.readingSeparator ?? " · "));
   }
 
   function isRecord(value) {
@@ -2303,6 +2341,28 @@
       const term = createField("Term", "term");
       const reading = createField("Reading", "reading");
       const definition = createField("Definition", "definition", true);
+      // Once the records have profiles (10.1, 10.5) the inputs take the
+      // language, and the Reading field is required, optional or hidden as
+      // the language's readings are. Read at each opening: a reused form
+      // follows the language of the latest render.
+      let readingRequired = true;
+      function applyLanguage() {
+        const language = renderContext.language?.marked === true ? renderContext.language : null;
+        if (!language && readingRequired && !term.hasAttribute("lang")) return;
+        const readings = language?.capabilities?.readings ?? "required";
+        readingRequired = readings === "required";
+        reading.required = readingRequired;
+        reading.closest("label").hidden = readings === "none";
+        for (const control of [term, reading, definition]) {
+          control.removeAttribute("lang");
+          control.removeAttribute("dir");
+        }
+        if (!language) return;
+        setAttributes(term, language.readingAttributes());
+        setAttributes(reading, language.readingAttributes());
+        // A definition is often in another language; only its direction follows the text.
+        if (language.direction === "rtl") definition.dir = "auto";
+      }
       const error = documentRef.createElement("div");
       error.className = "gsm-hoshidicts-note-error";
       error.setAttribute("role", "alert");
@@ -2343,9 +2403,10 @@
 
       function open() {
         accepted = false;
+        applyLanguage();
         const prefill = readPrefill() || {};
         term.value = String(prefill.term || "");
-        reading.value = String(prefill.reading || "");
+        reading.value = reading.closest("label").hidden ? "" : String(prefill.reading || "");
         definition.value = String(prefill.definition || "");
         error.hidden = true;
         error.textContent = "";
@@ -2376,8 +2437,10 @@
           reading: reading.value,
           definition: definition.value,
         };
-        if (Object.values(entry).some((value) => value.trim() === "")) {
-          error.textContent = "Complete the term, reading, and definition.";
+        if (Object.entries(entry).some(([name, value]) => value.trim() === "" && (readingRequired || name !== "reading"))) {
+          error.textContent = readingRequired
+            ? "Complete the term, reading, and definition."
+            : "Complete the term and definition.";
           error.hidden = false;
           positionPopup();
           return;
@@ -3049,6 +3112,7 @@
         imageContext,
         isCurrent,
         onLayoutChange,
+        language = null,
       } = {}
     ) {
       const frequencyRow = documentRef.createElement("div");
@@ -3069,7 +3133,8 @@
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true,
-          context.showFrequencyTagsWithAverage === true
+          context.showFrequencyTagsWithAverage === true,
+          language
         ) : [];
         frequencyRow.replaceChildren(...frequencyTags);
         frequencyRow.hidden = frequencyTags.length > 0 && frequencyTags.every(tag => tag.hidden);
@@ -3199,7 +3264,8 @@
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true,
-          context.showFrequencyTagsWithAverage === true
+          context.showFrequencyTagsWithAverage === true,
+          context.language ?? null
         );
         if (frequencyTags.length > 0) {
           const frequencies = documentRef.createElement("span");
@@ -3303,6 +3369,7 @@
         noteControls = null,
         feedback = null,
         onDeinflectionToggle = null,
+        language = null,
       } = {}
     ) {
       const header = element || documentRef.createElement("header");
@@ -3315,28 +3382,31 @@
       headword.className = "gsm-hoshidicts-headword";
       const expression = documentRef.createElement("span");
       expression.className = "gsm-hoshidicts-expression";
-      // As Yomitan's _appendFurigana: the headword is Japanese whatever the page's lang.
-      expression.lang = "ja";
-      const expressionText = String(result.term.expression || "").trim();
-      const readingText = String(result.term.reading || "").trim();
+      // Once the records have profiles the headword takes the profile's
+      // language (10.1, 10.5); before that, as Yomitan's _appendFurigana, the
+      // headword is Japanese whatever the page's lang.
+      const marked = language?.marked === true;
+      if (marked) setAttributes(expression, language.sourceAttributes());
+      else expression.lang = "ja";
+      const displayed = field => marked ? language.display(result, field) : result.term[field];
+      const expressionText = String(displayed("expression") || "").trim();
+      const readingText = String(displayed("reading") || "").trim();
       const wordClasses = parseTagList(result.term.rules);
       function populateRuby() {
         expression.replaceChildren();
-        const category = appendExpressionRuby(
-          documentRef,
-          expression,
-          expressionText,
-          readingText,
-          (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink),
-          {
-            enabled: showPitchAccentFurigana,
-            groups: result.term.pitches,
-            dictionary: pitchAccentFuriganaDictionary,
-            style: pitchAccentFuriganaStyle,
-            wordClasses,
-          },
-          result.term.furigana
-        );
+        const pitchOptions = {
+          enabled: showPitchAccentFurigana,
+          groups: result.term.pitches,
+          dictionary: pitchAccentFuriganaDictionary,
+          style: pitchAccentFuriganaStyle,
+          wordClasses,
+        };
+        const onCharacter = (character, sourceLink) => onKanjiClick(character, result, candidate, sourceLink);
+        // Kana ruby (Japanese) is today's builder exactly.
+        const category = !marked || language.capabilities?.ruby?.alignment === "kana"
+          ? appendExpressionRuby(documentRef, expression, expressionText, readingText, onCharacter, pitchOptions,
+            result.term.furigana)
+          : globalThis.HDGlossary.appendHeadword(documentRef, expression, result, language, onCharacter, pitchOptions);
         // The group of the reading's pitch: CSS colours it only while the
         // Show pitch accent colours host attribute is set.
         if (category) expression.dataset.pitchCategory = category;
@@ -3354,7 +3424,7 @@
         updateCompactSummary(headword, result, { showCompactDefinitionSummary,
           compactDefinitionSummaryCount, compactDefinitionSummaryDictionary }, summaryMedia);
       }
-      const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language);
+      const deinflection = buildDeinflectionDisclosure(documentRef, result, windowRef.navigator.language, language);
       if (deinflection) {
         deinflection.addEventListener("toggle", onDeinflectionToggle);
         headword.appendChild(deinflection);
@@ -3448,6 +3518,9 @@
       } = {}
     ) {
       const revision = ++renderRevision;
+      // The render's language (11.1); marked once the records have profiles.
+      const language = renderContext.language ?? null;
+      const marked = language?.marked === true;
       const isCurrent = () => revision === renderRevision && ownsResultPanel(panel, renderContext);
       const isCurrentLink = () => revision === renderRevision && ownsDisplayedPanel(panel, renderContext);
       const positionIfCurrent = () => { if (isCurrent()) positionPopup(); };
@@ -3635,6 +3708,7 @@
           noteControls: resultIndex === 0 ? renderContext.noteControls : null,
           feedback,
           onDeinflectionToggle: positionIfCurrent,
+          language,
         });
         audioButtons.push(renderedHeader.audio);
         // The lookup's custom Anki buttons mine the shown result.
@@ -3690,6 +3764,7 @@
             showPitchAccentText: renderContext.showPitchAccentText !== false,
             showPitchAccentPosition: renderContext.showPitchAccentPosition !== false,
             showPitchAccentGraph: renderContext.showPitchAccentGraph === true,
+            language,
           }
         );
 
@@ -3715,6 +3790,9 @@
           // inside its own content collapse.
           const card = documentRef.createElement("div");
           card.className = "gsm-hoshidicts-glossary-card";
+          // The dictionary's direction and default language hold its whole block (10.2).
+          if (marked) setAttributes(card, language.glossaryAttributes(dictionary, result));
+          const direction = marked ? language.dictionaryDirection(dictionary, result) : undefined;
           const definitions = documentRef.createElement("ol");
           definitions.className = "gsm-hoshidicts-definitions definition-list";
           definitions.dataset.count = String(glossaries.length);
@@ -3749,6 +3827,7 @@
                 const dictionaryTag = createTag(documentRef, dictionaryDisplayNames?.get(dictionary) || dictionary,
                   dictionary, "definition", "dictionary");
                 dictionaryTag.classList.add("gsm-hoshidicts-dictionary-tag");
+                if (marked) updateLabel(dictionaryTag, dictionaryTag.textContent, language);
                 definitionTagRow.appendChild(dictionaryTag);
               }
               definition.appendChild(definitionTagRow);
@@ -3776,6 +3855,7 @@
                     imageContext,
                     onImageCreated,
                     resolveMedia: typeof imageContext.resolveMedia === "function" ? resolveImage : null,
+                    ...(marked ? { language, direction } : {}),
                   }
                 );
               } catch (error) {
@@ -3918,8 +3998,8 @@
             if (source.parentNode.dataset.frequencyAverage) continue;
             const dictionary = source.closest("[data-dictionary]").dataset.dictionary;
             // A pronunciation-dictionary tag keeps its name in Yomitan's label span.
-            changed = updateLabel(source.querySelector(".tag-label-content") ?? source,
-              names.get(dictionary) || dictionary) || changed;
+            const label = source.querySelector(".tag-label-content");
+            changed = updateLabel(label ?? source, names.get(dictionary) || dictionary, label ? null : language) || changed;
           }
         }
         return changed;
@@ -3987,7 +4067,7 @@
           entries.forEach((entry) => {
             if (labelsChanged) {
               for (const tag of entry.querySelectorAll(":scope > .gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card .gsm-hoshidicts-dictionary-tag")) {
-                changed = updateLabel(tag, names.get(tag.title) || tag.title) || changed;
+                changed = updateLabel(tag, names.get(tag.title) || tag.title, language) || changed;
               }
             }
           });
@@ -4028,7 +4108,12 @@
       }
       const glyph = documentRef.createElement("div");
       glyph.className = "gsm-hoshidicts-kanji-glyph";
-      glyph.lang = "ja";
+      // The character view's labels and the character's language come from
+      // the language once the records have profiles (10.1, 10.5).
+      const language = renderOptions.language ?? null;
+      const marked = language?.marked === true;
+      if (marked) setAttributes(glyph, language.sourceAttributes());
+      else glyph.lang = "ja";
       glyph.textContent = kanji.character;
       navigation.appendChild(glyph);
       // kanji_meta_bank frequencies, shown as the term view shows a term's.
@@ -4046,7 +4131,8 @@
           context.averageFrequency === true,
           context.showFrequencyDictionaryNames === true,
           context.compactFrequencyNumbers === true,
-          context.showFrequencyTagsWithAverage === true
+          context.showFrequencyTagsWithAverage === true,
+          language
         );
         const frequencies = documentRef.createElement("span");
         frequencies.className = "gsm-hoshidicts-primary-frequencies";
@@ -4071,7 +4157,7 @@
       function bindKanjiMining() {
         const results = kanji.entries
           .filter(entry => selected.dictionaries.size === 0 || selected.dictionaries.has(entry.dictionary))
-          .map(entry => kanjiEntryResult(kanji.character, entry));
+          .map(entry => characterEntryResult(kanji.character, entry, language));
         const miningActions = [];
         if (results.length > 0) {
           const result = { ...results[0], generation: renderOptions.generation, term: { ...results[0].term, frequencies: kanjiFrequencies,
@@ -4092,9 +4178,9 @@
 
           const dictionary = documentRef.createElement("h3");
           dictionary.className = "gsm-hoshidicts-kanji-dictionary";
-          dictionary.textContent = dictionaryDisplayNames.get(
+          updateLabel(dictionary, dictionaryDisplayNames.get(
             kanjiEntry.dictionary
-          ) || kanjiEntry.dictionary;
+          ) || kanjiEntry.dictionary, language);
           dictionary.title = kanjiEntry.dictionary;
           dictionary.setAttribute("aria-label", kanjiEntry.dictionary);
           entry.appendChild(dictionary);
@@ -4112,8 +4198,8 @@
           const readings = documentRef.createElement("div");
           readings.className = "gsm-hoshidicts-kanji-readings";
           for (const [label, values] of [
-            ["On", tokenList(kanjiEntry.onyomi)],
-            ["Kun", tokenList(kanjiEntry.kunyomi)],
+            [marked ? language.labels.onyomi ?? "On" : "On", tokenList(kanjiEntry.onyomi)],
+            [marked ? language.labels.kunyomi ?? "Kun" : "Kun", tokenList(kanjiEntry.kunyomi)],
           ]) {
             if (values.length === 0) continue;
             const group = documentRef.createElement("div");
@@ -4182,7 +4268,7 @@
         let changed = false;
         if (sameMembers) {
           for (const heading of contentScroll.querySelectorAll(":scope > .gsm-hoshidicts-kanji-entry > h3")) {
-            changed = updateLabel(heading, dictionaryDisplayNames.get(heading.title) || heading.title) || changed;
+            changed = updateLabel(heading, dictionaryDisplayNames.get(heading.title) || heading.title, language) || changed;
           }
         } else {
           contentScroll.replaceChildren(renderEntries());
@@ -4207,7 +4293,7 @@
       // child may defer. Carry their current context through local tabs.
       const imageContext = { popupImageSources: renderContext.popupImageSources ?? null,
         dictionaryPresentation: renderContext.dictionaryPresentation, resolveMedia: renderContext.resolveMedia,
-        ...metadataOptions(renderContext) };
+        ...metadataOptions(renderContext), language: renderContext.language ?? null };
       const focused = retainedFocus(renderContext.preserveViewControls);
       clear(renderContext.preserveViewControls);
       setDefinitionBlurState(renderContext.definitionBlurState);
@@ -4416,7 +4502,7 @@
         let changed = false;
         tabButtons = tabDescriptors.map(descriptor => {
           const button = previous.get(descriptor.key) || createTabButton(descriptor);
-          changed = updateLabel(button, descriptor.label) || changed;
+          changed = updateLabel(button, descriptor.label, renderContext.language) || changed;
           button.title = descriptor.title;
           button.setAttribute("aria-label", descriptor.title);
           previous.delete(descriptor.key);
@@ -4677,6 +4763,7 @@
     formatFrequencyValue,
     kanjiEntryGlossary,
     kanjiEntryResult,
+    characterEntryResult,
     metadataOptions,
   };
 }));

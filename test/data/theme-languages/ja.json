@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "code": "ja",
+  "iso639_3": "jpn",
+  "name": "Japanese",
+  "nativeName": "日本語",
+  "bcp47": "ja",
+  "scripts": [
+    "Jpan"
+  ],
+  "direction": "ltr",
+  "classes": {
+    "kanji": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]"
+  },
+  "text": {
+    "pattern": "[\\u3005-\\u3007\\u303B\\u3040-\\u30FF\\u31F0-\\u31FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\uFF66-\\uFF9F\\u{20000}-\\u{2FA1F}]",
+    "scanStart": "cursor",
+    "segmentation": "scan",
+    "wordCharacters": "[\\u3005-\\u3007\\u3040-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        "。",
+        "！",
+        "？"
+      ],
+      "quotePairs": [
+        [
+          "「",
+          "」"
+        ]
+      ]
+    },
+    "highlightBreaks": {
+      "sentenceEnd": [
+        "。",
+        "．",
+        "！",
+        "？",
+        "!",
+        "?",
+        "…",
+        "‥"
+      ],
+      "clauseEnd": [
+        "、",
+        "，",
+        ",",
+        " ",
+        "　"
+      ]
+    },
+    "lineJoiner": ""
+  },
+  "lookup": {
+    "searchResolution": "character",
+    "preprocessors": [],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "first",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "required",
+    "ruby": {
+      "alignment": "kana"
+    },
+    "pitchAccent": true,
+    "characterView": {
+      "name": "Kanji",
+      "pattern": "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2FA1F}]",
+      "readingLabels": {
+        "onyomi": "On",
+        "kunyomi": "Kun"
+      },
+      "readingSeparator": "、"
+    },
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {
+      "traceMarker": "～",
+      "readingBrackets": [
+        "《",
+        "》"
+      ],
+      "listSeparator": "、"
+    },
+    "displayTransforms": {}
+  },
+  "settings": [],
+  "host": {
+    "ttsLanguage": "ja-JP",
+    "audioLanguage": "ja",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Jitendex",
+        "url": "https://jitendex.org",
+        "description": "Japanese-English.",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "食べました",
+      "practice": {
+        "text": "朝ごはんを食べる。",
+        "lookup": "食べる"
+      },
+      "entry": {
+        "expression": "食べる",
+        "reading": "たべる",
+        "glossary": [
+          "to eat"
+        ],
+        "definitionTags": "v1",
+        "matched": "食べる",
+        "trace": []
+      },
+      "character": {
+        "character": "食",
+        "onyomi": "ショク",
+        "kunyomi": "た.べる",
+        "definitions": [
+          "eat"
+        ],
+        "stats": []
+      }
+    }
+  }
+}

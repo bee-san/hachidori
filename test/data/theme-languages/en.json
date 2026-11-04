@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "code": "en",
+  "iso639_3": "eng",
+  "name": "English",
+  "nativeName": "English",
+  "bcp47": "en",
+  "scripts": [
+    "Latn"
+  ],
+  "direction": "ltr",
+  "classes": {
+    "letter": "[A-Za-z\\u00C0-\\u024F]",
+    "word": "[A-Za-z\\u00C0-\\u024F\\p{M}\\p{Nd}]"
+  },
+  "text": {
+    "pattern": "[A-Za-z\\u00C0-\\u024F]",
+    "scanStart": "word",
+    "segmentation": "spaces",
+    "wordCharacters": "[A-Za-z\\u00C0-\\u024F\\p{M}\\p{Nd}]",
+    "wordInternal": null,
+    "sentence": {
+      "terminators": [
+        ".",
+        "!",
+        "?",
+        "…"
+      ],
+      "quotePairs": [
+        [
+          "“",
+          "”"
+        ],
+        [
+          "\"",
+          "\""
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "highlightBreaks": null,
+    "lineJoiner": " "
+  },
+  "lookup": {
+    "searchResolution": "word",
+    "preprocessors": [
+      {
+        "id": "decapitalize",
+        "name": "Decapitalize text",
+        "variants": [
+          [
+            {
+              "case": "lower"
+            }
+          ]
+        ]
+      }
+    ],
+    "postprocessors": [],
+    "readingNormalizer": null,
+    "transforms": "transforms.json",
+    "traceSelection": "shortest",
+    "functionWords": [],
+    "variantPasses": []
+  },
+  "capabilities": {
+    "readings": "none",
+    "ruby": null,
+    "pitchAccent": false,
+    "characterView": null,
+    "wordHighlighting": true
+  },
+  "presentation": {
+    "typography": {
+      "fontFamily": null,
+      "wordBreak": null,
+      "lineBreak": null,
+      "joinedScript": false
+    },
+    "labels": {},
+    "displayTransforms": {}
+  },
+  "settings": [],
+  "host": {
+    "ttsLanguage": "en-US",
+    "audioLanguage": "en",
+    "anki": {
+      "noteTypeFamilies": [],
+      "fieldAliases": {},
+      "partOfSpeechLabels": {}
+    },
+    "frequencySamples": null,
+    "recommendedDictionaries": [
+      {
+        "name": "Kaikki English-English",
+        "url": "https://github.com/yomidevs/kaikki-to-yomitan",
+        "description": "Wiktionary.",
+        "licence": "CC BY-SA 4.0"
+      }
+    ],
+    "sample": {
+      "warmup": "running",
+      "practice": {
+        "text": "She was running late, so she took the earlier train.",
+        "lookup": "running"
+      },
+      "entry": {
+        "expression": "run",
+        "reading": "run",
+        "glossary": [
+          "to move swiftly on foot"
+        ],
+        "definitionTags": "v",
+        "matched": "running",
+        "trace": [
+          "-ing"
+        ]
+      },
+      "character": null
+    }
+  }
+}

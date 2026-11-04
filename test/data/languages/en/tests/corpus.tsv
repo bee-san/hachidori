@@ -1,0 +1,5 @@
+# Fixture corpus for Hachidori tests (CC0).
+# category	valid	source	term	rule	reasons
+verbs	1	running	run	v	ing
+verbs	1	walked	walk	v	past
+nouns	1	books	book	n	plural

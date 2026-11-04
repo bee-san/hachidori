@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createWriteStream, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { finished } from "node:stream/promises";
@@ -77,6 +77,17 @@ try {
     await run("fixture", ["test/make-fixture.mjs"]);
     await buildFirefox();
     await run(suite, [...NODE_TEST, `test/${suite}.mjs`]);
+  } else if (suite === "firefox-languages") {
+    // A profile switch and an English and an Arabic lookup (docs/languages.md 18) in a copy of the
+    // Firefox build whose registry holds Japanese and the fixture packs of test/data/languages/,
+    // whatever packs the build ships.
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await buildFirefox();
+    const { extensionWith } = await import("./chrome-languages/builds.mjs");
+    const scratch = resolve(ROOT, "test/tmp/firefox-languages");
+    rmSync(scratch, { recursive: true, force: true });
+    const extension = await extensionWith(scratch, "extension", ["en", "ar"], [], FIREFOX_EXTENSION);
+    await run(suite, [...NODE_TEST, `test/${suite}.mjs`], { HACHIDORI_FIREFOX_EXTENSION: extension });
   } else if (suite === "lint") {
     const eslint = resolve(dirname(require.resolve("eslint/package.json")), "bin/eslint.js");
     await run("lint", [eslint, "--config", "test/tooling/eslint.config.mjs", "."]);
@@ -90,9 +101,14 @@ try {
     await run("node-threaded", ["test/node-smoke.mjs"]);
     await run("node-threaded-idbfs", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
     await run("node-fallback", ["test/node-smoke.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
+    // The language ABI on every build (docs/languages.md 18).
+    await run("node-languages-threaded", ["test/node-smoke-languages.mjs"]);
+    await run("node-languages-threaded-idbfs", ["test/node-smoke-languages.mjs"], { HACHIDORI_WASM_VARIANT: "threaded-idbfs" });
+    await run("node-languages-fallback", ["test/node-smoke-languages.mjs"], { HACHIDORI_WASM_VARIANT: "fallback" });
     await run("threaded-bridge", ["test/threaded-bridge-smoke.mjs"]);
     await run("extension-smoke", [...NODE_TEST, "test/extension-smoke.mjs"]);
-  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast"].includes(suite)) {
+  } else if (["chrome-e2e", "chrome-sharing", "chrome-fallback", "chrome-overlay", "chrome-theme-contrast",
+    "chrome-theme-languages"].includes(suite)) {
     await run("fixture", ["test/make-fixture.mjs"]);
     if (suite === "chrome-e2e") await run("chrome-theme-store", ["test/chrome-theme-store.mjs"]);
     await run(suite, [...(suite === "chrome-e2e" ? NODE_TEST : []), `test/${suite}.mjs`], {
@@ -108,6 +124,19 @@ try {
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }
+  } else if (suite === "chrome-languages") {
+    // Languages in real Chrome (docs/languages.md 18); its screenshots go to test/tmp/languages/.
+    await run("fixture", ["test/make-fixture.mjs"]);
+    await run(suite, [`test/${suite}.mjs`]);
+    // Backups and sharing with profiles; the sharing part needs python3 and the
+    // pinned add-on (or HACHIDORI_ANKI_ADDON / HACHIDORI_RELAY_SERVER).
+    await run("chrome-languages-backup", ["test/chrome-languages/backup.mjs"]);
+    await run("chrome-languages-sharing", ["test/chrome-languages/sharing.mjs"]);
+    // An Arabic note through a fake AnkiConnect, in left-to-right and right-to-left card templates.
+    await run("chrome-languages-anki", ["test/chrome-languages/anki.mjs"]);
+  } else if (suite === "chrome-language-pack") {
+    // One language pack with a real dictionary: HACHIDORI_LANGUAGE and HACHIDORI_DICTIONARY (see its header).
+    await run(suite, [`test/${suite}.mjs`]);
   } else if (suite === "chrome-backup-release") {
     // Downloads the previous release from GitHub, so it is run before a release, not on every PR.
     // The released backup is also restored in the Firefox build.
@@ -116,8 +145,9 @@ try {
   } else {
     throw new Error(
       "Choose lint, node, smoke, chrome-e2e, chrome-sharing, chrome-fallback,"
-        + " chrome-overlay, chrome-theme-contrast, chrome-backup-release, install-chrome,"
-        + " firefox-lint, firefox-e2e, firefox-large or install-firefox.",
+        + " chrome-overlay, chrome-theme-contrast, chrome-theme-languages, chrome-languages, chrome-language-pack,"
+        + " chrome-backup-release, install-chrome,"
+        + " firefox-lint, firefox-e2e, firefox-languages, firefox-large or install-firefox.",
     );
   }
 } catch (error) {

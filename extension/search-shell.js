@@ -18,6 +18,7 @@ import { extensionApi as chrome } from "./browser-api.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
 import { captureDebugLog, debugLogRecord, openDebugLogStore } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
+import { languageName } from "./language-names.js";
 import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { openSearchHistory } from "./search-history.js";
@@ -30,7 +31,7 @@ export const READER_REQUESTS = new Map(Object.entries({
   "hoshidicts-offscreen": ["hd_lookup", "hd_lookup_dictionary", "hd_kanji", "hd_media", "hd_styles", "hd_segment",
     "hd_custom_append"],
   "hoshidicts-worker": ["hd_options_write", "hd_open_external", "hd_lookup_stats_read", "hd_lookup_stats_record",
-    "hd_word_status_override"],
+    "hd_word_status_override", "hd_language_selection_write", "hd_open_settings"],
   "hachidori-anki": ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_preflight_batch", "hd_anki_submit",
     "hd_anki_browse", "hd_anki_screenshot", "hd_anki_screenshot_discard", "hd_anki_maturity", "hd_anki_word_status"],
   "hachidori-audio": ["hd_audio_play", "hd_audio_candidates", "hd_audio_stop"],
@@ -40,9 +41,10 @@ export const READER_REQUESTS = new Map(Object.entries({
 // events the reader listens for.
 export const READER_EVENTS = new Set(["hachidori-reader", "hachidori-audio-content", "hachidori-anki-content"]);
 // The stored keys it reads: options, dictionaries, lookup counts and their
-// rows, and the words marked known or ignored.
-export const readerKey = key => ["options", "dictionaryState", "lookupStats", "wordStatusOverrides"].includes(key)
-  || key.startsWith("lookupStats:");
+// rows, the words marked known or ignored, and this browser's active
+// language (docs/languages.md 4.4).
+export const readerKey = key => ["options", "dictionaryState", "lookupStats", "wordStatusOverrides",
+  "languageSelection"].includes(key) || key.startsWith("lookupStats:");
 
 // What storage.local.get answers for `keys` (a key, a list or an object of
 // defaults), restricted to the reader's keys: Chrome's callers may ask in
@@ -68,8 +70,22 @@ function readerOptionsWrite(options) {
     && globalThis.HDReaderOptions.KEYBIND_TOGGLE_OPTIONS.includes(entries[0][0]);
 }
 
-function readerRequest({ target, type, options } = {}) {
-  return READER_REQUESTS.get(target)?.has(type) && (type !== "hd_options_write" || readerOptionsWrite(options));
+// The language switch the reader makes: the Switch to the next language
+// keybind's choice of active profile, never Switch language automatically.
+function readerLanguageSelectionWrite({ baseRevision, activeProfileId, ...rest }) {
+  return Number.isSafeInteger(baseRevision) && typeof activeProfileId === "string" && Object.keys(rest).length === 0;
+}
+
+// The reader opens only Settings → Anki (a Template that names no deck).
+const readerOpenSettings = ({ section, profileId, ...rest }) =>
+  section === "anki" && (profileId === undefined || typeof profileId === "string") && Object.keys(rest).length === 0;
+
+function readerRequest({ target, type, options, requestId: _requestId, ...fields } = {}) {
+  if (!READER_REQUESTS.get(target)?.has(type)) return false;
+  if (type === "hd_options_write") return readerOptionsWrite(options);
+  if (type === "hd_language_selection_write") return readerLanguageSelectionWrite(fields);
+  if (type === "hd_open_settings") return readerOpenSettings(fields);
+  return true;
 }
 
 // The history requests the frame may make (docs/search-history.md), each
@@ -197,14 +213,28 @@ async function userScript(api) {
 // once the frame's reader is ready.
 const CLIPBOARD_PERMISSION = { permissions: ["clipboardRead"] };
 
-// The reader's Japanese character set, which content-scan.js publishes. It is
+// The language used for lookups (docs/languages.md 8.1, rule 4), or null in
+// the single-profile shape.
+function activeLanguage(stored, selection) {
+  const layer = globalThis.HDReaderOptions;
+  return layer.hasProfiles(stored)
+    ? layer.profileDescriptor(stored, layer.activeProfileId(stored, selection))?.language ?? "ja" : null;
+}
+
+// Text in that language, by its pack's text.pattern (8.2), or with Japanese the
+// reader's Japanese character set, which content-scan.js publishes. Either is
 // loaded once the monitor reads something, rather than as the page starts.
-async function lookupWorthy(text) {
+export async function lookupWorthy(text, language) {
+  if (language !== null && language !== "ja") {
+    await import("./vendor/languages/registry.js");
+    const source = globalThis.HDLanguages?.get?.(language)?.text?.pattern;
+    return typeof source === "string" && new RegExp(source, "u").test(text);
+  }
   await import("./content-scan.js");
   return globalThis.HDContent.JAPANESE_CHARACTER_PATTERN.test(text);
 }
 
-function clipboardMonitor(clipboardSwitch, search) {
+function clipboardMonitor(clipboardSwitch, search, language) {
   let ready = false;
   const monitor = createClipboardMonitor({
     async read() {
@@ -213,7 +243,7 @@ function clipboardMonitor(clipboardSwitch, search) {
     },
     // Not once the switch is off, which it may be by the time the import ends.
     async change(text) {
-      if (await lookupWorthy(text) && monitor.running) search(text);
+      if (await lookupWorthy(text, language()) && monitor.running) search(text);
     },
   });
   async function show() {
@@ -263,15 +293,25 @@ function clipboardMonitor(clipboardSwitch, search) {
 // switch does; the arrow keys change the choice and keep focus.
 const WORKER_TARGET = "hoshidicts-worker";
 
+// The Templates the switch lists and the fields its write names: once the
+// records have profiles, the active profile's, as the search page reads in
+// the active profile (docs/languages.md 5.2, 8.1, 12); otherwise today's.
+export function activeTemplates(stored, selection) {
+  const layer = globalThis.HDReaderOptions;
+  if (!layer.hasProfiles(stored)) return { anki: layer.normaliseOptions(stored).anki, fields: {} };
+  const profileId = layer.activeProfileId(stored, selection);
+  return { anki: layer.projectOptions(stored, profileId).anki, fields: { profileId } };
+}
+
 // Moves Template `id` first, and resolves whether that wrote the options.
 async function chooseTemplate(api, id) {
-  const { options: stored } = await api.storage.local.get("options");
-  const current = globalThis.HDReaderOptions.normaliseOptions(stored).anki;
+  const { options: stored, languageSelection } = await api.storage.local.get(["options", "languageSelection"]);
+  const { anki: current, fields } = activeTemplates(stored, languageSelection);
   const next = current.templates[0].id === id ? null : withBuiltinTemplate(current, id);
   if (next === null) return false;
   const reply = await api.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_options_write",
     baseRevision: Number.isInteger(stored?.revision) && stored.revision >= 0 ? stored.revision : 0,
-    options: { anki: next } });
+    options: { anki: next }, ...fields });
   if (reply?.conflict === true) return chooseTemplate(api, id);
   if (!reply?.ok) throw new Error(reply?.error || "Hachidori did not reply.");
   return true;
@@ -315,6 +355,14 @@ export function templateSwitch(select, frame, api = chrome) {
   return { show };
 }
 
+// The records start() adopts once its first read is in: for each, the newest,
+// so a change that came meanwhile is not undone (main adopts its newest
+// options there too).
+export function newestRecords(first, changed, current) {
+  return [changed.options ? current.options : first.options,
+    changed.languageSelection ? current.languageSelection : first.languageSelection];
+}
+
 async function start() {
   const store = openDebugLogStore(window.indexedDB);
   captureDebugLog(window, { context: "search", store });
@@ -322,17 +370,47 @@ async function start() {
   const frame = document.createElement("iframe");
   const templates = templateSwitch(document.getElementById("search-template"), frame);
   // The options, read once and followed: the theme, the Anki Templates, and
-  // what the history keeps.
-  let options = chrome.storage.local.get("options").then(({ options: stored }) => normaliseOptions(stored));
-  const adoptOptions = (adopted) => {
-    applyPageTheme(document, adopted);
-    templates.show(adopted.anki);
+  // what the history keeps. With profiles the page reads in the active one,
+  // so it takes that profile's palette and Templates (docs/languages.md 8.1).
+  let storedOptions, languageSelection;
+  // The records a change has brought since the first read, whose newest
+  // values the end of start() adopts, as main adopts its newest options there.
+  const changed = { options: false, languageSelection: false };
+  const nameClipboardLanguage = () => {
+    const language = activeLanguage(storedOptions, languageSelection);
+    const label = document.getElementById("search-clipboard").closest("label");
+    const title = `Search ${language === null ? "Japanese" : languageName(language)} text as soon as you copy it, in any tab or program`;
+    if (label.title !== title) label.title = title;
+  };
+  const initial = chrome.storage.local.get(["options", "languageSelection"]);
+  let options = initial.then(({ options: stored }) => normaliseOptions(stored));
+  const adoptOptions = (stored, selection = languageSelection) => {
+    storedOptions = stored;
+    languageSelection = selection;
+    const layer = globalThis.HDReaderOptions;
+    applyPageTheme(document, layer.hasProfiles(stored)
+      ? layer.projectOptions(stored, layer.activeProfileId(stored, selection)) : normaliseOptions(stored));
+    templates.show(activeTemplates(stored, selection).anki);
+    // The Clipboard monitor's tooltip names the language it searches; another
+    // language's name comes from the registry, loaded for it.
+    const language = activeLanguage(stored, selection);
+    if (language === null || language === "ja") nameClipboardLanguage();
+    else void import("./vendor/languages/registry.js").then(nameClipboardLanguage, nameClipboardLanguage);
   };
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local" || !changes.options) return;
-    const changed = normaliseOptions(changes.options.newValue);
-    options = Promise.resolve(changed);
-    adoptOptions(changed);
+    if (area !== "local" || !(changes.options || changes.languageSelection)) return;
+    if (changes.options) {
+      options = Promise.resolve(normaliseOptions(changes.options.newValue));
+      changed.options = true;
+    }
+    if (changes.languageSelection) changed.languageSelection = true;
+    const selection = changes.languageSelection ? changes.languageSelection.newValue : languageSelection;
+    // A language choice made before any options were seen waits for them.
+    if (!changed.options && storedOptions === undefined) {
+      languageSelection = selection;
+      return;
+    }
+    adoptOptions(changes.options ? changes.options.newValue : storedOptions, selection);
   });
   const lines = openSearchHistory({ indexedDB: window.indexedDB });
   const history = { onChange: lines.onChange, requests: searchHistoryRequests(lines, { settings: () => options,
@@ -342,7 +420,8 @@ async function start() {
   frame.title = "Hachidori Search";
   let port = null;
   const clipboardSwitch = document.getElementById("search-clipboard");
-  const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); });
+  const page = clipboardMonitor(clipboardSwitch, (text) => { port?.postMessage({ kind: "clipboard", text }); },
+    () => activeLanguage(storedOptions, languageSelection));
   connectSearchFrame({ window, frame,
     serve: (offered) => { port = offered; return serveSearchFrame(chrome, offered, store, page, history); },
     connection: sandboxed => ({ id: chrome.runtime.id, manifest: chrome.runtime.getManifest(),
@@ -380,7 +459,7 @@ async function start() {
     frame.focus();
     port?.postMessage({ kind: "key", key: event.key });
   });
-  adoptOptions(await options);
+  adoptOptions(...newestRecords(await initial, changed, { options: storedOptions, languageSelection }));
 }
 
 if (globalThis.document) await start();

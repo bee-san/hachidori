@@ -84,6 +84,26 @@ try {
         return { options: reply.options, storage: await chrome.storage.local.get('dictionaryState'),
           status: await chrome.runtime.sendMessage({ target: 'hoshidicts-offscreen', type: 'hd_status' }) };
       }, settings);
+      // HACHIDORI_HOVER_PROFILES=1 measures an installation with a second
+      // profile (docs/languages.md 19): the records take the profile shape with
+      // an English profile beside Japanese, and the engine reloads them.
+      if (process.env.HACHIDORI_HOVER_PROFILES === '1') {
+        await page.evaluate(async () => {
+          const { optionsWithProfiles, dictionaryStateWithProfiles } = await import(chrome.runtime.getURL('profile-state.js'));
+          const stored = await chrome.storage.local.get(['options', 'dictionaryState']);
+          const options = optionsWithProfiles(stored.options);
+          options.profiles.push({ id: 'en', language: 'en', settings: {}, packSettings: {} });
+          options.revision += 1;
+          const state = dictionaryStateWithProfiles(stored.dictionaryState);
+          state.profiles.en = { dictionaries: [], groups: [] };
+          state.revision += 1;
+          await chrome.storage.local.set({ options, dictionaryState: state });
+          const reload = await chrome.runtime.sendMessage({ target: 'hoshidicts-offscreen', type: 'hd_reload' });
+          if (!reload.ok) throw new Error(JSON.stringify(reload));
+        });
+        installed.profiles = await page.evaluate(async () => ({ storage: await chrome.storage.local.get(['options', 'dictionaryState']),
+          status: await chrome.runtime.sendMessage({ target: 'hoshidicts-offscreen', type: 'hd_status' }) }));
+      }
       writeFileSync(resolve(output, `session-${session}-installed.json`), JSON.stringify(installed, null, 2));
       assert.equal(installed.storage.dictionaryState.dictionaries.length, archives.length);
       const tab = await browser.newPage();

@@ -47,10 +47,11 @@ async function updateDictionaryCheck(fingerprint, lastUpdateCheck) {
     }
     const dictionaries = [...state.dictionaries];
     dictionaries[index] = { ...dictionaries[index], lastUpdateCheck };
-    const reply = await WORKER_HANDLERS.hd_state_cas({
-      baseRevision: state.revision,
-      dictionaries,
-    });
+    // A check result is package-wide: with profiles it is written into the
+    // package list, every profile's list unchanged (docs/languages.md 4.2).
+    const reply = await WORKER_HANDLERS.hd_state_cas(state.schemaVersion === 2
+      ? { baseRevision: state.revision, state: { dictionaries, profiles: state.profiles } }
+      : { baseRevision: state.revision, dictionaries });
     if (reply.ok === false) {
       throw new Error(reply.error || "the dictionary update state could not be saved");
     }

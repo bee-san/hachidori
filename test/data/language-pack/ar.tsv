@@ -1,0 +1,12 @@
+# Cases for test/chrome-language-pack.mjs: sentence<TAB>word<TAB>expected headword.
+# Arabic, written for kaikki-to-yomitan's kty-ar-en (revision 2025.04.08), whose
+# headwords have no short vowels. A word with the article alone, such as
+# المدرسة, has its own form-of entries there, which come first.
+كتب الطالب الدرس بالقلم الأزرق.	بالقلم	قلم
+وكتبت رسالة طويلة إلى أمي.	وكتبت	كتب
+قرأ أخي كتابه في الحديقة.	كتابه	كتاب
+ذهبنا إلى مكتبتنا يوم السبت.	مكتبتنا	مكتبة
+أرسلت هدية لصديقي في العيد.	لصديقي	صديق
+سافرنا بالسيارة إلى البحر.	بالسيارة	سيارة
+وَقَرَأْتُ كِتَابَهُ أَمْسِ.	كِتَابَهُ	كتاب
+كان شجاعًا كالأسد.	كالأسد	أسد

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "conditions": {
+    "n": {
+      "name": "Noun",
+      "isDictionaryForm": true
+    }
+  },
+  "transforms": [
+    {
+      "id": "definite",
+      "name": "definite",
+      "description": "The definite article al-.",
+      "source": "own",
+      "rules": [
+        {
+          "type": "prefix",
+          "inflected": "ال",
+          "deinflected": "",
+          "conditionsIn": [],
+          "conditionsOut": [
+            "n"
+          ],
+          "stemMinLength": 2
+        }
+      ]
+    }
+  ]
+}

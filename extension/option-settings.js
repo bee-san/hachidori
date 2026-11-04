@@ -10,11 +10,13 @@ import { describeErrorOrJson } from "./error-text.js";
 import { inferFrequencyDirection } from "./frequency-direction.js";
 import { applyPageTheme } from "./settings-dom.js";
 import {
-  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, clampOption, customButtonController,
+  activationLabel, activeSection, adoptOptions, APPEARANCE_CHOICES, characterViewName, clampOption, customButtonController,
   DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, DESIGN_OPTION_KEYS, element, FREQUENCY_ORDERS, frequencyModeOrder,
-  hasCapability, METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS, options,
-  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS,
-  renderCurrentOptions, renderExperimentalSettings, renderLowMemoryMode, savedOptions, send, setSectionStatus,
+  hasCapability, languageName, METADATA_FIELDS, normaliseKanjiSelection, NUMBER_FIELDS, numberFormat, OPTION_SECTIONS,
+  options,
+  OPTIONS_SAVE_DELAY_MS, optionsRevision, POPUP_RENDERER_IDS, POPUP_THEME_GROUPS, profileFields,
+  renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
+  savedOptions, send, setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
   updateKeybindSettings, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
 } from "./settings.js";
@@ -295,7 +297,7 @@ function renderFrequencyOrder() {
   else if (!selected) hint = "Choose an available frequency dictionary to use this direction.";
   else if (selected.frequencyMode === "rank-based") hint = "Rank-based: Auto direction puts the lowest numbers first.";
   else if (selected.frequencyMode === "occurrence-based") hint = "Occurrence-based: Auto direction puts the highest numbers first.";
-  else hint = "No mode declared: Auto direction compares common and less-common Japanese words; inconclusive results read it as ranks, lowest numbers first.";
+  else hint = `No mode declared: Auto direction compares common and less-common ${languageName()} words; inconclusive results read it as ranks, lowest numbers first.`;
   const hintElement = element("frequency-order-hint");
   if (hintElement.textContent !== hint) hintElement.textContent = hint;
 }
@@ -321,6 +323,7 @@ async function applyFrequencyDirection() {
         if (!owns()) throw new Error("The frequency dictionary choice changed.");
         const reply = await send("hd_lookup", {
           text, maxResults: 256, scanLength: [...text].length, options: { frequencyOrder: "disabled" },
+          ...profileFields(),
         });
         if (!reply.ok) throw new Error(reply.error || "The frequency lookup failed.");
         return reply;
@@ -400,7 +403,9 @@ function renderKanjiChoices() {
 
   const automatic = document.createElement("option");
   automatic.value = "";
-  automatic.textContent = "Automatic — use every kanji dictionary";
+  // A character view's dictionaries are named for its characters (docs/languages.md 7.4).
+  const characters = (characterViewName() ?? "Kanji").toLowerCase();
+  automatic.textContent = `Automatic — use every ${characters} dictionary`;
   select.appendChild(automatic);
 
   const enabled = dictionaries.filter((entry) => entry.enabled !== false);
@@ -411,10 +416,10 @@ function renderKanjiChoices() {
     enabled.filter((entry) => hasCapability(entry, "term")).map((entry) => entry.title),
   );
   const groups = [
-    { kind: "kanji", label: "Kanji dictionaries", titles: [...withKanji] },
+    { kind: "kanji", label: `${characters[0].toUpperCase()}${characters.slice(1)} dictionaries`, titles: [...withKanji] },
     {
       kind: "term",
-      label: "Term dictionaries — requires a matching single-kanji entry",
+      label: `Term dictionaries — requires a matching single-${characters} entry`,
       titles: [...withTerms],
     },
   ];
@@ -506,6 +511,7 @@ function renderScanDelayControls() {
 }
 
 function renderOptions() {
+  renderLanguageCapabilities();
   applyPageTheme(document, options);
   for (const field of NUMBER_FIELDS) {
     const input = element(field.id);
@@ -547,6 +553,7 @@ function renderOptions() {
   renderWordHighlightControls();
   renderExperimentalSettings();
   renderLowMemoryMode();
+  void renderPackSettings();
   updateDesignPreview();
   updateAudioSettings();
   updateAnkiSettings();
@@ -857,14 +864,20 @@ async function flushOptions() {
   }
   let finishSave;
   optionsSaveCompletion = new Promise(resolve => { finishSave = resolve; });
-  const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision };
+  // Edits belong to the profile they were made for, which this page edits
+  // until they are saved (docs/languages.md 5.3).
+  const sent = { patch: pendingOptions, baseRevision: pendingOptionsRevision, fields: profileFields() };
   savingOptions = sent;
   pendingOptions = {};
   setOptionsStatus("Saving…");
   try {
+    // A pack's own settings travel beside the option keys (section 7.5).
+    const { packSettings, ...optionPatch } = sent.patch;
     const reply = await send("hd_options_write", {
       baseRevision: sent.baseRevision,
-      options: sent.patch,
+      options: optionPatch,
+      ...sent.fields,
+      ...(packSettings === undefined ? {} : { packSettings }),
     }, WORKER_TARGET);
     if (reply.options) adoptOptions(reply.options);
     if (!reply.ok) {
@@ -878,8 +891,10 @@ async function flushOptions() {
     }
     setOptionsStatus(Object.keys(pendingOptions).length > 0 ? "Unsaved changes…" : "Saved.", true);
   } catch (error) {
-    pendingOptions = { ...sent.patch, ...pendingOptions };
-    optionsSaveFailed = true;
+    // A patch for a profile this page no longer edits (another page removed
+    // it, and the page moved on) was discarded with that profile's drafts.
+    if (sent.fields.profileId === profileFields().profileId) pendingOptions = { ...sent.patch, ...pendingOptions };
+    optionsSaveFailed = Object.keys(pendingOptions).length > 0;
     // A reply can be lost after storage commits. Read the current revision for
     // explicit retry; do not silently overwrite it or drop the retained draft.
     try {
@@ -898,20 +913,37 @@ async function flushOptions() {
   }
 }
 
-async function flushOptionsUntilIdle() {
+// Saves every pending edit. False while a refused save waits for Save my
+// changes or Use saved settings.
+async function settlePendingOptions() {
   window.clearTimeout(optionsTimer);
   optionsTimer = null;
   for (;;) {
-    if (optionsSaveFailed) {
-      throw new Error("Save the pending settings before checking AnkiConnect.");
-    }
-    if (savingOptions === null && Object.keys(pendingOptions).length === 0) return;
+    if (optionsSaveFailed) return false;
+    if (savingOptions === null && Object.keys(pendingOptions).length === 0) return true;
     await flushOptions(); // NOSONAR: each pass saves what the previous save left queued
   }
 }
 
+async function flushOptionsUntilIdle() {
+  if (!await settlePendingOptions()) {
+    throw new Error("Save the pending settings before checking AnkiConnect.");
+  }
+}
+
+// The edited profile was removed elsewhere: its unsaved edits cannot be
+// saved anywhere (docs/languages.md 5.3).
+function discardPendingOptions() {
+  window.clearTimeout(optionsTimer);
+  optionsTimer = null;
+  pendingOptions = {};
+  optionsEditRevision = null;
+  optionsSaveFailed = false;
+}
+
 export {
-  attachOptionHandlers, flushOptionsUntilIdle, isAvailableFrequencyDictionary, normaliseKanjiClickOption,
-  optionsEditRevision, pendingOptions, renderOptions, renderSearchHistory, renderThemeChoices, renderWordHighlightControls,
-  savingOptions, selectedFrequencyDictionary, setOptionsStatus, writeOptions
+  attachOptionHandlers, discardPendingOptions, flushOptionsUntilIdle, isAvailableFrequencyDictionary,
+  normaliseKanjiClickOption, optionsEditRevision, pendingOptions, renderOptions, renderSearchHistory,
+  renderThemeChoices, renderWordHighlightControls, savingOptions, selectedFrequencyDictionary, setOptionsStatus,
+  settlePendingOptions, writeOptions
 };

@@ -16,11 +16,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
 import "./reader-options.js";
-import { captureDebugLog, captureDocumentActions, recordUserError } from "./debug-log.js";
+import { captureDebugLog, captureDocumentActions, recordUserError, setDebugLogLanguages } from "./debug-log.js";
 import { describeErrorMessage } from "./error-text.js";
 import { formatKeybind } from "./keybind-settings.js";
 import { loadReaderScripts } from "./reader-page.js";
-import { createNavigation, firstSelectable, ROW_STAY, rowKey, textRows } from "./search-lines.js";
+import { createNavigation, firstSelectable, ROW_STAY, rowKey, stopAt, textRows } from "./search-lines.js";
 import { renderTemplateChoices } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
 
@@ -30,7 +30,8 @@ captureDocumentActions(document, captureDebugLog(window, {
   context: "search", store: bridge.debugLogStore, version: async () => (await bridge.ready).manifest.version,
 }));
 
-const { KEYBIND_MODIFIER_CODES, keybindModifiers, normaliseOptions } = globalThis.HDReaderOptions;
+const { KEYBIND_MODIFIER_CODES, keybindModifiers, normaliseOptions, hasProfiles, profiles, profileDescriptor,
+  activeProfileId, projectOptions, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
 const input = document.getElementById("search-input");
 const submit = document.getElementById("search-submit");
 const lines = document.getElementById("search-lines");
@@ -96,7 +97,7 @@ const line = (text, id, cursor) => ({ text, id, cursor, match: null });
 // only off, its first character.
 function opening(text) {
   const start = globalThis.HDContent.searchStart(text);
-  return firstSelectable(text, start, options.onlyScanJapaneseText) ?? start;
+  return firstSelectable(text, start, japaneseOnly(), wordRules()) ?? start;
 }
 
 // The line last searched; the line shown, which is it, or an earlier one in a
@@ -251,7 +252,7 @@ function move(dx, dy, repeat) {
   if (!shownLine || !node) return false;
   const matchedEnd = shownLine.match?.at === shownLine.cursor ? shownLine.match.end : 0;
   const { result, to } = rowKey(navigation, { text: shownLine.text, rows: rowsOf(node),
-    japaneseOnly: options.onlyScanJapaneseText }, shownLine.cursor, matchedEnd, dx, dy);
+    japaneseOnly: japaneseOnly(), words: wordRules() }, shownLine.cursor, matchedEnd, dx, dy);
   // A held Left/Right stops at the text's ends: only a fresh press goes round a one-row text's.
   const wentRound = dx > 0 ? to < shownLine.cursor : to > shownLine.cursor;
   const cursor = repeat && dx && wentRound ? shownLine.cursor : to;
@@ -304,6 +305,13 @@ input.addEventListener("input", () => { walk = null; });
 // text, and there also a reader action such as Add note. Held, the moves repeat.
 const REPEATING = new Set(["searchPreviousLine", "searchNextLine", "searchPreviousWord", "searchNextWord", "searchRowUp",
   "searchRowDown"]);
+// Next and previous word go in reading order; in right-to-left text the arrow
+// keys go the way they point, as a caret's do.
+function wordDirection(action, event) {
+  const next = action === "searchNextWord" ? 1 : -1;
+  return /^Arrow(?:Left|Right)$/u.test(event.code) && getComputedStyle(query).direction === "rtl" ? -next : next;
+}
+
 function runSearchAction(action, event) {
   const inBox = document.activeElement === input;
   const inText = document.activeElement === query && shown !== null;
@@ -318,7 +326,7 @@ function runSearchAction(action, event) {
       return true;
     case "searchPreviousWord":
     case "searchNextWord":
-      return inText && move(action === "searchNextWord" ? 1 : -1, 0, event.repeat);
+      return inText && move(wordDirection(action, event), 0, event.repeat);
     case "searchRowUp":
     case "searchRowDown":
       return inText && move(0, action === "searchRowDown" ? 1 : -1, event.repeat);
@@ -478,15 +486,93 @@ window.addEventListener("paste", (event) => {
   search("paste");
 });
 
+// With profiles the box and the echoed query take the active profile's
+// language, and a right-to-left language's direction from the text
+// (docs/languages.md 8.5); the single-profile page keeps its markup.
+let storedOptions;
+let selection = null;
+const JAPANESE_PLACEHOLDER = input.placeholder;
+
+function applyLanguage() {
+  if (!hasProfiles(storedOptions)) {
+    if (!input.dataset.language) return;
+    for (const node of [input, query]) {
+      node.lang = "ja";
+      node.removeAttribute("dir");
+    }
+    for (const node of [before, after]) node.lang = "ja";
+    input.placeholder = JAPANESE_PLACEHOLDER;
+    delete input.dataset.language;
+    setDebugLogLanguages([]);
+    return;
+  }
+  // This page's debug log redacts the profiles' languages too (8.5).
+  setDebugLogLanguages(profiles(storedOptions).map(profile => profile.language));
+  const language = profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja";
+  const descriptor = globalThis.HDLanguages?.get?.(language);
+  for (const node of [input, query]) {
+    node.lang = descriptor?.bcp47 ?? language;
+    if (descriptor?.direction === "rtl") node.dir = "auto";
+    else node.removeAttribute("dir");
+  }
+  for (const node of [before, after]) node.lang = descriptor?.bcp47 ?? language;
+  input.placeholder = JAPANESE_PLACEHOLDER.replace("Japanese", descriptor?.name ?? (language === "ja" ? "Japanese" : language));
+  input.dataset.language = language;
+}
+
+// The page reads in the active profile, and so takes its palette, Templates
+// and reading options, as the shell around it does (search-shell.js).
+function pageOptions(stored) {
+  return hasProfiles(stored) ? projectOptions(stored, activeProfileId(stored, selection)) : normaliseOptions(stored);
+}
+
+// Rubi's cursor rests only on Japanese letters while Japanese text only is on,
+// in Japanese. Another language's text has none, so there it rests on every
+// visible character (docs/languages.md 8.5).
+function japaneseOnly() {
+  const language = hasProfiles(storedOptions)
+    ? profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja" : "ja";
+  return options.onlyScanJapaneseText && language === "ja";
+}
+
+// A language read word by word looks a word up from its first character
+// (docs/languages.md 8.3), so Rubi's cursor rests only there: the pack's word
+// and word-internal characters, or null.
+let wordRulesOf = null;
+function wordRules() {
+  const language = hasProfiles(storedOptions)
+    ? profileDescriptor(storedOptions, activeProfileId(storedOptions, selection))?.language ?? "ja" : "ja";
+  const text = language === "ja" ? null : globalThis.HDLanguages?.get?.(language)?.text;
+  if (text?.scanStart !== "word") return null;
+  if (wordRulesOf?.language !== language) {
+    const pattern = source => {
+      try {
+        return source ? new RegExp(source, "u") : null;
+      } catch {
+        return null;
+      }
+    };
+    const word = pattern(text.wordCharacters) ?? pattern(text.pattern);
+    wordRulesOf = { language, rules: word === null ? null : { word, internal: pattern(text.wordInternal) } };
+  }
+  return wordRulesOf.rules;
+}
+
 // search.html's Anki Template switch lies over this header (#656). The copy
 // here lists the same Templates, invisibly, so both documents lay it out alike;
 // it is laid out before the page is shown.
 const showTemplates = () => { renderTemplateChoices(templateChoices, options.anki); };
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes.options) return;
+  const selected = changes[LANGUAGE_SELECTION_KEY];
+  if (area !== "local" || !(changes.options || selected)) return;
+  if (changes.options) storedOptions = changes.options.newValue;
+  if (selected) selection = selected.newValue ?? null;
+  applyLanguage();
+  // Without profiles a language choice changes nothing else.
+  if (!changes.options && !hasProfiles(storedOptions)) return;
   const wasOn = options.searchHistoryEnabled;
-  options = normaliseOptions(changes.options.newValue);
+  options = pageOptions(storedOptions);
   applyPageTheme(document, options);
   describeKeys();
   showTemplates();
@@ -543,11 +629,15 @@ function runCustomJavaScript(code) {
 }
 
 try {
-  options = normaliseOptions((await chrome.storage.local.get("options")).options);
+  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
+  storedOptions ??= stored.options;
+  selection ??= stored[LANGUAGE_SELECTION_KEY] ?? null;
+  options = pageOptions(storedOptions);
   showTemplates();
   adoptFeature();
   const connection = await bridge.ready;
   applyPageTheme(document, options);
+  applyLanguage();
   describeKeys();
   bridge.notify("shown");
   // The page opens ready to type into, as Yomitan's focuses its box. It is
@@ -563,10 +653,10 @@ try {
   reader.lookUpOnClick(query, (node, offset) => {
     // A click on the cursor's own character is the reader's too, which looks
     // up (and counts) a word it already shows no second time.
-    if (!options.searchHistoryEnabled || !shown || node !== query.firstChild || offset === shown.cursor
-        || firstSelectable(node.data, offset, options.onlyScanJapaneseText) !== offset) return false;
+    const at = node === query.firstChild ? stopAt(node.data, offset, japaneseOnly(), wordRules()) : null;
+    if (!options.searchHistoryEnabled || !shown || at === null || at === shown.cursor) return false;
     clickMoved = true;
-    shown.cursor = offset;
+    shown.cursor = at;
     shown.match = null;
     navigation = createNavigation();
     void lookUp(shown);

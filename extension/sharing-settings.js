@@ -2,6 +2,7 @@
 // through Anki, or use another Hachidori instead of this one.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describeError } from "./error-text.js";
+import { languageNames } from "./language-names.js";
 import { API_CLIENT_ORIGIN, DEFAULT_SHARING_PORT, canDiscoverSharingHost, sharingPort } from "./sharing-protocol.js";
 
 const POLL_MS = 2000;
@@ -22,6 +23,7 @@ function hostSummary(host, display) {
   const where = display === "this computer" ? "on this computer" : `at ${display}`;
   return `the Hachidori in ${host?.name || "another browser"} ${where} (${dictionaries(host?.dictionaryCount)})`;
 }
+
 
 // "Chrome on this computer", "another browser at 100.75.152.76"
 function clientLabel(entry) {
@@ -58,6 +60,13 @@ export function createSharingSettingsController({
   function derivedStatus() {
     if (linked()) {
       const link = client();
+      // A host that refused this browser's opt-in: it reads the Japanese view
+      // until it is updated (docs/languages.md 17.6).
+      const refused = link.languageProfiles?.optIn === "refused";
+      if (link.connected && refused) {
+        return [`Using ${hostSummary(link.host, link.display)}. Update Hachidori in this browser to use `
+          + `${languageNames(link.languageProfiles.missingLanguages)} from ${link.host?.name || "the linked Hachidori"}.`, undefined];
+      }
       if (link.connected) return [`Using ${hostSummary(link.host, link.display)}.`, "ready"];
       return [link.display === "this computer"
         ? "Linked to a Hachidori on this computer, but it is not reachable. Check that Anki and the sharing browser are open."

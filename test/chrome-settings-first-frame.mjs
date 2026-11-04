@@ -147,10 +147,13 @@ export async function checkSettingsFirstFrameTheme(browser, settingsUrl, check, 
           && globalThis.__hachidoriFirstFrame.frames.length >= 12, { polling: 16, timeout: 10_000 }, scenario.fail ? 1 : 2)
           .then(() => true, () => false);
         await cdp.send("Page.stopScreencast");
+        // The frames captured until the screencast stopped: one still in
+        // flight can arrive while they are sampled, and would have no samples.
+        const shot = frames.slice();
         const settled = await readProbe();
-        const samples = await sampleFrames(frames);
+        const samples = await sampleFrames(shot);
         const reference = samples.at(-1);
-        const painted = frames.map((frame, index) => {
+        const painted = shot.map((frame, index) => {
           const at = Math.round(frame.timestamp * 1000 - settled.timeOrigin);
           return {
             at, samples: samples[index],
@@ -198,7 +201,7 @@ export async function checkSettingsFirstFrameTheme(browser, settingsUrl, check, 
           result.paintedFramesClean = true;
         }
         evidence.scenarios.push(result);
-        if (filmstripPath && !scenario.hold && !scenario.fail) filmstrips.push({ label: scenario.name, frames, painted });
+        if (filmstripPath && !scenario.hold && !scenario.fail) filmstrips.push({ label: scenario.name, frames: shot, painted });
       } finally {
         await page.close();
       }

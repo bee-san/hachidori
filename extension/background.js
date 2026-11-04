@@ -7,7 +7,7 @@ import {
   SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
   CLIPBOARD_TARGET, searchPageSender,
   ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
-  serialiseStorage, workerReply, failureReply,
+  serialiseStorage, workerReply, failureReply, requestProfileId, updateLookupProfiles,
 } from "./background-core.js";
 import {
   WORKER_HANDLERS, handleRecommendedInstall, handleWorkerRequest, SHARING_TARGET,
@@ -119,6 +119,46 @@ let latestAudioOperation = null;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[DICTIONARY_STATE_KEY]) return;
   sharingHost?.setDictionaries(dictionaryCount(changes[DICTIONARY_STATE_KEY].newValue));
+});
+
+// The toolbar badge names the active language once there are two
+// (docs/languages.md 16.2): its code, JA or EN. An installation that never had
+// two profiles never touches the badge. `hadProfiles`: the change that calls
+// this left records that had profiles, so a badge set before a worker restart
+// may still show.
+let languageBadge = null;
+
+// The badge is best effort: a failed read or write leaves it as it was.
+async function syncLanguageBadge(api, { hadProfiles = false } = {}) {
+  if (typeof api.action?.setBadgeText !== "function") return;
+  try {
+    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
+    const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
+    const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
+    const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
+    const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
+    if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;
+    languageBadge = text;
+    await api.action.setBadgeText({ text });
+  } catch {
+    // The next change of the records tries again.
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  const { hasProfiles, LANGUAGE_SELECTION_KEY } = globalThis.HDReaderOptions;
+  const options = changes[OPTIONS_KEY];
+  const hadProfiles = hasProfiles(options?.oldValue);
+  if (!changes[LANGUAGE_SELECTION_KEY] && !(options && (hadProfiles || hasProfiles(options.newValue)))) return;
+  void syncLanguageBadge(chrome, { hadProfiles });
+});
+
+// The profile map relay() resolves lookups with (docs/languages.md 9.3).
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || (!changes[OPTIONS_KEY] && !changes[DICTIONARY_STATE_KEY])) return;
+  updateLookupProfiles(Object.fromEntries([OPTIONS_KEY, DICTIONARY_STATE_KEY]
+    .filter(key => changes[key]).map(key => [key, changes[key].newValue])));
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -305,25 +345,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+function validateAudioTerm(term) {
+  if (typeof term?.expression !== "string" || !term.expression
+      || typeof term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+}
+
 function validateAudioRequest(message) {
   if (message.type === "hd_audio_test") {
     globalThis.HDReaderOptions.validateOptionsPatch({ audioSources: [message.source] });
+    // A profile's Test plays its pack's sample entry (docs/languages.md 13).
+    if (message.term !== undefined) validateAudioTerm(message.term);
     return;
   }
   if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return;
-  if (typeof message.term?.expression !== "string" || !message.term.expression
-      || typeof message.term.reading !== "string") throw new Error("A pronunciation needs an expression and reading.");
+  validateAudioTerm(message.term);
   const choice = message.selection;
   if (choice !== undefined && (!choice || !Number.isInteger(choice.index) || choice.index < 0
       || !["sourceId", "sourceKey", "expression", "reading", "name"].every(key => typeof choice[key] === "string")
       || (choice.url !== null && typeof choice.url !== "string"))) throw new Error("Invalid pronunciation selection.");
 }
 
+// The pronunciation sources of the profile a request names (docs/languages.md
+// 5.4), or today's for one that names none, and that profile's language, whose
+// pack speaks and fills {language} (13).
 async function prepareAudioRequest(message) {
-  if (message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") return message;
+  const test = message.type === "hd_audio_test";
+  if (test ? message.profileId === undefined : message.type !== "hd_audio_play" && message.type !== "hd_audio_candidates") {
+    return message;
+  }
   const stored = await chrome.storage.local.get(OPTIONS_KEY);
-  const options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
-  return { ...message, sources: options.audioSources.filter(source => source.enabled) };
+  let options;
+  let language = {};
+  if (message.profileId === undefined) options = globalThis.HDReaderOptions.normaliseOptions(stored[OPTIONS_KEY]);
+  else {
+    requestProfileId(message, stored[OPTIONS_KEY]);
+    options = globalThis.HDReaderOptions.projectOptions(stored[OPTIONS_KEY], message.profileId);
+    language = { language: globalThis.HDReaderOptions.profileDescriptor(stored[OPTIONS_KEY], message.profileId).language };
+  }
+  if (test) return { ...message, ...language };
+  return { ...message, sources: options.audioSources.filter(source => source.enabled), ...language };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -498,7 +558,8 @@ async function toggleLookupsFromCommand() {
 const READER_CONTENT_TARGET = "hachidori-reader";
 const READER_COMMANDS = new Set(["close", "addNote", "viewNotes", "playAudio", "nextEntry", "previousEntry",
   "firstEntry", "lastEntry", "nextEntryDifferentDictionary", "previousEntryDifferentDictionary", "historyBackward",
-  "historyForward", "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord"]);
+  "historyForward", "scanSelectedText", "scanTextAtSelection", "toggleWordHighlights", "markWordKnown", "ignoreWord",
+  "switchLanguage"]);
 // Yomitan's search page shortcuts (#610) and how each opens the page.
 const SEARCH_COMMANDS = new Map([["openSearchPage", "existingOrNewTab"],
   ["openSearchPageCurrentTab", "existingOrCurrentTab"], ["openPopupWindow", "popup"]]);
@@ -560,6 +621,8 @@ sharingReady = initialiseSharing().catch((error) => {
 void initialiseUpdateAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void initialiseAutomaticBackupAlarm(); // NOSONAR -- top-level await prevents this MV3 worker from activating.
 void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
+  // The toolbar badge names the active language once the records have profiles.
+  if (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY])) void syncLanguageBadge(chrome);
   const options = normaliseOptions(stored[OPTIONS_KEY]);
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);

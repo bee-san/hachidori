@@ -7,8 +7,9 @@ import { captureNetflixPreview } from "./netflix-preview.js";
 import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
+import { profileTemplateKey } from "./anki-worker.js";
 import {
-  normaliseOptions, OPTIONS_KEY, sleep, relay, readerPageSender, workerReply, failureReply,
+  normaliseOptions, OPTIONS_KEY, sleep, relay, readerPageSender, workerReply, failureReply, requestProfileId,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, getAnkiMining } from "./background-requests.js";
 import {
@@ -34,12 +35,32 @@ function waitForAnkiIdle() {
   return new Promise(resolve => ankiIdleWaiters.add(resolve));
 }
 
-async function readAnkiOptions() {
-  const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
+// The options of the profile an Anki request is for (docs/languages.md 5.4),
+// or, for one that names none, today's.
+async function readAnkiOptions(profileId) {
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  let options;
+  if (profileId === undefined) options = normaliseOptions(stored);
+  else {
+    requestProfileId({ profileId }, stored);
+    options = globalThis.HDReaderOptions.projectOptions(stored, profileId);
+  }
   return capabilityAnkiOptions(options, {
     screenshot: MINING_CAPABILITIES.screenshot,
     browserSpeech: MINING_CAPABILITIES.browserSpeech,
   });
+}
+
+// The language and pack settings of the profile an Anki request is for, which
+// decide how its notes are written and which note types its duplicate index
+// recognises (docs/languages.md 12): null in the single-profile shape. A
+// request that names none means the Japanese profile (5.2).
+async function readAnkiProfile(profileId) {
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  const layer = globalThis.HDReaderOptions;
+  if (!layer.hasProfiles(stored)) return null;
+  const profile = layer.profileDescriptor(stored, profileId ?? layer.JAPANESE_PROFILE_ID);
+  return profile === null ? null : { language: profile.language, packSettings: profile.packSettings };
 }
 
 const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
@@ -227,7 +248,9 @@ async function forwardLinkedAnki(message) {
 // told apart by their sharing frames, and a host without batches keeps
 // answering. Each entry becomes what the reader made of that single reply.
 async function linkedPreflight(message, request) {
-  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request };
+  const single = { target: message.target, type: "hd_anki_preflight", requestId: message.requestId, request,
+    // The batch names its profile; each single preflight names it too.
+    ...(message.profileId === undefined ? {} : { profileId: message.profileId }) };
   const reply = await forwardLinkedAnki(single);
   if (reply?.type !== `${single.type}_result` || reply.requestId !== single.requestId) {
     return { state: "error", canAdd: false, error: `unexpected reply for ${single.type}` };
@@ -299,8 +322,30 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   return reply;
 }
 
+// Once the records have profiles, a request names its profile: the Template
+// ids it carries become keys of that profile's Templates, so the mining
+// service's caches and configuration digests are the profile's own, and the
+// requests that read no Template carry the profile itself.
+function withAnkiProfile(message) {
+  const { profileId } = message;
+  if (profileId === undefined) return message;
+  if (typeof profileId !== "string" || profileId === "") throw new TypeError("the Anki request named an invalid profile");
+  const scoped = request => request && typeof request === "object" && !Array.isArray(request)
+    ? { ...request, templateId: profileTemplateKey(profileId, request.templateId), profileId } : request;
+  return {
+    ...message,
+    ...(Object.hasOwn(message, "templateId") || message.type === "hd_anki_status" || message.type === "hd_anki_screenshot"
+      ? { templateId: profileTemplateKey(profileId, message.templateId) } : {}),
+    ...(message.request === undefined ? {} : { request: scoped(message.request) }),
+    ...(message.type === "hd_anki_browse" && message.request === undefined && typeof message.expression === "string"
+      ? { request: scoped({ expression: message.expression }) } : {}),
+    ...(Array.isArray(message.requests) ? { requests: message.requests.map(scoped) } : {}),
+  };
+}
+
 function answerAnkiRequest(message, sender, linkedClient = false) {
   return Promise.resolve().then(async () => {
+    message = withAnkiProfile(message);
     if (sender.id !== chrome.runtime.id || !Object.hasOwn(ANKI_METHODS, message.type)) throw new Error("Unknown Anki request.");
     const service = getAnkiMining();
     // Only the screenshot needs to know which page asked, and it is given the
@@ -309,7 +354,7 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
       return service.screenshot(options => captureSenderViewport(sender, options), message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
-      const status = await service.status(message.templateId);
+      const status = singleProfileStatus(message, await service.status(message.templateId));
       return { ...status, configKey: linkedAnkiConfigKey(status.configKey) };
     }
     if (linkedClient && message.type === "hd_anki_view") {
@@ -325,14 +370,25 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     if (linkedClient && message.type === "hd_anki_browse") {
       return service.browse(hostLinkedAnkiRequest(message.request));
     }
-    if (message.type === "hd_anki_status") return service.status(message.templateId);
+    if (message.type === "hd_anki_status") return singleProfileStatus(message, await service.status(message.templateId));
     if (message.type === "hd_anki_preflight_batch") return { replies: await service.preflightMany(message.requests) };
     return service[ANKI_METHODS[message.type]](message.type === "hd_anki_browse"
       ? message.request ?? message.expression : message.request);
   }).then(result => workerReply(message, result), error => failureReply(message, error));
 }
 
+// A status request that names no profile comes from a single-profile
+// installation or an older linked browser: its reply is today's, without the
+// empty-deck hint that opens Settings → Anki for a new profile's Templates
+// (docs/languages.md 4.5, 6.3).
+function singleProfileStatus(message, status) {
+  if (message.profileId !== undefined || status?.emptyDeck === undefined) return status;
+  const today = { ...status };
+  delete today.emptyDeck;
+  return today;
+}
+
 export {
-  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
+  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
   reconcileAnkiIndex, handleAnkiRequest, sendAnkiRequest, answerAnkiRequest,
 };
