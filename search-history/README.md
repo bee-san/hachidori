@@ -33,7 +33,7 @@ must now be switched on first.
 | --- | --- |
 | `search-history-recall.gif` | Copied and typed lines kept; Up and Down in the box walk them and bring the draft back |
 | `search-history-words.gif` | The searched text's cursor: Right and Left by word with the popup, Up past the top row to earlier lines between their dimmed neighbours, Down back with the cursor where it was |
-| `search-history-texthooker.gif` | `userscripts/texthooker.js`: the list, new lines at the bottom, a click lookup, Times, the clipboard pause, an edit and a delete |
+| `search-history-texthooker.gif` | `texthooker.js` (attached, beside it): the list, new lines at the bottom, a click lookup, Times, the clipboard pause, an edit and a delete |
 
 ```sh
 HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo> <ffmpeg> <out-dir>
@@ -42,7 +42,7 @@ HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo
 ## Screenshots
 
 `HACHIDORI_SEARCH_SCREENSHOTS=DIR node test/chrome-search-history.mjs` on the
-PR at `6700ef4a`, with the history switched on: an earlier line's visit (the
+PR at `6700ef4a` (Settings → Advanced at `c97fc1cb`, after its help text changed), with the history switched on: an earlier line's visit (the
 searched text with its cursor, the neighbour rows and the keys) in the
 default, Girlypop (light), Solarized Light and High contrast palettes and with
 forced colours emulated, and Settings → Advanced → Search history, where the
