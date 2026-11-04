@@ -15,7 +15,9 @@ the script builds, with glosses written for it; the lines arrive through the
 Clipboard monitor from another tab, in a copy of the extension that holds
 `clipboardRead`, as the Chrome suite does. The captions are the script's, laid
 over the page; the red dot marks a click, which headless screenshots do not
-show.
+show. `531b7f0c` is `68f0abbd` on the branch rebased onto #664. The GIFs
+predate `916e9e7b`, which gives the dimmed neighbour rows the palette's dim
+text colour: in them those rows are fainter than they are now.
 
 | File | Shows |
 | --- | --- |
@@ -30,10 +32,13 @@ HACHIDORI_CHROME=<chrome 152> node scripts/capture-search-history-gifs.mjs <repo
 ## Screenshots
 
 `HACHIDORI_SEARCH_SCREENSHOTS=DIR node test/chrome-search-history.mjs` on the
-PR at `598ee675`: an earlier line's visit (the searched text with its cursor,
-the dimmed neighbours and the keys) in the default, Girlypop (light) and High
-contrast palettes and with forced colours emulated, and Settings → Reading →
-Search page.
+PR at `4856496b` (the search page of `be12ad14`, which rebases it onto #664's
+Anki changes): an earlier line's visit (the searched text with its cursor, the
+dimmed neighbours and the keys) in the default, Girlypop (light), Solarized
+Light and High contrast palettes and with forced colours emulated, and
+Settings → Reading → Search page. Solarized Light is the palette where the
+neighbour rows were faintest before `916e9e7b` (3.10:1); the Chrome suite now
+checks those rows at 4.5:1 or more in all 42 palettes.
 
 ## Benchmark
 
@@ -55,5 +60,28 @@ in milliseconds:
 | Up past the top row to the earlier line shown and looked up (n = 6) | – | 14.6 / 15.3 | 14.9 / 17.7 |
 
 The line is kept alongside the lookup, not before it. The first line of a page
-opens the database (the 90th percentiles); with 10,000 lines each line costs
-about 6 ms more for the limit's count, off the lookup's path.
+opens the database (the 90th percentiles). With 10,000 lines kept, Enter to
+the line kept took about 6 ms longer at the median, off the lookup's path. The
+independent audit timed the store's own `add()` at the limit at 0.9–1.0 ms and
+`count()` at 0.3 ms with 10,000 lines (its probe A2), so most of that 6 ms is
+elsewhere between Enter and the `line` event; it has not been broken down.
+
+## Arrow keys on a long text
+
+`scripts/probe-longtext.mjs` (the audit's probe I, which pastes a text of
+100 to 20,000 characters outside a field and times one key's synchronous
+handling in the searched text) in headless Chrome 152, load average 40–45,
+alternating `a765b36f` (each key measures every character) and the PR at
+`4856496b` (rows read once for each text and size), two runs each. A first
+press after the text appears, then the medians of four more Rights and three
+Downs per run, in milliseconds (raw samples in `benchmark/long-text/`):
+
+| characters | first press, `a765b36f` / PR | a later Right | a later Down |
+| ---: | ---: | ---: | ---: |
+| 100 | 2.3–2.4 / 2.2–2.4 | 1.3–1.4 / 0.7 | 1.0–1.2 / 0.5–0.7 |
+| 1,000 | 6.9–7.2 / 6.7–7.3 | 8.4–9.5 / 0.4–0.5 | 6.5–6.8 / 0.4–0.5 |
+| 5,000 | 35–49 / 37–52 | 35–50 / 0.4 | 34–35 / 0.5–0.6 |
+| 20,000 | 222–228 / 180–227 | 202 / 0.4 | 186–216 / 0.5–0.7 |
+
+The first press still measures the whole text, as before, and varies as much
+between runs of one head as between the heads.

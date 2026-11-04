@@ -1,0 +1,28 @@
+{
+ "samples": [
+  {
+   "characters": 100,
+   "firstRightMs": 2.4,
+   "rightMs": 0.7,
+   "downMs": 0.7
+  },
+  {
+   "characters": 1000,
+   "firstRightMs": 7.3,
+   "rightMs": 0.4,
+   "downMs": 0.4
+  },
+  {
+   "characters": 5000,
+   "firstRightMs": 52.1,
+   "rightMs": 0.4,
+   "downMs": 0.6
+  },
+  {
+   "characters": 20000,
+   "firstRightMs": 226.6,
+   "rightMs": 0.4,
+   "downMs": 0.7
+  }
+ ]
+}
