@@ -1073,9 +1073,10 @@ async function googleDocsCase() {
   };
 }
 
-// Netflix lays its player's controls over the subtitles (#662): the reader
-// finds the glyph under the pointer in a line's own text, and the player's own
-// text elsewhere is hit-tested as on any page.
+// Netflix lays its player's controls over the subtitles (#662). The player's
+// own text is hit-tested first, a menu over a line included; where the hit test
+// finds no text, the reader finds the glyph under the pointer in a line's own
+// text.
 async function netflixSubtitleCase() {
   const harness = await createHarness(undefined, { url: "https://www.netflix.com/watch/81000001" });
   const { ownerDocument: document } = harness.popup;
@@ -1083,34 +1084,40 @@ async function netflixSubtitleCase() {
   const player = document.createElement("div");
   player.className = "watch-video";
   player.innerHTML = '<div class="player-timedtext"><div class="player-timedtext-text-container">'
-    + "<span>食べたかった</span></div></div><div><span>読む</span></div>";
+    + "<span>朝ごはんを</span><br><span>食べたかった</span></div></div><div><span>読む</span></div>";
   document.body.append(player);
   const [layer, controls] = player.children;
-  const line = layer.querySelector("span");
-  const title = controls.firstChild;
-  // Ten CSS pixels per character: the line in the row y 10-30, the controls' title in y 50-70.
+  const [first, line] = layer.querySelectorAll("span");
+  const label = controls.firstChild;
+  // Ten CSS pixels per character: the lines in the rows y 10-30 and 40-60, and
+  // the controls' label 読む over the second line's った, from x 40.
   window.Range.prototype.getClientRects = function () {
-    const top = this.startContainer.parentElement === title ? 50 : 10;
-    return [{ left: this.startOffset * 10, right: this.endOffset * 10, top, bottom: top + 20 }];
+    const parent = this.startContainer.parentElement;
+    const left = parent === label ? 40 : 0;
+    const top = parent === first ? 10 : 40;
+    return [{ left: left + this.startOffset * 10, right: left + this.endOffset * 10, top, bottom: top + 20 }];
   };
-  // The controls cover the player, so over the line the hit test and the caret find them.
-  document.elementFromPoint = (_x, y) => (y < 30 ? controls : title);
+  // The controls cover the player, so the hit test and the caret find the label
+  // over its glyphs and the controls themselves everywhere else.
+  const overLabel = (x, y) => x >= 40 && x <= 60 && y >= 40 && y <= 60;
+  document.elementFromPoint = (x, y) => (overLabel(x, y) ? label : controls);
   document.caretRangeFromPoint = (x, y) => {
     const range = document.createRange();
-    if (y < 30) range.setStart(controls, 0);
-    else range.setStart(title.firstChild, Math.floor(x / 10));
+    if (overLabel(x, y)) range.setStart(label.firstChild, Math.floor((x - 40) / 10));
+    else range.setStart(controls, 0);
     return range;
   };
   const scan = (x, y) => harness.driver.resolveCandidate(x, y);
-  const covered = scan(15, 20); // Over べ.
-  const ownText = scan(5, 60);
+  const covered = scan(15, 50); // Over the second line's べ.
+  const gap = scan(15, 35); // Between the lines.
+  const ownText = scan(45, 50); // Over the label's 読, which lies over the line's っ.
   harness.close();
   return {
     // The scan reads on past the line in document order.
-    "a Netflix subtitle line under the player's controls is scanned from the glyph under the pointer":
-      (covered?.query.startsWith("べたかった") && line.contains(covered.anchor))
-      || { query: covered?.query ?? null, anchor: covered?.anchor?.outerHTML ?? null },
-    "the Netflix player's own text away from the subtitles is hit-tested as on any page":
+    "a Netflix subtitle line under the player's controls is scanned from the glyph under the pointer, not from the gap between its lines":
+      (covered?.query.startsWith("べたかった") && line.contains(covered.anchor) && gap === null)
+      || { query: covered?.query ?? null, anchor: covered?.anchor?.outerHTML ?? null, gap: gap?.query ?? null },
+    "the Netflix player's own text is hit-tested first, even over a subtitle line":
       ownText?.query === "読む" || { query: ownText?.query ?? null },
   };
 }
