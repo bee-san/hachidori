@@ -124,7 +124,8 @@ the newest line unless it is the newest already.
 ### In the searched text
 
 After a search the searched text has focus, unless focus was in the popup or
-another control. A click or Tab gives it focus too. Its cursor is the
+another control. A click or Tab gives it focus too. It is a read-only text
+box, so a screen reader passes it the arrow keys. Its cursor is the
 underlined word, the one the results show.
 
 This is Rubi's overlay cursor (bee-san/Rubi_for_vita@6b5e276:

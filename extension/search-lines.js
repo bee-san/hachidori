@@ -44,9 +44,23 @@ function* characters(text) {
 
 const stay = to => ({ result: ROW_STAY, to });
 
+// The characters the cursor can rest on (its stops), in reading order, each
+// with whether a line break comes between it and the stop before it.
+function* stops(text, japaneseOnly) {
+  let broken = false;
+  for (const { at, codePoint } of characters(text)) {
+    if (codePoint === 0x0a) {
+      broken = true;
+    } else if (selectable(codePoint, japaneseOnly)) {
+      yield { at, broken };
+      broken = false;
+    }
+  }
+}
+
 // The first character the cursor can rest on at or after `from`, or null.
 export function firstSelectable(text, from, japaneseOnly) {
-  for (const { at, codePoint } of characters(text)) if (at >= from && selectable(codePoint, japaneseOnly)) return at;
+  for (const { at } of stops(text, japaneseOnly)) if (at >= from) return at;
   return null;
 }
 
@@ -59,20 +73,12 @@ export function firstSelectable(text, from, japaneseOnly) {
 // first and last stops and whether a line break lies between them.
 function readingOrder({ text, japaneseOnly }, cursor, from, direction) {
   const found = { to: null, first: null, last: null, split: false };
-  let broken = false;
-  for (const { at, codePoint } of characters(text)) {
-    if (codePoint === 0x0a) {
-      broken = found.first !== null; // a line break after the first stop
-      continue;
-    }
-    if (!selectable(codePoint, japaneseOnly)) continue;
-    if (direction > 0 ? at >= from : at >= cursor && found.to !== null) {
-      if (direction > 0) found.to = at;
-      return found;
-    }
+  for (const { at, broken } of stops(text, japaneseOnly)) {
+    if (direction > 0 && at >= from) return { ...found, to: at };
+    if (direction < 0 && at >= cursor && found.to !== null) return found;
     if (direction < 0 && at < cursor) found.to = at;
+    found.split ||= found.first !== null && broken; // a line break between the first stop and this one
     found.first ??= at;
-    found.split ||= broken; // a line break between the first stop and this one
     found.last = at;
   }
   return found;
@@ -109,8 +115,7 @@ export function rowStep(line, cursor, from, direction, wrap) {
 // choice again. Its offset, null for no such row, or ROW_UNAVAILABLE.
 function nearestOnRow({ text, rows, japaneseOnly }, row, direction, column) {
   let best = null;
-  for (const { at, codePoint } of characters(text)) {
-    if (!selectable(codePoint, japaneseOnly)) continue;
+  for (const { at } of stops(text, japaneseOnly)) {
     const cell = rows.cell(at);
     if (!cell) return ROW_UNAVAILABLE;
     if (direction < 0 ? cell.line >= row : best !== null && cell.line > best.line) break;

@@ -124,6 +124,7 @@ test("Right goes past the matched word and Left goes back over the Rights, acros
   // A pending or failed lookup, or a match ending inside a character: one character.
   assert.deepEqual(wordStep(navigation, line, 2, 0, 1, true).to, 3);
   assert.deepEqual(wordStep(navigation, laidOut("𠮟る𠮟る", null), 0, 1, 1, true).to, 2);
+  assert.deepEqual(wordStep(navigation, laidOut("猫𠮟る", null), 0, 2, 1, true).to, 1); // 2 splits 𠮟: one character
   assert.deepEqual(wordStep(navigation, line, 2, text.length + 1, 1, true).to, 3);
   // Left from where a Right started forgets that Right and steps back.
   const left = { words: [0, 2], goal: { x: 0, at: 0 } };

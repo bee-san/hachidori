@@ -42,16 +42,15 @@
       </button>
     </form>
     <!-- The searched text, which the arrow keys move a cursor through once it
-         has focus (search.js): a read-only text box, so a screen reader passes
-         it the arrow keys. In a visit to an earlier line (Rubi's line
+         has focus (search.js, which makes it a read-only text box). In a visit
+         to an earlier line (Rubi's line
          history), the rows around it are its neighbours' last and first rows,
          drawn from data-text (search.css): no text of theirs can be looked up,
          selected or read. Each block is its own paragraph, so a lookup never
          runs on into the next. -->
     <div class="search-lines" id="search-lines" hidden>
       <p class="search-neighbour search-neighbour-before" id="search-before" aria-hidden="true" hidden></p>
-      <p class="search-query" id="search-query" lang="ja" tabindex="0" role="textbox" aria-readonly="true" aria-multiline="true"
-        aria-label="Searched text" aria-describedby="search-where search-keys" hidden></p>
+      <p class="search-query" id="search-query" lang="ja" hidden></p>
       <p class="search-neighbour" id="search-after" aria-hidden="true" hidden></p>
       <p class="search-line-note" id="search-where" aria-live="polite" hidden></p>
       <p class="search-line-note search-keys" id="search-keys"></p>

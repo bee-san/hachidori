@@ -41,6 +41,14 @@ const where = document.getElementById("search-where");
 const keys = document.getElementById("search-keys");
 const status = document.getElementById("search-status");
 const templateChoices = document.querySelector("select.search-template");
+// The searched text is a read-only text box, which takes focus and its arrow
+// keys (a screen reader passes it them) and is described by its keys and, in a
+// visit, where it is. It stays a text node in the page, not a textarea, so the
+// reader looks its words up and the cursor's highlight can paint them.
+for (const [name, value] of Object.entries({ tabindex: "0", role: "textbox", "aria-readonly": "true",
+  "aria-multiline": "true", "aria-label": "Searched text", "aria-describedby": "search-where search-keys" })) {
+  query.setAttribute(name, value);
+}
 let reader = null;
 let options = normaliseOptions(undefined);
 
