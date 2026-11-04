@@ -657,10 +657,12 @@ try {
     await settings.bringToFront();
     await settings.setViewport({ width: 1100, height: 900 });
     // Clips are page coordinates: add the scroll after scrollIntoView.
+    // The legend sits above the fieldset's box.
     const fieldset = await settings.$eval("#search-history-settings", (element) => {
       element.scrollIntoView({ block: "center" });
-      const { x, y, width, height } = element.getBoundingClientRect();
-      return { x: x + scrollX, y: y + scrollY, width, height };
+      const box = element.getBoundingClientRect();
+      const top = Math.min(box.top, element.querySelector("legend").getBoundingClientRect().top);
+      return { x: box.x + scrollX, y: top + scrollY, width: box.width, height: box.bottom - top };
     });
     await settle(300);
     await settings.screenshot({ path: resolve(SCREENSHOTS, "settings-search-history.png"), clip: fieldset });
