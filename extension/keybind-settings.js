@@ -206,6 +206,8 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
       if (choice.textContent !== label) choice.textContent = label;
       const hidden = choice.value !== bind.argument && !optionAvailable(choice.value);
       if (choice.hidden !== hidden) choice.hidden = hidden;
+      // Chrome's type-ahead still lands on a hidden option; a disabled one it skips.
+      if (choice.disabled !== hidden) choice.disabled = hidden;
     }
     const unavailable = bind.argument !== "" && !optionAvailable(bind.argument);
     setText(row.optionNote, unavailable ? `Not available in ${language}` : "");
@@ -217,6 +219,7 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     for (const choice of row.action.options) {
       const hidden = choice.value !== bind.action && !actionAvailable(choice.value);
       if (choice.hidden !== hidden) choice.hidden = hidden;
+      if (choice.disabled !== hidden) choice.disabled = hidden;
     }
   }
 

@@ -641,6 +641,7 @@ async function loadProfileSettings() {
     // such as the edited language's removal in another page.
     setStatus: (message, tone = "", error = null) => setSectionStatus(LANGUAGE_STATUS, message, tone, false, error),
     openLanguages,
+    isLinked: () => sharingLinkedAddress !== null,
     readEditedProfile: () => editedProfile,
     readActiveProfileId: activeProfile,
     readOptionsRecord: () => storedOptionsRecord,
@@ -680,7 +681,7 @@ async function renderPackSettings() {
   languageSettings ??= await import("./language-settings.js");
   languageSettings.renderLanguageSettings({ document, descriptor: declared ? descriptor : null,
     name: languageName(), values: options.packSettings ?? {},
-    presentation: designTheme?.language?.presentation === true,
+    presentation: designTheme?.language?.presentation === true, themeName: designTheme?.name ?? null,
     onChange(id, value) {
       options.packSettings = { ...options.packSettings, [id]: value };
       writeOptions();

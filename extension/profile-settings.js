@@ -51,7 +51,7 @@ function rowNamed(container, attribute, key) {
 
 export function createProfileSettings({ document, element, send, setStatus, readEditedProfile, readActiveProfileId,
   readOptionsRecord, readDictionaryState, readSelection, readRecords, languageName, chooseEditedProfile,
-  useEditedProfileForLookups, writeAutoSwitch, settleEdits, afterProfileChange, openLanguages }) {
+  useEditedProfileForLookups, writeAutoSwitch, settleEdits, afterProfileChange, openLanguages, isLinked = () => false }) {
   const registry = globalThis.HDLanguages;
   const originals = new Map();
   let busy = false;
@@ -72,7 +72,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
   // language land on it. Only static markup; names and values are set below.
   const card = create("fieldset", { className: "lookup-group", id: "language-settings" });
   card.innerHTML = `<legend data-search-keywords="profiles add remove">Languages</legend>
-    <p class="section-note" id="language-settings-help">Each language has its own dictionaries and settings. Settings every language shares say All languages.</p>
+    <p class="section-note" id="language-settings-help">Each language has its own dictionaries and settings. With two or more, settings every language shares say All languages.</p>
     <ul class="language-list" id="settings-language-profiles"></ul>
     <ul class="language-list" id="settings-language-held-list" hidden></ul>
     <div class="field" id="settings-language-add-row">
@@ -100,8 +100,8 @@ export function createProfileSettings({ document, element, send, setStatus, read
       <p class="field-hint" id="settings-language-erase-help"></p>
     </div>
     <div class="options-actions">
-      <button type="button" class="ghost danger" id="settings-language-remove-confirm"></button>
-      <button type="button" class="ghost" id="settings-language-remove-cancel">Cancel</button>
+      <button type="button" class="ghost danger" id="settings-language-remove-confirm" aria-describedby="settings-language-remove-text"></button>
+      <button type="button" class="ghost" id="settings-language-remove-cancel" aria-describedby="settings-language-remove-text">Cancel</button>
     </div>`;
   const panelPart = id => panel.querySelector(`#${id}`);
 
@@ -604,12 +604,13 @@ export function createProfileSettings({ document, element, send, setStatus, read
     // A message about the edited profile, such as its removal elsewhere.
     announce(message) { setStatus(message, "error"); },
     // Advanced is shown: the held languages and a linked host's packs are
-    // read again. Only records with profiles hold another language or mirror
-    // a host with profiles, so a Japanese-only page sends today's requests.
+    // read again. Only records with profiles hold another language, and only
+    // a linked page has a host, so an unlinked Japanese-only page sends
+    // today's requests.
     refresh() {
-      if (!hasProfiles(readOptionsRecord())) return;
-      void refreshHeld().catch(error => setStatus(describeErrorOrJson(error), "error", error));
-      void refreshHostLanguages();
+      const withProfiles = hasProfiles(readOptionsRecord());
+      if (withProfiles) void refreshHeld().catch(error => setStatus(describeErrorOrJson(error), "error", error));
+      if (withProfiles || isLinked()) void refreshHostLanguages();
     },
     // Records changed while Advanced is shown: held languages may have too.
     recordsChanged() {
