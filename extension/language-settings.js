@@ -108,11 +108,14 @@ function renderDisplayNote(document, fieldset, presentation, themeName) {
     note.className = "field-hint language-display-note";
     fieldset.append(note);
   }
-  const theme = themeName ? `The ${themeName} theme` : "The chosen theme";
-  const link = document.createElement("a");
-  link.href = "#design";
-  link.textContent = "Design";
-  note.replaceChildren(`${theme} does not use these settings. Choose another theme in `, link, ".");
+  // Rebuilt only when its text changes, so a focused link keeps focus.
+  const text = `${themeName ? `The ${themeName} theme` : "The chosen theme"} does not use these settings. Choose another theme in `;
+  if (note.firstChild?.nodeValue !== text) {
+    const link = document.createElement("a");
+    link.href = "#design";
+    link.textContent = "Design";
+    note.replaceChildren(text, link, ".");
+  }
 }
 
 export function renderLanguageSettings({ document, descriptor, name, values, presentation, themeName = null, onChange }) {

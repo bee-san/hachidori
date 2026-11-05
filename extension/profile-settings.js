@@ -612,6 +612,12 @@ export function createProfileSettings({ document, element, send, setStatus, read
       const withProfiles = hasProfiles(readOptionsRecord());
       if (withProfiles) void refreshHeld().catch(error => setStatus(describeErrorOrJson(error), "error", error));
       if (withProfiles || isLinked()) void refreshHostLanguages();
+      // Unlinked without profiles: a former host's packs no longer filter
+      // the menu, and no request is sent.
+      else if (hostLanguages !== null) {
+        hostLanguages = null;
+        renderAvailable();
+      }
     },
     // Records changed while Advanced is shown: held languages may have too.
     recordsChanged() {

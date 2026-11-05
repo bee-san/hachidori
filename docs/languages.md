@@ -1616,8 +1616,9 @@ lookups in a language Settings cannot show.
   marked words kept") with **Erase**.
 - **Add a language**: a menu of every pack not in use, by English name, and
   **Add**. Adding copies the edited profile (section 6.3), and Settings then
-  shows the new language. On a linked client, with or without profiles, the
-  menu offers only the packs the host has too (section 17.6). A client whose
+  shows the new language. On a linked client whose host has profiles, with or
+  without profiles of its own, the menu offers only the packs the host has
+  too (section 17.6). A client whose
   host's `hello` lacks the capability (an older build, or one without a second
   language) is told "Add {Language} on {host} first, in Settings → Advanced →
   Languages. If its Advanced has no Languages card, update it there."; a client

@@ -391,6 +391,11 @@ test("a theme without presentation hides the pack's display settings and says wh
   const note = card.querySelector(".language-display-note");
   assert.match(note.textContent, /^The .+ theme does not use these settings\. Choose another theme in Design\.$/u);
   assert.equal(note.querySelector("a").getAttribute("href"), "#design");
+  // A re-render keeps the link, so keyboard focus on it survives an options change.
+  const link = note.querySelector("a");
+  settings.write({ options: { ...settings.records.options, revision: settings.records.options.revision + 1 } });
+  await settle();
+  assert.equal(card.querySelector(".language-display-note a"), link);
   assert.deepEqual(settings.search("vowel marks"), []);
 });
 
@@ -450,6 +455,25 @@ test("while linked, Add a language lists only the packs the host has too", async
   assert.deepEqual(rowsOf(settings, "settings-language-profiles"), ["Japanese", "Arabic"]);
   assert.ok(el("settings-language-add-select").closest("[hidden]"), "the host has no English pack");
   assert.equal(el("settings-language-add-help").textContent, "This Hachidori has no other language yet.");
+});
+
+test("a linked Japanese-only page offers the host's packs, and every pack once it unlinks", async t => {
+  let reply = { ok: true, sharing: { client: { linked: true, connected: true, address: "192.0.2.1:8766",
+    languageProfiles: { hostLanguages: ["ja", "ar"] } } } };
+  const settings = await open(t, { hash: "#advanced", stored: { options: { revision: 1 }, sharing: { client: { address: "192.0.2.1:8766" } } },
+    onMessage: async message => (message.type === "hd_sharing_status" ? reply : undefined) });
+  await settle(100);
+  const offered = () => [...settings.el("settings-language-add-select").options].map(choice => choice.value).filter(Boolean);
+  assert.deepEqual(offered(), ["ar"], "the host has no English pack");
+  assert.ok(settings.messages.some(message => message.type === "hd_sharing_status"));
+  // Unlinked: the former host's packs no longer filter the menu.
+  reply = { ok: true, sharing: { client: { linked: false } } };
+  settings.write({ sharing: {} });
+  settings.navigate("lookup");
+  await settle(50);
+  settings.navigate("advanced");
+  await settle(100);
+  assert.ok(offered().includes("en") && offered().includes("ar"), offered().join());
 });
 
 test("with two languages the sidebar names the one Settings shows and leads to Settings shows", async t => {
