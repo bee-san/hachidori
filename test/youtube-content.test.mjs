@@ -133,6 +133,17 @@ test("the player's next video drops the previous one's timeline, and a video wit
   assert.deepEqual(f.youtube.resolve(f.youtube.observe(f.segments()[0])), { reason: "live" });
 });
 
+test("a preview's captions are kept only until another's arrive; the watched video's stay", t => {
+  const f = youtube(t, { rows: ["雨が降りそうだから"], timeMs: 5000 });
+  f.post({ kind: "video", movieId: VIDEO });
+  f.subtitle(MANUAL);
+  for (const movieId of ["Preview_one", "Preview_two"]) f.subtitle(MANUAL, { movieId });
+  const at = movieId => f.youtube.resolve({ movieId, mediaTimeMs: 5000, lineText: "雨が降りそうだから", hoveredText: "雨が降りそうだから" });
+  assert.equal(at(VIDEO).cue.startMs, 4000);
+  assert.equal(at("Preview_two").cue.startMs, 4000);
+  assert.deepEqual(at("Preview_one"), { reason: "no-timeline" });
+});
+
 test("an ad's captions and sound are not the video's", t => {
   let options = null;
   const lineAudio = { start() {}, stop() {}, ready: () => true };

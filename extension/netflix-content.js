@@ -119,7 +119,13 @@
     }
 
     function movie(movieId) {
-      if (!movies.has(movieId)) movies.set(movieId, { tracks: new Map(), status: null, chosen: null });
+      if (!movies.has(movieId)) {
+        // YouTube's page posts the caption files of every player on it, its
+        // previews' too: as the page does, the reader keeps the watched
+        // video's timeline and the latest other one.
+        if (site.reportsVideo) for (const id of movies.keys()) if (id !== watched) movies.delete(id);
+        movies.set(movieId, { tracks: new Map(), status: null, chosen: null });
+      }
       return movies.get(movieId);
     }
 
