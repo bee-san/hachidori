@@ -76,7 +76,9 @@ service and duplicate index; `background-anki.js` the Anki routes
 (`handleAnkiRequest`), screenshots and word status; `background-backup.js`
 backups, `relayEngineRequest` and the alarm handler; `background-updates.js`
 managed updates (`handleUpdatesRequest`); `background-sharing.js` the sharing
-host and client; and `background-netflix.js` Netflix capture and line audio.
+host and client; `background-video.js` the capture and line audio Netflix and
+YouTube mining share, with `background-netflix.js` and `background-youtube.js`
+naming each site.
 
 ## Primary engine path
 
@@ -3433,6 +3435,9 @@ response does not tell the extension whether the browser omitted that video,
 and Hachidori does not guess DRM from black pixels: a video can show a black
 frame.
 
+With **YouTube mining** on, `{screenshot}` on a YouTube page is the video's
+own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
+
 **Netflix preview screenshots** is a separate experimental switch, off by
 default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
 preview JPEG for `{screenshot}`. These images are lower resolution and can show
@@ -3797,6 +3802,132 @@ graph until the page reloads, even with the switch off. The research behind
 this design, and how other tools get line audio, is in
 [netflix-audio-research.md](netflix-audio-research.md).
 
+### YouTube mining (experimental)
+
+Settings → Advanced → Experimental features → **YouTube mining**
+(`options.experimental.youtubeMining`, off by default, listed after the Netflix
+switches) gives notes mined from a YouTube caption what Netflix mining gives a
+Netflix subtitle: the whole line as the sentence, its own audio for
+`{sentence-audio}`, a looping GIF of it for `{gif}`, and the video paused while
+a caption is hovered. `{screenshot}` becomes the frame the video shows. It is a
+separate switch from Netflix mining, and each switch gates only its own site.
+Every part fails closed as Netflix's does: a note without its line is added
+with its other fields and a warning.
+
+**One layer for both sites.** YouTube runs on the code Netflix mining uses, not
+a copy. `netflix-content.js` is the video-site reader: `createVideoSite(window,
+site)` takes a description of the site's page events, video IDs, subtitle
+formats and statuses, where its `<video>` and subtitle layer are, its recorder
+page and its worker requests. The file describes Netflix and makes its reader,
+`HDNetflix`, on `www.netflix.com` only; `youtube-content.js` describes YouTube
+and makes `HDYouTube`. The cue matching, hover pause, line audio
+(`netflix-audio.js`), tab recording (`netflix-capture.js`, which
+`youtube-recorder.html` loads with YouTube's port and name), GIF encoding and
+the Anki handling are shared. In the worker, `background-video.js` is the
+service both sites use for their recorder port and their capture, line-audio
+and load requests; `background-netflix.js` and `background-youtube.js` give it
+each site's names, targets (`hachidori-netflix`, `hachidori-youtube`) and the
+pages it plays on. `site-scripts.js` registers and unregisters a site's scripts
+with its switch, for `netflix.js` and `youtube.js`. Netflix's scripts,
+messages, requests and replies are as they were.
+
+**Scripts.** While the flag is on, `youtube.js` registers two scripts for
+`https://www.youtube.com/*` at `document_start`, top frame only:
+`youtube-page.js` in the page's main world, and the video-site layer
+(`netflix-subtitles.js`, `netflix-audio.js`, `netflix-content.js`) with
+`youtube-content.js` beside the manifest's content scripts. A YouTube page that
+was open when the switch went on asks once with `hd_youtube_load`, as Netflix's
+does with `hd_netflix_load`; the player loaded its captions before the page
+script was there, so a note says to reload until the captions are loaded again
+(switching the caption track does that too). The manifest needs no new
+permission: `<all_urls>` already covers the page, and only
+`youtube-recorder.html` is web-accessible, to `https://www.youtube.com/*`.
+
+**Captions.** YouTube's player loads the caption track it shows as json3 from
+`/api/timedtext`, with a proof-of-origin token; the same address without the
+token returns an empty file. So Hachidori fetches nothing. `youtube-page.js`
+wraps `XMLHttpRequest.prototype.open` and, for a request to this origin's
+`/api/timedtext` with `fmt=json3`, an 11-character `v` and a language, posts
+the response text when it loads with status 200: `{ kind: "subtitle", movieId,
+trackId: "shown", closedCaptions: false, format: "json3", language, text }`,
+where `language` is the translation's `tlang` or else `lang`. Every other
+request is opened exactly as the player asked. The player shows one track at a
+time and loads a track again when it is chosen, so a video's latest file is the
+one on screen: the reader keeps it as the video's only track, whatever its
+language (typed, auto-generated or translated). The page also posts which video
+its player (`#movie_player`) plays, `{ kind: "video", movieId }`, from
+`getVideoData()` on `yt-navigate-finish`, `yt-player-updated` and the main
+video's `loadstart`, `loadedmetadata` and `playing`, and when the reader asks
+with a `state` command. That video, not the address, is the watched one: the
+miniplayer keeps playing it on other pages of the site. A new video drops the
+previous one's timeline. Both sides keep the watched video and the latest
+other one, since inline previews load captions too. A live stream posts
+`{ kind: "status", subtitles: "live" }` and its captions are not read.
+
+`netflix-subtitles.js` parses json3 (`parseJson3`): each event with `segs`
+becomes a cue from `tStartMs` for `dDurationMs`, its text the segments' `utf8`
+joined, without direction marks; events that only append a line break
+(`aAppend`) are skipped, and the text is never markup. Auto-generated captions
+roll up in a window (`wWinId`): a line stays on screen while the next is said.
+There a cue ends where the next line of its window starts, which is when its
+words were said, so the sentence audio is that line's, and `shownUntilMs` keeps
+its own end, which `matchingCues` matches a hovered line against. Netflix's
+cues have no `shownUntilMs` and match as before.
+
+**The line.** A caption is text inside `#movie_player
+.ytp-caption-window-container`; its line is the `.caption-window` it is in (an
+auto-generated window holds two rows, and the row under the pointer is the
+hovered text). The observation, matching, the whole-cue sentence and the
+request field work as for Netflix, with `youtube: { cue: { movieId, startMs,
+endMs } }` or `youtube: { unavailable: reason }` (`no-timeline`, `live`,
+`failed`, `no-match`, `ambiguous`). While an ad plays (`#movie_player` has
+`ad-showing`), its captions are not observed, the line audio keeps nothing for
+any video, hover pause leaves the ad playing and a replay is refused with
+`ad`. With **Switch language automatically** on, a lookup in a caption uses the
+profile of the caption track's language (docs/languages.md 8.5), because
+YouTube's markup carries the page's interface language instead.
+
+**Media.** Line audio, replays, play-on and tab recording are Netflix's, through
+YouTube's own player methods (`seekTo`, `playVideo`, `pauseVideo`,
+`getCurrentTime`, `getPlaybackRate`, `setPlaybackRate`), which keep its
+controls in step. Requests are `hd_youtube_line_audio`,
+`hd_youtube_capture_start`, `hd_youtube_capture_finish` and
+`hd_youtube_capture_cancel`, checked as Netflix's are, except that the tab
+needs only to show a `www.youtube.com` page; the recorder connects on
+`hachidori-youtube-recorder`. A YouTube page has more than its player, so a
+`{gif}` keeps only the video: the reader sends the `<video>`'s place in the
+viewport as fractions of it, with the viewport's aspect ratio, and the recorder
+cuts that part out of each frame, allowing for the bars Chrome adds when it
+fits the tab into the capture's size. On a YouTube page with the switch on, the
+worker takes `{screenshot}` from the video itself: `youtube-frame.js` runs in
+the exact reading document's isolated world, draws the player's current frame
+into a canvas at the video's own size and returns it as a JPEG, through the
+same pending-screenshot lifecycle as any picture. A player that shows no
+picture yet answers `none` and the ordinary viewport screenshot is taken; a
+frame that cannot be read is a screenshot warning. YouTube's video is the
+page's own media, so its pixels can be read; the picture has no captions or
+player controls on it.
+
+**Layouts and keys.** The default, theatre and fullscreen layouts and the
+miniplayer use the same player, captions and video, so all of them work.
+YouTube makes the whole document fullscreen, so the popup shows over the video
+as on any page. YouTube's own caption overlay stays as it is: Hachidori reads
+it and does not hide or move it, and YouTube's own caption drag moves it, so
+Netflix's subtitle drag is not added. Hachidori's default popup keybinds use
+Alt, and YouTube's shortcuts ignore keys pressed with Alt: on youtube.com, with
+a popup open, Alt+P, Alt+V, Alt+B, Alt+F, Alt+↑, Alt+↓, Alt+PageUp, Alt+PageDown,
+Alt+Home and Alt+End left the video's time, pause, speed, volume and fullscreen
+as they were. Escape still leaves fullscreen as well as closing the popup,
+because the browser handles it. Shorts (another player), players embedded in
+other sites, `m.youtube.com`, `youtube-nocookie.com`, YouTube Music and live
+streams are not supported.
+
+YouTube's caption files, player methods and page markup are YouTube's private
+interfaces and may change without notice; when they do, notes keep their text
+and screenshot and say why they have no line audio or GIF. Nothing of YouTube
+is stored: timelines live in the page's memory and only the WAV, GIF and JPEG
+reach Anki.
+
 ## Managed custom dictionary
 
 `custom-dictionary.js` is a context-independent ES module shared by Settings,
@@ -4120,9 +4251,11 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_updates_install` | Recheck and install the requested available managed packages |
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
-| `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix line) whose token a reader abandoned; answered locally when linked |
+| `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix or YouTube line) whose token a reader abandoned; answered locally when linked |
 | `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 | `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
+| `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | Experimental YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining-experimental)) |
+| `hd_youtube_load` | Experimental YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
 
 ## Build outputs
 

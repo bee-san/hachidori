@@ -202,6 +202,23 @@ pictures are otherwise taken only by the ordinary page screenshot above. A
 browser linked to another Hachidori does not record Netflix lines, and neither
 does Firefox, which lets extensions neither record a tab nor read the sound.
 
+## YouTube sentence audio, GIF and video frame (experimental)
+
+Settings → Advanced → Experimental features → **YouTube mining** is off by
+default. While it is on, Hachidori reads the caption file that YouTube's own
+player loads on `https://www.youtube.com/` pages, in that page, and keeps its
+text and timing only in the page's memory; it requests nothing from YouTube
+itself. The video's sound is kept and cut as for Netflix above: the last 30
+seconds heard at normal speed, in the page's memory, and a line goes to your
+configured AnkiConnect server only when you add a note that maps
+`{sentence-audio}`. A `{gif}` field gets a short looping GIF of the line,
+recorded from the tab as for Netflix and cut to the video. With the switch on,
+`{screenshot}` on a YouTube page is the frame the video shows, read from the
+video in that page, instead of the whole visible page; it goes to Anki with the
+note like any screenshot. Nothing of it leaves the page otherwise. A linked
+browser does not record YouTube lines, and Firefox records no line audio or
+GIF.
+
 ## Backups, retention and deletion
 
 Data saved in the extension remains until you remove it, replace it by restoring

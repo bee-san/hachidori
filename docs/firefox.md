@@ -75,6 +75,10 @@ Two runtime rules keep one source for both browsers:
   `MediaStreamTrackProcessor`, so notes get no line audio or GIF; they still get
   the subtitle line as the sentence and the page screenshot, with a warning
   that says why.
+- **YouTube mining (experimental).** The same: notes get the caption line as
+  the sentence and, for `{screenshot}`, the video's frame, but no line audio or
+  GIF, with a warning that says why. Hovering a caption pauses the video as in
+  Chrome.
 - **Local files.** Firefox's switch is **Access local files on your computer**
   in `about:addons` → Hachidori → **Permissions and data**, off by default.
   Extensions cannot open that page, so **Read saved pages too** says where it
