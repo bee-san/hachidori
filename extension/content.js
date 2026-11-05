@@ -716,13 +716,16 @@
   // registers each site's reader (netflix-content.js, youtube-content.js) on
   // the site while its flag is on; the switch also gates a page that loaded it
   // before the switch went off. `api` is the site's reader, `recorder` the Anki
-  // controller's option that records its lines (anki-content.js), and on
-  // Netflix the subtitle tracks are the reading language's (8.5).
+  // controller's option that records its lines (anki-content.js), `lines` its
+  // subtitle boxes (as its reader's description names them), and on Netflix
+  // the subtitle tracks are the reading language's (8.5).
   const VIDEO_SITES = {
     "www.netflix.com": { flag: "netflixMining", api: () => globalThis.HDNetflix, target: "hachidori-netflix",
-      load: "hd_netflix_load", recorder: "recordNetflixLine", subtitleLanguage: true },
+      load: "hd_netflix_load", recorder: "recordNetflixLine", subtitleLanguage: true,
+      lines: ".player-timedtext .player-timedtext-text-container" },
     "www.youtube.com": { flag: "youtubeMining", api: () => globalThis.HDYouTube, target: "hachidori-youtube",
-      load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false },
+      load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false,
+      lines: "#movie_player .ytp-caption-window-container .caption-window" },
   };
   const VIDEO_SITE = Object.hasOwn(VIDEO_SITES, location.hostname) ? VIDEO_SITES[location.hostname] : null;
   const NETFLIX_HOST = location.hostname === "www.netflix.com";
@@ -1003,12 +1006,15 @@
     return imposterCandidate(text, node, imposterOffsetAt(node, clientX, clientY), false, rect);
   }
 
-  // Netflix lays parts of its player over the subtitles, where the hit test
+  // Netflix lays parts of its player over the subtitles (#662), and YouTube its
+  // auto-hidden control bar and its miniplayer's scrim, where the hit test
   // finds them instead of the line. Where it finds no glyph under the pointer,
   // the reader looks for one in the lines' own text, as netflix-content.js
-  // finds a hovered line for hover pause.
-  function netflixLineGlyphAt(clientX, clientY) {
-    for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
+  // finds a hovered line for hover pause: on Netflix always, on YouTube while
+  // YouTube mining is on.
+  function videoLineGlyphAt(clientX, clientY) {
+    if (!NETFLIX_HOST && !videoMiningEnabled()) return null;
+    for (const box of document.querySelectorAll(VIDEO_SITE.lines)) {
       const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const offset = imposterOffsetAt(node, clientX, clientY);
@@ -1206,7 +1212,7 @@
     const field = scannableField(hit);
     if (field) return resolveFieldCandidate(field, clientX, clientY);
     // The page's own glyph comes first, a Netflix menu over a line included.
-    const glyph = caretGlyphAt(hit, clientX, clientY) ?? (NETFLIX_HOST ? netflixLineGlyphAt(clientX, clientY) : null);
+    const glyph = caretGlyphAt(hit, clientX, clientY) ?? (VIDEO_SITE !== null ? videoLineGlyphAt(clientX, clientY) : null);
     return glyph ? resolveCandidateAt(glyph.node, glyph.offset) : null;
   }
 

@@ -40,20 +40,72 @@ async function youtubeRecorderPortStage() {
   await settle();
   const refusedWithNetflixOnly = netflixOnly.disconnected;
   await chrome.storage.local.set({ options: { revision: 2, experimental: flags(true) } });
-  const netflixPage = connect({ ...recorder, url: chrome.runtime.getURL("netflix-recorder.html") });
-  const topFrame = connect({ ...recorder, frameId: 0 });
-  const elsewhere = connect({ ...recorder, tab: { id: 7, url: "https://m.youtube.com/watch?v=Ab3dEf6hI9k" } });
-  const wrongPort = connect(recorder, "hachidori-netflix-recorder");
+  // Each refused port is read before a later port for the same tab, which
+  // would replace one that was kept, connects.
+  const refused = {};
+  for (const [name, sender, portName] of [
+    ["netflixPage", { ...recorder, url: chrome.runtime.getURL("netflix-recorder.html") }],
+    ["topFrame", { ...recorder, frameId: 0 }],
+    ["elsewhere", { ...recorder, tab: { id: 7, url: "https://m.youtube.com/watch?v=Ab3dEf6hI9k" } }],
+    ["wrongPort", recorder, "hachidori-netflix-recorder"],
+  ]) {
+    const port = connect(sender, portName);
+    await settle();
+    refused[name] = port.disconnected;
+  }
   const on = connect(recorder);
   // In the miniplayer the player plays on another page of the site.
   const miniplayer = connect({ ...recorder, tab: { id: 8, url: "https://www.youtube.com/feed/subscriptions" } });
   await settle();
   check("the YouTube recorder port is kept only for YouTube's recorder page framed in a YouTube tab while YouTube mining is on",
-    refusedWithNetflixOnly && netflixPage.disconnected && topFrame.disconnected && elsewhere.disconnected
-      && wrongPort.disconnected && !on.disconnected && !miniplayer.disconnected,
-    JSON.stringify({ refusedWithNetflixOnly, netflixPage: netflixPage.disconnected, topFrame: topFrame.disconnected,
-      elsewhere: elsewhere.disconnected, wrongPort: wrongPort.disconnected, on: on.disconnected,
-      miniplayer: miniplayer.disconnected }));
+    refusedWithNetflixOnly && Object.values(refused).every(Boolean) && !on.disconnected && !miniplayer.disconnected,
+    JSON.stringify({ refusedWithNetflixOnly, refused, on: on.disconnected, miniplayer: miniplayer.disconnected }));
+}
+
+// A {gif} recording forwards to the recorder the part of the tab the reader
+// asked for when it fits in the tab, and drops one that does not.
+async function youtubeCropStage() {
+  const bus = makeBus(), storage = makeStorage();
+  const chrome = makeChrome("youtube-crop", bus, storage);
+  chrome.runtime.getContexts = async () => [{}];
+  const tab = { id: 7, active: true, windowId: 3, url: WATCH };
+  chrome.tabs = {
+    async get(id) { if (id !== tab.id) throw new Error("No tab with id"); return { ...tab }; },
+    async sendMessage() { return { present: true }; },
+  };
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
+  await storage.api().local.set({ options: { revision: 1, experimental: flags(true) } });
+  const recorded = [];
+  // The recorder frame: it answers each record request as the real one does.
+  const connectRecorder = () => {
+    const port = { name: "hachidori-youtube-recorder", onMessage: makeEvent(), onDisconnect: makeEvent(), disconnected: false,
+      sender: { id: chrome.runtime.id, url: chrome.runtime.getURL("youtube-recorder.html"), frameId: 3, tab },
+      disconnect() { this.disconnected = true; this.onDisconnect.fire(); },
+      postMessage(message) {
+        recorded.push(message);
+        if (message.type === "record") queueMicrotask(() => port.onMessage.fire({ type: "started", padMs: 250 }));
+      } };
+    chrome.__events.onConnect.fire(port);
+    return port;
+  };
+  const reader = { id: chrome.runtime.id, url: WATCH, frameId: 0, documentId: "watch-document", tab: { id: tab.id, url: WATCH } };
+  const start = crop => bus.sendMessage("reader", { target: "hachidori-youtube", type: "hd_youtube_capture_start",
+    requestId: "youtube-crop", cue: { movieId: "Ab3dEf6hI9k", startMs: 2000, endMs: 4200 }, audio: false, gif: true, crop },
+  reader);
+  const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  const crop = { left: 0.125, top: 0.125, width: 0.625, height: 0.5, aspect: 16 / 9 };
+  connectRecorder();
+  await settle();
+  const fits = await start(crop);
+  connectRecorder();
+  await settle();
+  const outside = await start({ ...crop, width: 0.9 });
+  const records = recorded.filter(message => message.type === "record");
+  check("a YouTube GIF recording forwards a crop that fits in the tab to the recorder and drops one that does not",
+    fits?.ok === true && typeof fits.sessionId === "string" && outside?.ok === true && records.length === 2
+      && JSON.stringify(records[0].crop) === JSON.stringify(crop) && !Object.hasOwn(records[1], "crop")
+      && records.every(record => record.gif === true && record.audio === false && record.targetTabId === 7),
+    JSON.stringify({ fits, outside, records }));
 }
 
 // The WAV the YouTube page cut from what the viewer heard is held for that
@@ -159,9 +211,10 @@ async function youtubeFrameStage() {
     async captureVisibleTab(windowId, options) { captures.push({ windowId, options }); return "data:image/jpeg;base64,c2hvdA=="; },
   };
   let frameResult = { dataUrl: "data:image/jpeg;base64,/9j/4AAQ/9k=" };
+  let otherDocument = false;
   chrome.scripting = { executeScript: async injection => {
     injections.push(injection);
-    return [{ frameId: 0, documentId, result: frameResult }];
+    return [{ frameId: 0, documentId: otherDocument ? "replacement-document" : documentId, result: frameResult }];
   } };
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise });
   const anki = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
@@ -183,6 +236,10 @@ async function youtubeFrameStage() {
   const unreadable = await ask(reader);
   frameResult = { dataUrl: "data:image/png;base64,c2hvdA==" };
   const notJpeg = await ask(reader);
+  frameResult = { dataUrl: "data:image/jpeg;base64,/9j/4AAQ/9k=" };
+  otherDocument = true;
+  const fromOtherDocument = await ask(reader);
+  otherDocument = false;
   const beforeSubframe = injections.length;
   const subframe = await ask({ ...reader, frameId: 1 });
   const otherText = await ask(reader, false);
@@ -195,9 +252,11 @@ async function youtubeFrameStage() {
       && noPicture?.ok === true && afterNoPicture === capturesBefore + 1
       && unreadable?.ok === false && unreadable.error.includes("could not be read")
       && notJpeg?.ok === false && notJpeg.error.includes("no JPEG image")
+      && fromOtherDocument?.ok === false && fromOtherDocument.error.includes("reading document changed")
       && subframe?.ok === true && otherText?.ok === true && injections.length === beforeSubframe
       && captures.length === capturesBefore + 3,
-    JSON.stringify({ switchedOff, frame, noPicture, unreadable, notJpeg, subframe, otherText, captures: captures.length,
+    JSON.stringify({ switchedOff, frame, noPicture, unreadable, notJpeg, fromOtherDocument, subframe, otherText,
+      captures: captures.length,
       capturesBefore, injections: injections.length, world: injected?.world, target: injected?.target }));
 }
 
@@ -228,6 +287,85 @@ async function youtubeLoadCase() {
   };
 }
 
+// A stand-in for YouTube's reader (youtube-content.js), whose captions are in
+// the language `language` names.
+function youtubeReader(language = () => null) {
+  return { setHoverPause() {}, setLineAudio() {}, setSubtitleDragging() {}, miningFields: () => ({}), observe: () => null,
+    captionLanguage: language };
+}
+
+// A YouTube caption window in YouTube's markup, two rows of ten-pixel
+// characters at y 10-30 and 40-60, and an element over all of it, as YouTube's
+// auto-hidden control bar and its miniplayer's scrim lie over its captions:
+// the hit test and the caret find that element, never the caption.
+function coveredCaption(window) {
+  const { document } = window;
+  const player = document.createElement("div");
+  player.id = "movie_player";
+  player.innerHTML = '<div class="ytp-caption-window-container"><div class="caption-window"><span class="captions-text">'
+    + '<span class="caption-visual-line"><span class="ytp-caption-segment">朝ごはんを</span></span>'
+    + '<span class="caption-visual-line"><span class="ytp-caption-segment">食べたかった</span></span></span></div></div>'
+    + '<div class="ytp-chrome-bottom"></div>';
+  document.body.append(player);
+  const [first, second] = player.querySelectorAll(".ytp-caption-segment");
+  const cover = player.querySelector(".ytp-chrome-bottom");
+  window.Range.prototype.getClientRects = function () {
+    const top = this.startContainer.parentElement === first ? 10 : 40;
+    return [{ left: this.startOffset * 10, right: this.endOffset * 10, top, bottom: top + 20 }];
+  };
+  document.elementFromPoint = () => cover;
+  document.caretRangeFromPoint = () => {
+    const range = document.createRange();
+    range.setStart(cover, 0);
+    return range;
+  };
+  return { first, second };
+}
+
+// YouTube's control bar and miniplayer scrim lie over its captions, which are
+// scanned from the glyph under the pointer as Netflix's are (#662), while
+// YouTube mining is on; off, YouTube is as before.
+async function youtubeCoveredCaptionCase() {
+  const on = await createHarness(undefined, { url: WATCH, options: { experimental: flags(true) } });
+  on.window.HDYouTube = youtubeReader();
+  const caption = coveredCaption(on.window);
+  const covered = on.driver.resolveCandidate(15, 50); // Over the second row's べ.
+  const gap = on.driver.resolveCandidate(15, 35); // Between the rows.
+  on.close();
+  const off = await createHarness(undefined, { url: WATCH, options: { experimental: flags(false) } });
+  off.window.HDYouTube = youtubeReader();
+  coveredCaption(off.window);
+  const switchedOff = off.driver.resolveCandidate(15, 50);
+  off.close();
+  return {
+    "a YouTube caption under the player's control bar is scanned from the glyph under the pointer while YouTube mining is on, and not while it is off":
+      (covered?.query.startsWith("べたかった") && caption.second.contains(covered.anchor) && gap === null && switchedOff === null)
+      || { query: covered?.query ?? null, gap: gap?.query ?? null, switchedOff: switchedOff?.query ?? null },
+  };
+}
+
+// With Switch language automatically on, a lookup in a caption takes the
+// profile of the caption track's language (docs/languages.md 8.5), which
+// YouTube's markup does not carry for a typed track: the page itself names its
+// interface language, English here.
+async function youtubeCaptionProfileCase() {
+  const profiles = [{ id: "ja", language: "ja", settings: {}, packSettings: {} },
+    { id: "en", language: "en", settings: {}, packSettings: {} }];
+  const harness = await createHarness(undefined, { url: WATCH, options: { experimental: flags(true), profiles } });
+  const { window } = harness;
+  window.document.documentElement.lang = "en";
+  harness.emitChanges({ languageSelection: { newValue: { revision: 1, activeProfileId: "ja", autoSwitch: true } } });
+  window.HDYouTube = youtubeReader(element => (element?.closest?.(".ytp-caption-window-container") ? "ja" : null));
+  const caption = coveredCaption(window);
+  const inCaption = harness.driver.resolveCandidate(15, 50);
+  harness.close();
+  return {
+    "with automatic switching, a YouTube caption is looked up in its track's language, not the page's":
+      (inCaption?.profile?.id === "ja" && caption.second.contains(inCaption.anchor))
+      || { profile: inCaption?.profile?.id ?? null, query: inCaption?.query ?? null },
+  };
+}
+
 describe("YouTube", () => {
   test("YouTube recorder port", async () => {
     await youtubeRecorderPortStage();
@@ -244,5 +382,15 @@ describe("YouTube", () => {
   });
   test("YouTube video frame screenshots", async () => {
     await youtubeFrameStage();
+  });
+  test("YouTube GIF crop", async () => {
+    await youtubeCropStage();
+  });
+  test("YouTube captions under the player's controls, and their track's language", async () => {
+    const reader = await contentNoteStage({ covered: youtubeCoveredCaptionCase, profile: youtubeCaptionProfileCase });
+    for (const [name, passed] of Object.entries({ ...reader?.covered, ...reader?.profile }
+      ?? { "the reader's caption cases ran": false })) {
+      check(name, passed === true, JSON.stringify(passed));
+    }
   });
 });

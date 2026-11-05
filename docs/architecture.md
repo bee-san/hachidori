@@ -1274,7 +1274,12 @@ node's client rects as the Google Docs path does, and scans from that glyph. As
 anywhere, the glyph must contain the pointer within two CSS pixels. The
 player's own text, a menu over a line included, is hit-tested first as on any
 other page. A line is found the same way when Netflix's subtitle layer takes no
-pointer events.
+pointer events. With YouTube mining on, the reader does the same on
+`www.youtube.com` for YouTube's captions (each `#movie_player
+.ytp-caption-window-container .caption-window`): when the controls auto-hide, a
+caption drops into the box of the invisible control bar, which still takes the
+hit test, and the miniplayer's scrim covers its caption while the pointer is
+over it. With the switch off, YouTube is scanned as any page.
 
 An `<input>` of type `text` or `search` (Chrome reports a missing or unknown
 type as `text`) or a `<textarea>` keeps its value in user-agent shadow DOM that
@@ -3888,8 +3893,9 @@ endMs } }` or `youtube: { unavailable: reason }` (`no-timeline`, `live`,
 `ad-showing`), its captions are not observed, the line audio keeps nothing for
 any video, hover pause leaves the ad playing and a replay is refused with
 `ad`. With **Switch language automatically** on, a lookup in a caption uses the
-profile of the caption track's language (docs/languages.md 8.5), because
-YouTube's markup carries the page's interface language instead.
+profile of the caption track's language (docs/languages.md 8.5): YouTube marks
+an auto-generated track's caption window with its language but a typed track's
+with none, and the page's own `lang` is YouTube's interface language.
 
 **Media.** Line audio, replays, play-on and tab recording are Netflix's, through
 YouTube's own player methods (`seekTo`, `playVideo`, `pauseVideo`,
@@ -3917,7 +3923,9 @@ warning. YouTube's ordinary video is the page's own media, so its pixels can
 be read; the picture has no captions or player controls on it.
 
 **Layouts and keys.** The default, theatre and fullscreen layouts and the
-miniplayer use the same player, captions and video, so all of them work.
+miniplayer use the same player, captions and video, so all of them work; the
+reader finds a caption under the auto-hidden control bar or the miniplayer's
+scrim from its own text (see the pointer-scanning rules above).
 YouTube makes the whole document fullscreen, so the popup shows over the video
 as on any page. YouTube's own caption overlay stays as it is: Hachidori reads
 it and does not hide or move it, and YouTube's own caption drag moves it, so

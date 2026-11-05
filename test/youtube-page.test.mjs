@@ -34,6 +34,14 @@ function page({ player = null, video = null } = {}) {
   document.querySelector = selector => (selector.startsWith("#movie_player video") ? video : null);
   const posted = [];
   document.addEventListener(PAGE_EVENT, event => posted.push(JSON.parse(event.detail)));
+  // The script's capture listeners, which media events reach from the element
+  // they are dispatched on (an EventTarget here has no tree to bubble through).
+  const capturing = [];
+  const listen = document.addEventListener.bind(document);
+  document.addEventListener = (type, listener, options) => {
+    if (options === true) capturing.push([type, listener]);
+    return listen(type, listener, options);
+  };
   // Each page's own class, so one page's hook never sees another's requests.
   const Request = class extends FakeRequest {};
   const fetched = [];
@@ -51,7 +59,8 @@ function page({ player = null, video = null } = {}) {
     request.respond(...response);
     return request;
   };
-  return { context, document, posted, command, load, Request, fetched };
+  const mediaEvent = (type, target) => { for (const [name, listener] of capturing) if (name === type) listener({ type, target }); };
+  return { context, document, posted, command, load, Request, fetched, mediaEvent };
 }
 
 // YouTube's player element with its video data and classes.
@@ -122,6 +131,22 @@ test("the page says which video its player plays, when it changes and when the r
   assert.deepEqual(empty.posted, []);
   empty.command({ type: "state" });
   assert.deepEqual(empty.posted, [{ kind: "video", movieId: null }]);
+});
+
+test("the page reports the video again on the main video's media events, and not on another element's", () => {
+  const video = new EventTarget();
+  const player = playerElement();
+  const { posted, mediaEvent } = page({ player, video });
+  posted.length = 0;
+  player.data = { video_id: NEXT, isLive: false };
+  mediaEvent("playing", new EventTarget());
+  assert.deepEqual(posted, [], "an inline preview's video says nothing of the player's");
+  for (const type of ["loadstart", "loadedmetadata", "playing"]) {
+    player.data = { video_id: type === "loadstart" ? NEXT : VIDEO, isLive: false };
+    mediaEvent(type, video);
+  }
+  assert.deepEqual(posted, [{ kind: "video", movieId: NEXT }, { kind: "video", movieId: VIDEO }],
+    "each change is posted once, on the event that shows it");
 });
 
 test("a live stream is reported as such and its captions are not read", () => {
