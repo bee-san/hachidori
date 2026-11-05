@@ -110,6 +110,7 @@ const E2E_PLANNED = [
   "selecting text with Shift held looks up exactly the selection",
   "lookup counts are recorded and shown in the popup",
   "definition blur hides definitions for a word looked up enough times and a click reveals them",
+  "Collapse all closes each dictionary card under its name, and a click on the name opens it",
   "each bundled popup theme renders the lookup",
   "custom popup CSS applies to the popup",
   "the toolbar switch turns lookups off and on",

@@ -1,7 +1,7 @@
 /*
  * The reader in web pages: hover lookups and the popup they render, frames,
  * nested lookups, kanji, keybinds, selections, lookup counts, definition blur,
- * popup themes, custom CSS and the toolbar switch.
+ * collapsed dictionary cards, popup themes, custom CSS and the toolbar switch.
  *
  * Part of the real-Firefox suite (test/firefox-e2e.mjs); see test/README.md.
  *
@@ -230,6 +230,29 @@ describe("reader", () => {
     check("definition blur hides definitions for a word looked up enough times and a click reveals them",
       blurred === true && revealed === true, JSON.stringify({ blurred, revealed, state: await blurState(tab) }));
     await writeOptions(page, { definitionBlurCountEnabled: false });
+    await dismissPopup(tab);
+
+    // Design → Definitions → Collapse dictionaries (#671).
+    await writeOptions(page, { dictionaryCollapseMode: "all" });
+    await hoverForPopup(tab, "#verb");
+    const cards = () => inPopup(tab, `root => [...root.querySelectorAll(
+      '.gsm-hoshidicts-popup[data-hoshidicts-depth="0"] .gsm-hoshidicts-glossary-card')].map(card => ({
+      kind: card.localName, open: card.localName === "details" ? card.open : null,
+      name: card.querySelector(":scope > summary")?.textContent ?? null,
+      shown: card.querySelector(":scope > .gsm-hoshidicts-glossary-body")?.checkVisibility() ?? null }))`);
+    const collapsed = await waitFor(async () => {
+      const value = await cards();
+      return value?.length > 0 && value.every(card => card.kind === "details" && card.open === false && card.shown === false
+        && card.name) ? value : false;
+    }, { timeout: 5_000 });
+    await clickInPopup(tab, ".gsm-hoshidicts-glossary-summary");
+    const opened = await waitFor(async () => {
+      const value = await cards();
+      return value?.[0]?.open === true && value[0].shown === true ? value : false;
+    }, { timeout: 5_000 });
+    check("Collapse all closes each dictionary card under its name, and a click on the name opens it",
+      collapsed !== null && opened !== null, JSON.stringify({ collapsed, opened }));
+    await writeOptions(page, { dictionaryCollapseMode: "off" });
     await dismissPopup(tab);
   });
 
