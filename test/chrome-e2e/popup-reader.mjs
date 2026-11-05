@@ -469,6 +469,45 @@ async function popupReader(page, depth = 0, documentUrl = null) {
     return result.value ?? null;
   }
 
+  // Design → Definitions → Collapse dictionaries (#671): each card as drawn,
+  // after two frames. `focus` or `blur` acts on card `index`'s summary first.
+  async function collapsibleCards(action = "read", index = 0) {
+    const object = await resolvePopupObject();
+    if (object === null) return null;
+    const { result } = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId, returnByValue: true, awaitPromise: true,
+      arguments: [{ value: action }, { value: index }],
+      functionDeclaration: `async function (action, index) {
+        const cards = [...this.querySelectorAll(".gsm-hoshidicts-glossary-card")];
+        const summaryOf = card => card?.querySelector(":scope > summary.gsm-hoshidicts-glossary-summary") ?? null;
+        if (action === "focus") summaryOf(cards[index])?.focus();
+        else if (action === "blur") summaryOf(cards[index])?.blur();
+        const view = this.ownerDocument.defaultView;
+        await new Promise(resolve => view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)));
+        const root = this.getRootNode();
+        return cards.map(card => {
+          const summary = summaryOf(card);
+          const body = card.querySelector(":scope > .gsm-hoshidicts-glossary-body");
+          const rect = (summary ?? card).getBoundingClientRect();
+          return {
+            kind: card.localName,
+            open: card.localName === "details" ? card.open : null,
+            dictionary: card.querySelector(".definition-item")?.dataset.dictionary ?? null,
+            name: summary?.textContent ?? null,
+            tag: card.querySelector(".gsm-hoshidicts-dictionary-tag")?.textContent ?? null,
+            focused: summary !== null && root.activeElement === summary,
+            focusVisible: summary?.matches(":focus-visible") ?? false,
+            marker: summary ? view.getComputedStyle(summary).display : null,
+            bodyHeight: body ? body.getBoundingClientRect().height : null,
+            cardHeight: card.getBoundingClientRect().height,
+            point: { x: rect.x + 8, y: rect.y + rect.height / 2 },
+          };
+        });
+      }`,
+    });
+    return result.value ?? null;
+  }
+
   async function deinflection(action = "read") {
     const object = await resolvePopupObject();
     if (object === null) return null;
@@ -1026,6 +1065,7 @@ async function popupReader(page, depth = 0, documentUrl = null) {
         disabled: property("disabled"),
         busy: property("busy"),
         focusable: property("focusable"),
+        expanded: property("expanded"),
       };
     } finally {
       await cdp.send("Runtime.releaseObject", { objectId: result.objectId });
@@ -1033,6 +1073,11 @@ async function popupReader(page, depth = 0, documentUrl = null) {
   }
   const ankiAccessibility = (index = 0) => accessibility(function (buttonIndex) {
     return this.querySelectorAll(".gsm-hoshidicts-mine-button")[buttonIndex] ?? null;
+  }, index);
+  // A collapsible dictionary card's summary (#671).
+  const collapsibleSummaryAccessibility = (index = 0) => accessibility(function (cardIndex) {
+    return this.querySelectorAll(".gsm-hoshidicts-glossary-card")[cardIndex]
+      ?.querySelector(":scope > summary") ?? null;
   }, index);
   // The first button that reveals definitions blurred until clicked (#598),
   // given keyboard focus first when `focus` is set.
@@ -1136,7 +1181,7 @@ async function popupReader(page, depth = 0, documentUrl = null) {
   }
 
   return {
-    anki, ankiAccessibility, audio, click, compactSummaries, compactSummaryTextRect, definitionBlur, definitionReveal, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
+    anki, ankiAccessibility, audio, click, collapsibleCards, collapsibleSummaryAccessibility, compactSummaries, compactSummaryTextRect, definitionBlur, definitionReveal, definitionTextRect, dictionaryTabs, deinflection, externalLink, focusAnki, glossaryCard, imagePreview,
     lookupStatistics, nested, pitchGroups, rect, sourcePaint, retainedControls, selectGlossaryText, state, visible,
     waitForVisible, waitForHidden, wordStatus, writeNote,
   };

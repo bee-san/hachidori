@@ -698,9 +698,150 @@ async function checkKanjiGroup(settings, tab, popup, browser) {
     JSON.stringify(evidence.anki));
 }
 
+// Design → Definitions → Collapse dictionaries (#671) in a real lookup: four
+// dictionaries define the word, Settings chooses which start collapsed, and
+// the open popup and the Design preview follow each change. A dictionary's
+// name opens and closes its card with the pointer and with Enter and Space.
+async function checkCollapsibleDictionaries(settings, tab, popup) {
+  const fixture = dictionaryTabsFixture();
+  const titles = fixture.dictionaries.map(item => item.title);
+  const [, usage, , reference] = titles;
+  const original = await settings.evaluate(() => chrome.storage.local.get("options"));
+  const originalVerb = await tab.$eval("#verb", element => element.innerHTML);
+  const installed = [];
+  const evidence = {};
+  let failure;
+  const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const require = (condition, message) => { if (!condition) throw new Error(message); };
+  async function until(read, predicate, description) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const value = await read();
+      if (predicate(value)) return value;
+      if (Date.now() >= deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+  }
+  const cards = () => popup.collapsibleCards();
+  const states = value => value?.map(card => card.kind === "details" ? card.open : "open") ?? null;
+  const controls = () => settings.evaluate(() => ({
+    mode: document.getElementById("opt-dictionary-collapse").value,
+    firstDisabled: document.getElementById("opt-expand-first-dictionary").disabled,
+    listHidden: document.getElementById("collapsed-dictionary-choices").hidden,
+    rows: [...document.querySelectorAll("#collapsed-dictionary-list > li")].map(row => ({ title: row.dataset.title,
+      label: row.querySelector("span").textContent, id: row.querySelector("input").id, checked: row.querySelector("input").checked })),
+  }));
+  const stored = () => settings.evaluate(async () => {
+    const { options } = await chrome.storage.local.get("options");
+    return { mode: options.dictionaryCollapseMode, titles: options.collapsedDictionaries, first: options.expandFirstDictionary };
+  });
+  const preview = async () => {
+    const frame = await (await settings.$("#design-preview")).contentFrame();
+    return frame.evaluate(() => [...document.getElementById("preview-host").shadowRoot
+      .querySelectorAll(".gsm-hoshidicts-glossary-card")].map(card => card.localName === "details" ? card.open : "open"));
+  };
+  try {
+    for (const dictionary of fixture.dictionaries) {
+      await installMediaArchive(settings, dictionary.archive);
+      installed.push(dictionary.title);
+    }
+    await tab.$eval("#verb", (element, query) => { element.textContent = query; }, fixture.query);
+    await tab.bringToFront();
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    require(await hoverForPopup(tab, popup, "#verb") !== null, "#671 lookup popup");
+    evidence.off = await until(cards, value => equal(value?.map(card => card.dictionary), titles), "#671 four cards");
+    require(evidence.off.every(card => card.kind === "div" && card.name === null), "#671 Off draws no disclosure");
+
+    // Chosen dictionaries: every card a disclosure, then two switched on.
+    await editSettingsControls(settings, { "opt-dictionary-collapse": "custom" });
+    evidence.chosen = await controls();
+    evidence.custom = await until(cards, value => equal(states(value), [true, true, true, true]), "#671 every card collapsible");
+    const switches = evidence.chosen.rows.filter(row => [usage, reference].includes(row.title));
+    require(switches.length === 2 && !evidence.chosen.listHidden && !evidence.chosen.firstDisabled
+      && titles.every(title => evidence.chosen.rows.some(row => row.title === title && !row.checked)), "#671 Chosen dictionaries list");
+    await editSettingsControls(settings, Object.fromEntries(switches.map(row => [row.id, true])));
+    evidence.stored = await stored();
+    evidence.collapsed = await until(cards, value => equal(states(value), [true, false, true, false]), "#671 chosen cards collapse live");
+    require(evidence.collapsed.every(card => card.marker === "list-item")
+      && evidence.collapsed[1].bodyHeight === 0 && evidence.collapsed[0].bodyHeight > 0
+      && evidence.collapsed[1].cardHeight < evidence.collapsed[0].cardHeight, "#671 a collapsed card is its name");
+
+    // The pointer opens Usage; Enter and Space open and close Reference.
+    await tab.bringToFront();
+    await tab.mouse.click(evidence.collapsed[1].point.x, evidence.collapsed[1].point.y);
+    evidence.clicked = await until(cards, value => equal(states(value), [true, true, true, false]), "#671 click opens");
+    evidence.clickedPopup = await popup.state();
+    await popup.collapsibleCards("focus", 3);
+    evidence.closedAx = await popup.collapsibleSummaryAccessibility(3);
+    await tab.keyboard.press("Enter");
+    evidence.entered = await until(cards, value => value?.[3].open === true && value[3].focused, "#671 Enter opens");
+    evidence.openAx = await popup.collapsibleSummaryAccessibility(3);
+    await tab.keyboard.press("Space");
+    evidence.spaced = await until(cards, value => value?.[3].open === false && value[3].focused, "#671 Space closes");
+    await popup.collapsibleCards("blur", 3);
+
+    // Collapse all, the first dictionary expanded: the popup and the preview.
+    await editSettingsControls(settings, { "opt-dictionary-collapse": "all", "opt-expand-first-dictionary": true });
+    evidence.all = await until(cards, value => equal(states(value), [true, false, false, false]), "#671 all but the first");
+    evidence.allStored = await stored();
+    evidence.allControls = await controls();
+    evidence.preview = await until(preview, value => equal(value, [true, false, false, false]), "#671 Design preview");
+
+    // Off: today's open cards, the dependent controls off.
+    await editSettingsControls(settings, { "opt-dictionary-collapse": "off" });
+    evidence.offAgain = await until(cards, value => equal(states(value), ["open", "open", "open", "open"]), "#671 Off again");
+    evidence.offControls = await controls();
+    evidence.offPreview = await until(preview, value => value.length > 0 && value.every(state => state === "open"), "#671 preview Off");
+    evidence.passed = true;
+  } catch (error) {
+    failure = error;
+  } finally {
+    const errors = [];
+    const clean = async operation => { try { await operation(); } catch (error) { errors.push(error); } };
+    await clean(() => settings.evaluate(async previous => {
+      const { options } = await chrome.storage.local.get("options");
+      const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+        baseRevision: options.revision, options: { dictionaryCollapseMode: previous.dictionaryCollapseMode ?? "off",
+          collapsedDictionaries: previous.collapsedDictionaries ?? [], expandFirstDictionary: previous.expandFirstDictionary ?? false } });
+      if (!reply.ok) throw new Error(reply.error);
+    }, original.options));
+    for (const title of installed) await clean(async () => {
+      const reply = await settings.evaluate(title => chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_remove", title }), title);
+      if (!reply.ok) throw new Error(reply.error);
+    });
+    await clean(() => tab.$eval("#verb", (element, html) => { element.innerHTML = html; }, originalVerb));
+    await clean(async () => {
+      await tab.bringToFront();
+      await tab.keyboard.press("Escape");
+      require(await popup.waitForHidden(), "#671 cleanup retained its popup");
+    });
+    if (errors.length) failure = new AggregateError(failure ? [failure, ...errors] : errors, "#671 scenario/cleanup failure");
+  }
+  if (failure) throw failure;
+  check("Chosen dictionaries start collapsed in an open popup, and a dictionary's name opens and closes its card by pointer, Enter and Space",
+    evidence.passed && equal(evidence.stored, { mode: "custom", titles: [usage, reference], first: false })
+      // The name is the same label as Off's dictionary tag.
+      && evidence.collapsed.every((card, index) => card.name !== "" && card.name === evidence.off[index].tag)
+      && !evidence.clickedPopup.hidden && evidence.clicked[1].focusVisible === false
+      && evidence.closedAx?.expanded === false && evidence.openAx?.expanded === true && evidence.openAx.focusable === true
+      && evidence.openAx.name === evidence.entered[3].name,
+    JSON.stringify(evidence));
+  check("Collapse all with Expand the first dictionary keeps only the first card open in the popup and the Design preview, and Off restores open cards",
+    evidence.passed && equal(evidence.allStored, { mode: "all", titles: [usage, reference], first: true })
+      && evidence.allControls.listHidden && !evidence.allControls.firstDisabled
+      && evidence.offControls.listHidden && evidence.offControls.firstDisabled
+      && evidence.offAgain.every(card => card.name === null),
+    JSON.stringify(evidence));
+}
+
 describe("dictionary tabs and kanji groups", () => {
   step("dictionary tabs and columns", async () => {
     await checkDictionaryTabsColumns(page, tab, popup, browser);
+  });
+
+  step("collapsible dictionaries", async () => {
+    await checkCollapsibleDictionaries(page, tab, popup);
   });
 
   step("clicked-kanji groups", async () => {

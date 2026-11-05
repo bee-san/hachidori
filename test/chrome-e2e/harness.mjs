@@ -344,6 +344,8 @@ const PLANNED = [
   "Popup tabs project ordered groups and ungrouped favourites without another lookup",
   "Live dictionary presentation preserves pending replies, focused Note drafts and child anchors",
   "Saved popup columns reflow complete cards after expansion, media load and resize",
+  "Chosen dictionaries start collapsed in an open popup, and a dictionary's name opens and closes its card by pointer, Enter and Space",
+  "Collapse all with Expand the first dictionary keeps only the first card open in the popup and the Design preview, and Off restores open cards",
   "a clicked-kanji group shows each member with an entry as its own tab in group order",
   "the clicked-kanji chooser saves a group by its stable ID and resets when the group is removed",
   "a clicked-kanji group's native kanji card keeps a ready Anki mining control and mines as the character",
