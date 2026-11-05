@@ -3815,7 +3815,11 @@ Every part fails closed as Netflix's does: a note without its line is added
 with its other fields and a warning.
 
 **One layer for both sites.** YouTube runs on the code Netflix mining uses, not
-a copy. `netflix-content.js` is the video-site reader: `createVideoSite(window,
+a copy. `netflix-page.js` is the page script of both: on `www.youtube.com` it
+reads YouTube's captions instead of hooking Netflix's JSON, and its replay,
+play-on, pause and resume work through each site's player controls (Netflix's
+player API, YouTube's player element's methods). `netflix-content.js` is the
+video-site reader: `createVideoSite(window,
 site)` takes a description of the site's page events, video IDs, subtitle
 formats and statuses, where its `<video>` and subtitle layer are, its recorder
 page and its worker requests. The file describes Netflix and makes its reader,
@@ -3833,7 +3837,7 @@ messages, requests and replies are as they were.
 
 **Scripts.** While the flag is on, `youtube.js` registers two scripts for
 `https://www.youtube.com/*` at `document_start`, top frame only:
-`youtube-page.js` in the page's main world, and the video-site layer
+`netflix-page.js` in the page's main world, and the video-site layer
 (`netflix-subtitles.js`, `netflix-audio.js`, `netflix-content.js`) with
 `youtube-content.js` beside the manifest's content scripts. A YouTube page that
 was open when the switch went on asks once with `hd_youtube_load`, as Netflix's
@@ -3845,8 +3849,8 @@ permission: `<all_urls>` already covers the page, and only
 
 **Captions.** YouTube's player loads the caption track it shows as json3 from
 `/api/timedtext`, with a proof-of-origin token; the same address without the
-token returns an empty file. So Hachidori fetches nothing. `youtube-page.js`
-wraps `XMLHttpRequest.prototype.open` and, for a request to this origin's
+token returns an empty file. So Hachidori fetches nothing. On YouTube the page
+script wraps `XMLHttpRequest.prototype.open` and, for a request to this origin's
 `/api/timedtext` with `fmt=json3`, an 11-character `v` and a language, posts
 the response text when it loads with status 200: `{ kind: "subtitle", movieId,
 trackId: "shown", closedCaptions: false, format: "json3", language, text }`,

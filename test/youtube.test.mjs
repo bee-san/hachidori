@@ -30,7 +30,7 @@ test("YouTube mining is an experimental flag beside Netflix's that starts off", 
 
 test("the flag registers the page script and the reader's scripts for www.youtube.com's top frame only", async () => {
   assert.deepEqual(YOUTUBE_SCRIPTS, [
-    { id: "hachidori-youtube-page", matches: ["https://www.youtube.com/*"], js: ["youtube-page.js"],
+    { id: "hachidori-youtube-page", matches: ["https://www.youtube.com/*"], js: ["netflix-page.js"],
       runAt: "document_start", allFrames: false, world: "MAIN" },
     { id: "hachidori-youtube-content", matches: ["https://www.youtube.com/*"],
       js: ["netflix-subtitles.js", "netflix-audio.js", "netflix-content.js", "youtube-content.js"], runAt: "document_start",

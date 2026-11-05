@@ -170,10 +170,11 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   experimental switch, on the same code: `netflix-content.js` is the
   video-site reader both sites use (`createVideoSite`), and
   `youtube-content.js` describes YouTube's player and captions to it.
-  `youtube.js` registers `youtube-page.js` (main world: it posts the json3
-  caption files YouTube's player loads and which video the player plays, and
-  replays, pauses and resumes through the player) and the reader's scripts,
-  through `site-scripts.js` as `netflix.js` does; `background-youtube.js` is
+  `youtube.js` registers `netflix-page.js`, the page script both sites share
+  (main world: on YouTube it posts the json3 caption files YouTube's player
+  loads and which video the player plays, and replays, pauses and resumes
+  through YouTube's player), and the reader's scripts, through
+  `site-scripts.js` as `netflix.js` does; `background-youtube.js` is
   YouTube's instance of the worker service in `background-video.js`, and
   `youtube-recorder.html` (`youtube-recorder.js`) the recorder frame, which
   crops a `{gif}` to the video. `youtube-frame.js` is what the worker runs in

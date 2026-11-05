@@ -6,8 +6,8 @@
 // https://www.netflix.com/* (top frame, document_start) while Settings →
 // Advanced → Experimental features → Netflix mining is on, and youtube.js
 // registers it before youtube-content.js on https://www.youtube.com/* while
-// YouTube mining is on. A site's reader keeps the subtitle timelines its page
-// script (netflix-page.js, youtube-page.js) posts, pins the cue of a hovered
+// YouTube mining is on. A site's reader keeps the subtitle timelines the page
+// script (netflix-page.js, on either site) posts, pins the cue of a hovered
 // subtitle line, records that line for Anki from what the viewer heard
 // (netflix-audio.js) or while the page plays or replays it, and pauses the
 // video while a subtitle line or Hachidori's popup is hovered.

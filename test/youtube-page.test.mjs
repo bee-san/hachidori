@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental YouTube mining, the page's side (extension/youtube-page.js), in
-// a main world with only what it touches: XMLHttpRequest, the page's JSON,
-// location, the document's events and YouTube's player element.
+// Experimental YouTube mining, the page's side: the video-site page script
+// (extension/netflix-page.js) on www.youtube.com, in a main world with only
+// what it touches there: XMLHttpRequest, the page's JSON, location, the
+// document's events and YouTube's player element.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
-const SOURCE = await readFile(new URL("../extension/youtube-page.js", import.meta.url), "utf8");
+const SOURCE = await readFile(new URL("../extension/netflix-page.js", import.meta.url), "utf8");
 const PAGE_EVENT = "hachidori-youtube-page";
 const COMMAND_EVENT = "hachidori-youtube-command";
 const VIDEO = "Ab3dEf6hI9k";
@@ -35,9 +36,12 @@ function page({ player = null, video = null } = {}) {
   document.addEventListener(PAGE_EVENT, event => posted.push(JSON.parse(event.detail)));
   // Each page's own class, so one page's hook never sees another's requests.
   const Request = class extends FakeRequest {};
+  const fetched = [];
   const context = vm.createContext({ document, CustomEvent, EventTarget, Event, URL, Promise, Reflect, performance,
     setTimeout, clearTimeout, setInterval, clearInterval, XMLHttpRequest: Request,
-    location: { href: `https://www.youtube.com/watch?v=${VIDEO}`, origin: "https://www.youtube.com" } });
+    fetch: async url => { fetched.push(url); throw new Error("YouTube's page script fetches nothing"); },
+    location: { href: `https://www.youtube.com/watch?v=${VIDEO}`, origin: "https://www.youtube.com", hostname: "www.youtube.com",
+      pathname: "/watch", search: `?v=${VIDEO}` } });
   context.window = context;
   vm.runInContext(SOURCE, context);
   const command = message => document.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
@@ -47,7 +51,7 @@ function page({ player = null, video = null } = {}) {
     request.respond(...response);
     return request;
   };
-  return { document, posted, command, load, Request };
+  return { context, document, posted, command, load, Request, fetched };
 }
 
 // YouTube's player element with its video data and classes.
@@ -84,6 +88,19 @@ test("each caption file the player loads is posted as the video's track, in its 
   const request = new Request();
   request.open("GET", "/youtubei/v1/player", true);
   assert.equal(request.url, "/youtubei/v1/player");
+});
+
+test("on YouTube the page script leaves JSON alone, fetches nothing and reads no Netflix command", () => {
+  const { context, fetched, posted, command } = page({ player: playerElement() });
+  assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify([String(JSON.stringify), String(JSON.parse)])", context)),
+    ["function stringify() { [native code] }", "function parse() { [native code] }"], "JSON is YouTube's own");
+  const value = vm.runInContext('JSON.parse(\'{"result":{"movieId":1,"textTracks":[{"language":"ja","downloadables":{}}]}}\')', context);
+  assert.equal(value.result.movieId, 1);
+  assert.equal(vm.runInContext('JSON.stringify({ params: { profiles: ["heaac-2-dash"] } })', context),
+    '{"params":{"profiles":["heaac-2-dash"]}}', "no WebVTT profile is added on YouTube");
+  posted.length = 0;
+  command({ type: "language", language: "en" });
+  assert.deepEqual([fetched, posted], [[], []]);
 });
 
 test("the page says which video its player plays, when it changes and when the reader asks", () => {

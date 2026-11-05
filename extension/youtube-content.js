@@ -5,8 +5,9 @@
 // netflix-audio.js and netflix-content.js) in the content scripts' world on
 // https://www.youtube.com/* (top frame, document_start) while Settings →
 // Advanced → Experimental features → YouTube mining is on. It says where
-// YouTube keeps its player, video and captions; youtube-page.js posts the
-// caption files the player loads and which video it plays.
+// YouTube keeps its player, video and captions; the page script,
+// netflix-page.js, posts the caption files the player loads and which video it
+// plays.
 (function () {
   "use strict";
 

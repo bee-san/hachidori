@@ -195,7 +195,7 @@
     return sortCues(cues);
   }
 
-  // YouTube's json3 caption file (youtube-page.js): `events`, each shown from
+  // YouTube's json3 caption file (netflix-page.js on YouTube): `events`, each shown from
   // `tStartMs` for `dDurationMs`, its text the `utf8` of its `segs`. YouTube's
   // auto-generated captions roll up in a window (`wWinId`): a line stays up
   // while the next one is said, and an `aAppend` event only adds a line break

@@ -131,7 +131,7 @@ async function youtubeLoadStage() {
   const target = { tabId: 7, documentIds: ["youtube-document"] };
   check("a YouTube page open before the switch went on gets the YouTube scripts in its own document, with the switch on",
     loaded?.ok === true && JSON.stringify(scripts) === JSON.stringify([
-      { target, files: ["youtube-page.js"], world: "MAIN" },
+      { target, files: ["netflix-page.js"], world: "MAIN" },
       { target, files: ["netflix-subtitles.js", "netflix-audio.js", "netflix-content.js", "youtube-content.js"],
         world: "ISOLATED" }])
       && refused.every(reply => reply?.ok === false && reply.error.includes("Only a YouTube page"))
