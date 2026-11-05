@@ -261,16 +261,12 @@ test("a lookup pauses the video when it is of a caption, not when it is of the p
   assert.deepEqual(f.hoverCommands(), ["pause"]);
   f.popup(false);
   assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
-  // A selection shows the popup before its lookup is observed: the
-  // observation decides then, and a later lookup in the same popup does not.
+  // A selection can show the popup before its lookup is observed, and a
+  // caption looked up in a popup opened for the page pauses the video too.
   f.popup(true);
   assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
   f.youtube.observe(f.segments()[0]);
   assert.deepEqual(f.hoverCommands(), ["pause", "resume", "pause"]);
-  f.popup(false);
-  f.popup(true);
-  f.youtube.observe(f.window.document.getElementById("title"));
-  f.youtube.observe(f.segments()[0]);
   f.popup(false);
   assert.deepEqual(f.hoverCommands(), ["pause", "resume", "pause", "resume"]);
 });

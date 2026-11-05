@@ -3903,10 +3903,11 @@ worker takes `{screenshot}` from the video itself: `youtube-frame.js` runs in
 the exact reading document's isolated world, draws the player's current frame
 into a canvas at the video's own size and returns it as a JPEG, through the
 same pending-screenshot lifecycle as any picture. A player that shows no
-picture yet answers `none` and the ordinary viewport screenshot is taken; a
-frame that cannot be read is a screenshot warning. YouTube's video is the
-page's own media, so its pixels can be read; the picture has no captions or
-player controls on it.
+picture yet answers `none` and the ordinary viewport screenshot is taken, and
+so does a protected video (one with `mediaKeys`, such as a rental), which a
+canvas reads back as black; a frame that cannot be read is a screenshot
+warning. YouTube's ordinary video is the page's own media, so its pixels can
+be read; the picture has no captions or player controls on it.
 
 **Layouts and keys.** The default, theatre and fullscreen layouts and the
 miniplayer use the same player, captions and video, so all of them work.

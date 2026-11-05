@@ -79,12 +79,6 @@
     let held = false;
     let restoring = false;
     let recordings = 0;
-    // On a site that pauses only for a lookup of its subtitles: whether the
-    // lookup observed since the popup last showed or hid was of a line (null
-    // for none), and whether a popup shown before its lookup was observed (a
-    // selection) waits for the observation to decide.
-    let observedLine = null;
-    let lookupPending = false;
     // What the viewer hears, kept while content.js has the switch on.
     let lineAudio = null;
     const range = document.createRange();
@@ -212,17 +206,13 @@
 
     // What the reader saw when the popup opened: the subtitle line under the
     // pointer and the video's time. Null for anything but the site's
-    // subtitles, and for an ad's own captions (YouTube).
+    // subtitles, and for an ad's own captions (YouTube). Where only a lookup of
+    // a subtitle pauses the video (YouTube), this is that lookup: content.js
+    // observes the root lookup as it shows its popup.
     function observe(element) {
       const subtitle = element?.closest?.(site.subtitle);
-      const line = Boolean(subtitle) && site.adShowing?.(document) !== true;
-      if (lookupPending) {
-        lookupPending = false;
-        if (line && !hovering) pauseIfPlaying();
-      } else {
-        observedLine = line;
-      }
-      if (!line) return null;
+      if (!subtitle || site.adShowing?.(document) === true) return null;
+      if (!site.pauseOnLookup && !hovering) pauseIfPlaying();
       const container = element.closest(site.line) ?? subtitle;
       return { movieId: sync(), mediaTimeMs: mediaTimeMs(), lineText: visibleText(container),
         hoveredText: visibleText(element) };
@@ -602,18 +592,11 @@
       popupOpen = true;
       // If the viewer played on while still hovering, opening its popup does
       // not undo that choice. A lookup with no subtitle hover pauses afresh:
-      // on Netflix any lookup, elsewhere a lookup of a subtitle line, which
-      // the lookup's observation says, now or once it is made.
-      if (!hovering) {
-        if (site.pauseOnLookup || observedLine === true) pauseIfPlaying();
-        else if (observedLine === null) lookupPending = true;
-      }
-      observedLine = null;
+      // on Netflix any lookup, elsewhere one of a subtitle line (observe).
+      if (!hovering && site.pauseOnLookup) pauseIfPlaying();
     });
     window.addEventListener(POPUP_HIDDEN_EVENT, () => {
       popupOpen = false;
-      observedLine = null;
-      lookupPending = false;
       release();
     });
 

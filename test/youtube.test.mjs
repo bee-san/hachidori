@@ -88,6 +88,9 @@ test("{screenshot} on YouTube is the frame the player shows, at the video's own 
   assert.deepEqual(frameFixture({ video: { readyState: 1, videoWidth: 1920, videoHeight: 1080 } })
     .capture("https://www.youtube.com/watch?v=Ab3dEf6hI9k"), { none: true });
   assert.deepEqual(frameFixture().capture("https://www.youtube.com/watch?v=Ab3dEf6hI9k"), { none: true });
+  // A protected video reads back as black, so the viewport is taken instead.
+  assert.deepEqual(frameFixture({ video: { ...video, mediaKeys: {} } }).capture("https://www.youtube.com/watch?v=Ab3dEf6hI9k"),
+    { none: true });
   const failing = frameFixture({ video });
   failing.canvas.toDataURL = () => { throw new Error("SecurityError"); };
   assert.match(failing.capture("https://www.youtube.com/watch?v=Ab3dEf6hI9k").error, /could not be read/u);
