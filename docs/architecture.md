@@ -2626,6 +2626,26 @@ The reader and the Design preview relayout masonry on a change without
 re-rendering, so Note drafts and child popups survive it. Only Default's
 stylesheet has the rules, and Anki notes never load it.
 
+Design → Definitions → Collapse dictionaries (`dictionaryCollapseMode`, #671)
+is Hoshi Reader's collapse mode (`CollapseMode` in `Core/UserConfig.swift` and
+`createGlossarySection` in `Features/Popup/popup.js` at
+Manhhao/Hoshi-Reader@f8eeb96). `off`, the default, renders today's cards.
+With `all` or `custom` each dictionary card is a `<details>` whose `<summary>`
+holds the card's dictionary tag, with the definitions in
+`.gsm-hoshidicts-glossary-body` after it. A card starts closed for every
+dictionary with `all`, or for the titles in `collapsedDictionaries` with
+`custom`, and each result's first card starts open while
+`expandFirstDictionary` is on. A click on the name, or Enter or Space on it,
+opens or closes the card, and screen readers hear whether it is expanded.
+The titles are a dictionary selection: a commit migrates a renamed title and
+drops a removed one, and a new language's profile starts without them. A
+change rebuilds the cards of an open popup and of the Design preview, as a
+change of the tab's dictionaries does, after a Note draft, a child popup or
+focus in the popup stops holding the view. Back restores the cards the reader
+opened or closed. With click-only definition blur the body, not the card, is
+the reveal button, so the summary stays a disclosure. Anki notes and the
+other themes are unaffected.
+
 Each popup owns one requested preview image, including a still-loading image.
 A load may resume only that current intent: it cannot replace a newer
 focus/hover preview or revive one dismissed during loading. Leave or blur

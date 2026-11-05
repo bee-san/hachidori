@@ -132,7 +132,9 @@ custom-button layout. Core still binds mining to the returned actions container.
   `role="button"`, `tabindex="0"` and the label "Reveal definitions", and its
   element children become `inert`. (Default's definitions are a list, which
   cannot be a button, so there the `.gsm-hoshidicts-glossary-card` holding the
-  list is the button and the list itself becomes `inert`.) Put definition
+  list is the button and the list itself becomes `inert`. A collapsible card's
+  summary is a control of its own, so in that card the
+  `.gsm-hoshidicts-glossary-body` around the list is the button.) Put definition
   content in child elements so links and images are disabled until the reveal;
   text directly in that element, as in Plain, stays readable only as the
   button's presentational content. A blur `filter` on that element would blur
@@ -157,7 +159,8 @@ Each entry in `extension/vendor/themes/index.json` declares, in `designSettings`
 which Design settings its renderer implements: `"all"` or a list of option keys.
 The keys are the renderer-owned controls, tagged `data-design-setting` in
 `settings.html`: `popupOpacityPercent`, `popupToolbarPosition`, `popupColumns`,
-`glossaryLayoutMode`, `popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
+`glossaryLayoutMode`, `dictionaryCollapseMode`, `collapsedDictionaries`, `expandFirstDictionary`,
+`popupImageSource`, `imageHoverPreview`, `kanjiClickDictionary`,
 `showFrequencyDictionaryNames`, `compactFrequencyNumbers`, `averageFrequency`,
 `showFrequencyTagsWithAverage`,
 `showPitchAccentFurigana`, `pitchAccentFuriganaDictionary`, `pitchAccentFuriganaStyle`,
@@ -190,7 +193,7 @@ keys, so a new setting stays hidden on them until each implements and declares i
 
 A declared setting must change an open popup and the Design preview without a
 new lookup. Core delivers changes through `updateDictionaryPresentation`
-(frequency, pitch, tag, compact-summary and image-source options),
+(frequency, pitch, tag, compact-summary, image-source and collapse options),
 `setToolbarPosition`, `setCustomButtons`, the `getPopupColumns` and
 `getImageHoverPreview` callbacks, the `--gsm-hoshidicts-popup-opacity`
 custom property and the `data-hoshidicts-glossary-layout` host attribute.
