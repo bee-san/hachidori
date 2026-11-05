@@ -72,6 +72,8 @@
     "hd_debug_log_result",
     "hd_engine_config",
     "hd_engine_config_result",
+    "hd_engine_link",
+    "hd_engine_link_result",
     "hd_import",
     "hd_import_abort",
     "hd_import_begin",

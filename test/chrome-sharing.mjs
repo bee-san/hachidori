@@ -773,7 +773,7 @@ try {
   // uses the port under Advanced. #648: the second browser is still on the
   // default port with sharing on, so the person moves it to the relay's port
   // in Settings, which looks again there; then the startup page looks again.
-  const startup = await startupPage(clientBrowser, clientId, "client-startup");
+  let startup = await startupPage(clientBrowser, clientId, "client-startup");
   const portPage = await openSettings(clientBrowser, clientId, "client-port", "sharing");
   const waitForFound = prefix => portPage.waitForFunction(text => document.getElementById("sharing-client-found").textContent.startsWith(text),
     { timeout: 15_000, polling: 100 }, prefix);
@@ -885,6 +885,10 @@ try {
   await screenshot(clientPage, "sharing-host-memory.png", { section: "advanced", element: "linked-memory-evidence" });
   await clientBrowser.close();
   clientBrowser = await launch(CLIENT_PROFILE);
+  // Later mining checks use this page as their sender and screenshot surface.
+  startup = await clientBrowser.newPage();
+  watch(startup, "client-startup-restarted");
+  await startup.goto(`chrome-extension://${clientId}/startup.html`, { waitUntil: "domcontentloaded" });
   clientPage = await openSettings(clientBrowser, clientId, "client-restarted", "sharing");
   await until(async () => (await sharingStatus(clientPage)).sharing?.client?.connected, "the restarted linked browser to reconnect", 30_000);
   const restartedLookup = await lookup(clientPage);
