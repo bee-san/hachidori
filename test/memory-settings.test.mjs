@@ -135,6 +135,32 @@ test("a slow extension measurement does not hold the engine line", async t => {
   assert.equal(el("memory-extension-total").textContent, "Extension total: 2.00 GB");
 });
 
+test("linked memory replies label the host, including unavailable totals and dictionary rows", async t => {
+  const memory = { ...MEMORY, memorySource: "host", dictionaryIndexStorage: "auto", hashIndexStorage: "resident", pageCacheBytes: 0,
+    dictionaries: MEMORY.dictionaries.map(item => ({ ...item, residentHashBytes: 1024 })) };
+  const { el, rowMemory, window } = fixture(t, { memory,
+    total: { ok: true, bytes: 3 * 1_073_741_824, heapBytes: 3 * 1_073_741_824, memorySource: "host" } });
+  await settle();
+  assert.equal(el("memory-total").textContent, "Host engine memory: 3.00 GB across 2 dictionaries");
+  assert.match(el("memory-extension-total").textContent, /^Host total: 3.00 GB/u);
+  assert.match(el("memory-indexes").textContent, /^Host hash indexes: 2 KB resident/u);
+  assert.equal(rowMemory(DICTIONARIES[0].id), "On host: ≈ 512.0 MB");
+  window.replies.hd_memory = { ok: false, memorySource: "host" };
+  window.replies.hd_memory_total = { ok: false, memorySource: "host" };
+  window.showSection("reading");
+  window.showSection("advanced");
+  await settle();
+  assert.equal(el("memory-total").textContent, "Host engine memory: —");
+  assert.equal(el("memory-extension-total").textContent, "Host total: —");
+  window.replies.hd_memory = MEMORY;
+  window.replies.hd_memory_total = { ok: true, bytes: 1024 };
+  window.showSection("reading");
+  window.showSection("advanced");
+  await settle();
+  assert.equal(el("memory-total").textContent, "Engine memory: 3.00 GB across 2 dictionaries");
+  assert.equal(el("memory-extension-total").textContent, "Extension total: 1 KB");
+});
+
 test("a row whose entries are read from disk says so", async t => {
   const paged = { ...MEMORY, pageCacheBytes: 4 * 1_048_576, dictionaries: [
     { ...MEMORY.dictionaries[0], bytes: 13 * 1_048_576, paged: true },

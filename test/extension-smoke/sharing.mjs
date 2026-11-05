@@ -550,6 +550,13 @@ async function sharingClientStage() {
     ['lookupStats:"local-gen":["猫","ねこ"]']: localRow,
   });
   storage.sets.length = 0;
+  const engineLinks = [];
+  bus.addListener("linked-engine-lifecycle", (message, _sender, sendResponse) => {
+    if (message.type !== "hd_engine_link" || !message.relayed) return false;
+    engineLinks.push(message.linked);
+    sendResponse({ ok: true });
+    return true;
+  });
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
     createAnkiWorkerService: () => localAnkiService });
   const settle = async (predicate = () => false) => {
@@ -629,6 +636,7 @@ async function sharingClientStage() {
       && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"
       && JSON.stringify(linkedStatus.sharing.client.host?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
       && linkedReply.sharing.enabled === false && hostBack.readyState === 3 && storage.raw.get("sharing")?.host?.enabled === false
+      && JSON.stringify(engineLinks) === "[true]"
       && linkWaitedForLocalAnki && localStatusReply.available === true
       && JSON.stringify(storage.raw.get("sharingLocalState")) === JSON.stringify({ dictionaryState: localState, options: { hoverEnabled: true, revision: 3 },
         customDictionarySource: null, dictionaryUpdates: null, lookupStats: localStats, wordStatusOverrides: null })
@@ -864,13 +872,25 @@ async function sharingClientStage() {
       && setup.outcome.model === "Basic" && setup.outcome.deck === "Default",
     JSON.stringify({ forwardedDiscovery, discovered, forwardedSetup, setup }));
 
-  // This install's own engine keeps its pre-link state.
+  // In-flight local work retains its pre-link state; cold startup sees the
+  // linked role and memory replies identify the remote host.
+  const engineConfig = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_engine_config" }, engineSender);
+  const memoryReplies = [];
+  for (const type of ["hd_memory", "hd_memory_total"]) {
+    const before = socket.requests().length;
+    const pending = send(type, {}, "hoshidicts-offscreen");
+    await settle(() => socket.requests().length > before);
+    socket.receive({ kind: "reply", id: socket.requests().at(-1).id, response: { ok: true, bytes: 1024, heapBytes: 1024 } });
+    memoryReplies.push(await pending);
+  }
   const engineRead = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_read", requestId: "engine-read" }, engineSender);
   const engineCas = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_state_cas", requestId: "engine-cas",
     baseRevision: 2, dictionaries: [{ ...localDictionary, enabled: false }], groups: [] }, engineSender);
   const cleanup = await bus.sendMessage("sharing-client-engine", { target: "hoshidicts-worker", type: "hd_lookup_stats_cleanup", requestId: "engine-cleanup" }, engineSender);
   check("a linked install's engine reads and commits the state it had before linking, never the mirror",
     engineRead.ok === true && engineRead.state?.revision === 2 && engineRead.state.dictionaries[0].id === "local-id"
+      && engineConfig.ok === true && engineConfig.linked === true
+      && memoryReplies.every(reply => reply.ok && reply.memorySource === "host" && reply.heapBytes === 1024)
       && engineCas.ok === true && engineCas.state.revision === 3 && engineCas.state.dictionaries[0].enabled === false
       && storage.raw.get("sharingLocalState").dictionaryState.revision === 3
       && storage.raw.get("dictionaryState").revision === 7 && storage.raw.get("dictionaryState").dictionaries[0].id === "host-id"
@@ -927,6 +947,7 @@ async function sharingClientStage() {
   const restoredStats = storage.raw.get("lookupStats");
   check("unlinking restores this install's own state with newer revisions and removes the host's lookup rows",
     unlinked.ok === true && unlinked.sharing.client.linked === false
+      && JSON.stringify(engineLinks) === "[true,false]"
       && restoredState.revision === 8 && restoredState.dictionaries[0].id === "local-id" && restoredState.dictionaries[0].enabled === false
       && restoredOptions.revision === 4 && restoredOptions.hoverEnabled === true
       && restoredStats.generation === "local-gen" && restoredStats.revision === 42

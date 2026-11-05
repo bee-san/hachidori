@@ -151,8 +151,9 @@ After linking, the page reloads, and from then on:
   storage, so the popup, Settings and toolbar read exactly what they read before;
 - this browser's own dictionary state, settings, personal source, update
   schedule, lookup counts and marked words are kept aside untouched, and its
-  engine keeps reading and committing them, so no local dictionary file is ever
-  removed;
+  engine finishes already admitted work against them before releasing its
+  worker and heap. No local dictionary file is removed. A browser started while
+  linked skips engine startup; local audio and clipboard access still work;
 - Anki Settings discovery and existing-setup checks, cache-only View readiness,
   availability, preflight, generation validation, duplicate checks, writes and browsing use the host's
   AnkiConnect URL, API key and selected Template. The linked browser never falls

@@ -91,6 +91,10 @@ const CAN_THREAD = supportsSharedWasmMemory();
 let worker = null;
 let workerScript = null;
 let localEngine = null;
+let engineSelection = null;
+let engineStarted = false;
+let linked = false;
+let pushedLink = null;
 let nextRequestId = 0;
 let engineError = null;
 let activeMutationRequestId = null;
@@ -200,6 +204,26 @@ function finishRequest(id, response) {
     request.sendResponse(response);
   }
   if (mutated) admitWaiting();
+  suspendLinkedEngine();
+}
+
+// Finish admitted requests, startup recovery and held backup/download handles
+// before releasing the heap. Audio and clipboard listeners stay in this page.
+function suspendLinkedEngine() {
+  if (!linked || (!engineStarted && engineError === null) || pending.size > 0 || waiting.length > 0 || held.size > 0) return;
+  if (worker !== null) {
+    const retired = worker;
+    worker = null;
+    retired.terminate();
+    recycler.setRunning(null);
+    engineSelection = null;
+    engineStarted = false;
+    engineError = null;
+  } else if (localEngine !== null) {
+    // Hosts without Worker own the WASM heap in this document. Reloading is
+    // the only way to release that module; the new page starts engine-free.
+    globalThis.location.reload();
+  }
 }
 
 // The engine's last status, which Settings reads while a mutation holds it.
@@ -320,16 +344,24 @@ async function selectEngine() {
 // The name tells engine-worker-runtime.js which pthread pool and import
 // threading to start with; see docs/memory.md.
 function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault) {
+  engineStarted = false;
   workerScript = script;
   worker = new Worker(new URL(script, import.meta.url), {
     type: "module",
     name: engineWorkerName(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault),
   });
   recycler.setRunning(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
-  worker.addEventListener("error", (event) => failEngine(event.error || event.message));
-  worker.addEventListener("messageerror", () => failEngine("the engine worker sent an unreadable message"));
-  worker.onmessage = (event) => {
+  const current = worker;
+  current.addEventListener("error", (event) => { if (worker === current) failEngine(event.error || event.message); });
+  current.addEventListener("messageerror", () => { if (worker === current) failEngine("the engine worker sent an unreadable message"); });
+  current.onmessage = (event) => {
+    if (worker !== current) return;
     const data = event.data;
+    if (data?.channel === "engine-started") {
+      engineStarted = true;
+      suspendLinkedEngine();
+      return;
+    }
     if (data?.channel === "host-request") {
       Promise.resolve(chrome.runtime.sendMessage(data.message)).then(
         (response) => {
@@ -337,9 +369,9 @@ function startWorkerEngine(script, lowMemory, dictionaryEntryStorage, dictionary
           // too (docs/languages.md 8.5). A local engine, run in this
           // document, sets them from the same reply itself.
           if (data.message?.type === "hd_state_read" && response?.ok === true) setDebugLogLanguages(response.languages ?? []);
-          worker.postMessage({ channel: "host-response", id: data.id, ok: true, response });
+          if (worker === current) current.postMessage({ channel: "host-response", id: data.id, ok: true, response });
         },
-        (error) => worker.postMessage({ channel: "host-response", id: data.id, ok: false, error: describeError(error) }),
+        (error) => { if (worker === current) current.postMessage({ channel: "host-response", id: data.id, ok: false, error: describeError(error) }); },
       );
       return;
     }
@@ -381,8 +413,11 @@ function startLocalEngine() {
         reportProgress: reportEngineProgress,
       },
     );
-    service.startEngine();
     localEngine = service;
+    void Promise.resolve(service.startEngine()).then(() => {
+      engineStarted = true;
+      suspendLinkedEngine();
+    });
   });
 }
 
@@ -391,7 +426,7 @@ function startLocalEngine() {
 async function readEngineConfig() {
   try {
     const reply = await chrome.runtime.sendMessage({ target: WORKER_TARGET, type: "hd_engine_config" });
-    return { lowMemoryMode: reply?.ok === true && reply.lowMemoryMode === true,
+    return { linked: reply?.linked === true, lowMemoryMode: reply?.ok === true && reply.lowMemoryMode === true,
       dictionaryEntryStorage: reply?.dictionaryEntryStorage ?? "auto", dictionaryIndexStorage: reply?.dictionaryIndexStorage ?? "auto",
       useLessRamByDefault: reply?.useLessRamByDefault === true };
   } catch (error) {
@@ -404,17 +439,45 @@ async function readEngineConfig() {
 let pushedEngineConfig = null;
 // Only the pthread workers have a Low memory mode or entry policy to switch to.
 let recyclable = false;
-const engineSelection = Promise.all([selectEngine(), readEngineConfig()]).then(([mode, storedConfig]) => {
-  const { lowMemoryMode: lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = pushedEngineConfig ?? storedConfig;
-  lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
-  lastEngineStatus.threaded = mode !== "local" && mode !== "worker-local";
-  if (mode === "local") return startLocalEngine();
-  if (mode === "worker-local") return startWorkerEngine("./engine-worker-local.js", false);
-  recyclable = true;
-  recycler.setDesired(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
-  return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js",
-    lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
+const initialEngineConfig = readEngineConfig().then(storedConfig => {
+  pushedEngineConfig ??= storedConfig;
+  linked = pushedLink ?? storedConfig.linked === true;
+  recycler.setEnabled(!linked);
+  if (!linked) return ensureEngine();
 }).catch(failEngine);
+
+function ensureEngine() {
+  if (engineSelection !== null) return engineSelection;
+  if (linked) return Promise.resolve();
+  engineSelection = selectEngine().then(mode => {
+    // Link may have completed during the OPFS probe.
+    if (linked) return;
+    const { lowMemoryMode: lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = pushedEngineConfig;
+    lastEngineStatus.storageBackend = mode === "opfs" ? "opfs" : "idbfs";
+    lastEngineStatus.threaded = mode !== "local" && mode !== "worker-local";
+    if (mode === "local") return startLocalEngine();
+    if (mode === "worker-local") return startWorkerEngine("./engine-worker-local.js", false);
+    recyclable = true;
+    recycler.setDesired(lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
+    return startWorkerEngine(mode === "opfs" ? "./engine-worker.js" : "./engine-worker-idbfs.js",
+      lowMemory, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault);
+  }).catch(failEngine).finally(() => {
+    if (worker === null && localEngine === null) engineSelection = null;
+  });
+  return engineSelection;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== TARGET || message.type !== "hd_engine_link" || message.relayed !== true
+      || sender.id !== chrome.runtime.id || sender.url !== expectedBackgroundUrl(chrome)
+      || sender.tab !== undefined) return false;
+  pushedLink = linked = message.linked === true;
+  recycler.setEnabled(!linked);
+  if (linked) suspendLinkedEngine();
+  else void initialEngineConfig.then(ensureEngine);
+  sendResponse({ type: "hd_engine_link_result", requestId: message.requestId ?? null, ok: true });
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== TARGET || message.type !== "hd_engine_config" || message.relayed !== true
@@ -493,8 +556,13 @@ function admit(message, sendResponse) {
     importPhase = { phase: "downloading", fallback: null };
   } else if (MUTATION_TYPES.has(message.type)) activeMutationRequestId = id;
   else if (STAGED_MUTATION_TYPES.has(message.type)) activeStagedMutationRequestId = id;
-  engineSelection.then(() => {
+  const selection = engineSelection ?? initialEngineConfig.then(ensureEngine);
+  selection.then(() => {
     if (!pending.has(id)) return undefined;
+    if (worker === null && localEngine === null) {
+      finishRequest(id, failedResponse(message, "The local dictionary engine is suspended while linked.", "engine-linked"));
+      return undefined;
+    }
     if (worker === null) {
       return localEngine.handleEngineMessage(message).then((response) => finishRequest(id, response));
     }
@@ -592,7 +660,7 @@ async function readDebugLogs(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target !== TARGET || message.relayed !== true || message.type === "hd_engine_config") {
+  if (message?.target !== TARGET || message.relayed !== true || ["hd_engine_config", "hd_engine_link"].includes(message.type)) {
     return false;
   }
   if (message.type === "hd_debug_log") {

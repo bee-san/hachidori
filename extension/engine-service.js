@@ -4774,7 +4774,8 @@ export function startEngine() {
   started = true;
   // boot() never rejects: a failed start is latched in bootError, which
   // hd_status and every request needing the engine report.
-  void serialise(boot);
+  const booted = serialise(boot);
   // The first lookup's own import reports a failure (withFurigana).
   importKanjiReadings().catch(() => {});
+  return booted;
 }

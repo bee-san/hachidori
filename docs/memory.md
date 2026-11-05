@@ -62,6 +62,19 @@ Settings → Advanced → **Memory** shows *Engine memory: X GB across N
 dictionaries*: the size of the engine's linear memory and the number of loaded
 packages.
 
+While linked to another Hachidori, these requests go to the host. The labels
+become **Host engine memory**, **Host total** and **Host hash indexes**;
+dictionary rows say **On host**. These figures do not measure the reading
+browser and should not be compared with its Chrome Task Manager row.
+
+A linked browser keeps the offscreen page for local audio and clipboard work,
+but does not start its dictionary engine. Linking an already running engine
+waits for startup recovery, admitted requests and held backup/download handles
+to finish, then terminates its worker and returns its heap to the browser.
+Local dictionary files and saved settings stay intact; Unlink starts the engine
+again from that state. Hosts without Worker reload the idle offscreen document
+to release its in-document heap. Ordinary browser and page overhead remains.
+
 Below it, *Extension total: Z GB (W MB outside the engine heap)* is what the
 browser measures for the offscreen document that runs the engine and every
 worker it started: the engine heap plus the JavaScript of the document, the
