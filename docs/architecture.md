@@ -3922,10 +3922,9 @@ Netflix's subtitle drag is not added. Hachidori's default popup keybinds use
 Alt, and YouTube's shortcuts ignore keys pressed with Alt: on youtube.com, with
 a popup open, Alt+P, Alt+V, Alt+B, Alt+F, Alt+↑, Alt+↓, Alt+PageUp, Alt+PageDown,
 Alt+Home and Alt+End left the video's time, pause, speed, volume and fullscreen
-as they were. Escape still leaves fullscreen as well as closing the popup,
-because the browser handles it. Shorts (another player), players embedded in
-other sites, `m.youtube.com`, `youtube-nocookie.com`, YouTube Music and live
-streams are not supported.
+as they were. Shorts (another player), players embedded in other sites,
+`m.youtube.com`, `youtube-nocookie.com`, YouTube Music and live streams are not
+supported.
 
 YouTube's caption files, player methods and page markup are YouTube's private
 interfaces and may change without notice; when they do, notes keep their text
