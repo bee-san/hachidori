@@ -157,6 +157,40 @@ test("compact glossaries default off and keep only Yomitan's two popup layout va
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("glossaryLayoutMode"), "not a boolean hotkey toggle");
 });
 
+test("collapsing dictionaries defaults off and keeps its modes, chosen titles and first-dictionary switch (#671)", () => {
+  const { DICTIONARY_COLLAPSE_MODES, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
+  assert.equal(DEFAULT_OPTIONS.dictionaryCollapseMode, "off");
+  assert.deepEqual(DEFAULT_OPTIONS.collapsedDictionaries, []);
+  assert.equal(DEFAULT_OPTIONS.expandFirstDictionary, false);
+  assert.deepEqual(DICTIONARY_COLLAPSE_MODES, ["off", "all", "custom"]);
+  for (const mode of DICTIONARY_COLLAPSE_MODES) {
+    assert.equal(normaliseOptions({ dictionaryCollapseMode: mode }).dictionaryCollapseMode, mode);
+    assert.deepEqual(validateOptionsPatch({ dictionaryCollapseMode: mode }), { dictionaryCollapseMode: mode });
+  }
+  for (const garbage of ["bogus", true, null, "All", "Expand All"]) {
+    assert.equal(normaliseOptions({ dictionaryCollapseMode: garbage }).dictionaryCollapseMode, "off",
+      `garbage ${JSON.stringify(garbage)}`);
+    assert.throws(() => validateOptionsPatch({ dictionaryCollapseMode: garbage }), /invalid reader option/);
+  }
+  const titles = ["大辞林 第四版", "Jitendex.org [2026-08-11]"];
+  assert.deepEqual(validateOptionsPatch({ collapsedDictionaries: titles }), { collapsedDictionaries: titles });
+  assert.deepEqual(normaliseOptions({ collapsedDictionaries: titles }).collapsedDictionaries, titles);
+  for (const garbage of ["大辞林", null, {}, [1], [""], ["a", "a"], [null, "a"]]) {
+    assert.throws(() => validateOptionsPatch({ collapsedDictionaries: garbage }), /invalid reader option/,
+      `garbage ${JSON.stringify(garbage)}`);
+  }
+  assert.deepEqual(normaliseOptions({ collapsedDictionaries: ["a", 1, "", "a", "b"] }).collapsedDictionaries, ["a", "b"],
+    "stored garbage keeps only distinct titles");
+  assert.deepEqual(normaliseOptions({ collapsedDictionaries: "a" }).collapsedDictionaries, []);
+  assert.deepEqual(validateOptionsPatch({ expandFirstDictionary: true }), { expandFirstDictionary: true });
+  assert.throws(() => validateOptionsPatch({ expandFirstDictionary: "yes" }), /invalid reader option/);
+  for (const key of ["dictionaryCollapseMode", "collapsedDictionaries", "expandFirstDictionary"]) {
+    assert.ok(DESIGN_OPTION_KEYS.includes(key), `Design's reset restores ${key}`);
+  }
+  assert.ok(KEYBIND_TOGGLE_OPTIONS.includes("expandFirstDictionary"), "a boolean hotkey toggle, as Design's switches are");
+  assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("dictionaryCollapseMode"));
+});
+
 test("a theme's colours default to Automatic and keep only the bundled variant ids", () => {
   const { POPUP_THEME_VARIANTS, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
   assert.equal(DEFAULT_OPTIONS.popupThemeVariant, "auto");
