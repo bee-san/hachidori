@@ -79,8 +79,12 @@
     let held = false;
     let restoring = false;
     let recordings = 0;
-    // Whether the last lookup the reader observed was of a subtitle line.
-    let lookedUpLine = false;
+    // On a site that pauses only for a lookup of its subtitles: whether the
+    // lookup observed since the popup last showed or hid was of a line (null
+    // for none), and whether a popup shown before its lookup was observed (a
+    // selection) waits for the observation to decide.
+    let observedLine = null;
+    let lookupPending = false;
     // What the viewer hears, kept while content.js has the switch on.
     let lineAudio = null;
     const range = document.createRange();
@@ -205,8 +209,14 @@
     // subtitles, and for an ad's own captions (YouTube).
     function observe(element) {
       const subtitle = element?.closest?.(site.subtitle);
-      lookedUpLine = Boolean(subtitle) && site.adShowing?.(document) !== true;
-      if (!lookedUpLine) return null;
+      const line = Boolean(subtitle) && site.adShowing?.(document) !== true;
+      if (lookupPending) {
+        lookupPending = false;
+        if (line && !hovering) pauseIfPlaying();
+      } else {
+        observedLine = line;
+      }
+      if (!line) return null;
       const container = element.closest(site.line) ?? subtitle;
       return { movieId: sync(), mediaTimeMs: mediaTimeMs(), lineText: visibleText(container),
         hoveredText: visibleText(element) };
@@ -585,11 +595,18 @@
       popupOpen = true;
       // If the viewer played on while still hovering, opening its popup does
       // not undo that choice. A lookup with no subtitle hover pauses afresh:
-      // on Netflix any lookup, elsewhere a lookup of a subtitle line.
-      if (!hovering && (site.pauseOnLookup || lookedUpLine)) pauseIfPlaying();
+      // on Netflix any lookup, elsewhere a lookup of a subtitle line, which
+      // the lookup's observation says, now or once it is made.
+      if (!hovering) {
+        if (site.pauseOnLookup || observedLine === true) pauseIfPlaying();
+        else if (observedLine === null) lookupPending = true;
+      }
+      observedLine = null;
     });
     window.addEventListener(POPUP_HIDDEN_EVENT, () => {
       popupOpen = false;
+      observedLine = null;
+      lookupPending = false;
       release();
     });
 
