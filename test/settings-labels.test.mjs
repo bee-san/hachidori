@@ -63,6 +63,7 @@ const TOGGLE_CONTROLS = {
   audioAutoplay: "opt-audio-autoplay",
   sourceHighlightEnabled: "opt-source-highlight",
   showPopupAudioButton: "opt-popup-audio-button",
+  expandFirstDictionary: "opt-expand-first-dictionary",
   showLookupCounts: "opt-lookup-counts",
   definitionBlurCountEnabled: "opt-blur-count",
   definitionBlurAnkiMature: "opt-blur-anki",

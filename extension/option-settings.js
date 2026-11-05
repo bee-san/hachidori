@@ -217,6 +217,50 @@ function renderCompactSummaryControls() {
     "term", "Automatic — first available definition", enabled);
 }
 
+// Design → Definitions → Collapse dictionaries (#671): Hoshi Reader's mode,
+// Expand First Dictionary switch and Configure list. The list shows for
+// Chosen dictionaries, one switch per term dictionary in lookup order; a
+// switch that is on starts that dictionary collapsed.
+function renderCollapseControls() {
+  const mode = options.dictionaryCollapseMode;
+  const select = element("opt-dictionary-collapse");
+  if (select !== document.activeElement) select.value = mode;
+  const first = element("opt-expand-first-dictionary");
+  first.checked = options.expandFirstDictionary;
+  if (first !== document.activeElement) first.disabled = mode === "off";
+  // As with the blur groups, a focused switch keeps its list until focusout.
+  const choices = element("collapsed-dictionary-choices");
+  if (mode === "custom" || !choices.contains(document.activeElement)) choices.hidden = mode !== "custom";
+  const list = element("collapsed-dictionary-list");
+  const terms = dictionaries.filter(dictionary => hasCapability(dictionary, "term"));
+  const rows = [...list.children];
+  if (!list.contains(document.activeElement)
+      && (rows.length !== terms.length || rows.some((row, index) => row.dataset.title !== terms[index].title))) {
+    list.replaceChildren(...terms.map((dictionary, index) => {
+      const row = document.createElement("li");
+      row.dataset.title = dictionary.title;
+      const label = document.createElement("label");
+      label.className = "lookup-enable";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = `opt-collapsed-dictionary-${index}`;
+      label.append(document.createElement("span"), input);
+      row.append(label);
+      return row;
+    }));
+  }
+  const collapsed = new Set(options.collapsedDictionaries);
+  for (const row of list.children) {
+    const dictionary = dictionaries.find(entry => entry.title === row.dataset.title);
+    const name = dictionary
+      ? dictionaryLabel(dictionary) + (dictionary.enabled === false ? " (disabled)" : "")
+      : row.dataset.title;
+    const span = row.querySelector("span");
+    if (span.textContent !== name) span.textContent = name;
+    row.querySelector("input").checked = collapsed.has(row.dataset.title);
+  }
+}
+
 function renderPreferredDictionary(id, preferred, kind, automaticLabel, enabled) {
   const select = element(id);
   if (select === document.activeElement) return;
@@ -543,6 +587,7 @@ function renderOptions() {
   if (imageHoverPreview !== document.activeElement) imageHoverPreview.value = options.imageHoverPreview;
   const glossaryLayout = element("opt-glossary-layout");
   if (glossaryLayout !== document.activeElement) glossaryLayout.value = options.glossaryLayoutMode;
+  renderCollapseControls();
   renderActivationControls();
   renderFrequencyOrder();
   renderKanjiChoices();
@@ -579,6 +624,7 @@ function attachOptionHandlers() {
       options[field.key] = field.values && !field.values.includes(event.target.value)
         ? DEFAULT_OPTIONS[field.key] : event.target.value;
       if (field.key === "definitionBlurReveal") renderDefinitionBlurControls();
+      if (field.key === "dictionaryCollapseMode") renderCollapseControls();
       writeOptions();
     });
   }
@@ -709,6 +755,18 @@ function attachOptionHandlers() {
     options.compactDefinitionSummaryDictionary = event.target.value;
     writeOptions();
   });
+  element("opt-expand-first-dictionary").addEventListener("change", (event) => {
+    options.expandFirstDictionary = event.target.checked;
+    writeOptions();
+  });
+  // Titles of dictionaries no longer listed stay as they were saved.
+  element("collapsed-dictionary-list").addEventListener("change", (event) => {
+    const title = event.target.closest("li")?.dataset.title;
+    if (title === undefined) return;
+    const others = options.collapsedDictionaries.filter(entry => entry !== title);
+    options.collapsedDictionaries = event.target.checked ? [...others, title] : others;
+    writeOptions();
+  });
   element("opt-image-source").addEventListener("change", (event) => {
     // Values come from the canonical descriptors rendered above, not labels.
     options.popupImageSource = event.target.value ? JSON.parse(event.target.value) : null;
@@ -798,6 +856,7 @@ function attachOptionHandlers() {
         renderDefinitionBlurControls();
       }
       if (event.target.id === "opt-summary-dictionary" || event.target.id === "opt-summary-count") renderCompactSummaryControls();
+      if (event.target.closest("#collapsed-dictionary-choices")) renderCollapseControls();
       if (event.target.id === "opt-hide-on-cursor-exit-delay") renderCursorExitControls();
       if (event.target.closest("#opt-scan-delay-row, #opt-definition-scan-delay-row")) renderScanDelayControls();
       const choice = APPEARANCE_CHOICES.find(({ id }) => id === event.target.id);

@@ -1086,10 +1086,17 @@ input:is(.dict-enabled, .audio-enabled, .keybind-enabled-input):disabled {
 .update-dictionary-list,
 .dict-group-list,
 .dict-group-members,
-.experimental-list {
+.experimental-list,
+.collapsed-dictionary-list {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+/* Design → Collapse dictionaries' list: its hint is a row above the switches. */
+.collapsed-dictionary-choices > .field-hint {
+  margin: 0;
+  padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
 }
 .update-dictionary-title {
   margin: 0;
