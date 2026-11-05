@@ -139,9 +139,10 @@ async function youtubeLoadStage() {
     JSON.stringify({ loaded, scripts, refused, off, injected }));
 }
 
-// With YouTube mining on, {screenshot} on a YouTube page is the frame its
-// player shows, read in the exact top-frame document; a page whose player
-// shows none, a subframe and the switch off keep the viewport capture.
+// With YouTube mining on, {screenshot} for a note from a caption on a YouTube
+// page is the frame its player shows, read in the exact top-frame document; a
+// note from other text, a player that shows no frame, a subframe and the
+// switch off keep the viewport capture.
 async function youtubeFrameStage() {
   const bus = makeBus(), storage = makeStorage();
   const chrome = makeChrome("youtube-frame", bus, storage);
@@ -164,8 +165,8 @@ async function youtubeFrameStage() {
   } };
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise });
   const anki = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
-  const ask = sender => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
-    requestId: "youtube-frame", request: {} }, sender);
+  const ask = (sender, videoFrame = true) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "youtube-frame", ...(videoFrame ? { videoFrame: true } : {}) }, sender);
   const reader = { id: chrome.runtime.id, url: WATCH, frameId: 0, documentId, tab: { id: tab.id, url: WATCH } };
   await storage.api().local.set({ options: { revision: 1, anki, experimental: flags(false) } });
   const switchedOff = await ask(reader);
@@ -184,7 +185,8 @@ async function youtubeFrameStage() {
   const notJpeg = await ask(reader);
   const beforeSubframe = injections.length;
   const subframe = await ask({ ...reader, frameId: 1 });
-  check("YouTube mining's {screenshot} is the video's frame from the exact top-frame document, else the viewport",
+  const otherText = await ask(reader, false);
+  check("YouTube mining's {screenshot} for a caption note is the video's frame from the exact top-frame document, else the viewport",
     switchedOff?.ok === true && offInjections === 0 && afterFrame === capturesBefore
       && frame?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(frame.filename ?? "")
       && injected.func === captureYouTubeFrame && injected.world === undefined
@@ -193,8 +195,9 @@ async function youtubeFrameStage() {
       && noPicture?.ok === true && afterNoPicture === capturesBefore + 1
       && unreadable?.ok === false && unreadable.error.includes("could not be read")
       && notJpeg?.ok === false && notJpeg.error.includes("no JPEG image")
-      && subframe?.ok === true && injections.length === beforeSubframe && captures.length === capturesBefore + 2,
-    JSON.stringify({ switchedOff, frame, noPicture, unreadable, notJpeg, subframe, captures: captures.length,
+      && subframe?.ok === true && otherText?.ok === true && injections.length === beforeSubframe
+      && captures.length === capturesBefore + 3,
+    JSON.stringify({ switchedOff, frame, noPicture, unreadable, notJpeg, subframe, otherText, captures: captures.length,
       capturesBefore, injections: injections.length, world: injected?.world, target: injected?.target }));
 }
 

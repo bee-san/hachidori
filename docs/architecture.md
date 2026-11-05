@@ -3435,8 +3435,8 @@ response does not tell the extension whether the browser omitted that video,
 and Hachidori does not guess DRM from black pixels: a video can show a black
 frame.
 
-With **YouTube mining** on, `{screenshot}` on a YouTube page is the video's
-own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
+With **YouTube mining** on, `{screenshot}` for a note from a YouTube caption is
+the video's own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
 
 **Netflix preview screenshots** is a separate experimental switch, off by
 default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
@@ -3809,7 +3809,7 @@ Settings → Advanced → Experimental features → **YouTube mining**
 switches) gives notes mined from a YouTube caption what Netflix mining gives a
 Netflix subtitle: the whole line as the sentence, its own audio for
 `{sentence-audio}`, a looping GIF of it for `{gif}`, and the video paused while
-a caption is hovered. `{screenshot}` becomes the frame the video shows. It is a
+a caption is hovered. A caption's `{screenshot}` is the frame the video shows. It is a
 separate switch from Netflix mining, and each switch gates only its own site.
 Every part fails closed as Netflix's does: a note without its line is added
 with its other fields and a warning.
@@ -3902,8 +3902,11 @@ needs only to show a `www.youtube.com` page; the recorder connects on
 `{gif}` keeps only the video: the reader sends the `<video>`'s place in the
 viewport as fractions of it, with the viewport's aspect ratio, and the recorder
 cuts that part out of each frame, allowing for the bars Chrome adds when it
-fits the tab into the capture's size. On a YouTube page with the switch on, the
-worker takes `{screenshot}` from the video itself: `youtube-frame.js` runs in
+fits the tab into the capture's size. For a note from a caption (the reader
+sends `hd_anki_screenshot` with `videoFrame: true` when the request has a
+`youtube` field) on a YouTube page with the switch on, the worker takes
+`{screenshot}` from the video itself; a note from other text on the page, such
+as a comment, gets the viewport as anywhere else. `youtube-frame.js` runs in
 the exact reading document's isolated world, draws the player's current frame
 into a canvas at the video's own size and returns it as a JPEG, through the
 same pending-screenshot lifecycle as any picture. A player that shows no

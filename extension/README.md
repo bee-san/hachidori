@@ -178,7 +178,7 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   YouTube's instance of the worker service in `background-video.js`, and
   `youtube-recorder.html` (`youtube-recorder.js`) the recorder frame, which
   crops a `{gif}` to the video. `youtube-frame.js` is what the worker runs in
-  the page for `{screenshot}`: the video's own frame.
+  the page for a caption note's `{screenshot}`: the video's own frame.
 - **Netflix preview screenshots.** A separate experimental switch uses
   `netflix-preview.js` on demand in the watch page's main world to obtain the
   player's timeline JPEG for `{screenshot}`. It avoids screen capture but has

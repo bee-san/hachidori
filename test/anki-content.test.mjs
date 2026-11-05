@@ -1113,12 +1113,17 @@ test("sentence audio the page cut from what was heard goes in beside a GIF that 
 
 test("a YouTube note records its line through YouTube's recorder, and its warnings name YouTube", async t => {
   const recordings = [];
-  let decision = { state: "addable", canAdd: true, sentenceAudio: true };
+  const screenshots = [];
+  let decision = { state: "addable", canAdd: true, sentenceAudio: true, screenshot: true };
   let youtube = { cue: { movieId: "Ab3dEf6hI9k", startMs: 2000, endMs: 4200 } };
   let submittedRequest = null;
-  const f = fixture(t, async (type, { request } = {}) => {
+  const f = fixture(t, async (type, fields = {}) => {
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 9, warnings: [] }; }
+    if (type === "hd_anki_submit") { submittedRequest = fields.request; return { state: "added", noteId: 9, warnings: [] }; }
+    if (type === "hd_anki_screenshot") {
+      screenshots.push(fields);
+      return { token: "shot-y", filename: "hachidori-screenshot-y.jpg" };
+    }
     return decision;
   }, undefined, undefined, undefined, async () => { throw new Error("a YouTube line is not Netflix's"); },
   async (cue, templateId, wanted) => {
@@ -1136,6 +1141,8 @@ test("a YouTube note records its line through YouTube's recorder, and its warnin
   };
   assert.equal(await mine(0), "Added note 9.");
   assert.deepEqual(recordings, [[youtube.cue, "default", true, false, "function"]]);
+  // A caption's note asks for the video's frame; a word from the page around the player does not.
+  assert.deepEqual(screenshots, [{ templateId: "default", videoFrame: true }]);
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-y", filename: "hachidori-sentence-audio-y.wav" });
   youtube = { unavailable: "live" };
   f.controller.refresh(f.context.owner);
@@ -1146,4 +1153,22 @@ test("a YouTube note records its line through YouTube's recorder, and its warnin
   assert.equal(await mine(2),
     "Added note 9. YouTube mining: this browser is linked to another Hachidori, so YouTube lines are not recorded.");
   assert.equal(recordings.length, 1);
+
+  // A word from the page around the player is no caption: its screenshot is the page's.
+  const pageWord = [];
+  const g = fixture(t, async (type, fields = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") return { state: "added", noteId: 10, warnings: [] };
+    if (type === "hd_anki_screenshot") {
+      pageWord.push(fields);
+      return { token: "shot-p", filename: "hachidori-screenshot-p.jpg" };
+    }
+    return { state: "addable", canAdd: true, screenshot: true };
+  });
+  g.controller.update(configured);
+  g.controller.bind(g.items, g.context);
+  await until(() => g.items[0].add && g.items[0].add.dataset.state !== "checking" && !g.items[0].add.disabled);
+  g.items[0].add.click();
+  await until(() => g.items[0].add.dataset.state === "success");
+  assert.deepEqual(pageWord, [{ templateId: "default" }]);
 });

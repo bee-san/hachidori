@@ -516,7 +516,9 @@
       if (record.decision?.screenshot !== true) return request;
       if (owns()) setStatus(record, "Taking the screenshot…");
       try {
-        const taken = await conceal(() => send("hd_anki_screenshot", { templateId: record.templateId }));
+        // A note from a YouTube caption asks for the video's frame (YouTube mining).
+        const taken = await conceal(() => send("hd_anki_screenshot", { templateId: record.templateId,
+          ...(request.youtube ? { videoFrame: true } : {}) }));
         if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was taken");
         record.screenshot = { token: taken.token, filename: taken.filename };
         return { ...request, screenshot: record.screenshot };

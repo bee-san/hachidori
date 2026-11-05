@@ -187,13 +187,13 @@ async function captureYouTubeFrameInDocument(tab, sender) {
 }
 
 // Where {screenshot} comes from in a top-frame reading page: Netflix's preview
-// with Netflix preview screenshots on, YouTube's video frame with YouTube
-// mining on, otherwise (null) the viewport.
-function screenshotSource(tab, sender, options, readerPage) {
+// with Netflix preview screenshots on, YouTube's video frame for a note from a
+// caption (`videoFrame`) with YouTube mining on, otherwise (null) the viewport.
+function screenshotSource(tab, sender, options, readerPage, videoFrame) {
   if (readerPage || (sender.frameId ?? 0) !== 0) return null;
   if (options.experimental.netflixPreviewScreenshots === true
       && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url)) return "netflix-preview";
-  return options.experimental.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
+  return videoFrame && options.experimental.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
 }
 
 // One picture from `source`: a YouTube player that shows no frame leaves the
@@ -206,7 +206,7 @@ async function captureFrom(tab, sender, source) {
 
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
-async function captureSenderViewport(sender, options) {
+async function captureSenderViewport(sender, options, videoFrame = false) {
   const readerPage = readerPageSender(sender);
   if (typeof sender.tab?.id !== "number" && !readerPage) {
     throw new Error("Only a reading tab can be captured.");
@@ -214,7 +214,7 @@ async function captureSenderViewport(sender, options) {
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, readerPage);
-    const source = screenshotSource(tab, sender, options, readerPage);
+    const source = screenshotSource(tab, sender, options, readerPage, videoFrame);
     let captured;
     try {
       captured = await captureFrom(tab, sender, source);
@@ -388,7 +388,8 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") {
-      return service.screenshot(options => captureSenderViewport(sender, options), message.templateId);
+      return service.screenshot(options => captureSenderViewport(sender, options, message.videoFrame === true),
+        message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
       const status = singleProfileStatus(message, await service.status(message.templateId));

@@ -213,9 +213,9 @@ seconds heard at normal speed, in the page's memory, and a line goes to your
 configured AnkiConnect server only when you add a note that maps
 `{sentence-audio}`. A `{gif}` field gets a short looping GIF of the line,
 recorded from the tab as for Netflix and cut to the video. With the switch on,
-`{screenshot}` on a YouTube page is the frame the video shows, read from the
-video in that page, instead of the whole visible page; it goes to Anki with the
-note like any screenshot. Nothing of it leaves the page otherwise. A linked
+`{screenshot}` for a note from a caption is the frame the video shows, read
+from the video in that page, instead of the whole visible page; it goes to
+Anki with the note like any screenshot. Nothing of it leaves the page otherwise. A linked
 browser does not record YouTube lines, and Firefox records no line audio or
 GIF.
 
