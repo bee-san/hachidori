@@ -1192,8 +1192,9 @@ try {
     return reply?.sharing?.network?.active === false && reply.sharing.clients.length === 0 ? reply.sharing : null;
   }, "the relay to close the network", 15_000);
   const cleanup = await message(clientPage, "hachidori-sharing", "hd_sharing_client_unlink");
-  // The relay must have survived the swap back: this computer still finds the host through it.
-  const stillThere = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: "" });
+  // The relay must survive the swap back. Use its test address explicitly:
+  // this client restarted while hosting was off, so its host has the default port.
+  const stillThere = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: ADDRESS });
   check(CHECKS[9],
     networkOn?.ok === true && hostNetwork.enabled === true
       && shown.status === "Sharing through Anki, on this computer and the network."
@@ -1206,7 +1207,7 @@ try {
       && cleanup?.ok === true && stillThere?.ok === true && relay.exitCode === null,
     JSON.stringify({ networkOn: networkOn?.ok, hostNetwork, shown, remoteLinked, remoteLookup: { ok: remoteLookup?.ok, error: remoteLookup?.error, first: remoteLookup?.results?.[0]?.deinflected },
       remoteClients, remoteStatus, networkOff: networkOff?.ok, dropped, hostAfterOff: { network: hostAfterOff.network, connected: hostAfterOff.connected, clients: hostAfterOff.clients.length },
-      cleanup: cleanup?.ok, stillThere: stillThere?.ok, relayExit: relay.exitCode }));
+      cleanup: cleanup?.ok, stillThere, relayExit: relay.exitCode }));
 
   const localText = "私語,しご,local personal entry preserved across sharing\n";
   const localBase = await message(clientPage, "hoshidicts-worker", "hd_custom_read");
