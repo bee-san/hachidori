@@ -238,8 +238,10 @@ async function relayEngineRequest(message) {
   // A linked browser's languages are the host's (docs/languages.md 17.3).
   if (sharingLinked && ["hd_profile_add", "hd_profile_remove"].includes(message.type)) return forwardProfileRequest(message);
   if (sharingLinked && forwardableRequest(message)) {
-    const reply = await forwardToHost(message);
-    return ["hd_memory", "hd_memory_total"].includes(message.type) ? { ...reply, memorySource: "host" } : reply;
+    if (["hd_memory", "hd_memory_total"].includes(message.type)) {
+      return { ...await forwardToHost(message), memorySource: "host" };
+    }
+    return forwardToHost(message);
   }
   if (message.type === "hd_backup_cancel") {
     const preparation = backupPreparations.get(message.token);

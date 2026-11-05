@@ -67,6 +67,8 @@ become **Host engine memory**, **Host total** and **Host hash indexes**;
 dictionary rows say **On host**. These figures do not measure the reading
 browser and should not be compared with its Chrome Task Manager row.
 
+![Memory readout labelled with its linked host; Firefox cannot measure the host total](assets/linked-host-memory.png)
+
 A linked browser keeps the offscreen page for local audio and clipboard work,
 but does not start its dictionary engine. Linking an already running engine
 waits for startup recovery, admitted requests and held backup/download handles
