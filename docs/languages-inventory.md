@@ -54,6 +54,9 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `showPopupAudioButton` (true) | Audio | None | P |
 | `popupColumns` (1) | Design (Default) | None | P |
 | `glossaryLayoutMode` (default) | Design | `" \| "` separator neutral | P |
+| `dictionaryCollapseMode` (off) | Design → Definitions → Collapse dictionaries | None | P |
+| `collapsedDictionaries` ([]) | Design → Definitions → Collapse dictionaries | Title references | P; a dictionary selection (14) |
+| `expandFirstDictionary` (false) | Design → Definitions → Expand the first dictionary | None | P |
 | `showLookupCounts` (true) | Reading → Lookup history | Counts keyed by `[term, reading]` | P; counts per language (15) |
 | `definitionBlurCountEnabled` (false) | Reading → Definition blur | None | P |
 | `definitionBlurAnkiMature` (false) | Reading → Definition blur | First Template's deck | P |

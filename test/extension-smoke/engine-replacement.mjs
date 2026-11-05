@@ -552,6 +552,7 @@ describe("engine: atomic replacement", () => {
         kanjiClickDictionary: { title: selectorTitle, kind: "term" },
         popupImageSource: { kind: "dictionary", title: selectorTitle },
         pitchAccentFuriganaDictionary: selectorTitle,
+        collapsedDictionaries: [selectorTitle, "Never installed"],
       },
     });
     const selectorBeforeReplace = selectorPresented.state.dictionaries.find(
@@ -603,6 +604,7 @@ describe("engine: atomic replacement", () => {
         && selectorOptions.kanjiClickDictionary?.kind === "term"
         && selectorOptions.popupImageSource?.title === renamedSelectorTitle
         && selectorOptions.pitchAccentFuriganaDictionary === renamedSelectorTitle
+        && JSON.stringify(selectorOptions.collapsedDictionaries) === JSON.stringify([renamedSelectorTitle, "Never installed"])
         && selectorOptions.revision === selectorOptionsWrite.options.revision + 1,
       JSON.stringify({
         selectorInstall,
@@ -613,7 +615,14 @@ describe("engine: atomic replacement", () => {
         selectorOptions,
       }),
     );
-    await request("hd_remove", { title: renamedSelectorTitle });
+    const selectorRemoval = await request("hd_remove", { title: renamedSelectorTitle });
+    const afterSelectorRemoval = (await storage.api().local.get("options")).options;
+    check(
+      "removing a dictionary drops it from the collapsed dictionaries and keeps titles never installed",
+      selectorRemoval.ok === true
+        && JSON.stringify(afterSelectorRemoval.collapsedDictionaries) === JSON.stringify(["Never installed"]),
+      JSON.stringify({ selectorRemoval, collapsedDictionaries: afterSelectorRemoval.collapsedDictionaries }),
+    );
     await request("hd_remove", { title: separateTitle });
     await request("hd_remove", { title: separateThreeTitle });
   });

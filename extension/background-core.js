@@ -282,6 +282,10 @@ function migrateCommittedDictionarySelections(value, current, dictionaries) {
     const title = migrate(options.popupImageSource.title);
     options.popupImageSource = title ? { kind: "dictionary", title } : null;
   }
+  // A removed dictionary leaves the list; a renamed one keeps its place.
+  if (Array.isArray(options.collapsedDictionaries)) {
+    options.collapsedDictionaries = [...new Set(options.collapsedDictionaries.map(migrate).filter(title => title !== ""))];
+  }
   return options;
 }
 

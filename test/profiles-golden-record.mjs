@@ -17,6 +17,12 @@
 // main fd53c854 for its history and keybind scope of #666). The capture is a
 // run of main's suites at that commit; running
 // this on the branch's reader-options.js records that file's behaviour instead.
+//
+// Option keys added after the profile layer joined main extend that file
+// instead: #671's collapse options were recorded from main fd53c854's
+// reader-options.js with #671's own reader-options.js diff applied, and from
+// a capture rebuilt from the golden's entries (one line per entry and suite),
+// which reproduces the previous golden byte for byte from fd53c854's file.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -92,7 +98,7 @@ writeFileSync(output, `${JSON.stringify({
     + "recorded from reader-options.js before the profile layer (docs/languages.md 6.2). "
     + "`normalised` lists the keys of normaliseOptions' result that differ from `defaults`; the SHA-256 values are of "
     + "JSON.stringify of the complete results of normaliseOptions and projectStoredOptions, so key order is pinned too.",
-  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js",
+  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js with #671's option keys",
   defaults,
   entries: [],
 }).slice(0, -3)}[\n${body}\n]}\n`);

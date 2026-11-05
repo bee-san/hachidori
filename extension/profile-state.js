@@ -80,7 +80,7 @@ export function applyToEveryProfile(record, patch) {
 
 // Selections that name dictionaries of the profile they belong to (section 14).
 const DICTIONARY_SELECTION_KEYS = ["frequencyDictionary", "kanjiClickDictionary", "compactDefinitionSummaryDictionary",
-  "pitchAccentFuriganaDictionary", "definitionBlurFrequencyDictionary", "popupImageSource"];
+  "pitchAccentFuriganaDictionary", "definitionBlurFrequencyDictionary", "popupImageSource", "collapsedDictionaries"];
 
 /**
  * A new profile's settings (section 6.3): a copy of another profile's, with

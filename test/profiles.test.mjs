@@ -430,6 +430,10 @@ test("the engine's whole-state commit prunes every profile's selections against 
   const records = profileRecords();
   records.options.profiles[1].settings.frequencyDictionary = "Arabic";
   records.options.profiles[0].settings.frequencyDictionary = "Jitendex";
+  // Collapsed cards (#671): a dictionary that leaves the profile leaves the
+  // list; a disabled one and a title the profile never had stay.
+  records.options.profiles[1].settings.collapsedDictionaries = ["Arabic", "Jitendex", "Not installed"];
+  records.options.profiles[0].settings.collapsedDictionaries = ["Jitendex"];
   records.dictionaryState.dictionaries[1].frequencyCount = 1;
   records.dictionaryState.dictionaries[2].frequencyCount = 1;
   const { fromEngine, stored } = backgroundWorker(records);
@@ -441,6 +445,8 @@ test("the engine's whole-state commit prunes every profile's selections against 
   const options = stored("options");
   assert.equal(options.profiles[1].settings.frequencyDictionary, "", "Arabic left the profile");
   assert.equal(options.profiles[0].settings.frequencyDictionary, "", "Jitendex is disabled in Japanese");
+  assert.deepEqual(options.profiles[1].settings.collapsedDictionaries, ["Jitendex", "Not installed"]);
+  assert.deepEqual(options.profiles[0].settings.collapsedDictionaries, ["Jitendex"]);
   const conflict = await fromEngine({ type: "hd_state_cas", baseRevision: 31, state: next });
   assert.equal(conflict.ok, false);
   assert.equal(conflict.conflict, true);
@@ -460,6 +466,7 @@ function singleProfileRecords() {
 
 test("adding a second language converts the records; removing it converts them back", async () => {
   const records = singleProfileRecords();
+  Object.assign(records.options, { dictionaryCollapseMode: "custom", collapsedDictionaries: ["Jitendex"] });
   const { fromEngine, stored, storage } = backgroundWorker(records);
   const converted = profileState.dictionaryStateWithProfiles(records.dictionaryState);
   const added = { ...converted.profiles, en: { dictionaries: [], groups: [] } };
@@ -477,6 +484,9 @@ test("adding a second language converts the records; removing it converts them b
   assert.equal(en.settings.scanLength, 20, "the new profile copies the profile it was added from");
   assert.equal(en.settings.popupTheme, "jl");
   assert.equal(Object.hasOwn(en.settings, "frequencyDictionary"), false, "dictionary selections are unset");
+  assert.equal(Object.hasOwn(en.settings, "collapsedDictionaries"), false, "so are the collapsed dictionaries");
+  assert.equal(en.settings.dictionaryCollapseMode, "custom", "the collapse mode is copied");
+  assert.deepEqual(ja.settings.collapsedDictionaries, ["Jitendex"]);
   assert.notEqual(en.settings.anki.templates[0].id, "default", "Templates get new ids");
   assert.equal(en.settings.anki.templates[0].model, "Lapis");
   assert.equal(en.settings.anki.templates[0].deck, "");

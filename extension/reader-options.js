@@ -178,6 +178,14 @@
     // Yomitan's general.glossaryLayoutMode: "compact" puts a definition's
     // glosses on one line, separated by " | ". Popup CSS only.
     glossaryLayoutMode: "default",
+    // Design → Definitions → Collapse dictionaries (#671), Hoshi Reader's
+    // collapse mode: "off" keeps every dictionary's card open; "all" and
+    // "custom" let its name open and close it, starting closed for every
+    // dictionary or for the titles in collapsedDictionaries.
+    // expandFirstDictionary opens each result's first card all the same.
+    dictionaryCollapseMode: "off",
+    collapsedDictionaries: [],
+    expandFirstDictionary: false,
     showLookupCounts: true,
     // Only the lookup-count condition; stored as `definitionBlurEnabled` before #401.
     definitionBlurCountEnabled: false,
@@ -298,6 +306,8 @@
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
   // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
   const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
+  // Hoshi Reader's Expand All, Collapse All and Custom (#671); Off draws no disclosure.
+  const DICTIONARY_COLLAPSE_MODES = ["off", "all", "custom"];
   const PITCH_ACCENT_FURIGANA_STYLES = ["contour", "overline"];
   // How a word highlight marks its word: a line under it, its text, or its background.
   const WORD_HIGHLIGHT_STYLES = ["underline", "color", "background"];
@@ -322,7 +332,8 @@
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
     "popupTheme", "popupThemeVariant", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
-    "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
+    "glossaryLayoutMode", "dictionaryCollapseMode", "collapsedDictionaries", "expandFirstDictionary",
+    "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyTagsWithAverage",
     "showFrequencyDictionaryNames",
     "compactFrequencyNumbers", "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle",
@@ -726,6 +737,7 @@
     definitionBlurReveal: new Set(DEFINITION_BLUR_REVEALS),
     imageHoverPreview: new Set(IMAGE_HOVER_PREVIEWS),
     glossaryLayoutMode: new Set(GLOSSARY_LAYOUT_MODES),
+    dictionaryCollapseMode: new Set(DICTIONARY_COLLAPSE_MODES),
     pitchAccentFuriganaStyle: new Set(PITCH_ACCENT_FURIGANA_STYLES),
     wordHighlightStyle: new Set(WORD_HIGHLIGHT_STYLES),
   };
@@ -741,6 +753,7 @@
     switch (key) {
       case "activationKey": return normaliseActivationKey(value);
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
+      case "collapsedDictionaries": return normaliseDictionaryTitles(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "audioSources": return normaliseAudioSources(value);
       case "customLinks": return normaliseCustomLinks(value);
@@ -824,6 +837,11 @@
     return kanjiCapability(dictionaries.find(entry => entry.title === title), requestedKind);
   }
 
+  // Dictionary titles, each once, as collapsedDictionaries stores them.
+  function normaliseDictionaryTitles(value) {
+    return Array.isArray(value) ? [...new Set(value.filter(title => typeof title === "string" && title !== ""))] : [];
+  }
+
   function normalisePopupImageSource(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     if (value.kind === "dictionary" && typeof value.title === "string" && value.title !== "") {
@@ -904,6 +922,8 @@
     if (key === "experimental") return validExperimental(raw, normalized);
     if (key === "kanjiClickDictionary") return typeof raw === "string" || typeof normalized === "object";
     if (key === "popupImageSource") return raw === null || normalized !== null;
+    if (key === "collapsedDictionaries") return Array.isArray(raw) && raw.length === normalized.length
+      && raw.every((title, index) => title === normalized[index]);
     if (key === "definitionScanDelayMs") return raw === null || (typeof raw === "number" && raw === normalized);
     if (key === "keybinds") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((bind, index) => raw[index] && typeof raw[index] === "object" && JSON.stringify(bind)
@@ -1400,7 +1420,7 @@
     normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
-    GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
+    GLOSSARY_LAYOUT_MODES, DICTIONARY_COLLAPSE_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,
     projectStoredOptions, projectContentOptions, validateOptionsPatch, normaliseDictionarySelections,
     resolvePopupImageSources,
     hasCapability, resolveKanjiDictionary,

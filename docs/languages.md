@@ -581,8 +581,8 @@ edits the new profile. Lookups stay in the active profile, so the dialog's
 success line offers **Use for lookups**.
 
 - dictionaries: none; groups: none; dictionary selections (frequency,
-  clicked character, compact summary, pitch, blur frequency, image source):
-  unset;
+  clicked character, compact summary, pitch, blur frequency, image source,
+  collapsed dictionaries): unset;
 - Anki: the Templates with new ids, their note types and field mappings, and
   an empty deck. Until the user chooses a deck, the Anki button says so
   ("Choose an available deck.") and a click opens Settings → Anki for the
@@ -1510,8 +1510,9 @@ separate change for the owner to decide.
   that open the dictionary's download page; the user imports the file. No
   source is added to the catalogue (decision record 0006).
 - **Selections.** The frequency, clicked-character, compact-summary, pitch,
-  blur and image-source selections belong to the profile and are pruned and
-  migrated against the profile's packages and groups.
+  blur, image-source and collapsed-dictionary selections belong to the
+  profile and are pruned and migrated against the profile's packages and
+  groups.
 - **Updates** stay global: one schedule, per-package overrides.
 - **Status.** With profiles, Settings' status line counts the edited
   profile's enabled dictionaries; Settings → Advanced → Memory shows what the
