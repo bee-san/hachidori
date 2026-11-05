@@ -109,7 +109,8 @@ function renderDisplayNote(document, fieldset, presentation, themeName) {
     fieldset.append(note);
   }
   // Rebuilt only when its text changes, so a focused link keeps focus.
-  const text = `${themeName ? `The ${themeName} theme` : "The chosen theme"} does not use these settings. Choose another theme in `;
+  const theme = themeName ? `The ${themeName} theme` : "The chosen theme";
+  const text = `${theme} does not use these settings. Choose another theme in `;
   if (note.firstChild?.nodeValue !== text) {
     const link = document.createElement("a");
     link.href = "#design";
