@@ -252,9 +252,8 @@ function renderCollapseControls() {
   const collapsed = new Set(options.collapsedDictionaries);
   for (const row of list.children) {
     const dictionary = dictionaries.find(entry => entry.title === row.dataset.title);
-    const name = dictionary
-      ? dictionaryLabel(dictionary) + (dictionary.enabled === false ? " (disabled)" : "")
-      : row.dataset.title;
+    const disabled = dictionary?.enabled === false ? " (disabled)" : "";
+    const name = dictionary ? `${dictionaryLabel(dictionary)}${disabled}` : row.dataset.title;
     const span = row.querySelector("span");
     if (span.textContent !== name) span.textContent = name;
     row.querySelector("input").checked = collapsed.has(row.dataset.title);
