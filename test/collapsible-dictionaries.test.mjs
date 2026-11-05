@@ -135,7 +135,7 @@ test("a blurred collapsible card keeps its name a working disclosure; its body i
     assert.equal(body.getAttribute("role"), "button");
     assert.equal(body.getAttribute("aria-label"), "Reveal definitions");
     assert.equal(body.tabIndex, 0);
-    assert.equal(body.querySelector(":scope > .gsm-hoshidicts-definitions").inert, true);
+    assert.ok(body.querySelector(":scope > .gsm-hoshidicts-definitions").hasAttribute("inert"));
     assert.equal(card.querySelector(":scope > summary").closest("[data-definition-reveal], [inert]"), null);
   }
   shinmeikai.querySelector(":scope > summary").click();

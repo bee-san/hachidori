@@ -2913,6 +2913,29 @@ html[data-hoshidicts-theme="girlypop"],
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
+/* Design → Definitions → Collapse dictionaries (#671): a collapsible card is
+ * Hoshi Reader's glossary-group (Features/Popup/popup.css at f8eeb96,
+ * GPL-3.0-or-later), a <details> whose summary holds the disclosure marker and
+ * the card's dictionary tag. A closed card is that one line. */
+.gsm-hoshidicts-glossary-summary {
+  border-radius: 4px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.gsm-hoshidicts-glossary-summary > .gsm-hoshidicts-dictionary-tag {
+  display: inline-block;
+}
+
+.gsm-hoshidicts-glossary-summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.gsm-hoshidicts-glossary-card[open] > .gsm-hoshidicts-glossary-summary {
+  margin-bottom: var(--hd-space-1);
+}
+
 /* Inside each card, the definitions follow Yomitan (yomidevs/yomitan@67db60d,
  * GPL-3.0-or-later): ext/css/display.css for the definition and gloss lists and
  * links, ext/css/structured-content.css for dictionary markup. Its selectors

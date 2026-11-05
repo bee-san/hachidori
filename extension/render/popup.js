@@ -28,6 +28,9 @@
     "compactFrequencyNumbers",
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "showPitchAccentBadge",
     "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
+  // Design → Definitions → Collapse dictionaries (#671). A change rebuilds the
+  // cards of an open popup, as a change of its tab's dictionaries does.
+  const COLLAPSE_OPTION_KEYS = ["dictionaryCollapseMode", "collapsedDictionaries", "expandFirstDictionary"];
 
   // Shared keyboard semantics for rich cards and direct text definitions.
   function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
@@ -52,6 +55,22 @@
 
   function metadataOptions(context) {
     return Object.fromEntries(METADATA_OPTION_KEYS.map(key => [key, context[key]]));
+  }
+
+  function collapseOptions(context) {
+    return Object.fromEntries(COLLAPSE_OPTION_KEYS.map(key => [key, context[key]]));
+  }
+
+  // Whether a card starts open (#671), after Hoshi Reader's
+  // createGlossarySection: closed for every dictionary with Collapse all, for
+  // the chosen ones with Custom, except a result's first card when Expand the
+  // first dictionary is on. Null means the card is not collapsible.
+  function glossaryCardOpen(context, dictionary, first) {
+    const mode = context.dictionaryCollapseMode;
+    if (mode !== "all" && mode !== "custom") return null;
+    if (first && context.expandFirstDictionary === true) return true;
+    return mode === "custom" && !(Array.isArray(context.collapsedDictionaries)
+      && context.collapsedDictionaries.includes(dictionary));
   }
 
   function frequencyModes(context) {
@@ -2719,7 +2738,8 @@
     function focusEntryWithDifferentDictionary(nodes, index, sign) {
       const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
         ? [...node.querySelectorAll(".gsm-hoshidicts-glossary-grid > .gsm-hoshidicts-glossary-card")] : [];
-      const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-definitions > .definition-item")
+      const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-definitions > .definition-item, "
+        + ":scope > .gsm-hoshidicts-glossary-body > .gsm-hoshidicts-definitions > .definition-item")
         ?.dataset.dictionary ?? "";
       const search = entries => {
         const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf);
@@ -3785,14 +3805,32 @@
         }
         const glossaryGrid = documentRef.createElement("div");
         glossaryGrid.className = "gsm-hoshidicts-glossary-grid";
-        for (const [dictionary, glossaries] of groupedGlossaries) {
-          // Always open, as in Yomitan: only disclosures a dictionary authors
-          // inside its own content collapse.
-          const card = documentRef.createElement("div");
+        for (const [cardIndex, [dictionary, glossaries]] of [...groupedGlossaries].entries()) {
+          // Open, as in Yomitan, unless Collapse dictionaries (#671) makes the
+          // card Hoshi Reader's disclosure, named by the dictionary's tag.
+          const open = glossaryCardOpen(renderContext, dictionary, cardIndex === 0);
+          const collapsible = open !== null;
+          const card = documentRef.createElement(collapsible ? "details" : "div");
           card.className = "gsm-hoshidicts-glossary-card";
           // The dictionary's direction and default language hold its whole block (10.2).
           if (marked) setAttributes(card, language.glossaryAttributes(dictionary, result));
           const direction = marked ? language.dictionaryDirection(dictionary, result) : undefined;
+          const dictionaryTag = createTag(documentRef, dictionaryDisplayNames?.get(dictionary) || dictionary,
+            dictionary, "definition", "dictionary");
+          dictionaryTag.classList.add("gsm-hoshidicts-dictionary-tag");
+          if (marked) updateLabel(dictionaryTag, dictionaryTag.textContent, language);
+          // The body, not the card, is a blurred card's reveal button, so the
+          // summary stays a disclosure of its own.
+          let body = card;
+          if (collapsible) {
+            card.open = open;
+            const summary = documentRef.createElement("summary");
+            summary.className = "gsm-hoshidicts-glossary-summary";
+            summary.appendChild(dictionaryTag);
+            body = documentRef.createElement("div");
+            body.className = "gsm-hoshidicts-glossary-body";
+            card.append(summary, body);
+          }
           const definitions = documentRef.createElement("ol");
           definitions.className = "gsm-hoshidicts-definitions definition-list";
           definitions.dataset.count = String(glossaries.length);
@@ -3814,8 +3852,10 @@
               : parseTagList(glossary.definitionTags).map((name) => ({ name }));
             // Yomitan's createTermEntry ends each definition's tags with its
             // dictionary's tag. A card holds one dictionary, so only its first
-            // definition has one, as with Yomitan's Compact tags.
-            if (definitionTags.length > 0 || definitionIndex === 0) {
+            // definition has one, as with Yomitan's Compact tags; a
+            // collapsible card's summary has it instead.
+            const tagged = definitionIndex === 0 && !collapsible;
+            if (definitionTags.length > 0 || tagged) {
               const definitionTagRow = documentRef.createElement("div");
               definitionTagRow.className = "gsm-hoshidicts-definition-tags definition-tag-list";
               for (const tag of definitionTags) {
@@ -3823,13 +3863,7 @@
                   createTag(documentRef, tag.name, tag.notes, "definition", tag.category)
                 );
               }
-              if (definitionIndex === 0) {
-                const dictionaryTag = createTag(documentRef, dictionaryDisplayNames?.get(dictionary) || dictionary,
-                  dictionary, "definition", "dictionary");
-                dictionaryTag.classList.add("gsm-hoshidicts-dictionary-tag");
-                if (marked) updateLabel(dictionaryTag, dictionaryTag.textContent, language);
-                definitionTagRow.appendChild(dictionaryTag);
-              }
+              if (tagged) definitionTagRow.appendChild(dictionaryTag);
               definition.appendChild(definitionTagRow);
             }
             const content = documentRef.createElement("div");
@@ -3888,7 +3922,7 @@
             definition.appendChild(content);
             definitions.appendChild(definition);
           }
-          card.appendChild(definitions);
+          body.appendChild(definitions);
           glossaryGrid.appendChild(card);
         }
         entry.appendChild(glossaryGrid);
@@ -4549,6 +4583,8 @@
         () => ownsDisplayedPanel(panel, renderContext), renderContext, () => {
           const summaryChanged = ["showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary"]
             .some(key => Object.hasOwn(context, key) && context[key] !== renderContext[key]);
+          const collapseChanged = COLLAPSE_OPTION_KEYS
+            .some(key => Object.hasOwn(context, key) && JSON.stringify(context[key]) !== JSON.stringify(renderContext[key]));
           // Image-only changes may proceed while Note, focus or a child keeps
           // the old tab/text projection mounted. Enter the same connected
           // request boundary before admitting new asynchronous image work.
@@ -4564,9 +4600,11 @@
           let index = next.tabs.findIndex(tab => tab.key === selectedKey);
           if (index < 0) index = 0;
           const sameMembers = sameTabMembers(previous[selectedIndex].dictionaries, next.tabs[index].dictionaries, dictionaries);
+          // New collapse settings rebuild the cards as new members do.
+          const reproject = !sameMembers || collapseChanged;
           const projectionDeferred = (summaryChanged && popup.contains(focused)
             && focused.closest(".gsm-hoshidicts-compact-definition-summary"))
-            || (!sameMembers && (!ownsView() || !canProjectPresentation()));
+            || (reproject && (!ownsView() || !canProjectPresentation()));
           // New cards and summaries use the latest route. Only refresh handles
           // after replacing their owners, unless the projection is protected.
           for (const key of ["popupImageSources", "dictionaryPresentation", "resolveMedia", ...METADATA_OPTION_KEYS]) {
@@ -4586,7 +4624,7 @@
           if (selectedKey !== tabDescriptors[index].key) {
             renderContext.onDictionaryTabSelected?.(normaliseDictionaryTab(tabDescriptors[index]));
           }
-          if (sameMembers) {
+          if (!reproject) {
             const metadata = rendered.updateMetadata();
             changed = metadata.changed || changed;
             metadataDeferred = metadata.deferred;
@@ -4681,7 +4719,8 @@
   // click on one, or Enter or Space on a blurred definition, does. Meanwhile
   // what they show is inert, so no link, image or disclosure in it can be
   // focused, hovered or opened, and each definition is a labelled button in
-  // the Tab order (Default's card, as its list cannot be one). The compact
+  // the Tab order (Default's card, as its list cannot be one, or a collapsible
+  // card's body, whose summary is a control of its own). The compact
   // summary is a click target only. Call sync() after every render and after a
   // change to the blur state or the reveal mode.
   const DEFINITION_REVEAL_TARGETS = ".gsm-hoshidicts-definitions, .gsm-hoshidicts-compact-definition-summary";
@@ -4715,7 +4754,8 @@
       if (!active && !popup.querySelector("[data-definition-reveal]")) return;
       for (const element of popup.querySelectorAll(DEFINITION_REVEAL_TARGETS)) {
         const summary = element.matches(".gsm-hoshidicts-compact-definition-summary");
-        const control = summary ? element : element.closest(".gsm-hoshidicts-glossary-card") ?? element;
+        const control = summary ? element
+          : element.closest(".gsm-hoshidicts-glossary-body, .gsm-hoshidicts-glossary-card") ?? element;
         for (const content of control === element ? element.children : [element]) content.toggleAttribute("inert", active);
         if (active) {
           control.dataset.definitionReveal = "";
@@ -4764,6 +4804,7 @@
     kanjiEntryGlossary,
     kanjiEntryResult,
     characterEntryResult,
+    collapseOptions,
     metadataOptions,
   };
 }));

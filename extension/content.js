@@ -3210,11 +3210,13 @@
   }
 
   // What a view's dictionaries look like: its profile in effect's display
-  // names, favourites, frequency modes, tab groups, summary and metadata.
+  // names, favourites, frequency modes, tab groups, summary, metadata and
+  // which cards start collapsed (#671).
   function presentationContext(profile = null) {
     const own = profileView(profile).options;
     return { dictionaryPresentation: dictionaryPresentation(profile), dictionaryTabGroups: dictionaryTabGroups(profile),
-      ...compactSummaryOptions(own), ...imageSourceContext(profile), ...globalThis.HDPopup.metadataOptions(own) };
+      ...compactSummaryOptions(own), ...imageSourceContext(profile), ...globalThis.HDPopup.metadataOptions(own),
+      ...globalThis.HDPopup.collapseOptions(own) };
   }
 
   function openExternalLink({ url, active }) {
@@ -5033,6 +5035,8 @@
       || next.compactDefinitionSummaryDictionary !== options.compactDefinitionSummaryDictionary;
     const imageSourceChanged = JSON.stringify(next.popupImageSource) !== JSON.stringify(options.popupImageSource);
     const metadataChanged = Object.entries(globalThis.HDPopup.metadataOptions(next)).some(([key, value]) => value !== options[key]);
+    const collapseChanged = Object.entries(globalThis.HDPopup.collapseOptions(next))
+      .some(([key, value]) => JSON.stringify(value) !== JSON.stringify(options[key]));
     // The caller adopts the complete storage delivery before new summary work.
     // A simultaneous dictionary replacement must invalidate the old view first.
     const countsChanged = next.showLookupCounts !== options.showLookupCounts;
@@ -5043,7 +5047,7 @@
       .some(key => next[key] !== options[key]);
     const optionsArrived = optionsStorageRevision < 0;
     const adoption = { lookupChanged,
-      presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged) && next.hoverEnabled };
+      presentationChanged: (summaryChanged || imageSourceChanged || metadataChanged || collapseChanged) && next.hoverEnabled };
     if (activationChanged) {
       activationPressed = false;
       activationCode = null;

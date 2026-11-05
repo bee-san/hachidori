@@ -543,6 +543,9 @@ const DESIGN_FLIPS = [
   ["showCompactDefinitionSummary", true],
   ["compactDefinitionSummaryCount", 1, { showCompactDefinitionSummary: true }],
   ["compactDefinitionSummaryDictionary", "Example", { showCompactDefinitionSummary: true }],
+  ["dictionaryCollapseMode", "all"],
+  ["expandFirstDictionary", true, { dictionaryCollapseMode: "all" }],
+  ["collapsedDictionaries", ["Example"], { dictionaryCollapseMode: "custom" }],
 ];
 // Settings a renderer uses outside that update, read from one rendered popup.
 const DESIGN_PROBES = {

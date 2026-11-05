@@ -284,7 +284,7 @@
         { id: "sample-examples", name: "Sample examples", dictionaries: [sampleDictionaries[1], "Sample expressions"] },
       );
     }
-    return { ...HDPopup.metadataOptions(options),
+    return { ...HDPopup.metadataOptions(options), ...HDPopup.collapseOptions(options),
       language,
       definitionBlurState: sampleBlurState(),
       showCompactDefinitionSummary: options.showCompactDefinitionSummary,
@@ -435,7 +435,7 @@
     if (geometryChanged || cssChanged) view.scheduleMasonry();
     if (countsChanged) paintSampleLookupStats();
     if (blurChanged) restartSampleBlur();
-    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions),
+    const key = JSON.stringify([HDPopup.metadataOptions(nextOptions), HDPopup.collapseOptions(nextOptions),
       nextOptions.popupTheme,
       nextOptions.showCompactDefinitionSummary, nextOptions.compactDefinitionSummaryCount,
       nextOptions.compactDefinitionSummaryDictionary, nextOptions.popupImageSource, nextOptions.kanjiClickDictionary, nextState.revision,
