@@ -320,7 +320,7 @@
     function videoCrop() {
       const rect = mainVideo()?.getBoundingClientRect();
       const { innerWidth: width, innerHeight: height } = window;
-      if (!rect || !(width > 0) || !(height > 0)) return null;
+      if (!rect || width <= 0 || height <= 0) return null;
       const left = Math.max(0, rect.left / width);
       const top = Math.max(0, rect.top / height);
       const right = Math.min(1, rect.right / width);

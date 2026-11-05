@@ -186,6 +186,24 @@ async function captureYouTubeFrameInDocument(tab, sender) {
   return dataUrl;
 }
 
+// Where {screenshot} comes from in a top-frame reading page: Netflix's preview
+// with Netflix preview screenshots on, YouTube's video frame with YouTube
+// mining on, otherwise (null) the viewport.
+function screenshotSource(tab, sender, options, readerPage) {
+  if (readerPage || (sender.frameId ?? 0) !== 0) return null;
+  if (options.experimental.netflixPreviewScreenshots === true
+      && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url)) return "netflix-preview";
+  return options.experimental.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
+}
+
+// One picture from `source`: a YouTube player that shows no frame leaves the
+// viewport's picture to be taken.
+async function captureFrom(tab, sender, source) {
+  if (source === "netflix-preview") return captureNetflixPreviewInDocument(tab, sender);
+  const frame = source === "youtube-frame" ? await captureYouTubeFrameInDocument(tab, sender) : null;
+  return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+}
+
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 async function captureSenderViewport(sender, options) {
@@ -196,20 +214,14 @@ async function captureSenderViewport(sender, options) {
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, readerPage);
-    const preview = options.experimental.netflixPreviewScreenshots === true && !readerPage && (sender.frameId ?? 0) === 0
-      && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url);
-    const videoFrame = options.experimental.youtubeMining === true && !readerPage && (sender.frameId ?? 0) === 0
-      && YOUTUBE_PAGE_URL.test(tab.url);
+    const source = screenshotSource(tab, sender, options, readerPage);
     let captured;
     try {
-      if (preview) {
-        captured = await captureNetflixPreviewInDocument(tab, sender);
-      } else {
-        captured = (videoFrame ? await captureYouTubeFrameInDocument(tab, sender) : null)
-          ?? await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
-      }
+      captured = await captureFrom(tab, sender, source);
     } catch (error) {
-      if (preview || attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describeErrorOrJson(error))) throw error;
+      // A preview is not the viewport capture Chrome rate-limits.
+      if (source === "netflix-preview" || attempt >= 2
+          || !/per second|too many|MAX_CAPTURE/iu.test(describeErrorOrJson(error))) throw error;
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
       continue;
     }

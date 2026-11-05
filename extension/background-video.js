@@ -16,6 +16,42 @@ const VIDEO_RECORDER_CONNECT_MS = 10_000;
 // recorder stops it and gives the tab its sound back.
 const VIDEO_RECORDING_SLACK_MS = 60_000;
 
+// The Template a request holds media for: once the records have profiles the
+// request names its profile (docs/languages.md 5.4).
+function template(message) {
+  return message.profileId === undefined ? message.templateId : profileTemplateKey(message.profileId, message.templateId);
+}
+
+// The part of the tab a GIF keeps, as fractions of its width and height (the
+// video, on YouTube), with the tab's aspect ratio, when the reader sent one
+// that fits in the tab.
+function cropOf(value) {
+  if (value === null || typeof value !== "object") return null;
+  const { left, top, width, height, aspect } = value;
+  const fits = [left, top, width, height, aspect].every(Number.isFinite) && left >= 0 && top >= 0 && width > 0
+    && height > 0 && left + width <= 1 && top + height <= 1 && aspect > 0;
+  return fits ? { left, top, width, height, aspect } : null;
+}
+
+// One request and its answer on the recorder's port.
+function askRecorder(port, message, reply) {
+  return new Promise((resolve, reject) => {
+    const settle = answer => {
+      port.onMessage.removeListener(settle);
+      port.onDisconnect.removeListener(lost);
+      if (answer?.type === reply) resolve(answer);
+      else reject(new Error(answer?.error || "The recorder sent an unexpected reply."));
+    };
+    const lost = () => {
+      port.onMessage.removeListener(settle);
+      reject(new Error("The recording of this line was interrupted."));
+    };
+    port.onMessage.addListener(settle);
+    port.onDisconnect.addListener(lost);
+    port.postMessage(message);
+  });
+}
+
 // One site's mining service (docs/architecture.md, Netflix mining). The player
 // page cuts a line's sentence audio from what the viewer heard and sends its
 // WAV with `line_audio`. Otherwise, while the page replays the line, a hidden
@@ -26,10 +62,11 @@ const VIDEO_RECORDING_SLACK_MS = 60_000;
 // and GIF reach Anki. `load` adds the site's scripts to a page that was open
 // before the switch went on.
 //
-// `site` names the site and its switch (`name`, `flag`), its requests' target and recorder port and page, the pages it plays
-// on (`origin`, `playerUrl`, and `playing`, what the tab no longer does when it
-// left them), its video IDs (`movieId`), its registered `scripts`, and
-// `requests`, the message type of each operation.
+// `site` names the site and its switch (`name`, `flag`), its requests' target,
+// its recorder port and page, the pages it plays on (`origin`, `playerUrl`,
+// and `playing`, what the tab no longer does when it left them), its video
+// IDs (`movieId`), its registered `scripts`, and `requests`, the message type
+// of each operation.
 function createVideoSiteService(site) {
   const { name } = site;
   // The switch the Anki worker checks before it holds the site's media.
@@ -39,12 +76,6 @@ function createVideoSiteService(site) {
   const recorderWaiters = new Map();
   let recording = null;
 
-  // The Template a request holds media for: once the records have profiles the
-  // request names its profile (docs/languages.md 5.4).
-  function template(message) {
-    return message.profileId === undefined ? message.templateId : profileTemplateKey(message.profileId, message.templateId);
-  }
-
   function cueOf(value) {
     if (!value || typeof value !== "object" || typeof value.movieId !== "string" || !site.movieId.test(value.movieId)
         || !Number.isFinite(value.startMs) || !Number.isFinite(value.endMs)
@@ -52,17 +83,6 @@ function createVideoSiteService(site) {
       throw new Error(`The ${name} line to record is invalid.`);
     }
     return { movieId: value.movieId, startMs: value.startMs, endMs: value.endMs };
-  }
-
-  // The part of the tab a GIF keeps, as fractions of its width and height (the
-  // video, on YouTube), with the tab's aspect ratio, when the reader sent one
-  // that fits in the tab.
-  function cropOf(value) {
-    if (value === null || typeof value !== "object") return null;
-    const { left, top, width, height, aspect } = value;
-    const fits = [left, top, width, height, aspect].every(Number.isFinite) && left >= 0 && top >= 0 && width > 0
-      && height > 0 && left + width <= 1 && top + height <= 1 && aspect > 0;
-    return fits ? { left, top, width, height, aspect } : null;
   }
 
   // The exact top-frame player document that asked.
@@ -136,25 +156,6 @@ function createVideoSiteService(site) {
         clearTimeout(timer);
         resolve(port);
       });
-    });
-  }
-
-  // One request and its answer on the recorder's port.
-  function askRecorder(port, message, reply) {
-    return new Promise((resolve, reject) => {
-      const settle = answer => {
-        port.onMessage.removeListener(settle);
-        port.onDisconnect.removeListener(lost);
-        if (answer?.type === reply) resolve(answer);
-        else reject(new Error(answer?.error || "The recorder sent an unexpected reply."));
-      };
-      const lost = () => {
-        port.onMessage.removeListener(settle);
-        reject(new Error("The recording of this line was interrupted."));
-      };
-      port.onMessage.addListener(settle);
-      port.onDisconnect.addListener(lost);
-      port.postMessage(message);
     });
   }
 
