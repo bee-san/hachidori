@@ -733,7 +733,9 @@ async function checkCollapsibleDictionaries(settings, tab, popup) {
   }));
   const stored = () => settings.evaluate(async () => {
     const { options } = await chrome.storage.local.get("options");
-    return { mode: options.dictionaryCollapseMode, titles: options.collapsedDictionaries, first: options.expandFirstDictionary };
+    // A key Settings never wrote is absent and reads as its default.
+    return { mode: options.dictionaryCollapseMode ?? "off", titles: options.collapsedDictionaries ?? [],
+      first: options.expandFirstDictionary === true };
   });
   const preview = async () => {
     const frame = await (await settings.$("#design-preview")).contentFrame();
@@ -751,7 +753,8 @@ async function checkCollapsibleDictionaries(settings, tab, popup) {
     await popup.waitForHidden();
     require(await hoverForPopup(tab, popup, "#verb") !== null, "#671 lookup popup");
     evidence.off = await until(cards, value => equal(value?.map(card => card.dictionary), titles), "#671 four cards");
-    require(evidence.off.every(card => card.kind === "div" && card.name === null), "#671 Off draws no disclosure");
+    require(evidence.off.every(card => card.kind === "div" && card.name === null),
+      `#671 Off draws no disclosure: ${JSON.stringify(evidence.off)}`);
 
     // Chosen dictionaries: every card a disclosure, then two switched on.
     await editSettingsControls(settings, { "opt-dictionary-collapse": "custom" });
@@ -759,13 +762,15 @@ async function checkCollapsibleDictionaries(settings, tab, popup) {
     evidence.custom = await until(cards, value => equal(states(value), [true, true, true, true]), "#671 every card collapsible");
     const switches = evidence.chosen.rows.filter(row => [usage, reference].includes(row.title));
     require(switches.length === 2 && !evidence.chosen.listHidden && !evidence.chosen.firstDisabled
-      && titles.every(title => evidence.chosen.rows.some(row => row.title === title && !row.checked)), "#671 Chosen dictionaries list");
+      && titles.every(title => evidence.chosen.rows.some(row => row.title === title && !row.checked)),
+    `#671 Chosen dictionaries list: ${JSON.stringify(evidence.chosen)}`);
     await editSettingsControls(settings, Object.fromEntries(switches.map(row => [row.id, true])));
     evidence.stored = await stored();
     evidence.collapsed = await until(cards, value => equal(states(value), [true, false, true, false]), "#671 chosen cards collapse live");
     require(evidence.collapsed.every(card => card.marker === "list-item")
-      && evidence.collapsed[1].bodyHeight === 0 && evidence.collapsed[0].bodyHeight > 0
-      && evidence.collapsed[1].cardHeight < evidence.collapsed[0].cardHeight, "#671 a collapsed card is its name");
+      && evidence.collapsed[1].bodyVisible === false && evidence.collapsed[0].bodyVisible === true
+      && evidence.collapsed[1].cardHeight < evidence.collapsed[0].cardHeight,
+    `#671 a collapsed card is its name: ${JSON.stringify(evidence.collapsed)}`);
 
     // The pointer opens Usage; Enter and Space open and close Reference.
     await tab.bringToFront();

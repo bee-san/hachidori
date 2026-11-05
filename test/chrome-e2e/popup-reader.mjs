@@ -498,7 +498,8 @@ async function popupReader(page, depth = 0, documentUrl = null) {
             focused: summary !== null && root.activeElement === summary,
             focusVisible: summary?.matches(":focus-visible") ?? false,
             marker: summary ? view.getComputedStyle(summary).display : null,
-            bodyHeight: body ? body.getBoundingClientRect().height : null,
+            // A closed card's body is in its details' skipped content.
+            bodyVisible: body ? body.checkVisibility() : null,
             cardHeight: card.getBoundingClientRect().height,
             point: { x: rect.x + 8, y: rect.y + rect.height / 2 },
           };
