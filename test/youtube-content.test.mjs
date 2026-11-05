@@ -236,6 +236,12 @@ test("hovering a caption pauses the video until the pointer leaves it and the po
   f.popup(false);
   assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
   assert.equal(f.window.document.querySelector("style"), null, "no stylesheet moves YouTube's captions");
+  // An ad's captions pause nothing.
+  f.move([500, 300]);
+  f.window.document.getElementById("movie_player").classList.add("ad-showing");
+  f.move([500, 575]);
+  assert.deepEqual(f.hoverCommands(), ["pause", "resume"]);
+  f.window.document.getElementById("movie_player").classList.remove("ad-showing");
   const down = new f.window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX: 500, clientY: 575 });
   f.segments()[0].dispatchEvent(down);
   assert.equal(down.defaultPrevented, false, "YouTube's own caption drag starts as it would");

@@ -541,8 +541,9 @@
 
     // A keyboard/selection lookup can open without the pointer ever entering
     // the native subtitle bounds. It needs the same pause as a subtitle hover.
+    // An ad's captions are not the video's (YouTube), so nothing pauses an ad.
     function pauseIfPlaying() {
-      if (!hoverPause || sync() === null || held || recordings > 0) return;
+      if (!hoverPause || sync() === null || held || recordings > 0 || site.adShowing?.(document) === true) return;
       const video = mainVideo();
       if (video === null || video.paused) return;
       held = true;
