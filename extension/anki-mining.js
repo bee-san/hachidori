@@ -25,17 +25,19 @@ function nativeDecision(prepared, checked) {
     : checkedDecision(prepared, checked.addable, checked.error);
 }
 
-// A mining request from a Netflix subtitle line, with or without its cue, while
-// Settings → Advanced → Experimental features → Netflix mining is on.
-const netflixRequest = (config, request) => config.netflixMining === true
-  && request?.netflix !== null && typeof request?.netflix === "object";
+// A mining request from a Netflix or YouTube subtitle line, with or without
+// its cue, while that site's switch (Settings → Advanced → Experimental
+// features → Netflix mining, YouTube mining) is on.
+const VIDEO_REQUESTS = [["netflix", "netflixMining"], ["youtube", "youtubeMining"]];
+const videoRequest = (config, request) => VIDEO_REQUESTS.some(([field, flag]) => config[flag] === true
+  && request?.[field] !== null && typeof request?.[field] === "object");
 
-// For a recognised note type, a Netflix request fills its blank sentence-audio
+// For a recognised note type, a Netflix or YouTube request fills its blank sentence-audio
 // field with {sentence-audio} in this request's copy of the templates, as the
 // removed media mining did. Saved templates and a field the user filled are
 // never changed.
 function requestConfiguration(current, request) {
-  if (!netflixRequest(current.config, request)) return current;
+  if (!videoRequest(current.config, request)) return current;
   const families = Array.isArray(current.config.noteTypeFamilies) ? current.config.noteTypeFamilies : null;
   const field = SENTENCE_AUDIO_FIELDS[ankiListedFamily(current.config.model, families)];
   const template = field === undefined ? undefined : current.resolved.templates[field];
@@ -356,14 +358,14 @@ export function createAnkiMiningService({
   // write and may then apply a field this one would have kept.
   const screenshotFor = prepared => prepared.config.captureScreenshot === true
     && ankiCaptureRequirements(prepared.resolved.templates).includeScreenshot;
-  // A mapped {sentence-audio} on a Netflix request: the reader records the
-  // line, or reports why it could not, when it submits.
-  const sentenceAudioFor = (prepared, request) => netflixRequest(prepared.config, request)
+  // A mapped {sentence-audio} on a Netflix or YouTube request: the reader
+  // records the line, or reports why it could not, when it submits.
+  const sentenceAudioFor = (prepared, request) => videoRequest(prepared.config, request)
     && ankiCaptureRequirements(prepared.resolved.templates).includeSentenceAudio
     ? { sentenceAudio: true } : {};
-  // A mapped {gif} on a Netflix request: the reader records a GIF of the line
-  // when it submits, and falls back to the screenshot where it cannot.
-  const gifFor = (prepared, request) => netflixRequest(prepared.config, request)
+  // A mapped {gif} on a Netflix or YouTube request: the reader records a GIF
+  // of the line when it submits, and falls back to the screenshot where it cannot.
+  const gifFor = (prepared, request) => videoRequest(prepared.config, request)
     && ankiCaptureRequirements(prepared.resolved.templates).includeGif
     ? { gif: true } : {};
 

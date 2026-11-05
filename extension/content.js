@@ -344,7 +344,7 @@
     const active = activeReadingProfile();
     if (!autoSwitching()) return active;
     const labelled = element?.closest?.("[lang]") ?? element?.ownerDocument?.documentElement;
-    return profileForLang(labelled?.getAttribute?.("lang")) ?? active;
+    return profileForLang(captionLanguage(element) ?? labelled?.getAttribute?.("lang")) ?? active;
   }
 
   // The root view's profile in effect, else the active profile: the popups'
@@ -690,7 +690,7 @@
   }
 
   // A candidate's profile and the language rules it was read with; a Netflix
-  // cue's lines are joined with the language's joiner (8.5).
+  // or YouTube cue's lines are joined with the language's joiner (8.5).
   function profileCandidateFields(profile) {
     return profile ? { profile, sentenceRules: profile.text.sentenceRules, lineJoiner: profile.text.lineJoiner } : {};
   }
@@ -712,51 +712,68 @@
     return GOOGLE_DOCS_HOST && options.experimental.googleDocs === true;
   }
 
-  // Experimental Features → Netflix mining: background.js registers
-  // netflix-content.js on Netflix while the flag is on; the switch also gates
-  // a page that loaded it before the switch went off.
+  // Experimental Features → Netflix mining and YouTube mining: background.js
+  // registers each site's reader (netflix-content.js, youtube-content.js) on
+  // the site while its flag is on; the switch also gates a page that loaded it
+  // before the switch went off. `api` is the site's reader, `recorder` the Anki
+  // controller's option that records its lines (anki-content.js), and on
+  // Netflix the subtitle tracks are the reading language's (8.5).
+  const VIDEO_SITES = {
+    "www.netflix.com": { flag: "netflixMining", api: () => globalThis.HDNetflix, target: "hachidori-netflix",
+      load: "hd_netflix_load", recorder: "recordNetflixLine", subtitleLanguage: true },
+    "www.youtube.com": { flag: "youtubeMining", api: () => globalThis.HDYouTube, target: "hachidori-youtube",
+      load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false },
+  };
+  const VIDEO_SITE = Object.hasOwn(VIDEO_SITES, location.hostname) ? VIDEO_SITES[location.hostname] : null;
   const NETFLIX_HOST = location.hostname === "www.netflix.com";
-  function netflixMiningEnabled() {
-    return NETFLIX_HOST && options.experimental.netflixMining === true
-      && typeof globalThis.HDNetflix?.miningFields === "function";
+  function videoMiningEnabled() {
+    return VIDEO_SITE !== null && options.experimental[VIDEO_SITE.flag] === true
+      && typeof VIDEO_SITE.api()?.miningFields === "function";
   }
 
-  // netflix-content.js cannot read the switch, so the reader tells it whether
-  // to pause Netflix while a subtitle is hovered and to keep what the viewer
+  // The site's reader cannot read the switch, so this reader tells it whether
+  // to pause the video while a subtitle is hovered and to keep what the viewer
   // hears for sentence audio, and turns both off when it stops.
   // The subtitle language last set for a profile, or null while Japanese's
   // (today's) applies.
-  let netflixSubtitleLanguage = null;
+  let videoSubtitleLanguage = null;
 
-  function syncNetflix() {
-    if (typeof globalThis.HDNetflix?.setHoverPause !== "function") {
-      loadNetflix();
+  function syncVideoSite() {
+    const site = VIDEO_SITE?.api();
+    if (typeof site?.setHoverPause !== "function") {
+      loadVideoSite();
       return;
     }
-    const enabled = !disposed && netflixMiningEnabled();
-    globalThis.HDNetflix.setHoverPause(enabled);
-    globalThis.HDNetflix.setLineAudio(enabled);
-    globalThis.HDNetflix.setSubtitleDragging(enabled);
-    // The subtitle tracks are the active language's, by its primary subtag
-    // (8.5); Japanese's again once the records have no profiles.
+    const enabled = !disposed && videoMiningEnabled();
+    site.setHoverPause(enabled);
+    site.setLineAudio(enabled);
+    site.setSubtitleDragging(enabled);
+    // Netflix's subtitle tracks are the active language's, by its primary
+    // subtag (8.5); Japanese's again once the records have no profiles.
     const active = activeReadingProfile();
-    if (enabled && (active !== null || netflixSubtitleLanguage !== null)) {
+    if (VIDEO_SITE.subtitleLanguage && enabled && (active !== null || videoSubtitleLanguage !== null)) {
       const tag = active === null ? "ja" : globalThis.HDLanguages?.get?.(active.language)?.bcp47 ?? active.language;
-      netflixSubtitleLanguage = active === null ? null : primarySubtag(tag);
-      globalThis.HDNetflix.setSubtitleLanguage?.(primarySubtag(tag));
+      videoSubtitleLanguage = active === null ? null : primarySubtag(tag);
+      site.setSubtitleLanguage?.(primarySubtag(tag));
     }
   }
 
-  // background.js registers netflix-content.js for Netflix pages that load
-  // after the switch goes on. A page that was already open has this reader
-  // without it, so the reader asks the worker once to add the Netflix scripts
-  // to its document, then follows the switch.
-  let netflixLoad = null;
-  function loadNetflix() {
-    if (netflixLoad !== null || disposed || !NETFLIX_HOST || window !== window.top
-        || options.experimental.netflixMining !== true) return;
-    netflixLoad = sendRequest("hd_netflix_load", {}, "hachidori-netflix")
-      .then(syncNetflix, () => { netflixLoad = null; });
+  // background.js registers the site's scripts for pages that load after the
+  // switch goes on. A page that was already open has this reader without
+  // them, so the reader asks the worker once to add them to its document, then
+  // follows the switch.
+  let videoSiteLoad = null;
+  function loadVideoSite() {
+    if (videoSiteLoad !== null || disposed || VIDEO_SITE === null || window !== window.top
+        || options.experimental[VIDEO_SITE.flag] !== true) return;
+    videoSiteLoad = sendRequest(VIDEO_SITE.load, {}, VIDEO_SITE.target)
+      .then(syncVideoSite, () => { videoSiteLoad = null; });
+  }
+
+  // The language of the YouTube caption track a lookup is in, which YouTube's
+  // markup does not always carry (8.5); null elsewhere.
+  function captionLanguage(element) {
+    return videoMiningEnabled() ? VIDEO_SITE.api().captionLanguage?.(element) ?? null : null;
   }
 
   // Reading → Word highlighting (#520, experimental): word-highlights.js marks
@@ -1484,7 +1501,7 @@
     appearance?.destroy();
     customStyle?.destroy();
     releaseDocsProbe();
-    syncNetflix();
+    syncVideoSite();
     releaseFieldImposter();
     host?.remove();
     host = null;
@@ -2284,8 +2301,9 @@
       },
       onChange: owner => positionPopup(owner),
       conceal: concealReader,
-      recordNetflixLine: (cue, templateId, options) => globalThis.HDNetflix.record(cue, {
-        send: (type, fields) => sendRequest(type, fields, "hachidori-netflix"), templateId, ...options }),
+      // The site's reader records a line through its page (netflix-content.js).
+      ...(VIDEO_SITE === null ? {} : { [VIDEO_SITE.recorder]: (cue, templateId, options) => VIDEO_SITE.api().record(cue, {
+        send: (type, fields) => sendRequest(type, fields, VIDEO_SITE.target), templateId, ...options }) }),
       // A Template that names no deck opens Settings → Anki on the profile in
       // effect (docs/languages.md 6.3); an overlay's host opens Settings itself.
       openSettings: overlayMode ? null : () => {
@@ -2532,9 +2550,9 @@
         // Once the records have profiles, each dictionary's direction and
         // target language travel beside its display name (docs/languages.md 12).
         ...(readingProfiles === null ? {} : miningLanguageFields(result, request)),
-        // Experimental Netflix mining: the root popup's pinned cue, and for the
-        // root lookup the whole cue as its sentence.
-        ...(netflixMiningEnabled() ? globalThis.HDNetflix.miningFields(rootLevel.activeCandidate?.netflixObservation,
+        // Experimental Netflix and YouTube mining: the root popup's pinned cue,
+        // and for the root lookup the whole cue as its sentence.
+        ...(videoMiningEnabled() ? VIDEO_SITE.api().miningFields(rootLevel.activeCandidate?.videoObservation,
           level === rootLevel ? candidate : null) : {}),
       };
     } });
@@ -2858,10 +2876,10 @@
   function show(candidate, level = rootLevel) {
     level.activeCandidate = candidate;
     level.activeSignature = candidateSignature(candidate);
-    // A Netflix subtitle line is pinned as the popup opens, so adding the note
-    // after the line has gone still records that line.
-    if (level === rootLevel && candidate.sourceDepth === -1 && netflixMiningEnabled()) {
-      candidate.netflixObservation ??= globalThis.HDNetflix.observe(candidate.anchor);
+    // A Netflix or YouTube subtitle line is pinned as the popup opens, so
+    // adding the note after the line has gone still records that line.
+    if (level === rootLevel && candidate.sourceDepth === -1 && videoMiningEnabled()) {
+      candidate.videoObservation ??= VIDEO_SITE.api().observe(candidate.anchor);
     }
     // The body may have been replaced, or the player may have entered fullscreen.
     mountHost();
@@ -5052,7 +5070,7 @@
     options = next;
     if (activationChanged) syncHostAttention();
     if (docsProbeStyle && !docsEnabled()) releaseDocsProbe();
-    syncNetflix();
+    syncVideoSite();
     if (customButtonsChanged || readingProfiles !== null) {
       for (const level of levels) syncCustomButtons(level);
     }
