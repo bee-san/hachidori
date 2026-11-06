@@ -313,7 +313,10 @@ button,
   font-weight: var(--weight-body);
   letter-spacing: normal;
 }
-.setup-resume {
+/* With two or more languages, the language Settings shows links to
+   Advanced → Languages, styled as Resume setup (docs/languages.md 16.3). */
+.setup-resume,
+.settings-language-link {
   display: block;
   margin: 14px 10px 0;
   font-size: var(--font-small);
@@ -327,28 +330,16 @@ button,
   font-size: var(--font-caption);
 }
 .settings-search { display: grid; gap: 6px; margin: 22px 10px 0; }
-/* The Language menu above the search field (docs/languages.md 16.3). */
-.settings-language { display: grid; gap: 6px; margin: 22px 10px 0; }
-.settings-language-picker { display: grid; gap: 6px; }
-.settings-language-picker select { width: 100%; min-width: 0; }
-.settings-language-actions { display: grid; gap: 6px; }
-.settings-language-status { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
-.settings-language-status:empty { display: none; }
-.settings-language-status.is-error { color: var(--error); }
-.language-dialog h2, .language-dialog h3, .language-dialog p { margin: 0; }
-.language-dialog h3 { margin-top: 6px; font-size: var(--font-body); }
-.language-list { margin: 0; padding: 0; list-style: none; }
-.language-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: var(--row-padding) 16px; }
-.language-row + .language-row { border-top: 1px solid var(--border); }
+/* Advanced → Languages (docs/languages.md 16.3): a language's name and its own
+   name, and a menu with its button filling a field's control column, as
+   Advanced → Memory's menus do; on a phone the button goes under the menu. */
 .language-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; overflow-wrap: anywhere; }
 .language-native { color: var(--text-dim); }
-.language-remove { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border);
-  border-radius: var(--radius-surface); background: var(--surface-sunken); }
-.language-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-/* A row whose one button is hidden takes no space in the dialog's grid. */
-.language-dialog-buttons:has(> [hidden]:only-child) { display: none; }
-/* The heading's focus ring fits its text, as a section heading's does. */
-.language-dialog h2 { width: fit-content; }
+.language-row > button { margin-inline-start: auto; }
+.language-actions { width: 100%; min-width: 0; }
+.language-actions select { flex: 1 1 12em; width: auto; min-width: 0; }
+/* The card's status is a row of its own, so its rule spans the card. */
+#settings-language-status { display: block; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 .field-hint > .scope-note { display: block; }
@@ -812,8 +803,7 @@ button.danger:hover:not(:disabled) {
   color: var(--text-dim);
   font-size: var(--font-small);
 }
-.import-decision-dialog,
-.language-dialog {
+.import-decision-dialog {
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 0;
@@ -823,12 +813,10 @@ button.danger:hover:not(:disabled) {
   color: var(--text);
   box-shadow: var(--shadow-overlay);
 }
-.import-decision-dialog::backdrop,
-.language-dialog::backdrop {
+.import-decision-dialog::backdrop {
   background: rgb(0 0 0 / 48%);
 }
-.import-decision-dialog form,
-.language-dialog form {
+.import-decision-dialog form {
   display: grid;
   gap: 16px;
   padding: 24px;
@@ -1486,7 +1474,6 @@ textarea {
 .lookup-group,
 .anki-panel,
 .dict-list:not(:empty),
-.language-list:not(:empty),
 .dict-other-language-list:not(:empty),
 .dict-group-create,
 .dict-group,
@@ -2304,23 +2291,6 @@ textarea {
     grid-row: 1;
     gap: 5px;
   }
-  /* The Language menu sits above the section picker. */
-  .settings-language {
-    grid-column: 2;
-    grid-row: 1;
-    margin: 0;
-  }
-  .settings-sidebar:has(.settings-language) .settings-section-picker {
-    grid-row: 2;
-  }
-  .settings-sidebar:has(.settings-language) .settings-search {
-    grid-column: 2;
-    grid-row: 3;
-  }
-  .settings-language-actions {
-    grid-auto-flow: column;
-    justify-content: start;
-  }
   .settings-nav {
     display: none;
   }
@@ -2331,9 +2301,20 @@ textarea {
     font-size: var(--font-caption);
     overflow-wrap: anywhere;
   }
-  .setup-resume {
+  .setup-resume,
+  .settings-language-link {
     grid-column: 1;
     margin: 0;
+  }
+  /* The language link goes under Resume setup, so Search settings stays
+     beside the first link and Privacy policy under the links. */
+  .settings-sidebar:has(.settings-language-link) .settings-search {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .settings-sidebar:has(.settings-language-link) .privacy-link {
+    grid-column: 1;
+    margin-inline: 0;
   }
   .engine-status {
     grid-column: 1 / -1;
@@ -2357,11 +2338,6 @@ textarea {
 @media (max-width: 620px) {
   .lookup-group {
     container-type: inline-size;
-  }
-  /* Too narrow for the two buttons side by side: they stack, full width. */
-  .settings-language-actions {
-    grid-auto-flow: row;
-    justify-content: stretch;
   }
   /* On a phone a switch's description may run under the switch's column. */
   .lookup-enable + .field-hint {
@@ -2480,12 +2456,14 @@ textarea {
 #audio > p { margin: 0; }
 #audio-source-add { align-self: flex-start; }
 
-.custom-button-list {
+.custom-button-list,
+.language-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.custom-button-row {
+.custom-button-row,
+.language-row {
   display: flex;
   align-items: center;
   justify-content: space-between;

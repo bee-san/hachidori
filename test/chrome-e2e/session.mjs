@@ -1002,7 +1002,7 @@ describe("session", () => {
       browserShortcuts.commands.some(({ name, shortcut }) => name === "toggleTextScanning" && shortcut === "Alt+Del")
         && browserShortcuts.commands.some(({ name }) => name === "openSettingsPage")
         && ["addNote", "nextEntry"].every(action => browserShortcuts.commands.some(({ name }) => name === action))
-        && browserShortcuts.listed.includes("Turn Japanese lookups on or offAlt+Del")
+        && browserShortcuts.listed.includes("Turn lookups on or offAlt+Del")
         && browserShortcuts.listed.includes("Add the current popup entry to AnkiNot set"),
       JSON.stringify(browserShortcuts),
     );

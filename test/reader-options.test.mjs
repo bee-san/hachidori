@@ -137,16 +137,16 @@ test("the image hover preview defaults to large images and keeps only its three 
   assert.ok(DESIGN_OPTION_KEYS.includes("imageHoverPreview"), "Design's reset restores it");
 });
 
-test("compact glossaries default off and keep only Yomitan's two popup layout values", () => {
+test("compact glossaries default off and keep only Yomitan's three layout values", () => {
   const { GLOSSARY_LAYOUT_MODES, DESIGN_OPTION_KEYS } = globalThis.HDReaderOptions;
   assert.equal(DEFAULT_OPTIONS.glossaryLayoutMode, "default");
-  assert.deepEqual(GLOSSARY_LAYOUT_MODES, ["default", "compact"]);
+  assert.deepEqual(GLOSSARY_LAYOUT_MODES, ["default", "compact", "compact-popup-anki"]);
   assert.equal(normaliseOptions({}).glossaryLayoutMode, "default", "missing");
   for (const mode of GLOSSARY_LAYOUT_MODES) {
     assert.equal(normaliseOptions({ glossaryLayoutMode: mode }).glossaryLayoutMode, mode);
     assert.deepEqual(validateOptionsPatch({ glossaryLayoutMode: mode }), { glossaryLayoutMode: mode });
   }
-  for (const garbage of ["bogus", true, null, "Compact", "compact-popup-anki"]) {
+  for (const garbage of ["bogus", true, null, "Compact", "compact-popup"]) {
     assert.equal(normaliseOptions({ glossaryLayoutMode: garbage }).glossaryLayoutMode, "default",
       `garbage ${JSON.stringify(garbage)}`);
     assert.throws(() => validateOptionsPatch({ glossaryLayoutMode: garbage }), /invalid reader option/);

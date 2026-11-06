@@ -10,7 +10,7 @@ import {
 import { sameJsonValue } from "./json-value.js";
 import {
   TARGET, DICTIONARY_STATE_KEY, UPDATE_SETTINGS_KEY, writeLocalState, relay, readDictionaryStorage, serialiseStorage,
-  failureReply,
+  failureReply, DICTIONARY_STATE_PROFILES_SCHEMA_VERSION,
 } from "./background-core.js";
 import { WORKER_HANDLERS } from "./background-requests.js";
 import { sharingLinked, forwardToHost } from "./background-sharing.js";
@@ -49,7 +49,7 @@ async function updateDictionaryCheck(fingerprint, lastUpdateCheck) {
     dictionaries[index] = { ...dictionaries[index], lastUpdateCheck };
     // A check result is package-wide: with profiles it is written into the
     // package list, every profile's list unchanged (docs/languages.md 4.2).
-    const reply = await WORKER_HANDLERS.hd_state_cas(state.schemaVersion === 2
+    const reply = await WORKER_HANDLERS.hd_state_cas(state.schemaVersion === DICTIONARY_STATE_PROFILES_SCHEMA_VERSION
       ? { baseRevision: state.revision, state: { dictionaries, profiles: state.profiles } }
       : { baseRevision: state.revision, dictionaries });
     if (reply.ok === false) {

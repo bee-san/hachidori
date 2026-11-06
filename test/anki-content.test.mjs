@@ -61,7 +61,7 @@ function assertChecking(item) {
     action: "add",
   });
 }
-function fixture(t, send, capture = send, wait, conceal, recordNetflixLine) {
+function fixture(t, send, capture = send, wait, conceal, recordNetflixLine, recordYouTubeLine) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
@@ -71,7 +71,8 @@ function fixture(t, send, capture = send, wait, conceal, recordNetflixLine) {
     : send(type, fields);
   const controllerSend = send.handlesBatches === true ? viewOrSend : answerBatches(viewOrSend);
   const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
-    ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}), ...(recordNetflixLine ? { recordNetflixLine } : {}) });
+    ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}), ...(recordNetflixLine ? { recordNetflixLine } : {}),
+    ...(recordYouTubeLine ? { recordYouTubeLine } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
@@ -1108,4 +1109,66 @@ test("sentence audio the page cut from what was heard goes in beside a GIF that 
   assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
   assert.equal(submittedRequest.gif, undefined);
+});
+
+test("a YouTube note records its line through YouTube's recorder, and its warnings name YouTube", async t => {
+  const recordings = [];
+  const screenshots = [];
+  let decision = { state: "addable", canAdd: true, sentenceAudio: true, screenshot: true };
+  let youtube = { cue: { movieId: "Ab3dEf6hI9k", startMs: 2000, endMs: 4200 } };
+  let submittedRequest = null;
+  const f = fixture(t, async (type, fields = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") { submittedRequest = fields.request; return { state: "added", noteId: 9, warnings: [] }; }
+    if (type === "hd_anki_screenshot") {
+      screenshots.push(fields);
+      return { token: "shot-y", filename: "hachidori-screenshot-y.jpg" };
+    }
+    return decision;
+  }, undefined, undefined, undefined, async () => { throw new Error("a YouTube line is not Netflix's"); },
+  async (cue, templateId, wanted) => {
+    recordings.push([cue, templateId, wanted.audio, wanted.gif, typeof wanted.conceal]);
+    return { audio: { token: "line-y", filename: "hachidori-sentence-audio-y.wav" } };
+  });
+  f.context.getRequest = result => ({ term: result.term, youtube });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  const mine = async index => {
+    await until(() => f.items[index].add && f.items[index].add.dataset.state !== "checking" && !f.items[index].add.disabled);
+    f.items[index].add.click();
+    await until(() => f.items[index].add.dataset.state === "success");
+    return f.items[index].output.textContent;
+  };
+  assert.equal(await mine(0), "Added note 9.");
+  assert.deepEqual(recordings, [[youtube.cue, "default", true, false, "function"]]);
+  // A caption's note asks for the video's frame; a word from the page around the player does not.
+  assert.deepEqual(screenshots, [{ templateId: "default", videoFrame: true }]);
+  assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-y", filename: "hachidori-sentence-audio-y.wav" });
+  youtube = { unavailable: "live" };
+  f.controller.refresh(f.context.owner);
+  assert.equal(await mine(1), "Added note 9. Sentence audio: live streams are not supported.");
+  assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
+  decision = { state: "addable", canAdd: true, youtubeLinked: true };
+  f.controller.refresh(f.context.owner);
+  assert.equal(await mine(2),
+    "Added note 9. YouTube mining: this browser is linked to another Hachidori, so YouTube lines are not recorded.");
+  assert.equal(recordings.length, 1);
+
+  // A word from the page around the player is no caption: its screenshot is the page's.
+  const pageWord = [];
+  const g = fixture(t, async (type, fields = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_submit") return { state: "added", noteId: 10, warnings: [] };
+    if (type === "hd_anki_screenshot") {
+      pageWord.push(fields);
+      return { token: "shot-p", filename: "hachidori-screenshot-p.jpg" };
+    }
+    return { state: "addable", canAdd: true, screenshot: true };
+  });
+  g.controller.update(configured);
+  g.controller.bind(g.items, g.context);
+  await until(() => g.items[0].add && g.items[0].add.dataset.state !== "checking" && !g.items[0].add.disabled);
+  g.items[0].add.click();
+  await until(() => g.items[0].add.dataset.state === "success");
+  assert.deepEqual(pageWord, [{ templateId: "default" }]);
 });

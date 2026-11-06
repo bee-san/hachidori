@@ -324,6 +324,7 @@ function optionsRevision(options) {
 // ---------------------------------------------------------------------------
 
 const DICTIONARY_STATE_PROFILES_SCHEMA_VERSION = 2;
+const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
 const GLOBAL_OPTIONS = new Set(globalThis.HDReaderOptions.GLOBAL_OPTION_KEYS);
 const NO_JAPANESE_PROFILE = globalThis.HDReaderOptions.PROFILE_MESSAGES.noJapaneseProfile;
 const PROFILE_REMOVED = globalThis.HDReaderOptions.PROFILE_MESSAGES.profileRemoved;
@@ -669,7 +670,7 @@ export {
   readDictionaryStorage, normaliseDictionarySelections, assertDictionaryState, assertOrdinaryCustomTransition,
   assertCustomDictionaryCasRequest, dictionaryCommit, optionsRevision, removeLegacyDictionaryRows, startupSender,
   readerPageSender, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply, checkedOptionsResult, failureReply,
-  JAPANESE_PROFILE_ID, DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, NO_JAPANESE_PROFILE, PROFILE_REMOVED, hasProfiles, hasDictionaryProfiles,
+  JAPANESE_PROFILE_ID, DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, LANGUAGE_CODE, NO_JAPANESE_PROFILE, PROFILE_REMOVED, hasProfiles, hasDictionaryProfiles,
   optionProfiles, applyOptionsPatch, projectDictionaryState, profileError, requestProfileId, profileLanguages,
   assertPersonalPlacement, assertOrdinaryPersonalTransition, assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, updateLookupProfiles, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,

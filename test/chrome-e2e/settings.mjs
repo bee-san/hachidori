@@ -586,6 +586,26 @@ async function checkAnkiGlossaryExport(page) {
         && compact.emphasis && compact.escaped
         && JSON.stringify(compact.images) === JSON.stringify([["hd-anki-inert-image.png", "Accent", "width: 0.5em; height: 1em; max-width: 100%;"]])
         && imageRequests.length === 0, JSON.stringify({ ...compact, imageRequests }));
+
+    // Compact popup and Anki (#673): Yomitan's compact gloss styles put a
+    // structured glossary list on one line, which Smaller Anki cards writes
+    // without bullets.
+    const bar = await page.evaluate(async () => {
+      const { createAnkiDefinitionRenderer } = await import("./anki-glossary.js");
+      const source = { term: { rules: "", glossaries: [{ dictionary: "Jitendex", definitionTags: "", termTags: "",
+        glossary: JSON.stringify([{ type: "structured-content", content: { tag: "ul", data: { content: "glossary" }, content: [
+          { tag: "li", content: "to live on (e.g. a salary)" }, { tag: "li", content: "to live off" }, { tag: "li", content: "to subsist on" },
+        ] } }]) }] }, trace: [], dictionaryAliases: {}, generation: 1, dictionaryMedia: [], dictionaryStyles: [] };
+      const options = { compact: true, compactGlossaries: true };
+      const html = await createAnkiDefinitionRenderer(document, source, undefined, options)({ noDictionary: true });
+      const inert = document.implementation.createHTMLDocument("");
+      inert.body.innerHTML = html;
+      const body = inert.querySelector(".yomitan-glossary > ol > li > div > div");
+      return { html, text: body?.textContent, items: body?.querySelectorAll("li, ul").length };
+    });
+    check("Compact popup and Anki writes a structured glossary list on one line, and Smaller Anki cards without bullets",
+      bar.text === "to live on (e.g. a salary) | to live off | to subsist on" && bar.items === 0 && !bar.html.includes("<style"),
+      JSON.stringify(bar));
   } finally { page.off("request", observe); }
 }
 

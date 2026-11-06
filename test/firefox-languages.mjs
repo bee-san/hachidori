@@ -10,10 +10,12 @@
  *
  * Built like test/firefox-e2e.mjs, whose session and fixed-denominator
  * harness it uses: Firefox installs the build as a temporary add-on and
- * Puppeteer drives it over WebDriver BiDi. The first run chooses English,
- * Settings adds Arabic, each profile imports its fixture dictionary
- * (make-language-fixtures.mjs), and the reader looks up an inflected English
- * word, then, after the toolbar switches to Arabic, a word with its article
+ * Puppeteer drives it over WebDriver BiDi. The welcome card has no language
+ * menu; Settings → Advanced → Languages adds English and Arabic, each
+ * profile imports its fixture dictionary (make-language-fixtures.mjs), Use
+ * for lookups makes English active, and the reader looks up an inflected
+ * English word, on a page opened before English was added and on one opened
+ * after, then, after the toolbar switches to Arabic, a word with its article
  * on a right-to-left page. Screenshots of both lookups go to
  * test/tmp/languages/firefox/.
  *
@@ -28,16 +30,17 @@ import { ARABIC, ENGLISH, buildLanguageFixtureZip } from "./make-language-fixtur
 import { check, markCompleteSuite, step } from "./firefox-e2e/harness.mjs";
 import {
   activate, engineStatus, evaluateJson, findPage, GECKO_ID, HERE, hoverForPopup, importArchives, inPopup, navigate,
-  openExtensionPage, openPage, page, readStorage, reloadPage, startSession, waitFor,
+  openExtensionPage, openPage, page, readStorage, showSettingsSection, startSession, waitFor,
 } from "./firefox-e2e/session.mjs";
 
 const PLANNED = [
-  "Firefox runs the Firefox build, whose first run offers English and Arabic",
-  "English chosen at first run and Arabic added in Settings are two profiles, each with its own dictionary",
+  "Firefox runs the Firefox build, with English and Arabic packs and no language menu on its welcome card",
+  "English and Arabic added in Settings → Advanced → Languages join Japanese, each with its own dictionary, and Use for lookups makes English active",
   "an English hover in the middle of an inflected word finds its lemma",
   "the toolbar switches the active language to Arabic and the badge names it",
   "an Arabic hover on a right-to-left page finds the word with its article",
   "the Arabic popup is an English left-to-right interface and its trail reads the matched form first",
+  "a page opened while the records had no profiles looks English up once English is added, without a reload",
 ];
 
 const SCREENSHOTS = resolve(HERE, "tmp/languages/firefox");
@@ -62,6 +65,8 @@ after(() => pages.close());
 const origin = `http://127.0.0.1:${pages.address().port}`;
 
 const languagesOf = options => (options?.profiles ?? []).map(profile => profile.language);
+// The profile Advanced → Languages → Settings shows; a page with one
+// language has no menu for it.
 const editedProfile = () => page.evaluate(() => document.getElementById("settings-language-select")?.value ?? "");
 
 // Imports a fixture dictionary through Settings and resolves with its package
@@ -82,6 +87,9 @@ async function screenshot(target, name) {
 }
 
 let tab = null;
+// Opened while the records are Japanese-only, so its frame has no language
+// layer until English is added and imports it then (docs/languages.md 5).
+let early = null;
 
 describe("firefox languages", () => {
   step("Firefox loads the Firefox build", async () => {
@@ -91,49 +99,77 @@ describe("firefox languages", () => {
       return reply?.ready ? reply : false;
     }, { timeout: 60_000 });
     const startup = await findPage("startup.html");
-    const menu = await waitFor(() => startup.evaluate(() => {
-      const select = document.getElementById("setup-language-select");
-      return select ? [...select.options].map(option => option.value).join(",") : false;
-    }), { timeout: 30_000 });
-    check(PLANNED[0], installedId === GECKO_ID && status?.ready === true
-      && menu?.split(",")[0] === "ja" && menu.split(",").includes("en") && menu.split(",").includes("ar"),
-    JSON.stringify({ installedId, status, menu }));
+    const card = await waitFor(() => startup.evaluate(() => (document.getElementById("setup-manual") ? JSON.stringify({
+      packs: globalThis.HDLanguages?.codes ?? [], selects: document.querySelectorAll("#setup-card select").length,
+      actions: [...document.querySelectorAll("#setup-actions button")].map(button => button.id),
+    }) : false)), { timeout: 30_000 });
+    const welcome = card ? JSON.parse(card) : null;
+    check(PLANNED[0], installedId === GECKO_ID && status?.ready === true && welcome?.packs.includes("en")
+      && welcome.packs.includes("ar") && welcome.selects === 0
+      && JSON.stringify(welcome.actions) === JSON.stringify(["setup-start", "setup-manual"]),
+    JSON.stringify({ installedId, status, welcome }));
   });
 
-  step("English at first run, Arabic from Settings", async () => {
+  step("English and Arabic from Advanced → Languages", async () => {
     const startup = await findPage("startup.html");
-    // In one task, so no render comes between the choice and the click.
-    await startup.evaluate(() => {
-      const select = document.getElementById("setup-language-select");
+    await startup.evaluate(() => document.getElementById("setup-manual").click());
+    await waitFor(async () => (await readStorage(page, ["setupState"])).setupState?.stage === "practice", { timeout: 30_000 });
+    await startup.close();
+    early = await openPage(`${origin}/english.html`);
+    // Multiple languages first (Advanced → Experimental features), then add a
+    // language and import into the language Settings now shows. Settings
+    // builds the Languages card once its library has loaded, so each step
+    // waits for the control it uses.
+    await showSettingsSection(page, "advanced");
+    if (!await waitFor(() => page.evaluate(() => document.getElementById("opt-experimental-multipleLanguages") !== null))) {
+      throw new Error("Advanced has no Multiple languages switch");
+    }
+    await page.evaluate(() => document.getElementById("opt-experimental-multipleLanguages").click());
+    await waitFor(async () => (await readStorage(page, ["options"])).options?.experimental?.multipleLanguages === true);
+    const offered = code => waitFor(() => page.evaluate(wanted => document.querySelector(
+      `#settings-language-add-select option[value="${wanted}"]`) !== null, code), { timeout: 30_000 });
+    const add = async code => {
+      await showSettingsSection(page, "languages");
+      if (!await offered(code)) throw new Error(`Add a language does not offer ${code}`);
+      await page.evaluate(wanted => {
+        const select = document.getElementById("settings-language-add-select");
+        select.value = wanted;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        document.querySelector("#settings-language-add-row button").click();
+      }, code);
+      return waitFor(async () => ((await editedProfile()) === code ? code : false), { timeout: 60_000 });
+    };
+    const englishEdited = await add("en");
+    const english = await importInto("en", ENGLISH);
+    const arabicEdited = await add("ar");
+    const arabic = await importInto("ar", ARABIC);
+    await showSettingsSection(page, "languages");
+    await waitFor(() => page.evaluate(() => document.getElementById("settings-language-select") !== null));
+    await page.evaluate(() => {
+      const select = document.getElementById("settings-language-select");
       select.value = "en";
       select.dispatchEvent(new Event("change", { bubbles: true }));
-      document.getElementById("setup-manual").click();
     });
-    const firstRun = await waitFor(async () => {
-      const stored = await readStorage(page, ["options", "setupState"]);
-      return stored.setupState?.stage === "practice" ? stored : false;
-    }, { timeout: 30_000 });
-    await startup.close();
-    // Settings opened before the choice; reloaded, it edits the English profile.
-    await reloadPage(page);
     await waitFor(async () => (await editedProfile()) === "en");
-    const english = await importInto("en", ENGLISH);
-    await page.evaluate(() => document.getElementById("settings-language-manage").click());
-    await waitFor(() => page.evaluate(() => document.querySelector('[aria-label="Add Arabic"]') !== null));
-    await page.evaluate(() => document.querySelector('[aria-label="Add Arabic"]').click());
-    const edited = await waitFor(async () => ((await editedProfile()) === "ar" ? "ar" : false), { timeout: 60_000 });
-    await page.evaluate(() => document.getElementById("settings-language-dialog").close());
-    const arabic = await importInto("ar", ARABIC);
+    await page.evaluate(() => document.getElementById("settings-language-use").click());
+    await waitFor(async () => (await readStorage(page, ["languageSelection"])).languageSelection?.activeProfileId === "en");
     const stored = await readStorage(page, ["options", "dictionaryState", "languageSelection"]);
     const titleOf = id => stored.dictionaryState?.dictionaries?.find(row => row.id === id)?.title;
     const own = code => (stored.dictionaryState?.profiles?.[code]?.dictionaries ?? []).map(entry => titleOf(entry.id));
-    check(PLANNED[1], JSON.stringify(languagesOf(firstRun?.options)) === JSON.stringify(["en"])
-      && english !== null && edited === "ar" && arabic !== null
-      && JSON.stringify(languagesOf(stored.options)) === JSON.stringify(["en", "ar"])
+    check(PLANNED[1], englishEdited === "en" && english !== null && arabicEdited === "ar" && arabic !== null
+      && JSON.stringify(languagesOf(stored.options)) === JSON.stringify(["ja", "en", "ar"])
       && JSON.stringify(own("en")) === JSON.stringify([ENGLISH.title]) && JSON.stringify(own("ar")) === JSON.stringify([ARABIC.title])
       && stored.languageSelection?.activeProfileId === "en",
-    JSON.stringify({ firstRun: languagesOf(firstRun?.options), english, edited, arabic, profiles: languagesOf(stored.options),
+    JSON.stringify({ englishEdited, english, arabicEdited, arabic, profiles: languagesOf(stored.options),
       en: own("en"), ar: own("ar"), selection: stored.languageSelection }));
+  });
+
+  step("an English lookup on a page opened before English was added", async () => {
+    await activate(early);
+    // The second n of "running".
+    const shown = await hoverForPopup(early, "#sample", { index: 10 });
+    check(PLANNED[6], shown?.headword === "run" && shown.plain.includes("to move swiftly on foot"), JSON.stringify(shown));
+    await early.close();
   });
 
   step("an English lookup", async () => {
@@ -157,7 +193,8 @@ describe("firefox languages", () => {
       .map(button => [button.dataset.profileId, button.getAttribute("aria-checked")])));
     const badge = await page.evaluate(() => chrome.action.getBadgeText({}));
     await toolbar.close();
-    check(PLANNED[3], active === "ar" && JSON.stringify(choices) === JSON.stringify([["en", "false"], ["ar", "true"]])
+    check(PLANNED[3], active === "ar"
+      && JSON.stringify(choices) === JSON.stringify([["ja", "false"], ["en", "false"], ["ar", "true"]])
       && badge === "AR", JSON.stringify({ active, choices, badge }));
   });
 

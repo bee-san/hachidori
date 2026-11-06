@@ -445,7 +445,7 @@ test("an older browser linked to an English-only host finds nothing and its writ
   }
 });
 
-test("languages are added on the host only by opted-in browsers, never at first run, and only with the host's packs", async () => {
+test("languages are added on the host only by opted-in browsers and only with the host's packs", async () => {
   const { relay, host } = await hosting(profileRecords(["ja", "en"]), { codes: ["ja", "en"] });
   try {
     const client = await linked("aware", ["ja", "en", "ar"]);
@@ -457,16 +457,12 @@ test("languages are added on the host only by opted-in browsers, never at first 
     const forwarded = await client.engine("hd_profile_remove", { profileId: "en" });
     assert.equal(forwarded.ok, true, forwarded.error);
     assert.deepEqual(host.relayed.filter(message => message.type === "hd_profile_remove").map(message => message.profileId), ["en"]);
-    // The host refuses the pack it lacks itself, and strips a first-run flag.
+    // The host refuses the pack it lacks itself.
     const socket = FakeSharingSocket.instances.find(entry => entry.url.endsWith("/link") && entry.readyState === 1 && entry.clientId);
     socket.send(JSON.stringify({ kind: "request", id: "direct-add", message: { target: "hoshidicts-offscreen", type: "hd_profile_add",
       requestId: "direct-add", language: "ar", copyFrom: "ja" } }));
-    socket.send(JSON.stringify({ kind: "request", id: "first-run", message: { target: "hoshidicts-offscreen", type: "hd_profile_add",
-      requestId: "first-run", language: "en", copyFrom: "ja", firstRun: true } }));
     const direct = await until(() => socket.received.find(frame => frame.id === "direct-add"), "the host's refusal");
     assert.equal(direct.response.error, "The linked Hachidori does not have Arabic. Update it and try again.");
-    await until(() => host.relayed.some(message => message.requestId === "first-run"), "the forwarded add");
-    assert.equal(Object.hasOwn(host.relayed.find(message => message.requestId === "first-run"), "firstRun"), false);
   } finally {
     relay.stop();
   }
@@ -478,7 +474,9 @@ test("a link to a host without profiles says how to add a language; selection st
     const client = await linked("aware", ["ja", "en", "ar"]);
     const add = await client.engine("hd_profile_add", { language: "en", copyFrom: "ja" });
     assert.equal(add.ok, false);
-    assert.equal(add.error, "Add English on another browser first; if its Settings have no Language section, update it.");
+    assert.equal(add.error,
+      "Add English on another browser first, in Settings → Advanced → Languages, which Multiple languages in Advanced"
+        + " → Experimental features turns on. If it has no Multiple languages switch, update it there.");
     assert.equal(protocol.forwardableRequest({ target: "hoshidicts-worker", type: "hd_language_selection_write" }), false);
   } finally {
     relay.stop();

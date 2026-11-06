@@ -230,11 +230,15 @@ try {
     const selection = await message({ target: "hoshidicts-worker", type: "hd_language_selection_write",
       baseRevision: 0, activeProfileId: "ar" });
     if (selection?.ok !== true) throw new Error(`hd_language_selection_write: ${JSON.stringify(selection)}`);
-    // Lookups without a key, and the Arabic profile's first Template adding
-    // Basic notes; the connection is every language's.
+    // Lookups without a key, in the active language once Multiple languages
+    // is on, and the Arabic profile's first Template adding Basic notes; the
+    // connection is every language's.
     let stored = await storage(["options"]);
+    // A write carries every flag; the stored record may hold none.
+    const experimental = await installation.worker.evaluate(value => ({
+      ...globalThis.HDReaderOptions.normaliseOptions(value).experimental, multipleLanguages: true }), stored.options);
     const written = await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: stored.options.revision,
-      options: { lookupMode: "hover" } });
+      options: { lookupMode: "hover", experimental } });
     if (written?.ok !== true) throw new Error(`hd_options_write: ${JSON.stringify(written)}`);
     const settings = await installation.page("settings.html#anki");
     const templates = await settings.evaluate(url => {

@@ -4,6 +4,8 @@
 import { extensionApi as chrome } from "./browser-api.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { captureNetflixPreview } from "./netflix-preview.js";
+import { captureYouTubeFrame } from "./youtube-frame.js";
+import { YOUTUBE_PAGE_URL } from "./background-youtube.js";
 import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
@@ -37,8 +39,7 @@ function waitForAnkiIdle() {
 
 // The options of the profile an Anki request is for (docs/languages.md 5.4),
 // or, for one that names none, today's.
-async function readAnkiOptions(profileId) {
-  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+function ankiOptionsOf(stored, profileId) {
   let options;
   if (profileId === undefined) options = normaliseOptions(stored);
   else {
@@ -55,12 +56,27 @@ async function readAnkiOptions(profileId) {
 // decide how its notes are written and which note types its duplicate index
 // recognises (docs/languages.md 12): null in the single-profile shape. A
 // request that names none means the Japanese profile (5.2).
-async function readAnkiProfile(profileId) {
-  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+function ankiProfileOf(stored, profileId) {
   const layer = globalThis.HDReaderOptions;
   if (!layer.hasProfiles(stored)) return null;
   const profile = layer.profileDescriptor(stored, profileId ?? layer.JAPANESE_PROFILE_ID);
   return profile === null ? null : { language: profile.language, packSettings: profile.packSettings };
+}
+
+const readStoredOptions = async () => (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+
+async function readAnkiOptions(profileId) {
+  return ankiOptionsOf(await readStoredOptions(), profileId);
+}
+
+async function readAnkiProfile(profileId) {
+  return ankiProfileOf(await readStoredOptions(), profileId);
+}
+
+// Both from one read of the record, for the operations that need both.
+async function readAnkiOptionsAndProfile(profileId) {
+  const stored = await readStoredOptions();
+  return [ankiOptionsOf(stored, profileId), ankiProfileOf(stored, profileId)];
 }
 
 const CONTENT_WORD_STATUS_TARGET = "hachidori-anki-content";
@@ -165,9 +181,46 @@ async function captureNetflixPreviewInDocument(tab, sender) {
   return dataUrl;
 }
 
+// YouTube mining's {screenshot}: the frame the player in the exact reading
+// document shows, or null where it shows none, which takes the ordinary
+// screenshot instead.
+async function captureYouTubeFrameInDocument(tab, sender) {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id, documentIds: [sender.documentId] }, func: captureYouTubeFrame, args: [tab.url],
+  });
+  if (injection?.documentId !== sender.documentId || injection?.frameId !== 0) {
+    throw new Error("The reading document changed before the YouTube video frame was read.");
+  }
+  if (typeof injection.result?.error === "string") throw new Error(injection.result.error);
+  if (injection.result?.none === true) return null;
+  const dataUrl = injection.result?.dataUrl;
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/jpeg;base64,/9j/")) {
+    throw new Error("YouTube video frame: no JPEG image was returned.");
+  }
+  return dataUrl;
+}
+
+// Where {screenshot} comes from in a top-frame reading page: Netflix's preview
+// with Netflix preview screenshots on, YouTube's video frame for a note from a
+// caption (`videoFrame`) with YouTube mining on, otherwise (null) the viewport.
+function screenshotSource(tab, sender, options, readerPage, videoFrame) {
+  if (readerPage || (sender.frameId ?? 0) !== 0) return null;
+  if (options.experimental.netflixPreviewScreenshots === true
+      && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url)) return "netflix-preview";
+  return videoFrame && options.experimental.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
+}
+
+// One picture from `source`: a YouTube player that shows no frame leaves the
+// viewport's picture to be taken.
+async function captureFrom(tab, sender, source) {
+  if (source === "netflix-preview") return captureNetflixPreviewInDocument(tab, sender);
+  const frame = source === "youtube-frame" ? await captureYouTubeFrameInDocument(tab, sender) : null;
+  return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+}
+
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
-async function captureSenderViewport(sender, options) {
+async function captureSenderViewport(sender, options, videoFrame = false) {
   const readerPage = readerPageSender(sender);
   if (typeof sender.tab?.id !== "number" && !readerPage) {
     throw new Error("Only a reading tab can be captured.");
@@ -175,17 +228,14 @@ async function captureSenderViewport(sender, options) {
   if (!sender.documentId) throw new Error("The reading document identity is unavailable.");
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, readerPage);
-    const preview = options.experimental.netflixPreviewScreenshots === true && !readerPage && (sender.frameId ?? 0) === 0
-      && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url);
+    const source = screenshotSource(tab, sender, options, readerPage, videoFrame);
     let captured;
     try {
-      if (preview) {
-        captured = await captureNetflixPreviewInDocument(tab, sender);
-      } else {
-        captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
-      }
+      captured = await captureFrom(tab, sender, source);
     } catch (error) {
-      if (preview || attempt >= 2 || !/per second|too many|MAX_CAPTURE/iu.test(describeErrorOrJson(error))) throw error;
+      // A preview is not the viewport capture Chrome rate-limits.
+      if (source === "netflix-preview" || attempt >= 2
+          || !/per second|too many|MAX_CAPTURE/iu.test(describeErrorOrJson(error))) throw error;
       await sleep(CAPTURE_VISIBLE_RETRY_MS);
       continue;
     }
@@ -257,9 +307,10 @@ async function linkedPreflight(message, request) {
   }
   if (reply.ok !== true) return { state: "error", canAdd: false, error: reply.error || `${single.type} failed` };
   const entry = Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
-  // Netflix media stay with the reading browser's own Anki connection, so a
-  // linked Netflix request is told it gets none.
-  return request?.netflix !== null && typeof request?.netflix === "object" ? { ...entry, netflixLinked: true } : entry;
+  // Netflix and YouTube media stay with the reading browser's own Anki
+  // connection, so a linked request from either is told it gets none.
+  if (request?.netflix !== null && typeof request?.netflix === "object") return { ...entry, netflixLinked: true };
+  return request?.youtube !== null && typeof request?.youtube === "object" ? { ...entry, youtubeLinked: true } : entry;
 }
 
 async function linkedPreflightBatch(message) {
@@ -351,7 +402,8 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") {
-      return service.screenshot(options => captureSenderViewport(sender, options), message.templateId);
+      return service.screenshot(options => captureSenderViewport(sender, options, message.videoFrame === true),
+        message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
       const status = singleProfileStatus(message, await service.status(message.templateId));
@@ -389,6 +441,7 @@ function singleProfileStatus(message, status) {
 }
 
 export {
-  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, broadcastWordStatus, indexRevision, applyAnkiIndexRole,
+  trackAnkiOperation, waitForAnkiIdle, readAnkiOptions, readAnkiProfile, readAnkiOptionsAndProfile,
+  broadcastWordStatus, indexRevision, applyAnkiIndexRole,
   reconcileAnkiIndex, handleAnkiRequest, sendAnkiRequest, answerAnkiRequest,
 };

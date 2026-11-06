@@ -54,8 +54,11 @@ import {
   requestProfileId, profileLanguages, assertPersonalPlacement, assertOrdinaryPersonalTransition,
   assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
+  DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, LANGUAGE_CODE,
 } from "./background-core.js";
-import { trackAnkiOperation, readAnkiOptions, readAnkiProfile, sendAnkiRequest, answerAnkiRequest } from "./background-anki.js";
+import {
+  trackAnkiOperation, readAnkiOptions, readAnkiOptionsAndProfile, readAnkiProfile, sendAnkiRequest, answerAnkiRequest,
+} from "./background-anki.js";
 import {
   getBackupDownloads, assertBackupEngineSender, readBackupPayload, automaticBackupSummary, relayEngineRequest,
 } from "./background-backup.js";
@@ -183,7 +186,7 @@ async function requestLanguage(message, store = chrome.storage.local) {
 // page names its profile, and a request that names neither means Japanese.
 function customRequestLanguage(message, storedOptions) {
   if (message.language !== undefined) {
-    if (typeof message.language !== "string" || !/^[a-z]{2,3}$/u.test(message.language)) {
+    if (typeof message.language !== "string" || !LANGUAGE_CODE.test(message.language)) {
       throw new TypeError("the custom dictionary request named an invalid language");
     }
     return message.language;
@@ -194,7 +197,7 @@ function customRequestLanguage(message, storedOptions) {
 
 // A schema-2 state body as a stored state, so it can be projected.
 function profileStateOf(body, revision) {
-  return { schemaVersion: 2, revision, dictionaries: body.dictionaries, profiles: body.profiles };
+  return { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, revision, dictionaries: body.dictionaries, profiles: body.profiles };
 }
 
 // The engine's commit of a whole schema-2 record (docs/languages.md 5.2):
@@ -221,11 +224,10 @@ async function wholeStateCas(message, store) {
 }
 
 const PROFILE_RECORD_KEYS = [OPTIONS_KEY, DICTIONARY_STATE_KEY, CUSTOM_DICTIONARY_SOURCE_KEY, LOOKUP_STATS_KEY,
-  WORD_STATUS_OVERRIDES_KEY, LANGUAGE_SELECTION_KEY, SETUP_STATE_KEY];
+  WORD_STATUS_OVERRIDES_KEY, LANGUAGE_SELECTION_KEY];
 
 // The options a profile request leaves: a profile added after the ones there
-// are, copying the settings of `copyFrom` (section 6.3), or the only profile
-// at first run, holding the stored profile keys; or a profile removed.
+// are, copying the settings of `copyFrom` (section 6.3), or a profile removed.
 function profileRequestOptions(message, stored, language) {
   if (message.action === "add") return addedProfileOptions(message, stored, language);
   if (message.action !== "remove") throw new Error("unknown profile request");
@@ -236,29 +238,14 @@ function addedProfileOptions(message, stored, language) {
   const storedOptions = stored[OPTIONS_KEY];
   const descriptor = languageDescriptor(language);
   if (descriptor === null) throw profileError(`This Hachidori has no pack for ${language}.`, "language-unknown");
-  const added = source => ({ id: language, language, settings: newProfileSettings(source.settings, descriptor),
-    packSettings: packSettingDefaults(descriptor) });
-  if (message.firstRun === true) {
-    assertAtFirstRun(stored, descriptor);
-    return { ...optionsWithProfiles(storedOptions), profiles: [added(optionProfiles(storedOptions)[0])] };
-  }
   const record = optionsWithProfiles(storedOptions);
   if (record.profiles.some(profile => profile.language === language)) {
     throw profileError(`${descriptor.name} is already one of your languages.`, "language-present");
   }
   const source = record.profiles.find(profile => profile.id === (message.copyFrom ?? JAPANESE_PROFILE_ID));
   if (source === undefined) throw profileError("The language to copy settings from was removed.", "profile-missing");
-  return { ...record, profiles: [...record.profiles, added(source)] };
-}
-
-// Still at the start (section 16.1): unlinked, setup at its welcome card,
-// the single-profile shape and no packages, judged on this snapshot.
-function assertAtFirstRun(stored, descriptor) {
-  const setup = normaliseSetupState(stored[SETUP_STATE_KEY]);
-  if (hasProfiles(stored[OPTIONS_KEY]) || setup?.stage !== "welcome"
-      || (stored[DICTIONARY_STATE_KEY]?.dictionaries?.length ?? 0) > 0) {
-    throw profileError(`Hachidori is already set up. Add ${descriptor.name} in Settings.`, "already-set-up");
-  }
+  return { ...record, profiles: [...record.profiles, { id: language, language,
+    settings: newProfileSettings(source.settings, descriptor), packSettings: packSettingDefaults(descriptor) }] };
 }
 
 function removedProfileOptions(message, storedOptions, language) {
@@ -280,21 +267,8 @@ function removedProfileOptions(message, storedOptions, language) {
 function profileCasLanguage(message, storedOptions) {
   const named = message.profileId === undefined ? null : profileLanguages(storedOptions).get(message.profileId);
   const language = message.action === "remove" && named !== undefined && named !== null ? named : message.language;
-  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  if (typeof language !== "string" || !LANGUAGE_CODE.test(language)) throw new TypeError("the language request named no language");
   return language;
-}
-
-// First-run requests that leave the records as they are: a choice whose
-// reply was lost is already the only profile, and Japanese at first run is
-// the Japanese-only installation there already is (sections 4.5, 16.1).
-function firstRunUnchanged(message, storedOptions, language, current) {
-  if (message.action !== "add" || message.firstRun !== true) return null;
-  const existing = optionProfiles(storedOptions);
-  if (hasProfiles(storedOptions) && existing.length === 1 && existing[0].language === language) {
-    return { state: current, converted: false, languages: [language] };
-  }
-  if (language === JAPANESE_PROFILE_ID && !hasProfiles(storedOptions)) return { state: current, converted: true };
-  return null;
 }
 
 // The request that first gives the records profiles also adds each
@@ -396,8 +370,6 @@ async function profileCas(message) {
     return { ok: false, conflict: true, error: "the dictionary state changed while the language was being changed", state: current };
   }
   const language = profileCasLanguage(message, stored[OPTIONS_KEY]);
-  const unchanged = firstRunUnchanged(message, stored[OPTIONS_KEY], language, current);
-  if (unchanged !== null) return unchanged;
   const options = profileRequestOptions(message, stored, language);
   const languages = profileLanguages(options);
   assertProfileDictionaryState(message.state, options);
@@ -1171,6 +1143,7 @@ function getAnkiMining() {
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
       readProfile: readAnkiProfile,
+      readOptionsAndProfile: readAnkiOptionsAndProfile,
       duplicateIndex: getAnkiDuplicateIndex(),
       // The dictionaries of the profile a note is for (docs/languages.md 5.4).
       readDictionaries: async profileId => {

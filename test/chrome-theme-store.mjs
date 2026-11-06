@@ -707,6 +707,12 @@ try {
   await updateDesign({ popupWidthPx: 300 });
   await hover();
   await crystalReady();
+  // Anki readiness can settle before the design update has rebuilt the custom
+  // actions. Wait for the narrow layout and its More menu before measuring it.
+  await popupRoot(tab).waitFor(popupShadow => {
+    const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
+    return !popup.hidden && popup.querySelector(".crystal-more-actions") && popup.getBoundingClientRect().width <= 300;
+  });
   const narrow = await popupRoot(tab).evaluate(popupShadow => {
     const popup = popupShadow.querySelector(".gsm-hoshidicts-popup");
     const box = popup.getBoundingClientRect();

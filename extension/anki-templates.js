@@ -65,8 +65,8 @@ const MARKER_DESCRIPTIONS = {
   "pitch-accent-graphs-jj": "Japanese pitch accent SVG graphs with kana labels (Jidoujisho style)",
   audio: "Selected pronunciation audio",
   screenshot: "Screenshot of the source page",
-  "sentence-audio": "Netflix subtitle line's audio (experimental)",
-  gif: "Netflix subtitle line's animated GIF, otherwise the page screenshot (experimental)",
+  "sentence-audio": "Netflix or YouTube subtitle line's audio (experimental)",
+  gif: "Netflix or YouTube subtitle line's animated GIF, otherwise the page screenshot (experimental)",
 };
 const DYNAMIC_MARKER_OPTIONS = [
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],
@@ -90,9 +90,11 @@ export const ANKI_MARKER_REQUIREMENTS = Object.freeze({
     .map(marker => [marker, "pitchAccent"])),
   ...Object.fromEntries(["character", "onyomi", "kunyomi", "stroke-count"].map(marker => [marker, "characterView"])),
 });
-// Markers of an experimental feature, by the flag that lists them in Settings.
-// They stay valid with the flag off, so a saved template still renders.
-const EXPERIMENTAL_MARKERS = new Map([["sentence-audio", "netflixMining"], ["gif", "netflixMining"]]);
+// Markers of experimental features, by the flags that list them in Settings:
+// a marker is listed while any of its flags is on. They stay valid with the
+// flags off, so a saved template still renders.
+const VIDEO_MINING_FLAGS = Object.freeze(["netflixMining", "youtubeMining"]);
+const EXPERIMENTAL_MARKERS = new Map([["sentence-audio", VIDEO_MINING_FLAGS], ["gif", VIDEO_MINING_FLAGS]]);
 export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   ...CORE_MARKERS.map(marker => Object.freeze({
     marker,
@@ -208,7 +210,7 @@ export function ankiTemplateMarkerNames(template) {
 export function ankiCaptureRequirements(templates) {
   const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
   return {
-    // {gif} falls back to the screenshot's <img> off Netflix and on failure,
+    // {gif} falls back to the screenshot's <img> off a subtitle line and on failure,
     // so a mapped {gif} needs the viewport screenshot taken as well.
     includeScreenshot: markers.has("screenshot") || markers.has("gif"),
     includeSentenceAudio: markers.has("sentence-audio"),

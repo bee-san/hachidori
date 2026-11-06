@@ -1083,10 +1083,16 @@ where sandboxed Chrome cannot start; do not use it for untrusted archives.
 
 ## Anki duplicate index
 
+The [mining request benchmark](../docs/anki-mining-requests.md) measures
+normal readiness and Add request counts through the production worker, with
+text, screenshot and pronunciation cases against an isolated fake endpoint.
+It reports repeated timings with a configurable per-request delay, separately
+from the real-Anki benchmarks below.
+
 The focused [duplicate-index benchmark](../docs/anki-duplicate-index-benchmark.md)
 alternates two equivalent service-level View-readiness outcomes for the same
-known duplicate: an eligible cache miss followed by status plus live preflight
-repair, and a warm canonical-index positive returning the same exact IDs with
+known duplicate: an eligible cache miss followed by status plus native preflight
+checking, and a warm canonical-index positive returning the primed IDs with
 zero Anki requests. Setup, complete refreshes, browser messaging and DOM work
 are excluded. The JSON includes every raw sample, action counts and environment
 details. The driver refuses AnkiConnect's standard port and verifies the

@@ -14,8 +14,9 @@
 
   // Same character set PR #549 gates lookups on: kana, halfwidth katakana, CJK
   // ideographs (including ext-A and ext-B), and the iteration/repeat marks.
-  // The search page's Clipboard monitor (search-shell.js) passes on only text
-  // with one, as the reader's isLookupWorthy searches only such text.
+  // Without profiles, or with Japanese used for lookups, the search page's
+  // Clipboard monitor (search-shell.js) passes on only text with one, as the
+  // reader's isLookupWorthy searches only such text.
   const JAPANESE_CHARACTER_PATTERN =
     /[々-〇〻぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ\u{20000}-\u{2fa1f}]/u;
 

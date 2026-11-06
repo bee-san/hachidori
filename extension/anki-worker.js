@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
-import { createAnkiMediaStore } from "./anki-media.js";
+import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
   MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
@@ -17,6 +18,9 @@ async function releaseCapturedMedia({ writeResources, invoke }) {
 }
 
 const SENTENCE_FURIGANA_MARKERS = new Set(["sentence-furigana", "sentence-furigana-plain"]);
+// The switch a recorded line's media need: Netflix mining's unless the YouTube
+// service (background-video.js) names YouTube mining's.
+const NETFLIX_MINING = { flag: "netflixMining", label: "Netflix mining" };
 
 // Media the reader captures for one mining action. Each kind is held under its
 // own token until the note is written, then stored inside the queued write.
@@ -43,7 +47,7 @@ export function profileTemplateKey(profileId, templateId) {
   return `${PROFILE_TEMPLATE_SEPARATOR}${profileId}${PROFILE_TEMPLATE_SEPARATOR}${templateId ?? ""}`;
 }
 
-export function profileTemplateTarget(key) {
+function profileTemplateTarget(key) {
   if (typeof key !== "string" || !key.startsWith(PROFILE_TEMPLATE_SEPARATOR)) return { profileId: undefined, templateId: key };
   const [, profileId, templateId] = key.split(PROFILE_TEMPLATE_SEPARATOR);
   return { profileId, templateId: templateId === "" ? undefined : templateId };
@@ -59,8 +63,10 @@ export function createAnkiWorkerService({
   gateway,
   readOptions,
   // `readProfile(profileId)` is the profile's `{ language, packSettings }` once
-  // the records have profiles, else null (docs/languages.md 12).
+  // the records have profiles, else null (docs/languages.md 12);
+  // `readOptionsAndProfile` gives both from one read where it can.
   readProfile = async () => null,
+  readOptionsAndProfile = async profileId => Promise.all([readOptions(profileId), readProfile(profileId)]),
   readDictionaries,
   engine,
   offscreen,
@@ -134,6 +140,7 @@ export function createAnkiWorkerService({
     const segments = await sentenceSegments(request, templates, profile);
     return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
       templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true,
+      compactGlossaries: resources.compactGlossaries === true,
       // The note builder writes the profile's language (docs/languages.md 12).
       ...(profile === null ? {} : { profile }) });
   };
@@ -148,7 +155,7 @@ export function createAnkiWorkerService({
   // duplicate decisions have been made. A refused upload is a warning, and the
   // fields that referenced the media are emptied so the note never points at
   // a file Anki does not have.
-  async function storePendingMedia(kind, { request, appliedFields, invoke }) {
+  function takePendingMedia(kind, { request, appliedFields }) {
     const { requestKey, label, reference: referenceFor, replaced } = CAPTURED_MEDIA[kind];
     const filename = request[requestKey]?.filename;
     if (typeof filename !== "string" || filename === "") return {};
@@ -176,6 +183,14 @@ export function createAnkiWorkerService({
       return without(replaced);
     }
     if (!isLinkedSubmission(request)) pendingMedia[kind] = null;
+    return { filename, pending, without };
+  }
+
+  async function storePendingMedia(kind, context) {
+    const taken = takePendingMedia(kind, context);
+    if (!taken.pending) return taken;
+    const { filename, pending, without } = taken;
+    const { invoke } = context;
     try {
       const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
       if (stored !== filename) throw new Error("Anki stored it under a different filename.");
@@ -215,6 +230,46 @@ export function createAnkiWorkerService({
     return screenshot;
   }
 
+  async function prepareAdd(context) {
+    const { request, config, note, resources, resolved, invoke } = context;
+    const warnings = [], files = [], captured = {};
+    // Only ordinary non-first-field audio reaches this path. Resolve it once
+    // and put it in the original note, avoiding a second field mutation.
+    const audioTemplates = Object.fromEntries(Object.entries(resolved.templates)
+      .filter(([, template]) => ankiTemplateMarkerNames(template.value).includes("audio")));
+    if (Object.keys(audioTemplates).length && config.audioSources.length) {
+      try {
+        const file = await audio(request, config);
+        const built = await render(request, audioTemplates, `[sound:${file.filename}]`, resources);
+        Object.assign(note.fields, built.fields);
+        resources.media.push(...built.media);
+        files.push({ ...file, type: "audio", kind: "pronunciation" });
+      } catch (error) { warnings.push(`Pronunciation: ${error.message}`); }
+    }
+    for (const [kind, specification] of Object.entries(CAPTURED_MEDIA)) {
+      const taken = takePendingMedia(kind, context);
+      if (taken.warning) warnings.push(taken.warning);
+      if (!taken.pending) continue;
+      captured[specification.resourceKey] = taken.filename;
+      files.push({ filename: taken.filename, data: taken.pending.data,
+        type: kind === "sentence-audio" ? "audio" : "picture", kind: specification.label });
+    }
+    try {
+      const media = new Map(resources.media.map(item => [item.filename, item]));
+      const referenced = [...media.values()].filter(item => Object.values(note.fields).some(value => value.includes(item.filename)));
+      files.push(...await Promise.all(referenced.map(async item => ({
+        filename: item.filename, data: await dictionaryMedia(item, request.generation),
+        type: "picture", kind: "dictionary image", required: true,
+      }))));
+      await currentGeneration(request);
+      warnings.push(...await attachAnkiAddMedia(note, files, invoke));
+    } catch (error) {
+      await releaseCapturedMedia({ writeResources: captured, invoke });
+      throw error;
+    }
+    return { warnings, ...captured };
+  }
+
   // Audio in the first field is part of Anki's duplicate identity. A
   // failed/stale selection must not turn that identity into text-only.
   // Browser speech is audible work, so preflight verifies only that the
@@ -237,18 +292,20 @@ export function createAnkiWorkerService({
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
       const { profileId, templateId } = profileTemplateTarget(key);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
       return {
         ...inLanguage(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
-        // Part of the checked configuration, so toggling Smaller Anki cards
-        // between a preflight and Add refuses the stale Add.
+        // Part of the checked configuration, so toggling Smaller Anki cards or
+        // Compact popup and Anki between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
-        // Likewise for the experimental Netflix mining switch, which decides
-        // whether a Netflix request gets its sentence audio.
+        compactGlossaries: options.glossaryLayoutMode === "compact-popup-anki",
+        // Likewise for the experimental Netflix and YouTube mining switches,
+        // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
+        youtubeMining: options.experimental.youtubeMining === true,
         // And for the profile's language, which decides how the note is written.
         ...(profile === null ? {} : { profile }),
       };
@@ -257,12 +314,20 @@ export function createAnkiWorkerService({
       if (!Number.isSafeInteger(request?.generation) || request.generation < 0
           || typeof request.term?.expression !== "string" || !request.term.expression
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
-      await currentGeneration(request);
-      const dictionaries = await readDictionaries(requestProfile(request));
-      const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
+      const resources = { dictionaryPaths: {}, compactGlossary: current.config.compactGlossary === true,
+        compactGlossaries: current.config.compactGlossaries === true,
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
+      if (preflight && Object.values(current.resolved.templates).length === 1
+          && /^\{expression\}$/iu.test(current.resolved.templates[current.discovery.fields[0]]?.value ?? "")) {
+        // No offscreen document, dictionary reads or engine wake-up just to
+        // ask Anki about a word already supplied by this lookup.
+        return { ...resources, fields: await buildAnkiFields(request, current.resolved.templates, {}), media: [] };
+      }
+      await currentGeneration(request);
+      const dictionaries = await readDictionaries(requestProfile(request));
+      resources.dictionaryPaths = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
+        .map(item => [item.title, item.path]));
       await prepareFirstFieldAudio(request, current, resources, preflight);
       const pronunciation = resources.audio ? `[sound:${resources.audio.filename}]`
         : resources.deferDuplicateCheck ? "[sound:hachidori_pending_speech.wav]" : "";
@@ -270,6 +335,7 @@ export function createAnkiWorkerService({
       return { ...resources, ...built };
     },
     beforeWrite: prepareWrite,
+    prepareAdd,
     beforeMutation: ({ request }) => currentGeneration(request),
     preflightExtra: async ({ request, prepared, applied }) => {
       if (!linkedClientPreflights.has(request)) return {};
@@ -332,13 +398,13 @@ export function createAnkiWorkerService({
     return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
   }
 
-  // Experimental Netflix mining: the WAV of the subtitle line the reader just
-  // had replayed and recorded. Like the screenshot it is held here and stored
-  // only inside the note's write.
-  async function sentenceAudio(data, key) {
+  // Experimental Netflix and YouTube mining: the WAV of the subtitle line the
+  // reader just had replayed and recorded. Like the screenshot it is held here
+  // and stored only inside the note's write. `feature` is the site's switch.
+  async function sentenceAudio(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
@@ -350,13 +416,13 @@ export function createAnkiWorkerService({
     return { token: held.token, filename: held.filename };
   }
 
-  // Experimental Netflix mining: the animated GIF of the subtitle line the
-  // reader just had replayed and recorded. Held here and stored only inside
-  // the note's write, exactly like the screenshot and the WAV.
-  async function gifImage(data, key) {
+  // Experimental Netflix and YouTube mining: the animated GIF of the subtitle
+  // line the reader just had replayed and recorded. Held here and stored only
+  // inside the note's write, exactly like the screenshot and the WAV.
+  async function gifImage(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
@@ -493,7 +559,7 @@ export function createAnkiWorkerService({
     screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       return { mature: options.definitionBlurAnkiMature === true
         && await duplicateIndex.has(inLanguage(options.anki, profile), request?.term?.expression) };
     } catch {
@@ -510,7 +576,7 @@ export function createAnkiWorkerService({
         throw new Error("Word status requires an array of headwords.");
       }
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       return duplicateIndex.statuses(inLanguage(options.anki, profile), headwords);
     } };
 }

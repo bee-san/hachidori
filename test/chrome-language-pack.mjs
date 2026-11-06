@@ -4,7 +4,7 @@
  * (docs/languages.md 14, 16 and 18). In one fresh profile of headless Chrome,
  * as a user would:
  *
- *   1. Settings → Manage languages → Add a language adds the pack's
+ *   1. Settings → Advanced → Languages → Add a language adds the pack's
  *      language, and the Japanese profile stays.
  *   2. Settings' import puts the dictionary into that profile; the import
  *      must succeed and the engine must load it.
@@ -27,8 +27,8 @@
  *      found again. Every installation has the Japanese profile, so for
  *      Japanese itself step 1 adds English, with the English fixture
  *      dictionary, and the toolbar switches to English and back.
- *   6. Screenshots of the Settings language dialog, the toolbar's language
- *      switcher and the first lookup, each at most 1280 px a side.
+ *   6. Screenshots of Settings → Advanced → Languages, the toolbar's
+ *      language switcher and the first lookup, each at most 1280 px a side.
  *
  * It prints a PASS or FAIL line per check, then one JSON line: language,
  * profile, dictionary, cases (sentence, word, expected, headword, matched,
@@ -348,35 +348,36 @@ try {
   installation = await launchExtension(puppeteer, { chrome: CHROME, scratch, name: "pack", extension: EXTENSION, errors });
   const { browser, message, storage } = installation;
   const settings = await installation.page("settings.html#add-dictionaries");
-  await settings.waitForSelector("#settings-language-select", { timeout: 30_000 });
-  const editedProfile = () => settings.$eval("#settings-language-select", select => select.value);
+  await settings.waitForSelector("#language-settings", { timeout: 30_000 });
+  // The profile Settings shows; a page with one language has no menu for it.
+  const editedProfile = () => settings.evaluate(() => document.getElementById("settings-language-select")?.value ?? "ja");
   const writeOptions = async fields => {
     const { options } = await storage(["options"]);
     const reply = await message({ target: "hoshidicts-worker", type: "hd_options_write", baseRevision: options.revision, ...fields });
     if (reply?.ok !== true) throw new Error(`hd_options_write: ${JSON.stringify(reply)}`);
   };
-  const openLanguages = async () => {
+  const showSection = async section => {
     await settings.bringToFront();
-    await settings.click("#settings-language-manage");
-    await settings.waitForSelector("#settings-language-dialog[open]", { timeout: 10_000 });
-  };
-  const closeLanguages = async () => {
-    await settings.click('#settings-language-dialog button[value="close"]');
-    await settings.waitForSelector("#settings-language-dialog:not([open])", { timeout: 10_000 });
+    await settings.evaluate(id => { location.hash = `#${id}`; }, section);
+    await settings.waitForFunction(id => document.getElementById(id)?.hidden === false, { timeout: 10_000 }, section);
   };
 
-  // 1. The language, added through Settings' dialog.
+  // 1. The language, added in Settings → Advanced → Languages once
+  // Advanced → Experimental features → Multiple languages is on.
   await step(summary.profile, async () => {
-    await openLanguages();
-    const add = await settings.waitForFunction(label => [...document.querySelectorAll("#settings-language-available button")]
-      .find(button => button.getAttribute("aria-label") === label && !button.disabled) ?? null,
-    { timeout: 15_000 }, `Add ${ADDED.pack.name}`).catch(() => null);
-    if (add === null) throw new Error(`Add a language does not offer ${ADDED.pack.name}`);
-    await add.asElement().click();
+    await showSection("advanced");
+    await settings.click("#opt-experimental-multipleLanguages");
+    const enabled = await until(async () => (await storage(["options"])).options?.experimental?.multipleLanguages === true);
+    if (!enabled) throw new Error("Multiple languages did not turn on");
+    await showSection("languages");
+    const offered = await settings.waitForFunction(code => document.querySelector(
+      `#settings-language-add-select option[value="${code}"]`) !== null, { timeout: 15_000 }, ADDED.code).catch(() => null);
+    if (offered === null) throw new Error(`Add a language does not offer ${ADDED.pack.name}`);
+    await settings.select("#settings-language-add-select", ADDED.code);
+    await settings.click("#settings-language-add-row button");
     const edited = await until(async () => (await editedProfile()) === ADDED.code, { timeout: 120_000 });
-    const status = await settings.$eval("#settings-language-dialog-status", output => output.textContent);
+    const status = await settings.$eval("#settings-language-status", output => output.textContent);
     if (!edited) throw new Error(`adding ${ADDED.pack.name} did not finish: ${status || "no status"}`);
-    await closeLanguages();
     const { options } = await storage(["options"]);
     summary.profile.profiles = (options?.profiles ?? []).map(profile => profile.id);
     const engine = await installation.ready();
@@ -391,11 +392,13 @@ try {
   const importInto = async (profileId, path) => {
     await settings.bringToFront();
     if ((await editedProfile()) !== profileId) {
+      await showSection("languages");
       await settings.select("#settings-language-select", profileId);
       const chosen = await until(() => settings.$eval("#settings-language-select",
         (select, id) => select.value === id && !select.disabled, profileId), { timeout: 30_000 });
       if (!chosen) throw new Error(`Settings did not switch to editing ${profileId}`);
     }
+    await showSection("add-dictionaries");
     const added = async () => {
       const { dictionaryState } = await storage(["dictionaryState"]);
       return (dictionaryState?.profiles?.[profileId]?.dictionaries ?? []).filter(entry => !before.includes(entry.id))
@@ -436,9 +439,8 @@ try {
       const { title, seconds, status } = await importInto(CODE, dictionaryCopy);
       Object.assign(summary.dictionary, { title, seconds, status, ok: true });
       await importInto(OTHER.code, otherArchive);
-      await openLanguages();
-      await screenshot(settings, "languages", "#settings-language-dialog");
-      await closeLanguages();
+      await showSection("languages");
+      await screenshot(settings, "languages", "#language-settings");
     });
   }
   report(summary.dictionary, summary.dictionary.ok ? `${summary.dictionary.title} in ${summary.dictionary.seconds} s` : "");

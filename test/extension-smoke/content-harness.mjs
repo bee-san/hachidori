@@ -441,6 +441,8 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     },
     emitOptions,
     emitState,
+    // Any other stored key's change, such as the language selection.
+    emitChanges(changes) { storageListener?.(changes, "local"); },
     runtimeMessage(message) { for (const listener of runtimeListeners) listener(message, {}, () => {}); },
     entryFocus: (depth = 0) => popupRecord(depth).entryFocus,
     emitLookupStats(descriptor, row) { storageListener?.({ lookupStats: { newValue: descriptor },

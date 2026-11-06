@@ -35,6 +35,12 @@
       description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice. The video's sound plays through Hachidori, which keeps the last 30 seconds in memory to cut the line from; a line you have not heard all of plays on or replays once. Reload Netflix after turning this on. Protected video can make the audio silent or the GIF black." },
     { id: "netflixPreviewScreenshots", label: "Netflix preview screenshots",
       description: "Use Netflix's timeline preview image for {screenshot} when the video comes out black. Preview images have lower resolution and show a nearby moment, not necessarily the exact frame. Does not record or replay the video. Other pages keep normal screenshots. Netflix may change or remove these previews." },
+    { id: "youtubeMining", label: "YouTube mining",
+      description: "Add the YouTube caption line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, use the whole line as the sentence, and take {screenshot} from the video itself. Hovering a caption pauses the video until the pointer leaves the caption and the popup. Reads the caption track YouTube's player shows, typed or auto-generated, which YouTube may change without notice. The video's sound plays through Hachidori, which keeps the last 30 seconds in memory to cut the line from; a line you have not heard all of plays on or replays once. Reload YouTube after turning this on. Works on watch pages, not on Shorts, embedded videos or live streams." },
+    // docs/languages.md 16.3. Off, lookups use the Japanese profile and nothing
+    // switches language; the profiles and this browser's choice are kept.
+    { id: "multipleLanguages", label: "Multiple languages", section: "languages",
+      description: "Read other languages besides Japanese, such as English, Korean, Spanish or Arabic, each with its own dictionaries, settings, Anki Templates and pronunciation sources. Adds Languages under Advanced, where you add a language and choose the one lookups use; with two or more, the toolbar switches between them. Turning this off returns lookups to Japanese and keeps the languages you added, with their settings and dictionaries, for the next time you turn it on." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -176,7 +182,8 @@
     showPopupAudioButton: true,
     popupColumns: 1,
     // Yomitan's general.glossaryLayoutMode: "compact" puts a definition's
-    // glosses on one line, separated by " | ". Popup CSS only.
+    // glosses on one line, separated by " | ", in the popup (CSS only);
+    // "compact-popup-anki" does that in Anki glossary fields as well.
     glossaryLayoutMode: "default",
     showLookupCounts: true,
     // Only the lookup-count condition; stored as `definitionBlurEnabled` before #401.
@@ -296,8 +303,8 @@
   const DEFINITION_BLUR_REVEALS = ["timed", "hover", "click"];
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
-  // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
-  const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
+  // Yomitan's stored values.
+  const GLOSSARY_LAYOUT_MODES = ["default", "compact", "compact-popup-anki"];
   const PITCH_ACCENT_FURIGANA_STYLES = ["contour", "overline"];
   // How a word highlight marks its word: a line under it, its text, or its background.
   const WORD_HIGHLIGHT_STYLES = ["underline", "color", "background"];
@@ -1376,12 +1383,17 @@
     };
   }
 
+  // Advanced → Experimental features → Multiple languages (section 16.3).
+  function languagesEnabled(storedOptions) {
+    return normaliseExperimental(plainObject(storedOptions)?.experimental).multipleLanguages === true;
+  }
+
   // The profile this installation looks words up in: the selection's when it
-  // names an existing profile, otherwise the Japanese profile, or the first
-  // profile when there is none.
+  // names an existing profile and Multiple languages is on, otherwise the
+  // Japanese profile, or the first profile when there is none.
   function activeProfileId(storedOptions, selection) {
     const list = profiles(storedOptions);
-    const chosen = normaliseLanguageSelection(selection).activeProfileId;
+    const chosen = languagesEnabled(storedOptions) ? normaliseLanguageSelection(selection).activeProfileId : null;
     if (list.some(profile => profile.id === chosen)) return chosen;
     return list.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? list[0]?.id ?? JAPANESE_PROFILE_ID;
   }
@@ -1407,7 +1419,7 @@
     JAPANESE_PROFILE_ID, GLOBAL_OPTION_KEYS, PROFILE_OPTION_KEYS, OPTION_REQUIREMENTS, PROFILE_MESSAGES,
     hasProfiles, profiles, projectOptions, profileDescriptor, applyOptionsPatch, applyPackSettingsPatch,
     hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
-    languageDescriptor, languageCapability, optionRequirementMet, packSettingValue,
-    LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
+    languageDescriptor, optionRequirementMet, packSettingValue,
+    LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId, languagesEnabled,
   };
 }());
