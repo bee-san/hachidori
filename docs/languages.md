@@ -719,9 +719,10 @@ is exactly today's:
 | The Activation, Personal dictionary and Word highlighting hints that say "Japanese text" | the same with {Language} |
 | "Clicked-kanji dictionary", "Look up kanji X" | the pack's `characterView.name` ("Clicked-hanzi dictionary") |
 
-The manifest's static strings ("Study Japanese vocabulary…", "Turn Japanese
-lookups on or off") cannot vary and are pinned by existing tests. They stay;
-section 21 lists them.
+The manifest's static strings cannot vary with the language, so they name no
+single one: the description says "Study Japanese and other languages…", with
+Japanese first as the default language, and the command "Turn lookups on or
+off" (the owner's decision in #640).
 
 ### 7.5 Settings a pack defines
 
@@ -989,9 +990,11 @@ leaves unfixed). Once the records have profiles:
   search page and the Design preview create gets `dir="ltr"` and `lang="en"`.
   The reader's shadow host resets inherited properties with `all: initial`,
   which does not reset `direction`, and `lang` is inherited through the host,
-  so without them the popup takes a right-to-left page's direction (mirroring
-  its English buttons and tabs) and the page's language (screen readers then
-  read the interface with the page's voice).
+  so without them the popup would take the page's language (screen readers
+  then read the interface with the page's voice). The direction is the host's
+  own in every installation, profiles or not: its inline style says
+  `direction: ltr !important`, so on a right-to-left page no popup mirrors its
+  English buttons and tabs (the owner's decision in #640).
 - **Language text.** Text in the profile's language is marked where it appears,
   in every theme:
 
@@ -1135,8 +1138,8 @@ tables inside disclosures reach into the indent, the external-link icon's
 margin and Crystal's example rule. The logical forms apply only in marked
 popups (`:where(.gsm-hoshidicts-popup[data-hd-language])`, at each rule's base
 specificity); the physical rules stay as they are for a popup without
-profiles, so a Japanese-only popup on a right-to-left page, which inherits the
-page's direction (section 21), lays out exactly as before.
+profiles, so a Japanese-only popup on a right-to-left page, which reads left to
+right as every popup does (10.1), lays out as on a left-to-right page.
 
 ### 10.3 Language of glossary text
 
@@ -2088,9 +2091,6 @@ language** (with Multiple languages on) and in every theme.
 ## 21. Known limits
 
 - The user interface is English; only content follows the language.
-- The manifest description and the "Turn Japanese lookups on or off" command
-  name stay Japanese: they are static and pinned by tests. Renaming them is a
-  one-line change for the owner to decide.
 - One profile per language in version 1.
 - Recommended dictionaries for other languages are links, not one-click
   installs.
@@ -2108,10 +2108,10 @@ language** (with Multiple languages on) and in every theme.
 - In a right-to-left text field, a lookup near the field's clipped edge may
   miss: the imposter's clipping assumes left-to-right scrolling.
 - The single-profile shape keeps today's markup exactly, including two
-  existing faults: the popup takes a right-to-left page's direction and
-  language, and right-to-left glosses get no direction. Both are fixed once a
-  second language is added (section 10); fixing them for Japanese-only
-  installations too is a separate change for the owner to decide.
+  existing faults: the popup takes a right-to-left page's language, and
+  right-to-left glosses get no direction. Both are fixed once a second
+  language is added (section 10). The page's direction no longer reaches any
+  popup (10.1).
 - The `-plain` Anki glossary markers join lines with `<br>` and have no
   element to carry a direction.
 - A linked client's request that is already running when the host forces a

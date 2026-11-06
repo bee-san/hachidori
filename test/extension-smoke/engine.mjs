@@ -16,6 +16,7 @@ import { describe } from "node:test";
 import { createContext, runInContext } from "node:vm";
 import {
   buildLongKeyZip,
+  buildTitledZip,
   EXPECTED,
   LONG_KEY_LENGTH,
   LONG_KEY_PHRASE,
@@ -1096,6 +1097,25 @@ describe("engine: boot and import", () => {
         && memory.heapBytes >= memory.dictionaries[0].bytes,
       JSON.stringify({ memory, residentFileBytes }),
     );
+  });
+
+  step("a declared occurrence list holding ranks imports as rank-based", async () => {
+    // #684: a generator labelled rank lists occurrence-based. Only the top word
+    // has 1 in a rank list, while words seen once fill much of a real count.
+    const freqRows = value => Array.from({ length: 200 }, (_, index) =>
+      [`頻度${index}`, "freq", { value: value(index), displayValue: String(value(index)) }]);
+    const lists = [["Mislabelled ranks", index => index + 1], ["Real counts", index => Math.max(1, 100 - index)]];
+    for (const [title, value] of lists) {
+      const imported = await request("hd_import", { blobUrl: createObjectURL(buildTitledZip(title, {
+        frequencyMode: "occurrence-based", termMeta: freqRows(value) })), fileName: `${title}.zip`, lowRam: false });
+      check(`${title} imports`, imported.ok === true, JSON.stringify(imported));
+    }
+    const { dictionaries } = await storedDictionaryState();
+    const modes = lists.map(([title]) => dictionaries.find(dictionary => dictionary.title === title)?.frequencyMode);
+    equal("ranks are stored as rank-based and real counts keep occurrence-based", modes, ["rank-based", "occurrence-based"]);
+    for (const [title] of lists) {
+      await request("hd_remove", { id: dictionaries.find(dictionary => dictionary.title === title)?.id, title });
+    }
   });
 
   step("long keys and hd_segment", async () => {
