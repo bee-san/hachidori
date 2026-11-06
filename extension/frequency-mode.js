@@ -23,7 +23,7 @@ export async function archiveHoldsRanks(bytes) {
     let rows = 0, ones = 0, smallest = Infinity;
     for (const entry of await reader.getEntries()) {
       if (entry.directory || !META_BANK.test(entry.filename)) continue;
-      for (const row of JSON.parse(await entry.getData(new TextWriter(), { useWebWorkers: false }))) {
+      for (const row of JSON.parse(await entry.getData(new TextWriter(), { useWebWorkers: false }))) { // NOSONAR: banks are read one at a time, so one bank's JSON is in memory at once
         const value = row?.[1] === "freq" ? frequencyValue(row[2]) : null;
         if (value === null) continue;
         rows += 1;
