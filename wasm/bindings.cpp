@@ -1743,7 +1743,14 @@ EMSCRIPTEN_KEEPALIVE const char* hdw_segment(const char* text, int scan_length, 
         !segment_text.empty() && scan_length > 0) {
       require_lookup_text_size(segment_text, "segment text");
       std::string excluded;
-      const LookupOptions options = parse_options(options_json, &excluded);
+      LookupOptions options = parse_options(options_json, &excluded);
+      // A split reads each result's headword, reading and frequency and the
+      // dictionaries of its glossaries, never their text or its pitches, so
+      // the lookups leave both out: decompressing glossaries is most of a
+      // segmentation's time (hoshidicts #84). The results and their order
+      // are the same.
+      options.glossary_text = false;
+      options.pitches = false;
       if (options.language == "ja") {
         response = segment(engine(), segment_text, static_cast<size_t>(scan_length), options, excluded, budget,
                            FunctionWords{FUNCTION_WORDS});
