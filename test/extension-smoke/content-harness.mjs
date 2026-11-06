@@ -32,6 +32,10 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     },
   );
   const { window } = dom;
+  // jsdom lays nothing out. A text range's box covers the whole page unless a
+  // test stubs its own, so the glyph at the caret a test stubs is under the
+  // pointer, as lookups require (glyphContainsPoint).
+  window.Range.prototype.getClientRects = () => [{ left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity }];
   const popupEvents = [];
   window.addEventListener("hachidori-popup-shown", () => popupEvents.push("shown"));
   window.addEventListener("hachidori-popup-hidden", () => popupEvents.push("hidden"));

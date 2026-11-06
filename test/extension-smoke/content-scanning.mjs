@@ -1848,6 +1848,13 @@ async function definitionTextLookupCase() {
       offset: 0,
     });
     const linkBoundary = hover.driver.resolveDefinitionCandidate(120, 80)?.query === "食";
+    // Past a line's end or between lines the caret still lands on the text
+    // beside the pointer, whose glyph is elsewhere: that text is not looked up.
+    const { Range } = hover.popup.ownerDocument.defaultView;
+    const glyphBoxes = Range.prototype.getClientRects;
+    Range.prototype.getClientRects = () => [{ left: 0, top: 0, right: 16, bottom: 16 }];
+    const besideGlyph = hover.driver.resolveDefinitionCandidate(120, 80) === null;
+    Range.prototype.getClientRects = glyphBoxes;
 
     async function definitionLookup(onlyScanJapaneseText, text) {
       const language = await createHarness(
@@ -1959,6 +1966,7 @@ async function definitionTextLookupCase() {
           firstResult || firstDetails,
         "definition text inherits Japanese gating, depth limits and stationary activation":
           focusedActivationDisclosure && gated && stationary?.request.text.startsWith("食用語"),
+        "definition text beside the pointer, past a line's end or between lines, is not looked up": besideGlyph,
         ...await definitionTriggerCases(),
       };
     } finally {
