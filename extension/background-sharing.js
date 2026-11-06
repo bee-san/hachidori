@@ -322,6 +322,13 @@ let sharingClient;
 let sharingLinked = false; // NOSONAR: a live binding the other worker modules read
 let sharingEpoch = 0;
 
+// Do not create an offscreen document just to suspend it. A new document reads
+// the restored role with hd_engine_config before loading any dictionary code.
+function notifyEngineLink() {
+  void Promise.resolve(chrome.runtime.sendMessage({ target: TARGET, type: "hd_engine_link",
+    relayed: true, linked: sharingLinked })).catch(() => {});
+}
+
 let sharingTransitionTail = Promise.resolve(); // NOSONAR: a live binding the other worker modules read
 const WORKER_FORWARDS = FORWARDED_REQUESTS[WORKER_TARGET];
 const SHARING_OPTIONS_VERSION_KEY = "sharingOptionsVersion";
@@ -339,8 +346,8 @@ function hostLinkedAnkiRequest(request) {
   return { ...request, configKey: request.configKey.slice(linkedAnkiConfigPrefix.length) };
 }
 
-// While linked, this install's own engine keeps reading and committing the
-// state it had before linking, so its generations are never judged against
+// Work admitted before linking finishes against this install's saved state
+// before the engine is suspended, so its generations are never judged against
 // the host's inventory that the mirror now holds under the live keys.
 const sharingLocalStore = {
   async get(keys) {
@@ -767,6 +774,7 @@ const SHARING_HANDLERS = {
         // can let the local engine see (or clean up against) the host inventory.
         sharingLinked = true;
         sharingEpoch += 1;
+        notifyEngineLink();
         getSharingClient().link(address);
         await applyMirror(hello.snapshot, true);
       });
@@ -816,6 +824,7 @@ const SHARING_HANDLERS = {
       await chrome.storage.local.set({ [SHARING_KEY]: { ...stored[SHARING_KEY], client: null } });
       sharingLinked = false;
       sharingEpoch += 1;
+      notifyEngineLink();
       getSharingClient().unlink();
       await chrome.storage.local.remove(OVERLAY_MODE ? [SHARING_LOCAL_STATE_KEY, SHARING_OPTIONS_VERSION_KEY] : SHARING_LOCAL_STATE_KEY).catch(error => {
         console.warn("hachidori: could not clean up the restored sharing snapshot:", describeErrorOrJson(error));

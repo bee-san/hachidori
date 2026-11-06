@@ -233,11 +233,16 @@ let backupCancelTail = Promise.resolve();
 
 async function relayEngineRequest(message) {
   // Pushed by the options storage listener only; a page cannot relay it.
-  if (message.type === "hd_engine_config") throw new Error("Unknown engine request.");
+  if (["hd_engine_config", "hd_engine_link"].includes(message.type)) throw new Error("Unknown engine request.");
   await sharingReady;
   // A linked browser's languages are the host's (docs/languages.md 17.3).
   if (sharingLinked && ["hd_profile_add", "hd_profile_remove"].includes(message.type)) return forwardProfileRequest(message);
-  if (sharingLinked && forwardableRequest(message)) return forwardToHost(message);
+  if (sharingLinked && forwardableRequest(message)) {
+    if (["hd_memory", "hd_memory_total"].includes(message.type)) {
+      return { ...await forwardToHost(message), memorySource: "host" };
+    }
+    return forwardToHost(message);
+  }
   if (message.type === "hd_backup_cancel") {
     const preparation = backupPreparations.get(message.token);
     if (preparation) preparation.cancelled = true;

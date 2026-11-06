@@ -4118,13 +4118,23 @@ host role off. An empty address means this computer on the port set under
 Advanced, which is also what the startup page and Settings → Sharing probe.
 `relayEngineRequest`, `handleWorkerRequest`, `handleUpdatesRequest` and
 `handleAnkiRequest` forward every message in the `FORWARDED_REQUESTS` table
-while linked and return the host's reply verbatim; the storage batches the
+while linked and return the host's reply (memory replies additionally carry
+`memorySource: "host"` for the Settings labels); the storage batches the
 host pushes are written with one `chrome.storage.local` `set()` outside
 `writeLocalState()`, the only other writer of shared keys. At link time the
 install's own six shared values are kept in `sharingLocalState`, the host's
 snapshot takes their place under the live keys, and the engine's
 `hd_state_read` / `hd_state_cas` / `hd_custom_read` / `hd_custom_cas` are served
 from that kept record, so no local generation is judged against the mirror.
+The worker notifies an existing offscreen page with the private
+`hd_engine_link` message. The page disables its recycler and, once startup
+recovery, admitted requests and held backup/download handles have finished,
+terminates the local engine worker. The offscreen page stays for audio and
+clipboard access. Without Worker, it reloads itself to release the in-document
+module. Its initial `hd_engine_config` read waits for sharing restoration and
+includes `linked`, so a linked browser never loads dictionary code or probes
+OPFS. Unlink resumes the local engine; a link during the OPFS probe cancels
+startup. Worker replies from a retired instance cannot reach its replacement.
 Before publishing a new linked route, the worker drains Anki operations admitted
 under the old role—including a linked submission still exporting or transmitting
 client media—and the duplicate-index refresh, then suspends that index. Unlink
@@ -4288,7 +4298,8 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_memory` | Report WASM capacity (`heapBytes`), live/free allocator bytes, combined cache (`pageCacheBytes`) with `entries`/`indexes` activity, requested/actual hash policy, `useLessRamByDefault` and budget, package/kind counts, and each package's hash, other-resident and resident-entry bytes plus actual hash residency; see [memory.md](memory.md) |
 | `hd_memory_total` | Answered by the offscreen document itself, outside the engine queue: `performance.measureUserAgentSpecificMemory()` over the document and its workers, with the engine heap (`heapBytes`, from `hd_memory`) counted once rather than once per engine thread; `bytes` is `null` where the API is unavailable; see [memory.md](memory.md) |
 | `hd_clipboard_read` | The search page's clipboard monitor (#639): from that page only, the worker relays it to the offscreen document, which returns the clipboard's text, at most its first 1,000 characters after any leading spaces; never forwarded to a linked browser's host |
-| `hd_engine_config` | Read `options.lowMemoryMode`, `options.dictionaryEntryStorage`, `options.dictionaryIndexStorage` and `options.useLessRamByDefault` for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes the same message to the document when a stored option changes |
+| `hd_engine_config` | Read `options.lowMemoryMode`, `options.dictionaryEntryStorage`, `options.dictionaryIndexStorage` and `options.useLessRamByDefault` from the engine's own saved state, plus the restored `linked` role, for the offscreen document (its sender only) before it creates the engine worker; the service worker pushes option changes to the document |
+| `hd_engine_link` | Private service-worker push to the existing offscreen document: suspend the local engine after admitted work settles while linked, or resume it on Unlink; never creates an offscreen document and is refused from pages |
 | `hd_reload` | Reload enabled dictionaries from persisted metadata |
 | `hd_remove` | Stage a package's files, commit its removal, then delete the staged copy |
 | `hd_state_read` | Read revisioned dictionary state through the service worker |

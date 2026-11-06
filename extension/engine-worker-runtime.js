@@ -121,7 +121,7 @@ export function startEngineWorker({ createHoshidicts, storageBackend, threaded =
     // import outside the engine.
     isolatedImport: storageBackend === "opfs" ? importInIsolatedWorker : null,
   });
-  startEngine();
+  void startEngine().then(() => globalThis.postMessage({ channel: "engine-started" }));
   // A dedicated worker receives only from its creator over its implicit
   // MessagePort. MessageEvent.origin is always empty, so there is no origin
   // value to validate; the channel checks in onHostMessage validate the

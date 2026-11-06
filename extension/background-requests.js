@@ -964,9 +964,9 @@ const WORKER_HANDLERS = {
   // storage listener below pushes later changes to it.
   async hd_engine_config(message, sender) {
     if (!engineSender(sender)) throw new Error("The engine configuration is read only by the dictionary engine host.");
-    const stored = await chrome.storage.local.get(OPTIONS_KEY);
+    const stored = await stateStore(sender).get(OPTIONS_KEY);
     const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(stored[OPTIONS_KEY]);
-    return { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault };
+    return { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault, linked: sharingLinked };
   },
 
   async hd_setup_record(message, sender) {

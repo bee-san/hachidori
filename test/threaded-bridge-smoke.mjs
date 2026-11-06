@@ -43,7 +43,7 @@ class FakeWorker {
     this.messages.push(message);
   }
 
-  terminate() {}
+  terminate() { this.terminated = true; }
 
   emit(type, data) {
     const event = { data };
@@ -65,6 +65,7 @@ Object.defineProperty(globalThis, "navigator", {
 });
 
 let configuredLowMemory = true;
+let configuredLinked = false;
 globalThis.chrome = {
   runtime: {
     onMessage: {
@@ -73,7 +74,7 @@ globalThis.chrome = {
       },
     },
     sendMessage: async (message) => message.type === "hd_engine_config"
-      ? { ok: true, lowMemoryMode: configuredLowMemory } : {},
+      ? { ok: true, lowMemoryMode: configuredLowMemory, linked: configuredLinked } : {},
   },
 };
 
@@ -590,6 +591,68 @@ try {
   mock.timers.reset();
 }
 
+// A persisted link starts no engine or OPFS probe. Audio/clipboard live in
+// this same document; engine-directed requests must not wake a local copy.
+configuredLinked = true;
+const linkedWorkerCount = engineWorkers.length;
+const linkedProbeCount = capabilityWorkers.length;
+await import(`../extension/offscreen.js?linked-lifecycle=${Date.now()}`);
+relay = importedRuntime();
+await tick();
+assert.equal(engineWorkers.length, linkedWorkerCount);
+assert.equal(capabilityWorkers.length, linkedProbeCount);
+assert.equal((await send("hd_memory", "linked-local-memory")).errorCode, "engine-linked");
+assert.equal(engineWorkers.length, linkedWorkerCount, "local diagnostics do not load dictionaries while linked");
+
+const pushLink = value => relay({ target: "hoshidicts-offscreen", type: "hd_engine_link", relayed: true, linked: value },
+  { url: "background.js" }, () => {});
+pushLink(false);
+await tick();
+capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
+await tick();
+const linkedEngine = engineWorkers.at(-1);
+assert.equal(engineWorkers.length, linkedWorkerCount + 1, "Unlink starts the local engine");
+const preparation = request("hd_backup_prepare", "linked-backup");
+await tick();
+linkedEngine.emit("message", { channel: "engine-response", id: linkedEngine.messages.at(-1).id,
+  response: { ok: true, token: "kept-backup" } });
+await preparation.promise;
+const importingWhenLinked = request("hd_import", "linked-active-import");
+await tick();
+const importingId = linkedEngine.messages.at(-1).id;
+pushLink(true);
+assert.ok(!linkedEngine.terminated, "linking never interrupts startup or a mutation");
+linkedEngine.emit("message", { channel: "engine-started" });
+assert.ok(!linkedEngine.terminated, "a running import retains its worker");
+linkedEngine.emit("message", { channel: "engine-response", id: importingId, response: { ok: true } });
+await importingWhenLinked.promise;
+assert.ok(!linkedEngine.terminated, "a prepared backup retains its worker until released");
+const cancellation = request("hd_backup_cancel", "linked-backup-cancel", { token: "kept-backup" });
+await tick();
+linkedEngine.emit("message", { channel: "engine-response", id: linkedEngine.messages.at(-1).id, response: { ok: true } });
+await cancellation.promise;
+assert.equal(linkedEngine.terminated, true, "the idle linked engine is terminated without replacing it");
+pushLink(false);
+await tick();
+// Linking during the capability probe must also prevent startup.
+pushLink(true);
+capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
+await tick();
+assert.equal(engineWorkers.length, linkedWorkerCount + 1);
+pushLink(false);
+await tick();
+capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
+await tick();
+const resumedEngine = engineWorkers.at(-1);
+assert.equal(engineWorkers.length, linkedWorkerCount + 2);
+linkedEngine.emit("error", "retired worker error");
+const resumedLookup = request("hd_lookup", "unlinked-lookup");
+await tick();
+resumedEngine.emit("message", { channel: "engine-response", id: resumedEngine.messages.at(-1).id,
+  response: { ok: true, results: [{ expression: "食べる" }] } });
+assert.equal((await resumedLookup.promise).results[0].expression, "食べる", "Unlink serves local lookups again");
+configuredLinked = false;
+
 // Workers without shared memory (no cross-origin isolation) run the
 // single-thread build in its own worker, and the recycler never replaces it.
 Object.defineProperty(globalThis, "crossOriginIsolated", { configurable: true, value: false });
@@ -794,6 +857,11 @@ try {
   assert.equal(localRequests.length, 1, "local failure releases its admission and lock");
   localRequests.shift().resolve({ type: "hd_lookup_result", ok: true });
   assert.equal((await healthy.promise).ok, true);
+  let reloadedForLink = false;
+  globalThis.location = { reload() { reloadedForLink = true; } };
+  pushLink(true);
+  assert.equal(reloadedForLink, true, "a host without Worker reloads the idle document to release its heap");
+  delete globalThis.location;
 } finally {
   Object.defineProperty(globalThis, "Worker", { configurable: true, value: FakeWorker });
   serviceLoad.resolve();

@@ -50,6 +50,23 @@ test("nothing happens while the mode is off and the worker matches", () => {
   assert.equal(h.pendingTimers(), 0);
 });
 
+test("linking cancels a pending recycle and an unloaded engine cannot be recycled on Unlink", () => {
+  const h = harness();
+  h.recycler.setRunning(false);
+  h.recycler.setDesired(true);
+  h.recycler.setEnabled(false);
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.deepEqual(h.restarts, []);
+  h.recycler.setRunning(null);
+  h.recycler.setEnabled(true);
+  h.advance(RECYCLE_IDLE_MS * 2);
+  assert.deepEqual(h.restarts, []);
+  h.recycler.setRunning(true);
+  h.recycler.noteMutationSettled();
+  h.advance(RECYCLE_IDLE_MS);
+  assert.equal(h.restarts.length, 1);
+});
+
 test("a mode mismatch restarts the worker once it has been idle for the window", () => {
   const h = harness();
   h.recycler.setRunning(false);

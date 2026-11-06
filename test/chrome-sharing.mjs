@@ -100,10 +100,12 @@ const CHECKS = [
   "the linked browser's Settings sends a ZIP that replaces the host's dictionary of that title, and the replacement answers lookups",
   "a real linked overlay keeps local preferences through host edits, disconnection, restart and Unlink and explains mining capabilities",
   "a second browser left on the default port, sharing as it does from install, moves to the relay's port in Settings and finds the host there",
+  "the linked browser releases its local engine, labels host memory, and keeps audio available after a restart",
 ];
 const LINKED_IMPORT_CHECK = CHECKS[13];
 const LINKED_OVERLAY_CHECK = CHECKS[14];
 const PORT_MISMATCH_CHECK = CHECKS[15];
+const LINKED_MEMORY_CHECK = CHECKS[16];
 const results = [];
 const diagnostics = [];
 
@@ -771,7 +773,7 @@ try {
   // uses the port under Advanced. #648: the second browser is still on the
   // default port with sharing on, so the person moves it to the relay's port
   // in Settings, which looks again there; then the startup page looks again.
-  const startup = await startupPage(clientBrowser, clientId, "client-startup");
+  let startup = await startupPage(clientBrowser, clientId, "client-startup");
   const portPage = await openSettings(clientBrowser, clientId, "client-port", "sharing");
   const waitForFound = prefix => portPage.waitForFunction(text => document.getElementById("sharing-client-found").textContent.startsWith(text),
     { timeout: 15_000, polling: 100 }, prefix);
@@ -865,6 +867,35 @@ try {
     const { measureSharingLookups } = await import("../benchmark/sharing-latency.mjs");
     await measureSharingLookups(clientPage, clientBrowser, relay.serverPath, process.env.HACHIDORI_SHARING_BENCHMARK);
   }
+
+  // CDP reports the actual dedicated engine worker, independently of the
+  // host's forwarded hd_status/hd_memory replies shown in Settings.
+  const localEngines = async browser => {
+    const session = await browser.target().createCDPSession();
+    try {
+      const { targetInfos } = await session.send("Target.getTargets");
+      return targetInfos.filter(target => /\/engine-worker(?:-idbfs|-local)?\.js$/u.test(target.url));
+    } finally { await session.detach(); }
+  };
+  await until(async () => (await localEngines(clientBrowser)).length === 0, "the linked browser to release its engine", 30_000);
+  await showSection(clientPage, "advanced");
+  await clientPage.waitForFunction(() => document.getElementById("memory-total").textContent.startsWith("Host engine memory:"));
+  const hostMemory = await message(clientPage, "hoshidicts-offscreen", "hd_memory");
+  await clientPage.evaluate(() => { document.getElementById("memory-total").parentElement.id = "linked-memory-evidence"; });
+  await screenshot(clientPage, "sharing-host-memory.png", { section: "advanced", element: "linked-memory-evidence" });
+  await clientBrowser.close();
+  clientBrowser = await launch(CLIENT_PROFILE);
+  // Later mining checks use this page as their sender and screenshot surface.
+  startup = await clientBrowser.newPage();
+  watch(startup, "client-startup-restarted");
+  await startup.goto(`chrome-extension://${clientId}/startup.html`, { waitUntil: "domcontentloaded" });
+  clientPage = await openSettings(clientBrowser, clientId, "client-restarted", "sharing");
+  await until(async () => (await sharingStatus(clientPage)).sharing?.client?.connected, "the restarted linked browser to reconnect", 30_000);
+  const restartedLookup = await lookup(clientPage);
+  const localVoices = await message(clientPage, "hachidori-audio", "hd_audio_voices");
+  check(LINKED_MEMORY_CHECK, hostMemory.ok && hostMemory.memorySource === "host" && hostMemory.dictionaries.length > 0
+    && restartedLookup.ok && localVoices.ok && (await localEngines(clientBrowser)).length === 0,
+  JSON.stringify({ hostMemory, restartedLookup: restartedLookup.ok, localVoices }));
 
   const baseRevision = mirror.options?.revision ?? 0;
   const written = await message(clientPage, "hoshidicts-worker", "hd_options_write", { baseRevision, options: { scanLength: 7 } });
@@ -1163,8 +1194,9 @@ try {
     return reply?.sharing?.network?.active === false && reply.sharing.clients.length === 0 ? reply.sharing : null;
   }, "the relay to close the network", 15_000);
   const cleanup = await message(clientPage, "hachidori-sharing", "hd_sharing_client_unlink");
-  // The relay must have survived the swap back: this computer still finds the host through it.
-  const stillThere = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: "" });
+  // The relay must survive the swap back. Use its test address explicitly:
+  // this client restarted while hosting was off, so its host has the default port.
+  const stillThere = await message(clientPage, "hachidori-sharing", "hd_sharing_client_probe", { address: ADDRESS });
   check(CHECKS[9],
     networkOn?.ok === true && hostNetwork.enabled === true
       && shown.status === "Sharing through Anki, on this computer and the network."
@@ -1177,7 +1209,7 @@ try {
       && cleanup?.ok === true && stillThere?.ok === true && relay.exitCode === null,
     JSON.stringify({ networkOn: networkOn?.ok, hostNetwork, shown, remoteLinked, remoteLookup: { ok: remoteLookup?.ok, error: remoteLookup?.error, first: remoteLookup?.results?.[0]?.deinflected },
       remoteClients, remoteStatus, networkOff: networkOff?.ok, dropped, hostAfterOff: { network: hostAfterOff.network, connected: hostAfterOff.connected, clients: hostAfterOff.clients.length },
-      cleanup: cleanup?.ok, stillThere: stillThere?.ok, relayExit: relay.exitCode }));
+      cleanup: cleanup?.ok, stillThere, relayExit: relay.exitCode }));
 
   const localText = "私語,しご,local personal entry preserved across sharing\n";
   const localBase = await message(clientPage, "hoshidicts-worker", "hd_custom_read");
