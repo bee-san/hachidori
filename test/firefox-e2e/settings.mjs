@@ -15,7 +15,7 @@ import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import { tab } from "./reader.mjs";
 import {
-  browser, clickInPopup, dismissPopup, downloadedFiles, downloadsDirectory, evaluateJson, hoverForPopup, inPopup, openPage,
+  browser, clickInPopup, dismissPopup, downloadedFiles, downloadsDirectory, evaluateJson, GECKO_ID, hoverForPopup, inPopup, openPage,
   page, readPopup, readStorage, reloadPage, serverUrl, showSettingsSection, sleep, tabUrls, waitFor, writeOptions,
   activate,
 } from "./session.mjs";
@@ -201,7 +201,7 @@ describe("settings", () => {
     }
     check("Get debug info reports Firefox and its IndexedDB engine",
       /Firefox\/\d+/u.test(report?.browser?.userAgent ?? "") && report.engine?.status?.storageBackend === "idbfs"
-        && report.extension?.manifest?.browser_specific_settings?.gecko?.id === "hachidori@bee-san",
+        && report.extension?.manifest?.browser_specific_settings?.gecko?.id === GECKO_ID,
       JSON.stringify({ file, userAgent: report?.browser?.userAgent, status: report?.engine?.status, error: report?.error }));
   });
 });
