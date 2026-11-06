@@ -161,6 +161,19 @@ test("Smaller Anki cards is part of the checked configuration and reaches every 
   assert.ok(compact.every(message => message.compactGlossary === true));
 });
 
+test("Compact popup and Anki is part of the checked configuration and reaches the note's renders (#673)", async () => {
+  const f = fixture();
+  f.request.configKey = (await f.service.status()).configKey;
+  await f.service.preflight(f.request);
+  f.options.glossaryLayoutMode = "compact-popup-anki";
+  await assert.rejects(f.service.submit(f.request), /configuration changed/u);
+  assert.ok(f.renders.length > 0 && f.renders.every(message => message.compactGlossaries === false));
+  const before = f.renders.length;
+  f.request.configKey = (await f.service.status()).configKey;
+  assert.equal((await f.service.submit(f.request)).state, "added");
+  assert.ok(f.renders.slice(before).every(message => message.compactGlossaries === true));
+});
+
 test("first-field audio is resolved before duplicate checking and its exact prepared bytes are reused after add", async () => {
   const f = fixture(true);
   f.request.configKey = (await f.service.status()).configKey;

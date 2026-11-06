@@ -51,6 +51,25 @@ test("Smaller Anki cards leaves out the Rules/Deinflection footer that Yomitan's
   assert.doesNotMatch(html, /Rules:|Deinflection:|yomitan-glossary-details/u);
 });
 
+// #673: Yomitan's glossary-single template joins a row's elements with " | "
+// and its compact gloss styles put a structured glossary list on one line.
+test("Compact popup and Anki joins a row's glosses with a bar and adds Yomitan's compact gloss styles", async t => {
+  const { document, request } = fixture(t);
+  request.term.glossaries = [{ dictionary: "A", definitionTags: "", termTags: "",
+    glossary: '["to live on (e.g. a salary)", "to live off", "to subsist on"]' }];
+  const holder = document.createElement("div");
+  holder.innerHTML = await createAnkiDefinitionRenderer(document, request)({});
+  assert.equal(holder.querySelectorAll("ul.gloss-list > li").length, 3, "the default layout keeps Yomitan's list");
+  assert.equal(holder.querySelector("style"), null);
+  const render = createAnkiDefinitionRenderer(document, request, undefined, { compactGlossaries: true });
+  holder.innerHTML = await render({});
+  const body = holder.querySelector(".gsm-hoshidicts-glossary-content");
+  assert.equal(body.innerHTML, "to live on (e.g. a salary) | to live off | to subsist on");
+  assert.match(holder.querySelector(".yomitan-glossary > style").textContent,
+    /^\.yomitan-glossary ul\[data-sc-content="glossary"\] > li:not\(:first-child\)::before \{/u);
+  assert.match(await render({ plain: true }), /^\(Alias &lt;A&gt;\)<br>to live on \(e\.g\. a salary\) \| to live off \| to subsist on$/u);
+});
+
 test("Anki first/brief/plain/dictionary variants keep their distinct source meanings", async t => {
   const { document, request } = fixture(t);
   const render = createAnkiDefinitionRenderer(document, request);

@@ -189,6 +189,7 @@ const PLANNED = [
   "Anki templates survive refresh and reload while disabled values stay disabled and lookup generation stays unchanged",
   "Anki glossary export preserves native scoped styles and image proportions without loading media or allowing CSS markup escape",
   "Smaller Anki cards export resolves scoped CSS into compact glossary HTML without styles, internal markup or media loads",
+  "Compact popup and Anki writes a structured glossary list on one line, and Smaller Anki cards without bullets",
   "Anki worker preflight is read-only and submission verifies a real-WASM result with scoped dictionary media",
   "Smaller Anki cards mines compact glossary HTML through the real offscreen path and uploads only the images it keeps",
   "Anki stable single-glossary aliases and package IDs render through the real offscreen path without rewriting mappings",
