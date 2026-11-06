@@ -563,6 +563,23 @@ test("the language choice is installation-local and written only once the record
   assert.deepEqual(stored("languageSelection"), { revision: 2, activeProfileId: "ar", autoSwitch: true });
 });
 
+// Design 16.3: while Multiple languages is off, lookups use the Japanese
+// profile whatever this browser chose, and the choice is kept for when it is
+// on again.
+test("the active profile is this browser's choice only while Multiple languages is on", () => {
+  const options = readerOptions(LANGUAGES);
+  const off = profileRecords().options;
+  const selection = { revision: 2, activeProfileId: "ar", autoSwitch: true };
+  assert.equal(options.languagesEnabled(off), false, "off, as every experimental feature starts");
+  assert.equal(options.activeProfileId(off, selection), "ja");
+  const on = { ...off, experimental: { multipleLanguages: true } };
+  assert.equal(options.languagesEnabled(on), true);
+  assert.equal(options.activeProfileId(on, selection), "ar");
+  // Without a Japanese profile, the first profile, as for a missing choice.
+  const withoutJapanese = { ...off, profiles: off.profiles.filter(profile => profile.id !== "ja") };
+  assert.equal(options.activeProfileId(withoutJapanese, selection), "ar");
+});
+
 test("counts and marks are kept per language and each write keeps the other languages'", async () => {
   const records = profileRecords();
   records.lookupStats = { generation: "g-ja", revision: 1 };

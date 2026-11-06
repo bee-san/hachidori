@@ -76,7 +76,8 @@ test("the welcome card has no language menu whatever packs the build has", async
 test("setup resumed with another language used for lookups shows that language's dictionary step", async t => {
   const page = await openStartup(t, {
     setupState: WELCOME,
-    options: { revision: 2, profiles: [{ id: "ja", language: "ja", settings: {}, packSettings: {} },
+    options: { revision: 2, experimental: { multipleLanguages: true }, profiles: [
+      { id: "ja", language: "ja", settings: {}, packSettings: {} },
       { id: "en", language: "en", settings: {}, packSettings: {} }] },
     dictionaryState: { schemaVersion: 2, revision: 1, dictionaries: [],
       profiles: { ja: { dictionaries: [], groups: [] }, en: { dictionaries: [], groups: [] } } },

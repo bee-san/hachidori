@@ -132,9 +132,10 @@ let languageBadge = null;
 async function syncLanguageBadge(api, { hadProfiles = false } = {}) {
   if (typeof api.action?.setBadgeText !== "function") return;
   try {
-    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
+    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, languagesEnabled, profiles } = globalThis.HDReaderOptions;
     const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
-    const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
+    const shown = hasProfiles(stored[OPTIONS_KEY]) && languagesEnabled(stored[OPTIONS_KEY]);
+    const list = shown ? profiles(stored[OPTIONS_KEY]) : [];
     const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
     const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
     if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;

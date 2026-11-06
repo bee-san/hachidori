@@ -39,8 +39,8 @@ import {
   attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitGroups, committing, dictionaries,
   dictionaryLabel, dictionaryState, handleDictionaryStateChange, moveListItem, pendingDictionaryCommits,
   reloadDictionaries, removing, renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel,
-  reprojectDictionaryState, setControlsDisabled, setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState,
-  updateItemById,
+  renderOtherLanguageDictionaries, reprojectDictionaryState, setControlsDisabled, setPendingManagementFocus,
+  settleDictionaryCommits, storedDictionaryState, updateItemById,
 } from "./library-settings.js";
 import {
   attachImportHandlers, attachRecommendedHandlers, importing, installingRecommended,
@@ -84,6 +84,8 @@ const OPTION_SECTIONS = {
   // Backup & restore → Automatic backups → Days kept.
   backup: "Backup & restore",
   advanced: "Advanced",
+  // A language's own settings (docs/languages.md 7.5).
+  languages: "Languages",
   // Dictionaries → Personal dictionary owns its lookup switches.
   "custom-dictionary": "Personal dictionary",
 };
@@ -95,7 +97,7 @@ const {
   activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
   normaliseOptions, JAPANESE_PROFILE_ID, OPTION_REQUIREMENTS, languageDescriptor, optionRequirementMet,
   hasProfiles, projectOptions, profileDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
-  profiles: recordProfiles,
+  languagesEnabled, profiles: recordProfiles,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -227,6 +229,7 @@ const SECTION_STATUSES = {
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
   "debug-info-status": { section: "advanced", label: "Troubleshooting" },
+  "experimental-status": { section: "advanced", label: "Experimental features" },
 };
 let activeSection = "dictionaries"; // NOSONAR: shared with the other Settings modules
 const unseenSectionCompletions = new Set();
@@ -510,27 +513,31 @@ function addressedProfile() {
 
 // The edited profile as the stored record describes it now. It starts as the
 // profile the address names, else the active profile, and changes because of
-// a storage event only when it is removed elsewhere: the page then shows the
-// active profile, discards the drafts kept for the removed one and says so
-// (section 5.3). True when it changed.
+// a storage event only when it is removed elsewhere, or when Multiple
+// languages is turned off elsewhere while it is not the active profile: the
+// page then shows the active profile, discards the drafts kept for the one it
+// left and says so (sections 5.3 and 16.3). True when it changed.
 function followEditedProfile() {
+  const enabled = languagesEnabled(storedOptionsRecord);
   if (!editedProfileChosen) {
     editedProfileChosen = true;
-    const initial = describedProfile(addressedProfile()) ?? describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
+    const initial = (enabled ? describedProfile(addressedProfile()) : null) ?? describedProfile(activeProfile())
+      ?? { ...JAPANESE_EDITED_PROFILE };
     const changed = initial.id !== editedProfile.id;
     editedProfile = initial;
     return changed;
   }
   const current = describedProfile(editedProfile.id);
-  if (current !== null) {
+  if (current !== null && (enabled || current.id === activeProfile())) {
     editedProfile = current;
     return false;
   }
-  const removed = languageName(editedProfile.language);
+  const left = languageName(editedProfile.language);
   editedProfile = describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
   discardProfileDrafts();
-  profileSettings?.announce(`${removed} was removed in another Hachidori page, so Settings now shows ${languageName()}.`
-    + " Unsaved changes made for it were discarded.");
+  profileSettings?.announce(`${current === null ? `${left} was removed` : "Multiple languages was turned off"}`
+    + ` in another Hachidori page, so Settings now shows ${languageName()}. Unsaved changes made for ${left}`
+    + " were discarded.");
   return true;
 }
 
@@ -573,8 +580,9 @@ function readStoredRecords(keys) {
 // Settings shows chooses the edited profile (section 5.3). Pending option
 // edits are saved first, for the profile they were made for; the three
 // editors with explicit saves are saved or discarded by the user first.
-// Resolves with the message to show when the page stays where it is.
-async function chooseEditedProfile(id) {
+// Resolves with the message to show when the page stays where it is; `action`
+// names what the user is doing, for that message.
+async function chooseEditedProfile(id, action = "choosing another language") {
   if (id === editedProfile.id) return null;
   const drafts = [
     customDictionaryDirty() && "the personal dictionary",
@@ -582,10 +590,10 @@ async function chooseEditedProfile(id) {
     customButtonController?.dirty() && "the custom button",
   ].filter(Boolean);
   if (drafts.length > 0) {
-    return `Save or discard your changes to ${listOf(drafts)} before choosing another language.`;
+    return `Save or discard your changes to ${listOf(drafts)} before ${action}.`;
   }
   if (!await settlePendingOptions()) {
-    return "Your changes were not saved. Choose Save my changes or Use saved settings, then choose the language again.";
+    return `Your changes were not saved. Choose Save my changes or Use saved settings before ${action}.`;
   }
   await settleDictionaryCommits();
   if (nameDrafts.hasPendingChanges()) return "Wait for the names you are editing to be saved, then try again.";
@@ -626,7 +634,7 @@ async function writeAutoSwitch(enabled) {
 
 // The sidebar's language link leads to Advanced → Languages' Settings shows.
 function openLanguages() {
-  if (window.location.hash !== "#advanced") window.history.pushState(null, "", "#advanced");
+  if (window.location.hash !== "#languages") window.history.pushState(null, "", "#languages");
   showSettingsSection();
   element("settings-language-select")?.focus();
 }
@@ -665,9 +673,9 @@ async function loadProfileSettings() {
       await refreshStatus();
     },
   });
-  SECTION_STATUSES[LANGUAGE_STATUS] = { section: "advanced", label: "Languages" };
+  SECTION_STATUSES[LANGUAGE_STATUS] = { section: "languages", label: "Languages" };
   profileSettings.render();
-  if (activeSection === "advanced") profileSettings.refresh();
+  if (activeSection === "languages") profileSettings.refresh();
   await renderPackSettings();
 }
 
@@ -741,10 +749,8 @@ function showSettingsSection(focus = false) {
   updateBackupSettings();
   updateSharingSettings();
   void renderSearchHistory();
-  if (activeSection === "advanced") {
-    refreshAdvancedMemory();
-    profileSettings?.refresh();
-  }
+  if (activeSection === "advanced") refreshAdvancedMemory();
+  if (activeSection === "languages") profileSettings?.refresh();
   if (activeSection === "design") {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
@@ -799,7 +805,10 @@ function updateKeybindSettings() {
     readKeybinds: () => options.keybinds,
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
-    getBrowserCommands: () => chrome.commands.getAll(),
+    // Switch to the next language is listed while Multiple languages is on, or
+    // while it has a shortcut (docs/languages.md 16.2).
+    getBrowserCommands: async () => (await chrome.commands.getAll()).filter(command => command.name !== "switchLanguage"
+      || command.shortcut || languagesEnabled(storedOptionsRecord)),
     // Firefox opens its add-on shortcut manager itself; Chrome's is a page.
     openBrowserShortcuts: () => (typeof chrome.commands.openShortcutSettings === "function"
       ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
@@ -807,9 +816,12 @@ function updateKeybindSettings() {
     // Toggle option offers what the edited profile's language has (docs/languages.md 7.3),
     // and Switch to the next language is offered once the records have profiles (16.2).
     optionAvailable, languageName: () => languageName(),
-    actionAvailable: action => action !== "switchLanguage" || hasProfiles(storedOptionsRecord),
+    actionAvailable: action => action !== "switchLanguage"
+      || (hasProfiles(storedOptionsRecord) && languagesEnabled(storedOptionsRecord)),
   });
   keybindController.render();
+  // Multiple languages may have changed since the list was read.
+  void keybindController.renderBrowserCommands();
 }
 
 function updateAnkiSettings() {
@@ -901,9 +913,30 @@ function updateSharingSettings() {
 }
 
 async function toggleExperimental(id, enabled) {
+  if (id === "multipleLanguages" && !enabled) {
+    const refused = await showLookupLanguageFirst();
+    setSectionStatus("experimental-status", refused ?? "", refused === null ? "" : "error");
+    if (refused !== null) {
+      // The switch shows the stored flag again.
+      renderExperimentalSettings();
+      return;
+    }
+  }
   options.experimental = { ...options.experimental, [id]: enabled };
   renderExperimentalSettings();
   writeOptions();
+}
+
+// Turning Multiple languages off returns lookups to Japanese (docs/languages.md
+// 16.3), so Settings first shows Japanese, saving the edits made for the
+// language it showed. Resolves with the message to show when it stays on.
+async function showLookupLanguageFirst() {
+  if (!hasProfiles(storedOptionsRecord)) return null;
+  if (describedProfile(JAPANESE_PROFILE_ID) === null) {
+    return "Japanese is not one of your languages, so lookups would have no language. Add Japanese in Advanced"
+      + " → Languages first.";
+  }
+  return chooseEditedProfile(JAPANESE_PROFILE_ID, "turning off Multiple languages");
 }
 
 function renderExperimentalSettings() {
@@ -1326,6 +1359,7 @@ function adoptOptions(value) {
 function handleOptionsChange(change) {
   adoptOptions(change.newValue);
   renderLibraryResetLabel();
+  renderOtherLanguageDictionaries();
 }
 
 function renderSetupResume(value) {
