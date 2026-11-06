@@ -14,8 +14,9 @@
  * menu; Settings → Advanced → Languages adds English and Arabic, each
  * profile imports its fixture dictionary (make-language-fixtures.mjs), Use
  * for lookups makes English active, and the reader looks up an inflected
- * English word, then, after the toolbar switches to Arabic, a word with its
- * article on a right-to-left page. Screenshots of both lookups go to
+ * English word, on a page opened before English was added and on one opened
+ * after, then, after the toolbar switches to Arabic, a word with its article
+ * on a right-to-left page. Screenshots of both lookups go to
  * test/tmp/languages/firefox/.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -39,6 +40,7 @@ const PLANNED = [
   "the toolbar switches the active language to Arabic and the badge names it",
   "an Arabic hover on a right-to-left page finds the word with its article",
   "the Arabic popup is an English left-to-right interface and its trail reads the matched form first",
+  "a page opened while the records had no profiles looks English up once English is added, without a reload",
 ];
 
 const SCREENSHOTS = resolve(HERE, "tmp/languages/firefox");
@@ -85,6 +87,9 @@ async function screenshot(target, name) {
 }
 
 let tab = null;
+// Opened while the records are Japanese-only, so its frame has no language
+// layer until English is added and imports it then (docs/languages.md 5).
+let early = null;
 
 describe("firefox languages", () => {
   step("Firefox loads the Firefox build", async () => {
@@ -110,6 +115,7 @@ describe("firefox languages", () => {
     await startup.evaluate(() => document.getElementById("setup-manual").click());
     await waitFor(async () => (await readStorage(page, ["setupState"])).setupState?.stage === "practice", { timeout: 30_000 });
     await startup.close();
+    early = await openPage(`${origin}/english.html`);
     // Multiple languages first (Advanced → Experimental features), then add a
     // language and import into the language Settings now shows. Settings
     // builds the Languages card once its library has loaded, so each step
@@ -156,6 +162,14 @@ describe("firefox languages", () => {
       && stored.languageSelection?.activeProfileId === "en",
     JSON.stringify({ englishEdited, english, arabicEdited, arabic, profiles: languagesOf(stored.options),
       en: own("en"), ar: own("ar"), selection: stored.languageSelection }));
+  });
+
+  step("an English lookup on a page opened before English was added", async () => {
+    await activate(early);
+    // The second n of "running".
+    const shown = await hoverForPopup(early, "#sample", { index: 10 });
+    check(PLANNED[6], shown?.headword === "run" && shown.plain.includes("to move swiftly on foot"), JSON.stringify(shown));
+    await early.close();
   });
 
   step("an English lookup", async () => {

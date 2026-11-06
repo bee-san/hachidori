@@ -2050,7 +2050,8 @@ GameSentenceMiner ships its own copy. So:
   Advanced → Languages, the switcher and one lookup per script.
 - **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: Multiple
   languages turned on, English and Arabic added in Advanced → Languages, one
-  profile switch and one English and one Arabic lookup.
+  profile switch, an English lookup on a page opened before English was added
+  and on one opened after, and an Arabic lookup.
 - **Accessibility.** The `lang`, `dir` and label changes affect screen-reader
   semantics; the pull request carries the `accessibility` label and the
   screenshots of section 11.7.
