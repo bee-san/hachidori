@@ -45,7 +45,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `audioAutoplay` (false) | Audio | None | P |
 | `anki` (url, apiKey, templates) | Anki | Template fields include reading/pitch; presets are Japanese note types | url, apiKey G; templates P (12) |
 | `smallerAnkiCards` (false) | Anki | Help mentions furigana | G |
-| `experimental` (flags) | Advanced → Experimental | Netflix flag text says Japanese subtitles | G; Netflix uses pack `bcp47` (8.5) |
+| `experimental` (flags) | Advanced → Experimental | Netflix flag text says Japanese subtitles | G; Netflix uses pack `bcp47` (8.5); `multipleLanguages` reveals Advanced → Languages and, off, makes lookups Japanese (16.3) |
 | `popupWidthPx` (560) | Design | None | G (geometry) |
 | `popupHeightPx` (420) | Design | None | G |
 | `popupScalePercent` (100) | Design | None | G |

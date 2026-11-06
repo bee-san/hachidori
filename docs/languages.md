@@ -44,9 +44,13 @@ are recorded in [`docs/decisions/`](decisions/).
 
 ## 1. What users get
 
-- **Languages are added in Settings → Advanced → Languages.** First run sets
-  up Japanese, as today. For another language, Settings → Dictionaries → Add
-  links to the pack's recommended dictionaries, and the user imports the file.
+- **Languages are an experimental feature.** Settings → Advanced →
+  Experimental features → **Multiple languages**, off by default, reveals
+  Settings → Advanced → Languages, where languages are added; turned off,
+  lookups are Japanese again and the languages are kept (section 16.3). First
+  run sets up Japanese, as today. For another language, Settings →
+  Dictionaries → Add links to the pack's recommended dictionaries, and the
+  user imports the file.
 - **Each language is a profile.** A profile holds its dictionaries (which
   ones, their order, their tab groups), deinflection, scanning and text
   options, Anki Templates (note type, fields, deck), pronunciation sources,
@@ -67,9 +71,10 @@ are recorded in [`docs/decisions/`](decisions/).
   knows nothing about it.
 - **Existing users see no change in lookups, popups, mining, backups or stored
   data** until they add a second language. Their settings and dictionaries
-  become the Japanese profile. Outside Settings → Advanced, where they can add
-  a language, they see one new browser command, *Switch to the next
-  language*, which has no suggested key.
+  become the Japanese profile. They see one new switch, Multiple languages in
+  Advanced → Experimental features, and one new command on the browser's
+  shortcuts page, *Switch to the next language*, which has no suggested key
+  and does nothing while the switch is off.
 
 The user interface stays in English.
 
@@ -240,7 +245,9 @@ A new key, written only once the records have profiles, by
 (`SHARED_STATE_KEYS`) and not in backups, so every browser, linked or not, and
 GameSentenceMiner's overlay choose their own language. When it is absent or
 names a profile that does not exist, the active profile is the Japanese
-profile, or the first profile when there is none. Converting back to the
+profile, or the first profile when there is none. So it is, whatever the key
+holds, while Multiple languages is off (section 16.3); the key is kept for when
+it is on again. Converting back to the
 single-profile shape, a restore that yields it, or an unlink whose restored
 records are in it removes the key. Linking captures the browser's own
 selection with its other local records only when the key exists, so a
@@ -315,8 +322,8 @@ classic scripts that set `globalThis.HDLanguages`:
   only when the edited profile's pack declares settings; the Japanese pack
   declares none.
 
-Code that finds no `HDLanguages` treats the installation as Japanese-only (no
-Advanced → Languages card). The single-profile shape
+Code that finds no `HDLanguages` treats the installation as Japanese-only (an
+empty Advanced → Languages). The single-profile shape
 needs neither the registry nor the profile code paths: its projection is
 today's code path, and the Japanese pack has every capability, so nothing is
 masked.
@@ -546,12 +553,14 @@ words are read as the Japanese profile, with every value exactly as stored.
   that no write happens on upgrade.
 
 A Japanese-only user sees two additions, both outside what the suites pin:
-the **Languages** card at the top of Settings → Advanced (16.3), and the
-browser command *Switch to the next language* in Keybinds → Browser shortcuts
-and on the browser's shortcuts page; Settings lists every command the browser
-has, as the browser's page does. The command has no suggested key, so it takes
-no key from pages, and the keybind action list offers it only once the
-records have profiles (16.2). Everything else that appears with a second
+the **Multiple languages** switch in Settings → Advanced → Experimental
+features (16.3), and the browser command *Switch to the next language* on the
+browser's shortcuts page. Keybinds → Browser shortcuts lists it once Multiple
+languages is on, or while it has a shortcut. The command has no suggested key,
+so it takes no key from pages, and the keybind action list offers it only once
+the records have profiles and Multiple languages is on (16.2). With the switch
+on, Advanced gains its **Languages** tab. Everything else that appears with a
+second
 language (the toolbar row, the sidebar's language link, *All languages*
 notes, **Settings shows** with **Use for lookups**, automatic switching,
 *{Language} options*) is rendered at run time only when the records have
@@ -560,7 +569,7 @@ it while it does not apply.
 
 If an existing test pins a detail this design would change for a Japanese-only
 installation, the design changes, not the test. For example, `chrome-e2e`
-pins the nine Settings rail links, so language management is a card of
+pins the nine Settings rail links, so language management is a tab of
 Advanced, not a new rail section; the extension smoke suite pins the welcome
 card's text and action ids, which stay today's (section 16.1).
 
@@ -718,9 +727,9 @@ section 21 lists them.
 A pack's `settings` (engine contract, section 4.7) appear without any
 language-specific code:
 
-- **Where.** Settings → Advanced, after the Languages card: *{Language}
-  options* for `group: "lookup"`, then *{Language} display* for `group:
-  "display"`, each a card of its own (section 16.3). Settings imports
+- **Where.** Settings → Advanced → Languages, after Your languages:
+  *{Language} options* for `group: "lookup"`, then *{Language} display* for
+  `group: "display"`, each a card of its own (section 16.3). Settings imports
   `language-settings.js` only when the edited profile's pack declares
   settings; it renders the rows from the schema, as `experimental-settings.js`
   renders flags, before Settings search builds its index and again when the
@@ -764,8 +773,8 @@ Pinyin / Zhuyin* (display, with a pinyin-to-zhuyin `map` step).
 The content script holds the projection of every profile. For each candidate
 it chooses the profile in effect:
 
-1. With **Switch language automatically** off (the default): the active
-   profile.
+1. With **Switch language automatically** off (the default), or Multiple
+   languages off (section 16.3): the active profile.
 2. With it on: the nearest `lang` attribute of the hovered element, or of the
    field or document it belongs to, is matched against the profiles' packs by
    primary subtag (`ja-JP` → `ja`, `zh-Hant` → `zh`); no match leaves the
@@ -1559,7 +1568,7 @@ The first run is today's, whatever packs the build has: the welcome card, the
 recommended Japanese dictionaries, the detection of Japanese Anki note types
 and the practice lookup. Every stage of it is Japanese, so the welcome card
 asks for no language; a language is added afterwards in Settings → Advanced →
-Languages (section 16.3).
+Languages, once Multiple languages is on (section 16.3).
 
 The startup page reads the active profile. When setup is resumed (Settings'
 **Resume setup**) while another language is used for lookups, the dictionary
@@ -1572,6 +1581,9 @@ do not change.
 
 ### 16.2 Toolbar, shortcut and badge
 
+Each of these needs Multiple languages on (section 16.3); while it is off the
+toolbar and badge are today's and the command and keybind do nothing.
+
 - **Toolbar.** With two or more profiles, a row above today's controls has one
   button per profile (the language's name, and its native name when that
   differs) in a radio group; one click activates it. With one profile the
@@ -1582,7 +1594,8 @@ do not change.
   (**Switch to the next language**, `web` scope) with no suggested key, like
   `openSearchPageCurrentTab`; users assign one on Chrome's shortcuts page.
   Keybinds' action list offers it once the records have profiles, and a
-  stored bind that names it keeps showing it. It is routed to the active
+  stored bind that names it keeps showing it; Keybinds → Browser shortcuts
+  lists the command while Multiple languages is on or it has a shortcut. It is routed to the active
   tab's reader like the other popup actions, and the
   reader asks the worker to activate the next profile. Its id is not Yomitan's
   `profileNext`, which existing tests pin as an action Hachidori drops. On
@@ -1603,12 +1616,38 @@ frame, gains nothing it could not do from the toolbar.
 
 ### 16.3 Settings
 
-Everything about languages is in one card, **Languages**, the first card of
-Settings → Advanced, built like Advanced's other cards. It is not an
-experimental flag: a flag that is off while profiles exist would leave
-lookups in a language Settings cannot show.
+Everything about languages is in one tab of Settings → Advanced,
+**Languages**, which **Multiple languages** in Advanced → Experimental
+features reveals. Like every experimental feature it is off by default, and
+like every one that names a section (`section: "languages"` in
+`EXPERIMENTAL_FEATURES`), while it is off the tab, its section picker option
+and its settings in Settings search are hidden and `#languages` leads to
+Advanced. Advanced then has no tab row, as today.
 
-- **Settings shows**, with two or more profiles, at the top of the card: the
+**Off means Japanese**, without erasing anything. The active profile is the
+Japanese profile whatever `languageSelection` holds (section 4.4), automatic
+switching is off (8.1), the toolbar's language row and badge are today's,
+Switch to the next language does nothing (16.2), and Settings shows Japanese
+with nothing about languages outside the hidden tab: no sidebar link, *All
+languages* notes or reset hints (16.4), Dictionaries in your other languages
+or Move to {Language}. The profiles, their dictionaries and personal data, and
+this browser's `languageSelection` are kept, so turning it on again brings
+back the language lookups used. Records with profiles keep naming the
+profile in requests (5.4), so turning it off writes nothing but the flag. The
+flag is one of the shared settings (16.4), so linked browsers and backups
+carry it with the options.
+
+- **Turning it off** first makes Settings show Japanese, saving the edits
+  made for the language it showed or asking about the explicit ones, as
+  Settings shows does (5.3); the switch stays on and says why when that
+  cannot happen, or when Japanese has no profile, since lookups would have no
+  language. A page that shows another language when Multiple languages is
+  turned off in another page moves to Japanese and says so, as when its
+  language is removed elsewhere.
+
+The tab's first card, **Your languages**, holds:
+
+- **Settings shows**, with two or more profiles, first: the
   menu that chooses the edited profile (section 5.3), with **Use for lookups**
   beside it, which activates the edited profile. While the edited profile is
   the active one the button reads **Used for lookups**, pressed, and keeps
@@ -1630,24 +1669,27 @@ lookups in a language Settings cannot show.
   too (section 17.6). A client whose
   host's `hello` lacks the capability (an older build, or one without a second
   language) is told "Add {Language} on {host} first, in Settings → Advanced →
-  Languages. If its Advanced has no Languages card, update it there."; a client
+  Languages, which Multiple languages in Advanced → Experimental features
+  turns on. If it has no Multiple languages switch, update it there."; a client
   refused at opt-in,
   "Update Hachidori in this browser to use {Language} from {host}.", naming
   the languages the refusal names; and the host refuses a language it has no
   pack for with "The linked Hachidori does not have {Language}. Update it and
   try again."
-- **{Language} options** and **{Language} display**, the edited profile's
-  pack settings (section 7.5), follow the card as cards of their own. While
-  the Design theme does not declare `presentation`, *{Language} display*
-  shows only "The {theme} theme does not use these settings. Choose another
-  theme in Design." (section 11.4), and its settings are out of search.
+
+The edited profile's pack settings (section 7.5), **{Language} options** and
+**{Language} display**, follow it as cards of their own in the tab. While the
+Design theme does not declare `presentation`, *{Language} display* shows only
+"The {theme} theme does not use these settings. Choose another theme in
+Design." (section 11.4), and its settings are out of search.
 
 The card's status line is one of the page's section statuses: while another
 section is open, the rail's Advanced says what needs attention, such as the
 edited profile's removal in another page (section 5.3).
 
-Outside Advanced a Japanese-only installation sees nothing new, and the
-sidebar is today's. With two or more profiles the sidebar has one link under
+Outside Advanced → Languages a Japanese-only installation sees nothing new,
+and the sidebar is today's. With two or more profiles and Multiple languages
+on, the sidebar has one link under
 **Resume setup**, styled as it is, that names the language Settings shows
 ("Settings shows English") and leads to Settings shows; in the narrow layout
 it sits in the left column under Resume setup. The other sections keep only
@@ -1660,7 +1702,8 @@ Audio its voices and Keybinds its action (section 16.2).
 
 ### 16.4 Which settings are per language
 
-With two or more profiles, Settings marks shared settings *All languages*:
+With two or more profiles and Multiple languages on, Settings marks shared
+settings *All languages*:
 
 - under the legend of fieldsets whose settings are all shared: Reading →
   Activation, Popup closing and Search page; Advanced → Memory, Search
@@ -1938,9 +1981,10 @@ GameSentenceMiner ships its own copy. So:
   second part of separated words: *five-minute* → *minute*, *mother’s* →
   *mother*, *l’homme* → *homme*, and Ukrainian *м’ясо* kept whole;
   `language-settings.test.mjs` (Settings → Advanced → Languages: nothing
-  outside Advanced on a Japanese-only page, adding and removing a language,
-  Settings shows, automatic switching, the sidebar link and the keybind
-  action) and `startup-languages.test.mjs` (a welcome card without a language
+  outside it on a Japanese-only page, the tab only once Multiple languages
+  is on, Japanese while it is off, turning it off and its refusals, adding and
+  removing a language, Settings shows, automatic switching, the sidebar link
+  and the keybind action) and `startup-languages.test.mjs` (a welcome card without a language
   menu, and another language's dictionary stage on Resume setup).
 - **New, engine smoke:** `node-smoke-languages.mjs` with English and Arabic
   fixture dictionaries built by `make-language-fixtures.mjs` (with
@@ -1951,7 +1995,8 @@ GameSentenceMiner ships its own copy. So:
 - **New, real Chrome:** `chrome-theme-languages.mjs` (section 11.7) and
   `chrome-languages.mjs`, each with its own fixed plan. The second covers the
   user flows: a first run that stays Japanese in a build with other packs;
-  add English and Arabic in Settings → Advanced → Languages, choose one in
+  turn on Multiple languages and add English and Arabic in Settings →
+  Advanced → Languages, choose one in
   Settings shows and activate it with Use for lookups; import one dictionary
   per language; hover inflected words on sample
   pages (spaces, CJK, right to left); add an Anki note through the fake
@@ -1959,7 +2004,8 @@ GameSentenceMiner ships its own copy. So:
   right-to-left card template for a monolingual Arabic entry and an
   Arabic-English entry with an Arabic example: every list number drawn inside
   the field and every paragraph in its own order; switch profiles from the toolbar, by the
-  shortcut and automatically by `lang`; edit one profile in Settings while
+  shortcut and automatically by `lang`; turn Multiple languages off (lookups,
+  toolbar and badge in Japanese, the languages kept) and on again; edit one profile in Settings while
   another is active; hidden settings per profile; backup and restore with
   profiles, an automatic snapshot with profiles, and a version 4 backup
   restored by the current release; a linked older client and an opted-in
@@ -1988,9 +2034,9 @@ GameSentenceMiner ships its own copy. So:
   profile-aware client show the host's profiles right after a new link and
   after the host gains profiles. It saves screenshots of the welcome card,
   Advanced → Languages, the switcher and one lookup per script.
-- **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: English and
-  Arabic added in Advanced → Languages, one profile switch and one English and
-  one Arabic lookup.
+- **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: Multiple
+  languages turned on, English and Arabic added in Advanced → Languages, one
+  profile switch and one English and one Arabic lookup.
 - **Accessibility.** The `lang`, `dir` and label changes affect screen-reader
   semantics; the pull request carries the `accessibility` label and the
   screenshots of section 11.7.
@@ -2035,7 +2081,7 @@ needs no code for it:
    and the language browser suites.
 
 The language then appears in Settings → Advanced → Languages → **Add a
-language** and in every theme.
+language** (with Multiple languages on) and in every theme.
 
 ## 21. Known limits
 
