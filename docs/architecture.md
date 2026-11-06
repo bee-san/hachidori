@@ -955,7 +955,7 @@ has Add and Reset keybinds to defaults.
 Yomitan's native browser shortcuts are manifest `commands` for the features
 Hachidori has:
 
-- Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
+- Turn lookups on or off, suggested as Alt+Delete like Yomitan's
   Toggle text scanning.
 - Open Hachidori settings, unassigned.
 - Yomitan's three ways to open the [search page](#search-page): in a new tab,

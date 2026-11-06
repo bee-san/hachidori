@@ -3,7 +3,7 @@
   "name": "Hachidori",
   "short_name": "Hachidori",
   "version": "0.4.0",
-  "description": "Study Japanese vocabulary: look up words on any page and build Anki cards, optionally capturing on-screen context.",
+  "description": "Study Japanese and other languages: look up words on any page and build Anki cards, optionally capturing on-screen context.",
   "minimum_chrome_version": "128",
   "icons": {
     "16": "icons/hachidori-16.png",
@@ -33,7 +33,7 @@
       "suggested_key": {
         "default": "Alt+Delete"
       },
-      "description": "Turn Japanese lookups on or off"
+      "description": "Turn lookups on or off"
     },
     "openSettingsPage": {
       "description": "Open Hachidori settings"
