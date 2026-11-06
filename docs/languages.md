@@ -840,6 +840,15 @@ the Japanese pack carries `word-highlights.js:39-40` exactly. The
 - **Netflix (experimental)**: the subtitle track filter takes the pack's
   `bcp47` primary subtag instead of `ja`, and lines are joined with the pack's
   `lineJoiner`.
+- **YouTube (experimental)**: there is no track filter. The reader keeps the
+  track YouTube's player shows, in whatever language the viewer chose (typed,
+  auto-generated or translated), and lines are joined with the pack's
+  `lineJoiner`. With automatic switching on (8.1, rule 2), a lookup in a
+  caption takes the profile of that track's language, matched by primary
+  subtag: YouTube marks an auto-generated track's caption window with its
+  language but a typed track's with none, and the page's `lang` is YouTube's
+  interface language. No match leaves the active profile, which is Japanese by
+  default.
 - **Google Docs (experimental)**: the imposter text gains the hovered run's
   direction, which it lacks today.
 - **Text fields**: the imposter already copies the field's computed style,

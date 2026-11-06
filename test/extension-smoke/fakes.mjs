@@ -34,6 +34,8 @@ import {
 } from "../../extension/local-audio-setup.js";
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
 import { NETFLIX_SCRIPTS } from "../../extension/netflix.js";
+import { YOUTUBE_SCRIPTS } from "../../extension/youtube.js";
+import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
@@ -702,10 +704,12 @@ function loadClassicScript(file, sandbox) {
 }
 
 const BACKGROUND_MODULES = ["background-core.js", "background-requests.js", "background-anki.js",
-  "background-backup.js", "background-updates.js", "background-sharing.js", "background-netflix.js", "background.js"];
+  "background-backup.js", "background-updates.js", "background-sharing.js", "background-video.js", "background-netflix.js",
+  "background-youtube.js", "background.js"];
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
-  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview });
+  Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview,
+    captureYouTubeFrame });
   sandbox.createAnkiWorkerService ??= createAnkiWorkerService;
   const anki = readFileSync(resolve(EXTENSION, "anki.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
@@ -786,7 +790,9 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
     applyGoogleDocsFlag: sandbox.applyGoogleDocsFlag ?? (() => Promise.resolve()),
     applyNetflixFlag: sandbox.applyNetflixFlag ?? (() => Promise.resolve()),
+    applyYouTubeFlag: sandbox.applyYouTubeFlag ?? (() => Promise.resolve()),
     NETFLIX_SCRIPTS,
+    YOUTUBE_SCRIPTS,
   });
   const context = createContext(sandbox);
   context.globalThis = context;

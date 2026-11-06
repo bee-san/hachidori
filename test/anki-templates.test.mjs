@@ -89,10 +89,12 @@ test("marker validation retains unknown tokens as errors and recognizes nonempty
   assert.equal(source, "literal {unknown} {single-glossary-} {screenshot} {unknown}");
   assert.deepEqual(ankiTemplateErrors("{Sentence-Audio}"), []);
   assert.equal(ANKI_TEMPLATE_MARKER_OPTIONS.find(option => option.marker === "sentence-audio")?.description,
-    "Netflix subtitle line's audio (experimental)");
+    "Netflix or YouTube subtitle line's audio (experimental)");
   const gifOption = ANKI_TEMPLATE_MARKER_OPTIONS.find(option => option.marker === "gif");
-  assert.equal(gifOption?.description, "Netflix subtitle line's animated GIF, otherwise the page screenshot (experimental)");
-  assert.equal(gifOption?.experimental, "netflixMining", "the gif marker is a Netflix mining experimental marker");
+  assert.equal(gifOption?.description,
+    "Netflix or YouTube subtitle line's animated GIF, otherwise the page screenshot (experimental)");
+  assert.deepEqual(gifOption?.experimental, ["netflixMining", "youtubeMining"],
+    "the gif marker is listed while Netflix or YouTube mining is on");
   assert.deepEqual(ankiTemplateErrors("{gif}"), [], "{gif} is a known marker");
   assert.deepEqual(ankiTemplateErrors("text {} and an unmatched { brace"), []);
 });

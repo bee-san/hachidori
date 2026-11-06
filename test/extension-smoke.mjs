@@ -26,6 +26,7 @@ import "./extension-smoke/sharing.mjs";
 import "./extension-smoke/anki.mjs";
 import "./extension-smoke/backup.mjs";
 import "./extension-smoke/netflix.mjs";
+import "./extension-smoke/youtube.mjs";
 import "./extension-smoke/updates.mjs";
 import "./extension-smoke/lookup-stats.mjs";
 import "./extension-smoke/audio.mjs";

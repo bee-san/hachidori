@@ -21,7 +21,7 @@ import { BlobReader, Uint8ArrayWriter, ZipReader } from "../../extension/vendor/
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const CACHE = process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache");
 const [RELEASE_VERSION, RELEASE_COMMIT, RELEASE_SHA256] = (process.env.HACHIDORI_BACKUP_RELEASE
-  || "0.3.2 4745397e8188 39af65baa6a823bb1cd83adb12d3239651b9b4930ded1cceb1fcff1468feaaf9").split(/\s+/u);
+  || "0.4.0 b6e2328f8d63 7bb3d895ddc1e46390274f80c6a05c946312d976ecc4d9b697a17c99317f497d").split(/\s+/u);
 const RELEASE_ASSET = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-chrome.zip`;
 
 // A pack only one build has: the English fixture pack under another code.

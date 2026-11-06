@@ -229,7 +229,8 @@ async function main() {
         result = await warmService.view(request);
       }
       const duration = elapsedMs(started);
-      assert.deepEqual(result.noteIds, fixture.duplicate.noteIds);
+      // Native model-scope preflight discovers IDs only when View is clicked.
+      assert.deepEqual(result.noteIds, path === "warm" ? fixture.duplicate.noteIds : []);
       assert.equal(result.state, "duplicate");
       if (iteration >= options.warmups) samples[path].push(duration);
     }
