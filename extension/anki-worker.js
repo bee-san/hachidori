@@ -250,12 +250,11 @@ export function createAnkiWorkerService({
     }
     try {
       const media = new Map(resources.media.map(item => [item.filename, item]));
-      for (const item of media.values()) {
-        if (Object.values(note.fields).some(value => value.includes(item.filename))) {
-          files.push({ filename: item.filename, data: await dictionaryMedia(item, request.generation),
-            type: "picture", kind: "dictionary image", required: true });
-        }
-      }
+      const referenced = [...media.values()].filter(item => Object.values(note.fields).some(value => value.includes(item.filename)));
+      files.push(...await Promise.all(referenced.map(async item => ({
+        filename: item.filename, data: await dictionaryMedia(item, request.generation),
+        type: "picture", kind: "dictionary image", required: true,
+      }))));
       await currentGeneration(request);
       warnings.push(...await attachAnkiAddMedia(note, files, invoke));
     } catch (error) {

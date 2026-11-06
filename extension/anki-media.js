@@ -60,7 +60,8 @@ export async function attachAnkiAddMedia(note, files, invoke) {
     if (!fields.length) continue;
     if (!file.required && fields.every(field => note.fields[field] === reference)) {
       for (const field of fields) note.fields[field] = "";
-      (note[file.type] ??= []).push({ filename: file.filename, data: file.data, fields, deleteExisting: false });
+      note[file.type] ??= [];
+      note[file.type].push({ filename: file.filename, data: file.data, fields, deleteExisting: false });
     } else uploads.push(file);
   }
   if (!uploads.length) return warnings;

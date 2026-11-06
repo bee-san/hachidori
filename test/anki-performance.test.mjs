@@ -2,8 +2,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ankiRequestFixture } from "./anki-request-fixture.mjs";
-import { AnkiConnectError } from "./anki-connect-fake.mjs";
+import { AnkiConnectError, answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { AnkiTransportError } from "../extension/anki.js";
+
+test("native media in the Anki fake keeps the parent request's authentication", async () => {
+  const calls = [];
+  const reply = await answerAnkiConnect({ version: 6, action: "addNote", key: "fixture-key", params: { note: {
+    fields: { Front: "猫", Picture: "" }, picture: [{ filename: "scene.jpg", data: "YQ==", fields: ["Picture"] }],
+  } } }, (action, params, request) => {
+    assert.equal(request?.key, "fixture-key");
+    calls.push(action);
+    if (action === "storeMediaFile") return params.filename;
+    assert.equal(params.note.fields.Picture, '<img src="scene.jpg">');
+    return 1;
+  });
+  assert.deepEqual(reply, { result: 1, error: null });
+  assert.deepEqual(calls, ["storeMediaFile", "addNote"]);
+});
 
 test("normal mining uses one lightweight duplicate request and one add with native media", async t => {
   for (const audio of [false, true]) for (const screenshot of [false, true]) {
