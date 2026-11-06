@@ -71,9 +71,11 @@ function keptAttributes(node) {
 }
 
 // The output tag for an element, or null to unwrap it. An element that carries
-// a kept attribute is kept, so a descendant can rely on its `lang`.
+// a kept attribute is kept, so a descendant can rely on its `lang`. A list or
+// list item the cascade shows inline (Compact popup and Anki's glossary lists)
+// is inline like any other element.
 function outputTag(name, display, kept) {
-  if (SAME.has(name)) return name;
+  if (SAME.has(name) && !(LISTS.has(name) && INLINE.test(display))) return name;
   if (UNWRAP.has(name)) return kept.length ? name : null;
   if (INLINE.test(display)) return kept.length ? "span" : null;
   return name === "p" ? "p" : "div";

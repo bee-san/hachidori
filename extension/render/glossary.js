@@ -2230,7 +2230,7 @@
       return;
     }
     // Yomitan's Anki glossary-single template emits one element bare and
-    // several as a list.
+    // several as a list, or joined by " | " under Compact popup and Anki.
     if (items.length === 0) {
       return;
     }
@@ -2240,8 +2240,11 @@
     if (items.some((item) => isRecord(item) && item.type === "structured-content")) {
       parent.classList.add("structured-content");
     }
-    if (items.length === 1) {
-      appendStructuredValue(documentRef, parent, items[0], state, 0, ["glossary", 0]);
+    if (items.length === 1 || options.compactGlossaries === true) {
+      items.forEach((item, index) => {
+        if (index > 0) parent.append(" | ");
+        appendStructuredValue(documentRef, parent, item, state, 0, ["glossary", index]);
+      });
       markDirections(parent, "40px");
       return;
     }
