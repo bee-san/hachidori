@@ -54,8 +54,11 @@ import {
   requestProfileId, profileLanguages, assertPersonalPlacement, assertOrdinaryPersonalTransition,
   assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
+  DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, LANGUAGE_CODE,
 } from "./background-core.js";
-import { trackAnkiOperation, readAnkiOptions, readAnkiProfile, sendAnkiRequest, answerAnkiRequest } from "./background-anki.js";
+import {
+  trackAnkiOperation, readAnkiOptions, readAnkiOptionsAndProfile, readAnkiProfile, sendAnkiRequest, answerAnkiRequest,
+} from "./background-anki.js";
 import {
   getBackupDownloads, assertBackupEngineSender, readBackupPayload, automaticBackupSummary, relayEngineRequest,
 } from "./background-backup.js";
@@ -183,7 +186,7 @@ async function requestLanguage(message, store = chrome.storage.local) {
 // page names its profile, and a request that names neither means Japanese.
 function customRequestLanguage(message, storedOptions) {
   if (message.language !== undefined) {
-    if (typeof message.language !== "string" || !/^[a-z]{2,3}$/u.test(message.language)) {
+    if (typeof message.language !== "string" || !LANGUAGE_CODE.test(message.language)) {
       throw new TypeError("the custom dictionary request named an invalid language");
     }
     return message.language;
@@ -194,7 +197,7 @@ function customRequestLanguage(message, storedOptions) {
 
 // A schema-2 state body as a stored state, so it can be projected.
 function profileStateOf(body, revision) {
-  return { schemaVersion: 2, revision, dictionaries: body.dictionaries, profiles: body.profiles };
+  return { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, revision, dictionaries: body.dictionaries, profiles: body.profiles };
 }
 
 // The engine's commit of a whole schema-2 record (docs/languages.md 5.2):
@@ -264,7 +267,7 @@ function removedProfileOptions(message, storedOptions, language) {
 function profileCasLanguage(message, storedOptions) {
   const named = message.profileId === undefined ? null : profileLanguages(storedOptions).get(message.profileId);
   const language = message.action === "remove" && named !== undefined && named !== null ? named : message.language;
-  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  if (typeof language !== "string" || !LANGUAGE_CODE.test(language)) throw new TypeError("the language request named no language");
   return language;
 }
 
@@ -1140,6 +1143,7 @@ function getAnkiMining() {
     ankiMining = createAnkiWorkerService({ gateway: ankiGateway,
       readOptions: readAnkiOptions,
       readProfile: readAnkiProfile,
+      readOptionsAndProfile: readAnkiOptionsAndProfile,
       duplicateIndex: getAnkiDuplicateIndex(),
       // The dictionaries of the profile a note is for (docs/languages.md 5.4).
       readDictionaries: async profileId => {

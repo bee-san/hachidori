@@ -1418,7 +1418,7 @@
     JAPANESE_PROFILE_ID, GLOBAL_OPTION_KEYS, PROFILE_OPTION_KEYS, OPTION_REQUIREMENTS, PROFILE_MESSAGES,
     hasProfiles, profiles, projectOptions, profileDescriptor, applyOptionsPatch, applyPackSettingsPatch,
     hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
-    languageDescriptor, languageCapability, optionRequirementMet, packSettingValue,
+    languageDescriptor, optionRequirementMet, packSettingValue,
     LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId, languagesEnabled,
   };
 }());

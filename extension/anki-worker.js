@@ -47,7 +47,7 @@ export function profileTemplateKey(profileId, templateId) {
   return `${PROFILE_TEMPLATE_SEPARATOR}${profileId}${PROFILE_TEMPLATE_SEPARATOR}${templateId ?? ""}`;
 }
 
-export function profileTemplateTarget(key) {
+function profileTemplateTarget(key) {
   if (typeof key !== "string" || !key.startsWith(PROFILE_TEMPLATE_SEPARATOR)) return { profileId: undefined, templateId: key };
   const [, profileId, templateId] = key.split(PROFILE_TEMPLATE_SEPARATOR);
   return { profileId, templateId: templateId === "" ? undefined : templateId };
@@ -63,8 +63,10 @@ export function createAnkiWorkerService({
   gateway,
   readOptions,
   // `readProfile(profileId)` is the profile's `{ language, packSettings }` once
-  // the records have profiles, else null (docs/languages.md 12).
+  // the records have profiles, else null (docs/languages.md 12);
+  // `readOptionsAndProfile` gives both from one read where it can.
   readProfile = async () => null,
+  readOptionsAndProfile = async profileId => Promise.all([readOptions(profileId), readProfile(profileId)]),
   readDictionaries,
   engine,
   offscreen,
@@ -289,7 +291,7 @@ export function createAnkiWorkerService({
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
       const { profileId, templateId } = profileTemplateTarget(key);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
       return {
@@ -554,7 +556,7 @@ export function createAnkiWorkerService({
     screenshot, discardScreenshot, sentenceAudio, gifImage, async maturity(request) {
     try {
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       return { mature: options.definitionBlurAnkiMature === true
         && await duplicateIndex.has(inLanguage(options.anki, profile), request?.term?.expression) };
     } catch {
@@ -571,7 +573,7 @@ export function createAnkiWorkerService({
         throw new Error("Word status requires an array of headwords.");
       }
       const profileId = requestProfile(request);
-      const [options, profile] = await Promise.all([readOptions(profileId), readProfile(profileId)]);
+      const [options, profile] = await readOptionsAndProfile(profileId);
       return duplicateIndex.statuses(inLanguage(options.anki, profile), headwords);
     } };
 }

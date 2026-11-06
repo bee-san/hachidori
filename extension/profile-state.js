@@ -19,7 +19,7 @@ const {
 
 export const DICTIONARY_STATE_PROFILES_SCHEMA = 2;
 
-function plainObject(value) {
+export function plainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 

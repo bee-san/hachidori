@@ -37,7 +37,7 @@ export function withoutLanguages(record) {
   return japanese;
 }
 
-export function japaneseOptions(options) {
+function japaneseOptions(options) {
   const { hasProfiles, projectStoredOptions } = globalThis.HDReaderOptions;
   return hasProfiles(options) ? { ...projectStoredOptions(options), revision: revisionOf(options) } : options;
 }

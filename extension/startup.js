@@ -25,7 +25,9 @@ import { captureDebugLog, captureDocumentActions, openDebugLogStore, recordUserE
 import { canDiscoverSharingHost } from "./sharing-protocol.js";
 import { findLocalAudioSource } from "./local-audio-source.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
-import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
+import {
+  RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue, packDictionaryItem, packDictionaryLinks,
+} from "./recommended-dictionaries.js";
 import { loadReaderScripts } from "./reader-page.js";
 import { SETUP_STATE_KEY, SETUP_STAGES, normaliseSetupState } from "./setup-state.js";
 import { createPracticeView, practiceReadiness } from "./startup-practice.js";
@@ -480,21 +482,7 @@ function languageDictionariesView() {
   list.className = "recommended-dictionary-list";
   list.id = "setup-language-recommendations";
   void packFile(language).then(pack => {
-    const links = (Array.isArray(pack?.host?.recommendedDictionaries) ? pack.host.recommendedDictionaries : [])
-      .filter(entry => typeof entry?.name === "string" && String(entry?.url ?? "").startsWith("https://"));
-    list.replaceChildren(...links.map(entry => {
-      const item = document.createElement("li");
-      const link = document.createElement("a");
-      link.className = "recommended-dictionary-link";
-      link.href = entry.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = entry.name;
-      const description = document.createElement("span");
-      description.textContent = [entry.description, entry.licence].filter(value => typeof value === "string" && value).join(" · ");
-      item.append(link, description);
-      return item;
-    }));
+    list.replaceChildren(...packDictionaryLinks(pack).map(entry => packDictionaryItem(document, entry)));
   });
   const picker = document.createElement("label");
   picker.className = "file-button";

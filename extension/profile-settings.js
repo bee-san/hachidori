@@ -11,7 +11,7 @@
 // page.
 
 import { describeErrorOrJson } from "./error-text.js";
-import { customDictionaryDocumentFor, parseCustomDictionary, personalDictionaryIdentity } from "./custom-dictionary.js";
+import { customDictionaryDocumentFor, languageEntryCount } from "./custom-dictionary.js";
 import { heldLanguages } from "./profile-state.js";
 
 const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, languagesEnabled,
@@ -35,8 +35,7 @@ function countLabel(count, singular, plural) {
 // A language's personal dictionary: its document's revision and entry count.
 function personalEntries(records, language) {
   const document = customDictionaryDocumentFor(records.customDictionarySource, language);
-  const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
-  return { revision: document.revision, count: parseCustomDictionary(document.text, { readingRequired }).entries.length };
+  return { revision: document.revision, count: languageEntryCount(document.text, language) };
 }
 
 function replyError(reply, fallback) {
