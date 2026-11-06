@@ -399,25 +399,24 @@ function reportEngineProgress(progress) {
   }
 }
 
-function startLocalEngine() {
-  return Promise.all([
+async function startLocalEngine() {
+  const [service, module] = await Promise.all([
     import("./engine-service.js"),
     import("./vendor/hoshidicts.mjs"),
-  ]).then(([service, module]) => {
-    service.configureEngineService(
-      (message) => chrome.runtime.sendMessage(message),
-      {
-        createHoshidicts: module.default,
-        storageBackend: "idbfs",
-        lowRam: true,
-        reportProgress: reportEngineProgress,
-      },
-    );
-    localEngine = service;
-    void Promise.resolve(service.startEngine()).then(() => {
-      engineStarted = true;
-      suspendLinkedEngine();
-    });
+  ]);
+  service.configureEngineService(
+    (message) => chrome.runtime.sendMessage(message),
+    {
+      createHoshidicts: module.default,
+      storageBackend: "idbfs",
+      lowRam: true,
+      reportProgress: reportEngineProgress,
+    },
+  );
+  localEngine = service;
+  void Promise.resolve(service.startEngine()).then(() => {
+    engineStarted = true;
+    suspendLinkedEngine();
   });
 }
 
