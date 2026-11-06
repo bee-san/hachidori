@@ -206,11 +206,13 @@
   const READER_PAGE = location.protocol === EXTENSION_PROTOCOL;
 
   // The language layer (docs/languages.md 5): the registry's copy for content
-  // scripts and the display transforms. A frame imports them the first time
-  // its records have profiles, so a Japanese-only frame never parses them.
-  // Until they have loaded the reader adopts nothing: the storage delivery
-  // that brought the profiles and every later one wait, in order, so profiles
-  // are always read with their descriptors.
+  // scripts and the display transforms, which a Japanese-only frame never
+  // parses. While the records have profiles the worker registers both beside
+  // these scripts (language-scripts.js); a frame without them (open before
+  // the records gained profiles, or a reader page) imports them the first time
+  // its records have profiles. Until they have loaded the reader adopts
+  // nothing: the storage delivery that brought the profiles and every later
+  // one wait, in order, so profiles are always read with their descriptors.
   const LANGUAGE_LAYER = ["vendor/languages/registry-reader.js", "language-text.js"];
   let languageLayer = null;
   let languageLayerLoaded = false;
@@ -225,9 +227,12 @@
   }
 
   // Runs `adopt` now, or after the language layer while it loads or when
-  // `storedOptions` is the first record with profiles.
+  // `storedOptions` is the first record with profiles in a frame without it.
   function afterLanguageLayer(storedOptions, adopt) {
-    if (languageLayer === null && globalThis.HDReaderOptions.hasProfiles(storedOptions)) languageLayer = loadLanguageLayer();
+    if (languageLayer === null && globalThis.HDReaderOptions.hasProfiles(storedOptions)
+        && (globalThis.HDLanguages === undefined || globalThis.HDLanguageText === undefined)) {
+      languageLayer = loadLanguageLayer();
+    }
     if (languageLayer === null || languageLayerLoaded) adopt();
     else void languageLayer.then(adopt);
   }

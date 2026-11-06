@@ -296,14 +296,18 @@ classic scripts that set `globalThis.HDLanguages`:
   modules (Settings loads `reader-options.js` with a tag too; startup and
   toolbar import it in their modules); the jsdom harnesses run pages with
   `runScripts: "outside-only"`, so the tag is inert there;
-- `content.js` imports `registry-reader.js` and `language-text.js`, which the
-  manifest lists as web-accessible rather than as content scripts, into its
-  frame the first time the records have profiles, so a Japanese-only frame
-  parses neither. Until both have loaded the reader adopts nothing: the
-  storage delivery that brought the profiles and every later one wait, in
-  order. `registry-reader.js` holds only the fields the reader uses, within a
-  budget of 64 KB for every pack together, because every frame of every page
-  parses it once the records have profiles;
+- content scripts get `registry-reader.js` and `language-text.js` only while
+  the records have profiles, so a Japanese-only frame parses neither. The
+  service worker registers both beside the manifest's content scripts for
+  every frame (`language-scripts.js`) while the records have profiles and
+  removes them when they have none. A frame without them, one that was open
+  when the records gained profiles or a startup or search page, imports both
+  (the manifest lists them as web-accessible) the first time its records have
+  profiles; until they have loaded the reader adopts nothing, and the storage
+  delivery that brought the profiles and every later one wait, in order.
+  `registry-reader.js` holds only the fields the reader uses, within a budget
+  of 64 KB for every pack together, because every frame of every page parses
+  it once the records have profiles;
 - the service worker imports `registry.js` statically (an MV3 service worker
   cannot import on demand). The engine worker imports `registry.js`,
   `reader-options.js` and `profile-state.js` with dynamic `import()` the first

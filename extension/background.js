@@ -46,6 +46,7 @@ import {
 } from "./setup-state.js";
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
+import { applyLanguageScripts } from "./language-scripts.js";
 import { applyNetflixFlag } from "./netflix.js";
 import { applyYouTubeFlag } from "./youtube.js";
 import { openSearchPage } from "./search-window.js";
@@ -178,6 +179,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
   void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.youtubeMining);
+  void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(changes[OPTIONS_KEY].newValue));
   const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
   if (lowMemoryMode === previous.lowMemoryMode && dictionaryEntryStorage === previous.dictionaryEntryStorage
@@ -620,6 +622,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
   void applyYouTubeFlag(chrome, options.experimental.youtubeMining);
+  void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY]));
 });
 // Firefox grants userScripts only when Settings asks for it, so the saved code
 // applies once that grant arrives.
