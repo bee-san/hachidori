@@ -4,14 +4,14 @@ This benchmark compares the two service-level paths that make the same known
 duplicate ready for **View in Anki**:
 
 1. An eligible canonical-index miss, followed by the popup's normal status and
-   preflight fallback. The scoped live lookup repairs the positive row and
-   returns the exact matching note IDs.
-2. A warm cache-only `view()` hit that returns those same IDs without discovery,
+   preflight fallback. Native model-scope checking confirms the duplicate;
+   exact note IDs are discovered later when View is clicked.
+2. A warm cache-only `view()` hit that returns the primed IDs without discovery,
    field rendering or an Anki request.
 
 Fixture creation, warm-index priming, complete refreshes, browser messaging and
 DOM rendering are outside the measured interval. The live path includes the
-status discovery and positive repair that a popup miss actually performs. Each
+status discovery and native duplicate check that a popup miss performs. Each
 live sample uses a fresh empty in-memory canonical index; runs alternate path
 order to reduce ordering bias.
 
@@ -32,8 +32,8 @@ node benchmark/anki-duplicate-index.mjs \
 
 The driver refuses the standard AnkiConnect port `8765`, verifies
 `getMediaDirPath` against the expected isolated profile, creates a dedicated
-note type/deck if needed, and checks that both measured paths return identical
-note IDs. The live path calls the production mining service's cache-only
+note type/deck if needed, and checks that both measured paths report the
+duplicate and the warm path returns the primed note IDs. The live path calls the production mining service's cache-only
 `view()`, `status()` and `preflight()` sequence. The warm path calls the same
 service's `view()` against a primed production `createAnkiDuplicateIndex`.
 
