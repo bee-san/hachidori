@@ -315,6 +315,7 @@ function getApiHost() {
     resolveProfile: apiProfile,
     readProfile: readAnkiProfile,
     readSmallerAnkiCards: async () => (await readAnkiOptions()).smallerAnkiCards,
+    readCompactGlossaries: async () => (await readAnkiOptions()).glossaryLayoutMode === "compact-popup-anki",
   });
   return apiHost;
 }

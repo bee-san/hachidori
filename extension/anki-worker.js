@@ -138,6 +138,7 @@ export function createAnkiWorkerService({
     const segments = await sentenceSegments(request, templates, profile);
     return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
       templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true,
+      compactGlossaries: resources.compactGlossaries === true,
       // The note builder writes the profile's language (docs/languages.md 12).
       ...(profile === null ? {} : { profile }) });
   };
@@ -295,9 +296,10 @@ export function createAnkiWorkerService({
       return {
         ...inLanguage(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
-        // Part of the checked configuration, so toggling Smaller Anki cards
-        // between a preflight and Add refuses the stale Add.
+        // Part of the checked configuration, so toggling Smaller Anki cards or
+        // Compact popup and Anki between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
+        compactGlossaries: options.glossaryLayoutMode === "compact-popup-anki",
         // Likewise for the experimental Netflix and YouTube mining switches,
         // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
@@ -311,6 +313,7 @@ export function createAnkiWorkerService({
           || typeof request.term?.expression !== "string" || !request.term.expression
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
       const resources = { dictionaryPaths: {}, compactGlossary: current.config.compactGlossary === true,
+        compactGlossaries: current.config.compactGlossaries === true,
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
       if (preflight && Object.values(current.resolved.templates).length === 1

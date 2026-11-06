@@ -32,7 +32,7 @@ function noteLanguage(profile, request) {
 // paths, unlike an engine's restart counter, keep first-field image identities
 // identical between preflight and the authoritative write.
 export async function buildAnkiResourceFields(request, templates, {
-  document, dictionaryPaths, styles, audio = "", compactGlossary = false, profile = null,
+  document, dictionaryPaths, styles, audio = "", compactGlossary = false, compactGlossaries = false, profile = null,
 }) {
   const language = noteLanguage(profile, request);
   const media = new Map();
@@ -52,11 +52,12 @@ export async function buildAnkiResourceFields(request, templates, {
   }
   const fields = await buildAnkiFields(request, templates, { audio, language, definition: async options => {
     if (options.plain) {
-      plainRenderer ??= createAnkiDefinitionRenderer(document, source, undefined, { language });
+      plainRenderer ??= createAnkiDefinitionRenderer(document, source, undefined, { compactGlossaries, language });
       return plainRenderer(options);
     }
     richRenderer ??= Promise.resolve(styles()).then(dictionaryStyles =>
-      createAnkiDefinitionRenderer(document, { ...source, dictionaryStyles }, filenameFor, { compact: compactGlossary, language }));
+      createAnkiDefinitionRenderer(document, { ...source, dictionaryStyles }, filenameFor,
+        { compact: compactGlossary, compactGlossaries, language }));
     return (await richRenderer)(options);
   } });
   return { fields, media: await Promise.all(media.values()) };
