@@ -115,7 +115,11 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   scoped duplicate and maturity index, including cache-only View readiness,
   click-time live ID repair and page-wide word status. `anki-offscreen.js` launches
   `anki-index-worker.js` for complete refreshes without moving note fields
-  through the service worker.
+  through the service worker. Normal note-type-scope mining uses one native
+  duplicate request and one Add with attached screenshot/audio; required
+  glossary images use one preceding upload batch. See
+  [Anki mining requests](../docs/anki-mining-requests.md) for the scope,
+  failure behavior and benchmark.
 - **Pronunciation.** `audio-sources.js`, `audio-repository.js`,
   `audio-cache.js` and `audio-player.js` fetch, keep and play audio in the
   offscreen document (`audio-offscreen.js`); `speech.js` wraps the browser's
