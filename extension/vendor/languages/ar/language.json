@@ -355,7 +355,7 @@
     "recommendedDictionaries": [
       {
         "name": "wty-ar-en (wiktionary-to-yomitan)",
-        "url": "https://github.com/yomidevs/wiktionary-to-yomitan",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
         "description": "Arabic-English definitions from Wiktionary, with vowelled readings and the inflected forms of each word.",
         "licence": "CC BY-SA 4.0"
       }

@@ -4968,7 +4968,7 @@
       },
       {
         "name": "wty-zh-en (wiktionary-to-yomitan)",
-        "url": "https://github.com/yomidevs/wiktionary-to-yomitan",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
         "description": "Chinese–English from English Wiktionary through kaikki.org: more words, with examples, characters and dialect words. Words in simplified characters point to their traditional entries.",
         "licence": "CC BY-SA 4.0"
       },

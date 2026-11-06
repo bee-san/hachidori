@@ -99,7 +99,7 @@
     "recommendedDictionaries": [
       {
         "name": "wty-ka-en (wiktionary-to-yomitan)",
-        "url": "https://github.com/yomidevs/wiktionary-to-yomitan",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
         "description": "Georgian-English definitions from English Wiktionary (via Kaikki), with the declension and conjugation tables as form-of entries.",
         "licence": "CC BY-SA 4.0"
       }
