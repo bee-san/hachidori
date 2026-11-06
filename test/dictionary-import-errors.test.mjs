@@ -72,6 +72,10 @@ test("reduced-memory OPFS import stages input under its uncommitted generation a
     mkdirTree: path => paths.push(path),
     open: path => ({ path }), write: (_stream, _data, _offset, length) => length, close() {},
     unlink: path => deleted.push(path), rmdir() {},
+    readFile: path => {
+      assert.equal(path, "/dicts/new/Pixiv/index.json");
+      return new TextEncoder().encode(JSON.stringify({ title: "Pixiv" }));
+    },
   }, ccall(name, _type, _types, args) {
     assert.equal(name, "hdw_import");
     paths.push(args[0]);
