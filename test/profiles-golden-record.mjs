@@ -17,7 +17,8 @@
 // main fd53c854 for its history and keybind scope of #666, and that file with
 // YouTube mining's experimental flag, `youtubeMining`, added after
 // `netflixPreviewScreenshots` as main's registry has it, for the flag's default
-// in every record). The capture is a run of main's suites at that commit;
+// in every record, and `compact-popup-anki` added to its GLOSSARY_LAYOUT_MODES
+// for #673's third Compact glossaries value). The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead.
 import { createHash } from "node:crypto";
@@ -95,7 +96,8 @@ writeFileSync(output, `${JSON.stringify({
     + "recorded from reader-options.js before the profile layer (docs/languages.md 6.2). "
     + "`normalised` lists the keys of normaliseOptions' result that differ from `defaults`; the SHA-256 values are of "
     + "JSON.stringify of the complete results of normaliseOptions and projectStoredOptions, so key order is pinned too.",
-  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js with the youtubeMining experimental flag",
+  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js with the youtubeMining experimental flag "
+    + "and the compact-popup-anki glossary layout",
   defaults,
   entries: [],
 }).slice(0, -3)}[\n${body}\n]}\n`);
