@@ -14,7 +14,9 @@ gloss.
 
 Once the records have profiles, the popup element gets `dir="ltr"` and
 `lang="en"`, because the reader's shadow host passes the page's direction and
-language through. For a right-to-left pack, headword, matched text,
+language through. (Since #640's decisions, the host itself sets
+`direction: ltr` in every installation, so only the language still passes
+through in the single-profile shape.) For a right-to-left pack, headword, matched text,
 deinflection endpoints, sentence and character get `lang` and `dir="rtl"`;
 readings and inputs get `dir="auto"`. Direction of definitions belongs to the
 dictionary: core decides one direction per dictionary for each result from

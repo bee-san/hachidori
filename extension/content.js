@@ -2291,9 +2291,12 @@
     // Inline !important is the only declaration a page cannot override, and the
     // host must stay a zero-sized, non-interactive fixed anchor whatever the
     // page's CSS says. `all: initial` also stops inherited page typography from
-    // reaching the shadow tree.
+    // reaching the shadow tree, but not the page's direction, which `all`
+    // leaves out: the popup's English interface reads left to right on a
+    // right-to-left page too (docs/languages.md 10.1).
     host.style.cssText = [
       "all: initial !important",
+      "direction: ltr !important",
       "position: fixed !important",
       "top: 0 !important",
       "left: 0 !important",
