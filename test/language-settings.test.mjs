@@ -181,6 +181,17 @@ test("turning Multiple languages off shows Japanese first, and is refused while 
   assert.equal(writesOf(other, "hd_options_write").length, 0);
 });
 
+test("a second click while Multiple languages is being turned off applies after it, so the last click wins", async t => {
+  const settings = await open(t, { hash: "#advanced", stored: withProfiles() });
+  const { records } = settings;
+  languagesSwitch(settings).click();
+  languagesSwitch(settings).click();
+  await settle(800);
+  assert.equal(languagesSwitch(settings).checked, true);
+  assert.equal(records.options.experimental.multipleLanguages, true);
+  assert.equal(settings.page.editedProfile().id, "ja", "turning it off showed Japanese first");
+});
+
 test("Multiple languages turned off in another page moves the page to Japanese and says so", async t => {
   const settings = await open(t, { hash: "#lookup", stored: withProfiles() });
   const { el, page, records } = settings;
