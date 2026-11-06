@@ -42,6 +42,16 @@ else()
 endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hoshidicts hoshidicts)
 
+# The importer compresses at zstd's default level, 3, and so does its
+# dictionary trainer; level 3's strategy is dfast for every input size (zstd's
+# lib/compress/clevels.h), so the slower strategies are never selected.
+# Building without them, as zstd's ZSTD_LIB_EXCLUDE_COMPRESSORS_GREEDY_AND_UP
+# does (plus lazy, which its cascade also handles), leaves every compressed
+# byte the same.
+target_compile_definitions(libzstd_static PRIVATE
+    ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR ZSTD_EXCLUDE_LAZY_BLOCK_COMPRESSOR ZSTD_EXCLUDE_LAZY2_BLOCK_COMPRESSOR
+    ZSTD_EXCLUDE_BTLAZY2_BLOCK_COMPRESSOR ZSTD_EXCLUDE_BTOPT_BLOCK_COMPRESSOR ZSTD_EXCLUDE_BTULTRA_BLOCK_COMPRESSOR)
+
 add_executable(hoshidicts_wasm bindings.cpp)
 
 if(HACHIDORI_PTHREADS AND NOT HACHIDORI_WASMFS)
