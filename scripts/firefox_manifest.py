@@ -11,7 +11,7 @@ gets its stylesheets and modules as web-accessible resources.
 
 import copy
 
-GECKO_ID = "hachidori@bee-san"
+GECKO_ID = "{b39ca224-e554-498d-8d8b-b2a5ad2f7a13}"
 MINIMUM_FIREFOX = "153.0"
 # Only the Firefox build loads these; the Chrome ZIP leaves them out.
 FIREFOX_ONLY_FILES = ("background.html", "event-page.js")

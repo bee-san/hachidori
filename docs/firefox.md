@@ -41,7 +41,7 @@ anything else differs.
 | `tabCapture` permission | none | Firefox has no tab capture for extensions |
 | `userScripts` permission | `optional_permissions: ["clipboardRead", "userScripts"]`, after the Chrome manifest's own optional `clipboardRead` | Firefox grants it only on request |
 | `web_accessible_resources` | one more entry: the stylesheets and modules of the search page's sandboxed frame | Firefox lets a sandboxed page link a stylesheet or import a module only if a web page could; Chrome serves it every file ([Search page](architecture.md#search-page)) |
-| `minimum_chrome_version`, `cross_origin_*_policy` | `browser_specific_settings.gecko`: ID `hachidori@bee-san`, `strict_min_version` 153.0, `data_collection_permissions` | Firefox cannot isolate extension pages; the ID keys Firefox's storage for the add-on; the data types are explained under [Packaging](#packaging-and-addonsmozillaorg) |
+| `minimum_chrome_version`, `cross_origin_*_policy` | `browser_specific_settings.gecko`: ID `{b39ca224-e554-498d-8d8b-b2a5ad2f7a13}`, `strict_min_version` 153.0, `data_collection_permissions` | Firefox cannot isolate extension pages; the ID keys Firefox's storage for the add-on; the data types are explained under [Packaging](#packaging-and-addonsmozillaorg) |
 
 `background.html` also loads `event-page.js`, which calls
 `runtime.getPlatformInfo()` every 20 seconds. Firefox stops an idle event page
@@ -104,7 +104,13 @@ Firefox ZIP, the matching source ZIP and `SHA256SUMS.txt` from the committed
 tree, and the Release workflow uploads all of them. The Firefox ZIP is the
 Chrome upload with `background.html`, `event-page.js` and the Firefox manifest.
 Nothing submits it to addons.mozilla.org: an AMO listing and its review are the
-owner's decision. Before a first upload:
+owner's decision.
+
+Firefox builds using the previous ID `hachidori@bee-san` have separate storage.
+To move your settings and dictionaries, export a backup from the old installation
+and restore it in the new one.
+
+Before a first upload:
 
 - **Data collection.** The manifest declares `websiteContent` and
   `browsingActivity` as required, and Firefox shows them when the add-on is
