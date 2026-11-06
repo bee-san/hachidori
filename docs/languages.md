@@ -72,9 +72,9 @@ are recorded in [`docs/decisions/`](decisions/).
 - **Existing users see no change in lookups, popups, mining, backups or stored
   data** until they add a second language. Their settings and dictionaries
   become the Japanese profile. They see one new switch, Multiple languages in
-  Advanced → Experimental features, and one new command on the browser's
-  shortcuts page, *Switch to the next language*, which has no suggested key
-  and does nothing while the switch is off.
+  Advanced → Experimental features, and one new browser command, *Switch to
+  the next language*, which has no suggested key and does nothing while the
+  switch is off.
 
 The user interface stays in English.
 
@@ -554,10 +554,11 @@ words are read as the Japanese profile, with every value exactly as stored.
 
 A Japanese-only user sees two additions, both outside what the suites pin:
 the **Multiple languages** switch in Settings → Advanced → Experimental
-features (16.3), and the browser command *Switch to the next language* on the
-browser's shortcuts page. Keybinds → Browser shortcuts lists it once Multiple
-languages is on, or while it has a shortcut. The command has no suggested key,
-so it takes no key from pages, and the keybind action list offers it only once
+features (16.3), and the browser command *Switch to the next language* in
+Keybinds → Browser shortcuts and on the browser's shortcuts page; Settings
+lists every command the browser has, as the browser's page does. The command
+has no suggested key, so it takes no key from pages, does nothing while
+Multiple languages is off, and the keybind action list offers it only once
 the records have profiles and Multiple languages is on (16.2). With the switch
 on, Advanced gains its **Languages** tab. Everything else that appears with a
 second
@@ -1596,8 +1597,7 @@ toolbar and badge are today's and the command and keybind do nothing.
   (**Switch to the next language**, `web` scope) with no suggested key, like
   `openSearchPageCurrentTab`; users assign one on Chrome's shortcuts page.
   Keybinds' action list offers it once the records have profiles, and a
-  stored bind that names it keeps showing it; Keybinds → Browser shortcuts
-  lists the command while Multiple languages is on or it has a shortcut. It is routed to the active
+  stored bind that names it keeps showing it. It is routed to the active
   tab's reader like the other popup actions, and the
   reader asks the worker to activate the next profile. Its id is not Yomitan's
   `profileNext`, which existing tests pin as an action Hachidori drops. On

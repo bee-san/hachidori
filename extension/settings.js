@@ -805,10 +805,7 @@ function updateKeybindSettings() {
     readKeybinds: () => options.keybinds,
     editKeybinds: keybinds => { options.keybinds = keybinds; writeOptions(); },
     readAudioSources: () => options.audioSources,
-    // Switch to the next language is listed while Multiple languages is on, or
-    // while it has a shortcut (docs/languages.md 16.2).
-    getBrowserCommands: async () => (await chrome.commands.getAll()).filter(command => command.name !== "switchLanguage"
-      || command.shortcut || languagesEnabled(storedOptionsRecord)),
+    getBrowserCommands: () => chrome.commands.getAll(),
     // Firefox opens its add-on shortcut manager itself; Chrome's is a page.
     openBrowserShortcuts: () => (typeof chrome.commands.openShortcutSettings === "function"
       ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
@@ -820,8 +817,6 @@ function updateKeybindSettings() {
       || (hasProfiles(storedOptionsRecord) && languagesEnabled(storedOptionsRecord)),
   });
   keybindController.render();
-  // Multiple languages may have changed since the list was read.
-  void keybindController.renderBrowserCommands();
 }
 
 function updateAnkiSettings() {
