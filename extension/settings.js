@@ -535,9 +535,9 @@ function followEditedProfile() {
   const left = languageName(editedProfile.language);
   editedProfile = describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
   discardProfileDrafts();
-  profileSettings?.announce(`${current === null ? `${left} was removed` : "Multiple languages was turned off"}`
-    + ` in another Hachidori page, so Settings now shows ${languageName()}. Unsaved changes made for ${left}`
-    + " were discarded.");
+  const cause = current === null ? `${left} was removed` : "Multiple languages was turned off";
+  profileSettings?.announce(`${cause} in another Hachidori page, so Settings now shows ${languageName()}.`
+    + ` Unsaved changes made for ${left} were discarded.`);
   return true;
 }
 
