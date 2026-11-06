@@ -178,7 +178,8 @@
     showPopupAudioButton: true,
     popupColumns: 1,
     // Yomitan's general.glossaryLayoutMode: "compact" puts a definition's
-    // glosses on one line, separated by " | ". Popup CSS only.
+    // glosses on one line, separated by " | ", in the popup (CSS only);
+    // "compact-popup-anki" does that in Anki glossary fields as well.
     glossaryLayoutMode: "default",
     showLookupCounts: true,
     // Only the lookup-count condition; stored as `definitionBlurEnabled` before #401.
@@ -298,8 +299,8 @@
   const DEFINITION_BLUR_REVEALS = ["timed", "hover", "click"];
   const DEFINITION_BLUR_FREQUENCY_ORDERS = ["auto", "ascending", "descending"];
   const IMAGE_HOVER_PREVIEWS = ["off", "large", "all"];
-  // Yomitan's stored values, so its "compact-popup-anki" can follow without a migration.
-  const GLOSSARY_LAYOUT_MODES = ["default", "compact"];
+  // Yomitan's stored values.
+  const GLOSSARY_LAYOUT_MODES = ["default", "compact", "compact-popup-anki"];
   const PITCH_ACCENT_FURIGANA_STYLES = ["contour", "overline"];
   // How a word highlight marks its word: a line under it, its text, or its background.
   const WORD_HIGHLIGHT_STYLES = ["underline", "color", "background"];

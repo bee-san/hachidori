@@ -125,9 +125,11 @@
         if (options.personalDictionaryEnabled === false) host.dataset.hoshidictsNoteButton = "hidden";
         else delete host.dataset.hoshidictsNoteButton;
         // Yomitan's glossaryLayoutMode is CSS over unchanged markup, so a
-        // switch keeps open views, Note drafts and listeners.
-        if (options.glossaryLayoutMode === "compact") host.dataset.hoshidictsGlossaryLayout = "compact";
-        else delete host.dataset.hoshidictsGlossaryLayout;
+        // switch keeps open views, Note drafts and listeners. Compact popup
+        // and Anki looks the same here, as Yomitan's ^=compact rules do.
+        if (options.glossaryLayoutMode === "compact" || options.glossaryLayoutMode === "compact-popup-anki") {
+          host.dataset.hoshidictsGlossaryLayout = "compact";
+        } else delete host.dataset.hoshidictsGlossaryLayout;
         // Colouring is CSS over the group each headword and badge carries, so a
         // switch keeps open views, Note drafts and focus.
         if (options.showPitchAccentColors === true) host.dataset.hoshidictsPitchColors = "on";
