@@ -39,6 +39,7 @@ import {
 } from "./dictionary-import.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { dictionaryImportError, isImportMemoryError, nativeImportCall } from "./dictionary-import-errors.js";
+import { archiveHoldsRanks } from "./frequency-mode.js";
 // HDGlossary.parseTagList: the one U+0020 tag splitter the renderer, Anki and
 // the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
@@ -996,9 +997,18 @@ function longKeyLengthFromScanIndex(path) {
   return view.getUint16(12, true);
 }
 
-function readDictionaryIndex(path) {
-  const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
+function readDictionaryIndex(path, FS = engine.FS) {
+  const json = new TextDecoder().decode(FS.readFile(`${path}/index.json`));
   return parseJson(json, `${path}/index.json`);
+}
+
+function writeDictionaryIndex(path, index, FS = engine.FS) {
+  const indexPath = `${path}/index.json`;
+  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
+  // serialized rewrite can be shorter than the engine-generated index, leaving
+  // trailing JSON bytes if it overwrites the file in place.
+  FS.unlink(indexPath);
+  FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
 }
 
 function importedIdentityFromIndex(path) {
@@ -2183,7 +2193,7 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
     state: committed };
 }
 
-// Adding a language (docs/languages.md 5.2, 6.3 and 16.1). Under the
+// Adding a language (docs/languages.md 5.2, 6.3 and 16.3). Under the
 // mutation lock the engine loads the pack and strict-loads every package that
 // enters the loaded set (a re-added language's personal package); the
 // worker's hd_profile_cas writes options and dictionaryState together; then
@@ -2198,7 +2208,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const plan = addedProfileState(snapshot, language, message.firstRun === true);
+    const plan = addedProfileState(snapshot, language);
     const { loadedCount, reply } = await commitAddedProfile(snapshot, plan, language, message);
     if (reply.ok === true) {
       adoptProfileRecords(reply);
@@ -2222,13 +2232,12 @@ function addedLanguage(message) {
 
 // The records an added language leaves: its profile, holding its personal
 // package when the library has one, and whether a package enters the set.
-function addedProfileState(snapshot, language, firstRun) {
+function addedProfileState(snapshot, language) {
   const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
   const personal = personalDictionaryIdentity(language);
   const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
     ? [{ id: personal.id, enabled: true }] : [];
-  // A first-run choice makes the new profile the only one (section 16.1).
-  const profiles = { ...(firstRun ? {} : stored.profiles), [language]: { dictionaries: own, groups: [] } };
+  const profiles = { ...stored.profiles, [language]: { dictionaries: own, groups: [] } };
   const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
   const union = globalThis.HDReaderOptions.allPackages(next);
   const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
@@ -2256,7 +2265,7 @@ async function commitAddedProfile(snapshot, plan, language, message) {
 async function askProfileAdd(plan, language, message) {
   try {
     return await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
-      firstRun: message.firstRun === true, baseRevision: plan.baseRevision,
+      baseRevision: plan.baseRevision,
       state: { dictionaries: plan.next.dictionaries, profiles: plan.next.profiles } });
   } catch (commitError) {
     return profileCasReadback(commitError, plan.baseRevision, plan.next, (languages) => languages.includes(language));
@@ -2630,12 +2639,7 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
   }
   moveDictionaryFiles(currentPath, nextPath, true);
   index.title = nextTitle;
-  const indexPath = `${nextPath}/index.json`;
-  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
-  // serialized rewrite can be shorter than the engine-generated index, leaving
-  // trailing JSON bytes if it overwrites the moved file in place.
-  engine.FS.unlink(indexPath);
-  engine.FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
+  writeDictionaryIndex(nextPath, index);
 }
 
 async function cleanupCommittedDictionaries() {
@@ -2975,6 +2979,16 @@ function importStagingPaths(fileName, resources, diskRoot = null) {
   };
 }
 
+// The generated index keeps the archive's frequencyMode, except that a list
+// declaring occurrence counts whose values are ranks is stored as rank-based
+// (#684), so its averages and Auto direction treat it as one.
+async function correctRankFrequencyMode(module, archivePath, path) {
+  const index = nativeImportCall(module, () => readDictionaryIndex(path, module.FS));
+  if (index?.frequencyMode !== "occurrence-based") return;
+  if (!await archiveHoldsRanks(nativeImportCall(module, () => module.FS.readFile(archivePath)))) return;
+  nativeImportCall(module, () => writeDictionaryIndex(path, { ...index, frequencyMode: "rank-based" }, module.FS));
+}
+
 // Stages the archive in `module`'s scratch filesystem and runs its native
 // importer into `generationRoot`. Shared with the isolated import worker, whose
 // module is a second engine instance on the same OPFS root.
@@ -3027,6 +3041,9 @@ export async function importDictionaryArchive(
     }
     if (!report.success) {
       report.error = dictionaryImportError(report.error || "The engine returned no import error.", fileName, phase).message;
+    } else {
+      phase = "checking the frequency mode";
+      await correctRankFrequencyMode(module, archivePath, `${generationRoot}/${dictionaryFolderName(report.title)}`);
     }
     return report;
   } catch (error) {

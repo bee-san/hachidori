@@ -45,7 +45,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `audioAutoplay` (false) | Audio | None | P |
 | `anki` (url, apiKey, templates) | Anki | Template fields include reading/pitch; presets are Japanese note types | url, apiKey G; templates P (12) |
 | `smallerAnkiCards` (false) | Anki | Help mentions furigana | G |
-| `experimental` (flags) | Advanced → Experimental | Netflix flag text says Japanese subtitles | G; Netflix uses pack `bcp47` (8.5) |
+| `experimental` (flags) | Advanced → Experimental | Netflix flag text says Japanese subtitles | G; Netflix uses pack `bcp47` (8.5); `multipleLanguages` reveals Advanced → Languages and, off, makes lookups Japanese (16.3) |
 | `popupWidthPx` (560) | Design | None | G (geometry) |
 | `popupHeightPx` (420) | Design | None | G |
 | `popupScalePercent` (100) | Design | None | G |
@@ -105,8 +105,8 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `searchHistoryEnabled` (false) | Advanced → Search history | None; the history keeps lines of every language | G |
 | `searchHistoryLimit` (10000) | Advanced → Search history | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
-| new `profiles` (not an option key) | Settings Language menu and dialog | — | structure of `options` (4.1) |
-| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Settings **Use for lookups**, Reading → Scanning | — | installation-local key (4.4) |
+| new `profiles` (not an option key) | Advanced → Languages | — | structure of `options` (4.1) |
+| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Advanced → Languages (**Use for lookups**, Switch language automatically) | — | installation-local key (4.4) |
 
 Retired keys (`modifier`, `definitionBlurEnabled`, `hoverDelayMs`,
 `experimental.smallerAnkiCards`) keep their migrations and are read from the
@@ -128,7 +128,7 @@ top level of a single-profile record.
 | `wordStatusOverrides` known/ignored headwords; written by `hd_word_status_override`, the erase in `hd_profile_cas`, the restore | word-status-overrides.js:17, 27-60; background-requests.js:158-167 | No language key; helpers return only `revision`, `known`, `ignored` | L; every writer keeps `languages` through one helper (4.3) |
 | `ankiDuplicateIndex`: one `snapshot` and one `attempt`, for the first Template's source | anki-index-cache.js:28-57, 180, 226, 366-390 | One Template list | Today's record with one source; one snapshot per source key with several (4.3, 12) |
 | new `languageSelection` | — | — | Installation-local active profile and automatic switching; not mirrored, not backed up (4.4) |
-| `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; non-Japanese first run records no catalogue outcome (16) |
+| `setupState`, `recommendedDictionarySelections` | setup-state.js:6-8 | Japanese catalogue ids | G; another language's setup stages (Resume setup) record no catalogue outcome (16.1) |
 | `automaticBackups`, `sharing`, `sharingLocalState`, `sharingOptionsVersion`, session `backupDownloads`, IndexedDB debug log | backup-automatic.js, background-sharing.js, debug-log.js | None except redaction | G |
 | `OVERLAY_LOCAL_OPTION_KEYS` (includes the profile keys `onlyScanJapaneseText`, `personalDictionaryEnabled`, `showNoResultNotice`, `popupColumns`) | setup-state.js:46-51 | Partition precedent | Kept flat in the overlay's own record and laid over every profile's projection (17.5) |
 | `hd_options_write`, `hd_state_cas`, `hd_apply_state`, `hd_custom_*`, `hd_lookup_stats_*`, `hd_word_status_override` | background-requests.js | No profile dimension | Optional `profileId` (5.2) |
@@ -259,7 +259,7 @@ top level of a single-profile record.
 | Startup tagline "Blazing fast, feature rich Japanese dictionary by Bee", practice copy "Hover over Japanese text…" | startup.html:25; startup-practice.js:16-50 | Tagline unchanged; practice copy names the language |
 | Settings empty library "Your Japanese library starts here", glyph `辞` | library-settings.js:669; settings.html:186 | Names the language |
 | Toolbar `aria-label="Japanese lookups"`, hint "Hover over Japanese text to scan" | toolbar.html:14; toolbar.js:37 | Unchanged with one Japanese profile; names the language otherwise (16) |
-| Manifest description "Study Japanese vocabulary…", command "Turn Japanese lookups on or off" | manifest.json:6, 33 | Unchanged (pinned by tests; owner decision) |
+| Manifest description "Study Japanese and other languages…", command "Turn lookups on or off" | manifest.json:6, 36 | Language-neutral since the owner's decision in #640 (2026-11-06); Japanese stays first, as the default language |
 | Activation, highlighting and personal-dictionary hints that say "Japanese text" | settings.html | Name the language |
 | Store listing copy | docs/chrome-web-store.md:230-235 | Unchanged |
 

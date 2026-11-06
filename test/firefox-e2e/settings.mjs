@@ -162,12 +162,16 @@ describe("settings", () => {
     await page.mouse.click(point.x, point.y);
     const granted = await waitFor(() => page.evaluate(async () => (await chrome.permissions.contains({ permissions: ["userScripts"] }))
       && document.getElementById("custom-javascript-allow-row").hidden || false), { timeout: 10_000 });
+    // background.js registers the saved script when it sees the grant; a page
+    // that loads before the registration runs without it, as in any browser.
+    const registered = granted && await waitFor(() => page.evaluate(async () =>
+      (await chrome.userScripts.getScripts({ ids: ["hachidori-custom-javascript"] })).length === 1 || false), { timeout: 10_000 });
     const reader = await openPage(`${serverUrl}/?user-script`);
     const ran = await waitFor(() => reader.evaluate(() => document.documentElement.dataset.hachidoriUserScript === "ran" || false),
       { timeout: 10_000 });
     check("Custom JavaScript runs on pages once Firefox grants user scripts",
       before.allowHidden === false && before.text.startsWith("Firefox asks") && ranBefore === null && granted === true && ran === true,
-      JSON.stringify({ before, ranBefore, granted, ran }));
+      JSON.stringify({ before, ranBefore, granted, registered, ran }));
     // The saved script reaches the popup through host.shadowRoot, while the
     // page, and so Dark Reader, still sees no root (#645).
     const shown = await hoverForPopup(reader, "#verb");

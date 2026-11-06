@@ -32,8 +32,8 @@ import {
 } from "./custom-dictionary-settings.js";
 import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
-const { allPackages, hasDictionaryProfiles, hasProfiles: optionsHaveProfiles, profiles: optionProfiles,
-  projectDictionaryState } = globalThis.HDReaderOptions;
+const { allPackages, hasDictionaryProfiles, hasProfiles: optionsHaveProfiles,
+  languagesEnabled: optionsLanguagesEnabled, profiles: optionProfiles, projectDictionaryState } = globalThis.HDReaderOptions;
 
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] }; // NOSONAR: shared with the other Settings modules
 // The state as stored: with profiles, the whole schema-2 record, of which
@@ -694,11 +694,13 @@ async function moveToProfile(id, profileId) {
 }
 
 // Dictionaries in your other languages (docs/languages.md 14): installed
-// packages this profile does not use, never a personal package.
+// packages this profile does not use, never a personal package, while
+// Multiple languages is on. The options record decides it too, so its changes
+// render it again.
 function renderOtherLanguageDictionaries() {
   let container = element("dict-other-languages");
   const used = new Set(dictionaries.map(entry => entry.id));
-  const others = libraryHasProfiles()
+  const others = libraryHasProfiles() && optionsLanguagesEnabled(storedOptionsRecord)
     ? storedDictionaryState.dictionaries.filter(row => !used.has(row.id) && !isManagedCustomDictionary(row)) : [];
   if (others.length === 0) {
     container?.remove();
@@ -1508,7 +1510,8 @@ export {
   adoptDictionaryState, attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitDictionaries,
   commitGroups, committing, dictionaries, dictionaryLabel, dictionaryState, handleDictionaryStateChange,
   libraryHasProfiles, moveListItem, moveToProfile, pendingDictionaryCommits, reloadDictionaries, removing,
-  renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel, reprojectDictionaryState, setControlsDisabled,
+  renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel, renderOtherLanguageDictionaries,
+  reprojectDictionaryState, setControlsDisabled,
   setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary,
   updateItemById
 };

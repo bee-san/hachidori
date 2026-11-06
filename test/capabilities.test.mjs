@@ -201,6 +201,10 @@ test("the keybind editor offers only Toggle options the edited language has and 
   assert.ok(pitch.length > 0);
   assert.deepEqual(offered(1), ["", ...KEYBIND_TOGGLE_OPTIONS.filter(key => !pitch.includes(key))]);
   assert.equal(select(0).value, "showPitchAccentBadge", "the stored bind is kept");
+  // Disabled as well as hidden, which Chrome's type-ahead skips; the stored one stays enabled.
+  const option = (index, key) => [...select(index).options].find(choice => choice.value === key);
+  assert.ok(pitch.every(key => option(1, key).hidden && option(1, key).disabled));
+  assert.equal(option(0, "showPitchAccentBadge").disabled, false);
   assert.equal(note(0).hidden, false);
   assert.equal(note(0).textContent, "Not available in English");
   assert.equal([...select(1).options].find(option => option.value === "onlyScanJapaneseText").textContent,

@@ -66,7 +66,7 @@ export function createSettingsSearch({ document, navigate }) {
       // or a pack setting the theme does not render (section 11.5); a section
       // the language lacks is gated as a whole, below.
       if (target.closest("template, [role=status], output, [data-design-setting][hidden], [data-design-group][hidden], "
-        + "[data-theme-variants][hidden], [data-requires][hidden]:not(section), [data-language-settings][hidden]")) continue;
+        + "[data-theme-variants][hidden], [data-requires][hidden]:not(section), [data-language-settings][hidden], [data-pack-setting][hidden]")) continue;
       const label = text(target.querySelector(".field-label"))
         || text(target.querySelector("span")) || text(target);
       if (!label) continue;

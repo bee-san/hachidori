@@ -333,7 +333,7 @@
   }
 
   function autoSwitching() {
-    return readingProfiles !== null && !READER_PAGE
+    return readingProfiles !== null && !READER_PAGE && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)
       && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
   }
 
@@ -2291,9 +2291,12 @@
     // Inline !important is the only declaration a page cannot override, and the
     // host must stay a zero-sized, non-interactive fixed anchor whatever the
     // page's CSS says. `all: initial` also stops inherited page typography from
-    // reaching the shadow tree.
+    // reaching the shadow tree, but not the page's direction, which `all`
+    // leaves out: the popup's English interface reads left to right on a
+    // right-to-left page too (docs/languages.md 10.1).
     host.style.cssText = [
       "all: initial !important",
+      "direction: ltr !important",
       "position: fixed !important",
       "top: 0 !important",
       "left: 0 !important",
@@ -4734,7 +4737,8 @@
   // Switch to the next language (docs/languages.md 16.2): the profile after the
   // active one, in the records' order, becomes this browser's active profile.
   function switchLanguage() {
-    if (readingProfiles === null || readingProfiles.size < 2) return false;
+    if (readingProfiles === null || readingProfiles.size < 2
+        || !globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)) return false;
     const ids = [...readingProfiles.keys()];
     const next = ids[(ids.indexOf(activeProfileId()) + 1) % ids.length];
     // A choice made meanwhile in another page wins the race; its storage event

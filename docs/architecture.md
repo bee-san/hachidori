@@ -955,7 +955,7 @@ has Add and Reset keybinds to defaults.
 Yomitan's native browser shortcuts are manifest `commands` for the features
 Hachidori has:
 
-- Turn Japanese lookups on or off, suggested as Alt+Delete like Yomitan's
+- Turn lookups on or off, suggested as Alt+Delete like Yomitan's
   Toggle text scanning.
 - Open Hachidori settings, unassigned.
 - Yomitan's three ways to open the [search page](#search-page): in a new tab,
@@ -1431,6 +1431,16 @@ The generated Yomitan index's optional `frequencyMode` survives package metadata
 Settings presentation writes, reimports and reload reconciliation. Existing
 packages recover it from their committed generation's index without a new schema
 or WebAssembly build.
+
+A list can declare `occurrence-based` and still hold ranks: some lists from
+yomitanfrequencies.org do (#684). After the native import, `frequency-mode.js`
+reads such an archive's freq rows. In an occurrence count, words seen once are a
+large share of the list (Zipf's law); in a rank list only the top word, with its
+few readings, has 1. So when the smallest value is 1 and at most 1% of the rows
+have it, the generation's `index.json` is rewritten as `rank-based`, and its
+averages and Auto direction treat it as a rank list. Only declared occurrence
+lists are read; an installed package keeps its mode until it is reimported or
+updated.
 
 Selecting one enabled frequency dictionary saves its title and inferred direction
 in one existing options patch: `rank-based` selects ascending and

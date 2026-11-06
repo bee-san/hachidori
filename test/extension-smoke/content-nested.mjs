@@ -569,6 +569,9 @@ async function columnPreferenceCase() {
     const results = { "live column preferences relayout each visible owner without lookup, retirement or Note loss": columns,
       "live toolbar overrides update root and child without lookup, masonry or Note loss": toolbar
         && harness.sent.length === sentBefore && harness.driver.snapshot(1).noteEditing,
+      // `all: initial` leaves the page's direction to the shadow tree (docs/languages.md 10.1).
+      "the popup host reads left to right whatever the page's direction":
+        host.style.getPropertyValue("direction") === "ltr" && host.style.getPropertyPriority("direction") === "important",
       "live geometry precedes masonry while colour and highlight edits preserve every request and Note":
         resized && host.dataset.hoshidictsTheme === "miku"
         && host.style.getPropertyValue("--gsm-hoshidicts-popup-opacity") === "0%"

@@ -17,6 +17,7 @@ These instructions apply to the entire repository.
 ## Scope, tests, and guards
 
 - Implement the requested behavior rather than hypothetical adjacent requirements.
+- Before building a feature request, check whether Settings → Design → Custom CSS or Custom JavaScript can already achieve it. If it can, do not build it into Hachidori; answer the issue with the CSS or JavaScript instead.
 - Do not add speculative abstractions, fallbacks, compatibility layers, validation, resource limits, or safety guards. A new guard should address an explicit requirement, a reproducible failure, or a documented invariant, and its reason should be clear in the pull request.
 - Dictionary archives are user-selected local inputs. Do not invent fixed limits for archive bytes, entry counts, expanded size, or compression ratios unless the task explicitly requires them. Preserve existing path and import-staging correctness boundaries.
 - Do not add broad or extensive test coverage by default. Add a focused regression test when behavior changes or a bug needs to stay fixed; do not duplicate coverage already provided by a suitable suite.

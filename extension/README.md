@@ -70,6 +70,8 @@ compares common and less-common Japanese words through the engine; inconclusive
 samples read the dictionary as ranks, lowest numbers first, as everything else
 that interprets a missing mode does. Sampling runs only for these Settings actions,
 and a newer choice cancels its result. Explicit ascending/descending choices stay fixed.
+On import, `frequency-mode.js` reads a list that declares `occurrence-based` and
+stores it as `rank-based` when its values are ranks (#684).
 
 - **Dictionaries and stored state.** `reader-options.js` is the one stored
   options view every context reads, and the profile layer of
@@ -209,10 +211,13 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   and from each other, and assign a binding only in the module that declares
   it; `experimental-settings.js` renders the Advanced → Experimental features
   switches from the registry in `reader-options.js`; `profile-settings.js`
-  the Language menu, **Use for lookups** and the Manage languages
-  dialog, and `language-settings.js` the settings a language pack defines
-  (docs/languages.md 5.3, 7.5, 16.3-16.5); `memory-settings.js`
-  the Advanced → Memory readout and each Dictionaries row's *In memory* line;
+  Advanced → Languages, the tab Multiple languages reveals (Settings shows,
+  **Use for lookups**, automatic switching, adding, removing and erasing
+  languages) and the sidebar's
+  language link, and `language-settings.js` the settings a language pack
+  defines, in cards after it (docs/languages.md 5.3, 7.5, 16.3-16.5);
+  `memory-settings.js` the Advanced → Memory readout and each Dictionaries
+  row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,
   with credentials redacted and reader content reduced to counts, and
   `debug-log.js` the debug log every extension context writes to one
