@@ -594,18 +594,20 @@ These run separately:
 - **`chrome-language-pack.mjs`** (`node test/run.mjs chrome-language-pack`)
   checks one language pack of `extension/vendor/languages/` with a real
   dictionary: the check each language's pack passes before it merges. It is
-  not in CI, because it needs the dictionary. In a fresh profile Settings
-  adds the language (`HACHIDORI_LANGUAGE`) beside Japanese and imports the
-  dictionary (`HACHIDORI_DICTIONARY`, any Yomitan .zip) into it. Each case of
+  not in CI, because it needs the dictionary. In a fresh profile, with
+  Multiple languages turned on, Settings → Advanced → Languages adds the
+  language (`HACHIDORI_LANGUAGE`) beside
+  Japanese and Settings imports the dictionary (`HACHIDORI_DICTIONARY`, any
+  Yomitan .zip) into it. Each case of
   `HACHIDORI_CASES` (`sentence<TAB>word<TAB>expected headword`, by default the
   pack's practice sample) is a page in the language, hovered where the pack's
   scan starts; the first result's headword must be the expected one. The
   first result is added to a fake AnkiConnect, and the toolbar switches to
   Japanese and back. It prints one JSON summary line and saves screenshots of
-  the language dialog, the switcher and the first lookup. Its header lists
-  the inputs; `test/data/language-pack/` has the English, Arabic and Japanese
-  cases it was proved with (for kaikki-to-yomitan's dictionaries and
-  Jitendex).
+  Settings → Advanced → Languages, the switcher and the first lookup. Its
+  header lists the inputs; `test/data/language-pack/` has the English,
+  Arabic and Japanese cases it was proved with (for kaikki-to-yomitan's
+  dictionaries and Jitendex).
 - **`chrome-dark-reader.mjs`**, called by the primary Chrome suite, runs the pinned
   Dark Reader API build against the production popup in a tab of its own. It
   checks Default, Light, Dark, High contrast and Custom CSS while the page
@@ -739,9 +741,10 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   Firefox build, written to `test/tmp/firefox-languages/` by the launcher with
   `chrome-languages/builds.mjs`, whose registry holds Japanese and the English
   and Arabic fixture packs of `test/data/languages/`, whatever packs the build
-  ships. The first run offers those packs and chooses English, Settings adds
-  Arabic, each profile imports its fixture dictionary
-  (`make-language-fixtures.mjs`), an English hover finds
+  ships. The welcome card has no language menu, Multiple languages is turned
+  on and Settings → Advanced → Languages adds English and Arabic, each profile imports its fixture
+  dictionary (`make-language-fixtures.mjs`), Use for lookups makes English
+  active, an English hover finds
   *run* in *running*, the toolbar switches to Arabic and the badge reads `AR`,
   and a hover on الكتاب on a right-to-left page finds كتاب in a popup that is
   English and left to right, its deinflection trail reading the matched form

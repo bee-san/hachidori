@@ -171,10 +171,10 @@ async function renderLanguageRecommendations() {
 }
 
 // An import whose archive names another profile's language says so and offers
-// Move to {Language} (docs/languages.md 14).
+// Move to {Language} (docs/languages.md 14), while Multiple languages is on.
 function renderLanguageMoves() {
   for (const offer of document.querySelectorAll(".import-language-move")) offer.remove();
-  if (!libraryHasProfiles()) return;
+  if (!libraryHasProfiles() || !globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)) return;
   const profiles = globalThis.HDReaderOptions.profiles(storedOptionsRecord);
   for (const { title, index } of importedTitles) {
     const row = storedDictionaryState.dictionaries.find(entry => entry.title === title);

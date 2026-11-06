@@ -333,7 +333,7 @@
   }
 
   function autoSwitching() {
-    return readingProfiles !== null && !READER_PAGE
+    return readingProfiles !== null && !READER_PAGE && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)
       && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
   }
 
@@ -4734,7 +4734,8 @@
   // Switch to the next language (docs/languages.md 16.2): the profile after the
   // active one, in the records' order, becomes this browser's active profile.
   function switchLanguage() {
-    if (readingProfiles === null || readingProfiles.size < 2) return false;
+    if (readingProfiles === null || readingProfiles.size < 2
+        || !globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)) return false;
     const ids = [...readingProfiles.keys()];
     const next = ids[(ids.indexOf(activeProfileId()) + 1) % ids.length];
     // A choice made meanwhile in another page wins the race; its storage event

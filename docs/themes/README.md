@@ -339,8 +339,9 @@ dictionary (`data-dictionary` on it or an ancestor, else
 descendants when it holds several or none, where a row takes the direction of
 whatever text comes first. Outside Japanese core ignores its character
 clicks and hides the clicked-character dictionary, and a theme that does not
-declare `presentation` shows the stored headword while Design hides the
-pack's display settings. Every vendored theme declares both directions;
+declare `presentation` shows the stored headword, while Settings → Advanced
+shows the pack's *{Language} display* card with a note instead of its
+settings (docs/languages.md 16.3). Every vendored theme declares both directions;
 Plain, which shows no headword, declares `presentation: false`.
 
 ## Content and stylesheet ownership

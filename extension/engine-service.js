@@ -2193,7 +2193,7 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
     state: committed };
 }
 
-// Adding a language (docs/languages.md 5.2, 6.3 and 16.1). Under the
+// Adding a language (docs/languages.md 5.2, 6.3 and 16.3). Under the
 // mutation lock the engine loads the pack and strict-loads every package that
 // enters the loaded set (a re-added language's personal package); the
 // worker's hd_profile_cas writes options and dictionaryState together; then
@@ -2208,7 +2208,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const plan = addedProfileState(snapshot, language, message.firstRun === true);
+    const plan = addedProfileState(snapshot, language);
     const { loadedCount, reply } = await commitAddedProfile(snapshot, plan, language, message);
     if (reply.ok === true) {
       adoptProfileRecords(reply);
@@ -2232,13 +2232,12 @@ function addedLanguage(message) {
 
 // The records an added language leaves: its profile, holding its personal
 // package when the library has one, and whether a package enters the set.
-function addedProfileState(snapshot, language, firstRun) {
+function addedProfileState(snapshot, language) {
   const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
   const personal = personalDictionaryIdentity(language);
   const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
     ? [{ id: personal.id, enabled: true }] : [];
-  // A first-run choice makes the new profile the only one (section 16.1).
-  const profiles = { ...(firstRun ? {} : stored.profiles), [language]: { dictionaries: own, groups: [] } };
+  const profiles = { ...stored.profiles, [language]: { dictionaries: own, groups: [] } };
   const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
   const union = globalThis.HDReaderOptions.allPackages(next);
   const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
@@ -2266,7 +2265,7 @@ async function commitAddedProfile(snapshot, plan, language, message) {
 async function askProfileAdd(plan, language, message) {
   try {
     return await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
-      firstRun: message.firstRun === true, baseRevision: plan.baseRevision,
+      baseRevision: plan.baseRevision,
       state: { dictionaries: plan.next.dictionaries, profiles: plan.next.profiles } });
   } catch (commitError) {
     return profileCasReadback(commitError, plan.baseRevision, plan.next, (languages) => languages.includes(language));

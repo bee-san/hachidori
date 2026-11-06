@@ -122,7 +122,7 @@ async function answerLanguageOptIn(message, connection) {
 }
 
 // A request from a connection that has not opted in names no profile; one
-// that opted in may add a language this host has a pack for, never at first run.
+// that opted in may add a language this host has a pack for.
 function languageRequest(message, connection) {
   const type = message?.type;
   const profileRequest = message?.target === TARGET && PROFILE_REQUEST_TYPES.has(type);
@@ -133,13 +133,9 @@ function languageRequest(message, connection) {
     if (profileRequest) return { response: failureReply(message, new Error(PROFILES_NOT_SHARED)) };
     return { message: withoutProfile(message) };
   }
-  if (profileRequest && type === "hd_profile_add") {
-    if (!hasLanguagePack(message.language)) {
-      return { response: failureReply(message,
-        new Error(`The linked Hachidori does not have ${languageName(message.language)}. Update it and try again.`)) };
-    }
-    const { firstRun, ...ordinary } = message;
-    return { message: ordinary };
+  if (profileRequest && type === "hd_profile_add" && !hasLanguagePack(message.language)) {
+    return { response: failureReply(message,
+      new Error(`The linked Hachidori does not have ${languageName(message.language)}. Update it and try again.`)) };
   }
   return { message };
 }
@@ -441,8 +437,8 @@ function forwardToHost(message, capability = null) {
 }
 
 // A linked browser adds and removes languages on its host, once the host has
-// accepted its opt-in (docs/languages.md 16.1, 17.3 item 5, 17.6); a first-run
-// choice is never forwarded, and an add names a language both have a pack for.
+// accepted its opt-in (docs/languages.md 16.3, 17.3 item 5, 17.6); an add
+// names a language both have a pack for.
 async function forwardProfileRequest(message) {
   const status = getSharingClient().status();
   if (!status.connected) throw new Error(NOT_REACHABLE);
@@ -454,7 +450,7 @@ async function forwardProfileRequest(message) {
       throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
     }
     if (language !== null && profiles === undefined) {
-      throw new Error(`Add ${languageName(language)} on ${host} first; if its Settings have no Language section, update it.`);
+      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages, which Multiple languages in Advanced → Experimental features turns on. If it has no Multiple languages switch, update it there.`);
     }
     throw new Error("Add and remove languages on the linked Hachidori.");
   }
@@ -464,8 +460,7 @@ async function forwardProfileRequest(message) {
     }
     if (languageDescriptor(language) === null) throw new Error(`This Hachidori has no pack for ${language}.`);
   }
-  const { firstRun, ...forwarded } = message;
-  return forwardToHost(forwarded);
+  return forwardToHost(message);
 }
 
 function linkedOptionsCapability(message) {

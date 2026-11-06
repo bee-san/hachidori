@@ -18,6 +18,7 @@ function withProfiles({ activeProfileId = "ar", extraProfiles = [] } = {}) {
   return {
     options: {
       revision: 3,
+      experimental: { multipleLanguages: true },
       profiles: [
         { id: "ja", language: "ja", settings: {}, packSettings: {} },
         { id: "ar", language: "ar", settings: {}, packSettings: {} },
