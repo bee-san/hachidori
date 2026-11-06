@@ -1265,6 +1265,16 @@ covering text cannot trigger distant lookups. This applies equally to horizontal
 and vertical text; exact selections and the reader's boxed-glyph drag keep their
 own selection rules.
 
+Where a line holds both directions, Chrome's caret hit test answers the outer
+half of the glyph at either end of a run with the run's other end: on a
+right-to-left page, the left half of the first glyph of a run of Japanese gives
+the caret after the run's last glyph. When the caret's glyph misses the pointer
+and the hit-tested element's block is right-to-left, the reader bisects that
+element's own text nodes for the glyph under the pointer, as the paths below
+do, under the same two-pixel rule. Left-to-right blocks skip the search, so a
+right-to-left run in one, such as an Arabic word in English, still misses at
+its ends.
+
 Netflix lays its player's controls over the subtitles, where the hit test finds
 the controls instead of the line. On `www.netflix.com`, where the hit test finds
 no glyph under the pointer, as over a transparent control or a panel's

@@ -1243,16 +1243,41 @@
     return VIDEO_SITE.controlBar !== null && Boolean(node.parentElement?.closest(VIDEO_SITE.controlBar));
   }
 
-  /** The caret's glyph in `hit`, the element under the pointer, when the glyph contains the pointer. */
+  /**
+   * The glyph in `hit`, the element under the pointer, that contains the
+   * pointer: the caret's, or on a right-to-left line the one bidiGlyphAt finds.
+   */
   function caretGlyphAt(hit, clientX, clientY) {
     const caretRange = caretRangeAt(clientX, clientY);
     const node = caretRange?.startContainer;
-    if (node?.nodeType !== Node.TEXT_NODE || !hit?.contains(node)) return null;
-    const text = node.nodeValue || "";
-    let offset = caretRange.startOffset;
-    // Caret alignment can step back onto the low surrogate of a wide glyph.
-    if (offset > 0 && (text.charCodeAt(offset) & 0xfc00) === 0xdc00) offset -= 1;
-    return glyphContainsPoint(node, offset, clientX, clientY) ? { node, offset } : null;
+    if (node?.nodeType === Node.TEXT_NODE && hit?.contains(node)) {
+      const text = node.nodeValue || "";
+      let offset = caretRange.startOffset;
+      // Caret alignment can step back onto the low surrogate of a wide glyph.
+      if (offset > 0 && (text.charCodeAt(offset) & 0xfc00) === 0xdc00) offset -= 1;
+      if (glyphContainsPoint(node, offset, clientX, clientY)) return { node, offset };
+    }
+    return bidiGlyphAt(hit, clientX, clientY);
+  }
+
+  /**
+   * On a right-to-left line, Chrome's caret hit test answers the outer half of
+   * the glyph at either end of a left-to-right run, such as Japanese, with the
+   * run's other end, in the same text node or another (Firefox answers with the
+   * glyph's own). The glyph is then found in `hit`'s own text nodes by
+   * bisection, as an imposter's is. A left-to-right block skips the search.
+   */
+  function bidiGlyphAt(hit, clientX, clientY) {
+    if (!hit || window.getComputedStyle(blockOf(hit)).direction !== "rtl") return null;
+    const contents = document.createRange();
+    for (const node of hit.childNodes) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      contents.selectNodeContents(node);
+      if (![...contents.getClientRects()].some(rect => nearRect(rect, clientX, clientY))) continue;
+      const offset = imposterOffsetAt(node, clientX, clientY);
+      if (glyphContainsPoint(node, offset, clientX, clientY)) return { node, offset };
+    }
+    return null;
   }
 
   // `japaneseOnly` defaults to the text gate of the profile in effect, which is
