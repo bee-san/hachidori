@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
-import { createAnkiMediaStore } from "./anki-media.js";
+import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
@@ -148,7 +148,7 @@ export function createAnkiWorkerService({
   // duplicate decisions have been made. A refused upload is a warning, and the
   // fields that referenced the media are emptied so the note never points at
   // a file Anki does not have.
-  async function storePendingMedia(kind, { request, appliedFields, invoke }) {
+  function takePendingMedia(kind, { request, appliedFields }) {
     const { requestKey, label, reference: referenceFor, replaced } = CAPTURED_MEDIA[kind];
     const filename = request[requestKey]?.filename;
     if (typeof filename !== "string" || filename === "") return {};
@@ -176,6 +176,14 @@ export function createAnkiWorkerService({
       return without(replaced);
     }
     if (!isLinkedSubmission(request)) pendingMedia[kind] = null;
+    return { filename, pending, without };
+  }
+
+  async function storePendingMedia(kind, context) {
+    const taken = takePendingMedia(kind, context);
+    if (!taken.pending) return taken;
+    const { filename, pending, without } = taken;
+    const { invoke } = context;
     try {
       const stored = await invoke("storeMediaFile", { filename, data: pending.data, deleteExisting: false }, 30_000);
       if (stored !== filename) throw new Error("Anki stored it under a different filename.");
@@ -213,6 +221,47 @@ export function createAnkiWorkerService({
       throw error;
     }
     return screenshot;
+  }
+
+  async function prepareAdd(context) {
+    const { request, config, note, resources, resolved, invoke } = context;
+    const warnings = [], files = [], captured = {};
+    // Only ordinary non-first-field audio reaches this path. Resolve it once
+    // and put it in the original note, avoiding a second field mutation.
+    const audioTemplates = Object.fromEntries(Object.entries(resolved.templates)
+      .filter(([, template]) => ankiTemplateMarkerNames(template.value).includes("audio")));
+    if (Object.keys(audioTemplates).length && config.audioSources.length) {
+      try {
+        const file = await audio(request, config);
+        const built = await render(request, audioTemplates, `[sound:${file.filename}]`, resources);
+        Object.assign(note.fields, built.fields);
+        resources.media.push(...built.media);
+        files.push({ ...file, type: "audio", kind: "pronunciation" });
+      } catch (error) { warnings.push(`Pronunciation: ${error.message}`); }
+    }
+    for (const [kind, specification] of Object.entries(CAPTURED_MEDIA)) {
+      const taken = takePendingMedia(kind, context);
+      if (taken.warning) warnings.push(taken.warning);
+      if (!taken.pending) continue;
+      captured[specification.resourceKey] = taken.filename;
+      files.push({ filename: taken.filename, data: taken.pending.data,
+        type: kind === "sentence-audio" ? "audio" : "picture", kind: specification.label });
+    }
+    try {
+      const media = new Map(resources.media.map(item => [item.filename, item]));
+      for (const item of media.values()) {
+        if (Object.values(note.fields).some(value => value.includes(item.filename))) {
+          files.push({ filename: item.filename, data: await dictionaryMedia(item, request.generation),
+            type: "picture", kind: "dictionary image", required: true });
+        }
+      }
+      await currentGeneration(request);
+      warnings.push(...await attachAnkiAddMedia(note, files, invoke));
+    } catch (error) {
+      await releaseCapturedMedia({ writeResources: captured, invoke });
+      throw error;
+    }
+    return { warnings, ...captured };
   }
 
   // Audio in the first field is part of Anki's duplicate identity. A
@@ -270,6 +319,7 @@ export function createAnkiWorkerService({
       return { ...resources, ...built };
     },
     beforeWrite: prepareWrite,
+    prepareAdd,
     beforeMutation: ({ request }) => currentGeneration(request),
     preflightExtra: async ({ request, prepared, applied }) => {
       if (!linkedClientPreflights.has(request)) return {};

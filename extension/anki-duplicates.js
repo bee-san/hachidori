@@ -100,24 +100,28 @@ function checkResults(result, count, detailed) {
   return result;
 }
 
-const checkResult = (result, detailed) => checkResults(result, 1, detailed)[0];
-
-export async function checkAnkiDuplicate(invoke, note) {
+export async function checkAnkiDuplicates(invoke, notes) {
   // Anki also validates clozes in non-first fields. Keep all rendered fields,
   // but omit media-upload objects: preflight must not write collection media.
-  const checkNote = allowDuplicate => ({ deckName: note.deckName, modelName: note.modelName, fields: note.fields, tags: note.tags,
-    options: { ...note.options, allowDuplicate } });
+  const checkNotes = allowDuplicate => notes.map(note => ({ deckName: note.deckName, modelName: note.modelName,
+    fields: note.fields, tags: note.tags, options: { ...note.options, allowDuplicate } }));
   let result;
   try {
-    result = checkResult(await invoke("canAddNotesWithErrorDetail", { notes: [checkNote(false)] }), true);
+    result = checkResults(await invoke("canAddNotesWithErrorDetail", { notes: checkNotes(false) }), notes.length, true);
   } catch (error) {
     if (!/unsupported action/iu.test(error.message)) throw error;
-    const allowed = checkResult(await invoke("canAddNotes", { notes: [checkNote(true)] }), false);
-    const prevented = checkResult(await invoke("canAddNotes", { notes: [checkNote(false)] }), false);
-    return { duplicate: allowed && !prevented, addable: allowed && prevented, error: null };
+    const allowed = checkResults(await invoke("canAddNotes", { notes: checkNotes(true) }), notes.length, false);
+    const prevented = checkResults(await invoke("canAddNotes", { notes: checkNotes(false) }), notes.length, false);
+    return allowed.map((value, index) => ({ duplicate: value && !prevented[index], addable: value && prevented[index], error: null }));
   }
-  const error = typeof result.error === "string" && result.error ? result.error : null;
-  return { duplicate: isAnkiDuplicateError(error), addable: result.canAdd && !error, error };
+  return result.map(item => {
+    const error = typeof item.error === "string" && item.error ? item.error : null;
+    return { duplicate: isAnkiDuplicateError(error), addable: item.canAdd && !error, error };
+  });
+}
+
+export async function checkAnkiDuplicate(invoke, note) {
+  return (await checkAnkiDuplicates(invoke, [note]))[0];
 }
 
 // Anki's add check for every note in one request, in order, without its
