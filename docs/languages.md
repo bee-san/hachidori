@@ -2004,7 +2004,8 @@ GameSentenceMiner ships its own copy. So:
   Advanced → Languages, choose one in
   Settings shows and activate it with Use for lookups; import one dictionary
   per language; hover inflected words on sample
-  pages (spaces, CJK, right to left); add an Anki note through the fake
+  pages (spaces, CJK, right to left), one of them opened before English was
+  added; add an Anki note through the fake
   AnkiConnect, with an Arabic note's fields checked in a left-to-right and a
   right-to-left card template for a monolingual Arabic entry and an
   Arabic-English entry with an Arabic example: every list number drawn inside
