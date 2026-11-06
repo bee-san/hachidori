@@ -19,9 +19,10 @@
 //   stream) gives a JPEG of the video's size and colour, not the viewport;
 // - the player's next video (navigation inside the page) has its own timeline;
 // - and with the switch off, hovering pauses nothing.
-// The player's control bar lies over its captions, as YouTube's does while its
-// controls are auto-hidden, so every lookup of a caption finds its glyph in
-// the caption's own text, not by the hit test.
+// The player's controls are auto-hidden and its control bar lies over its
+// captions, as YouTube's does, with its time display over the word: every
+// lookup of the word finds its glyph in the caption's own text, which
+// outranks the hidden time display under the pointer.
 // With HACHIDORI_YOUTUBE_GIF=1 (headful, Chrome 152 or newer: it clicks the
 // toolbar button through CDP's Extensions.triggerAction), a {gif} note gets a
 // looping GIF of the line cropped to the video, saved to test/tmp/ci/.
@@ -112,12 +113,14 @@ video{width:100%;height:100%;display:block}
 .caption-visual-line{display:block}
 .ytp-caption-segment{background:rgba(8,8,8,.75);color:#fff;font-size:32px;padding:0 6px;white-space:pre-wrap}
 .ytp-chrome-bottom{position:absolute;left:0;right:0;bottom:0;height:120px}
+#movie_player.ytp-autohide .ytp-chrome-bottom{opacity:0}
+.ytp-time-display{position:absolute;font-size:32px;white-space:nowrap}
 h1{margin:16px 48px;font-size:20px;font-weight:500}p{margin:0 48px;color:#aaa}</style>
-<div id="movie_player" class="html5-video-player"><div class="html5-video-container">
+<div id="movie_player" class="html5-video-player ytp-autohide"><div class="html5-video-container">
 <video class="video-stream html5-main-video" preload="auto"></video></div>
 <canvas id="motion" width="854" height="480"></canvas>
 <div class="ytp-caption-window-container" id="ytp-caption-window-container"></div>
-<div class="ytp-chrome-bottom"></div></div>
+<div class="ytp-chrome-bottom"><span class="ytp-time-display">0:01</span></div></div>
 <h1>Hachidori · YouTube player fixture</h1><p>Synthetic page: no YouTube content.</p>
 <script>
 // A band moving over the player, so a recording of the tab has frames that change.
@@ -149,6 +152,11 @@ function show(text) {
   container.innerHTML = '<div class="caption-window ytp-caption-window-bottom" id="caption-window-_0"><span class="captions-text">'
     + text.split("\\n").map((line, index) => '<span class="caption-visual-line"><span class="ytp-caption-segment"'
       + (index === 1 ? ' id="word"' : "") + ">" + line + "</span></span>").join("") + "</span></div>";
+  // The hidden time display lies over the word's first glyph.
+  const word = document.getElementById("word")?.getBoundingClientRect();
+  const bar = document.querySelector(".ytp-chrome-bottom").getBoundingClientRect();
+  const time = document.querySelector(".ytp-time-display");
+  if (word) Object.assign(time.style, { left: \`\${word.left + 6 - bar.left}px\`, top: \`\${word.top - bar.top}px\` });
 }
 function loadCaptions(id) {
   const request = new XMLHttpRequest();
@@ -353,10 +361,12 @@ try {
   await tab.waitForFunction(() => window.__fixture?.ready === true && window.__fixture.captions.length === 1);
   await tab.bringToFront();
   assert.deepEqual(timedtext, [VIDEO], "the player loaded its caption file once, and Hachidori fetched nothing");
-  assert.equal(await tab.evaluate(() => {
+  assert.deepEqual(await tab.evaluate(() => {
     const rect = document.getElementById("word").getBoundingClientRect();
-    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className;
-  }), "ytp-chrome-bottom", "the control bar covers the caption");
+    const [x, y] = [rect.x + 12, rect.y + rect.height / 2];
+    return [document.elementFromPoint(x, y)?.className, document.caretRangeFromPoint(x, y)?.startContainer.parentElement?.className,
+      document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.className];
+  }), ["ytp-time-display", "ytp-time-display", "ytp-chrome-bottom"], "the hidden control bar, its time display over the word, covers the caption");
   // The reader has the player's caption file as the video's timeline: inside
   // the cue, the caption resolves to it.
   await tab.evaluate(atMs => { document.querySelector("video").currentTime = atMs / 1000; }, CUE.startMs + 500);

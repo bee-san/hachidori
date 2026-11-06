@@ -1279,7 +1279,14 @@ pointer events. With YouTube mining on, the reader does the same on
 .ytp-caption-window-container .caption-window`): when the controls auto-hide, a
 caption drops into the box of the invisible control bar, which still takes the
 hit test, and the miniplayer's scrim covers its caption while the pointer is
-over it. With the switch off, YouTube is scanned as any page.
+over it. The bar's own text, its time display and chapter title, takes the hit
+test over a caption too, while the bar is hidden and still as a move onto the
+caption brings it back, so a caption glyph under the pointer outranks text in
+the bar (`#movie_player .ytp-chrome-bottom`), which is looked up only where no
+caption glyph is; YouTube shows no caption over the bar otherwise. A caption
+window whose text has no client rect near the pointer is not walked: its own
+box can be smaller than its text. With the switch off, YouTube is scanned as
+any page.
 
 An `<input>` of type `text` or `search` (Chrome reports a missing or unknown
 type as `text`) or a `<textarea>` keeps its value in user-agent shadow DOM that
@@ -3924,8 +3931,9 @@ be read; the picture has no captions or player controls on it.
 
 **Layouts and keys.** The default, theatre and fullscreen layouts and the
 miniplayer use the same player, captions and video, so all of them work; the
-reader finds a caption under the auto-hidden control bar or the miniplayer's
-scrim from its own text (see the pointer-scanning rules above).
+reader finds a caption under the auto-hidden control bar, its time display and
+chapter title included, or the miniplayer's scrim from its own text (see the
+pointer-scanning rules above).
 YouTube makes the whole document fullscreen, so the popup shows over the video
 as on any page. YouTube's own caption overlay stays as it is: Hachidori reads
 it and does not hide or move it, and YouTube's own caption drag moves it, so

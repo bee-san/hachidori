@@ -295,28 +295,38 @@ function youtubeReader(language = () => null) {
 }
 
 // A YouTube caption window in YouTube's markup, two rows of ten-pixel
-// characters at y 10-30 and 40-60, and an element over all of it, as YouTube's
-// auto-hidden control bar and its miniplayer's scrim lie over its captions:
-// the hit test and the caret find that element, never the caption.
-function coveredCaption(window) {
+// characters at y 10-30 and 40-60, and the control bar over all of it, as
+// YouTube's auto-hidden control bar and its miniplayer's scrim lie over its
+// captions: the hit test and the caret find the bar, never the caption. With
+// `label`, text lies over the second row's べた (x 10-30): in the bar, as its
+// time display or chapter title can, or in a menu of the player's (`menu`).
+function coveredCaption(window, { label = null, menu = false } = {}) {
   const { document } = window;
   const player = document.createElement("div");
   player.id = "movie_player";
+  const labelled = label === null ? "" : `<span>${label}</span>`;
   player.innerHTML = '<div class="ytp-caption-window-container"><div class="caption-window"><span class="captions-text">'
     + '<span class="caption-visual-line"><span class="ytp-caption-segment">朝ごはんを</span></span>'
     + '<span class="caption-visual-line"><span class="ytp-caption-segment">食べたかった</span></span></span></div></div>'
-    + '<div class="ytp-chrome-bottom"></div>';
+    + `<div class="ytp-chrome-bottom">${menu ? "" : labelled}</div><div class="ytp-settings-menu">${menu ? labelled : ""}</div>`;
   document.body.append(player);
   const [first, second] = player.querySelectorAll(".ytp-caption-segment");
   const cover = player.querySelector(".ytp-chrome-bottom");
+  const labelText = player.querySelector(":is(.ytp-chrome-bottom, .ytp-settings-menu) span")?.firstChild ?? null;
   window.Range.prototype.getClientRects = function () {
-    const top = this.startContainer.parentElement === first ? 10 : 40;
-    return [{ left: this.startOffset * 10, right: this.endOffset * 10, top, bottom: top + 20 }];
+    const node = this.startContainer;
+    // A range over a whole caption window has its two rows.
+    if (node.nodeType !== window.Node.TEXT_NODE) return [{ left: 0, right: 50, top: 10, bottom: 30 }, { left: 0, right: 60, top: 40, bottom: 60 }];
+    const left = node === labelText ? 10 : 0;
+    const top = node.parentElement === first ? 10 : 40;
+    return [{ left: left + this.startOffset * 10, right: left + this.endOffset * 10, top, bottom: top + 20 }];
   };
-  document.elementFromPoint = () => cover;
-  document.caretRangeFromPoint = () => {
+  const overLabel = (x, y) => labelText !== null && x >= 10 && x <= 10 + label.length * 10 && y >= 40 && y <= 60;
+  document.elementFromPoint = (x, y) => (overLabel(x, y) ? labelText.parentElement : cover);
+  document.caretRangeFromPoint = (x, y) => {
     const range = document.createRange();
-    range.setStart(cover, 0);
+    if (overLabel(x, y)) range.setStart(labelText, Math.floor((x - 10) / 10));
+    else range.setStart(cover, 0);
     return range;
   };
   return { first, second };
@@ -326,21 +336,29 @@ function coveredCaption(window) {
 // scanned from the glyph under the pointer as Netflix's are (#662), while
 // YouTube mining is on; off, YouTube is as before.
 async function youtubeCoveredCaptionCase() {
-  const on = await createHarness(undefined, { url: WATCH, options: { experimental: flags(true) } });
-  on.window.HDYouTube = youtubeReader();
-  const caption = coveredCaption(on.window);
-  const covered = on.driver.resolveCandidate(15, 50); // Over the second row's べ.
-  const gap = on.driver.resolveCandidate(15, 35); // Between the rows.
-  on.close();
-  const off = await createHarness(undefined, { url: WATCH, options: { experimental: flags(false) } });
-  off.window.HDYouTube = youtubeReader();
-  coveredCaption(off.window);
-  const switchedOff = off.driver.resolveCandidate(15, 50);
-  off.close();
+  const scan = async (on, fixture = {}) => {
+    const harness = await createHarness(undefined, { url: WATCH, options: { experimental: flags(on) } });
+    harness.window.HDYouTube = youtubeReader();
+    const caption = coveredCaption(harness.window, fixture);
+    const at = (x, y) => harness.driver.resolveCandidate(x, y);
+    const result = { covered: at(15, 50), gap: at(15, 35), caption }; // Over the second row's べ, and between the rows.
+    harness.close();
+    return result;
+  };
+  const on = await scan(true);
+  const off = await scan(false);
+  // Text over べ: the bar's own, a menu's, and the bar's with the switch off.
+  const bar = await scan(true, { label: "読む" });
+  const menu = await scan(true, { label: "読む", menu: true });
+  const barOff = await scan(false, { label: "読む" });
   return {
     "a YouTube caption under the player's control bar is scanned from the glyph under the pointer while YouTube mining is on, and not while it is off":
-      (covered?.query.startsWith("べたかった") && caption.second.contains(covered.anchor) && gap === null && switchedOff === null)
-      || { query: covered?.query ?? null, gap: gap?.query ?? null, switchedOff: switchedOff?.query ?? null },
+      (on.covered?.query.startsWith("べたかった") && on.caption.second.contains(on.covered.anchor) && on.gap === null && off.covered === null)
+      || { query: on.covered?.query ?? null, gap: on.gap?.query ?? null, switchedOff: off.covered?.query ?? null },
+    "a YouTube caption outranks the control bar's own text over it, while a menu's text over it comes first, and with the switch off the bar's":
+      (bar.covered?.query.startsWith("べたかった") && bar.caption.second.contains(bar.covered.anchor)
+        && menu.covered?.query === "読む" && barOff.covered?.query === "読む")
+      || { bar: bar.covered?.query ?? null, menu: menu.covered?.query ?? null, switchedOff: barOff.covered?.query ?? null },
   };
 }
 

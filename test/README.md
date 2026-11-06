@@ -322,7 +322,7 @@ wasm module or the fixtures are missing.
 | `anki.mjs` | First-run Anki detection, the worker's Anki routes, word status and its overrides through the worker's storage queue, screenshots, linked Settings discovery. |
 | `backup.mjs` | The backup relay and lifecycle port, automatic backups in the worker, Settings retention. |
 | `netflix.mjs` | The recorder port is kept only for the recorder page in a watch tab while the switch is on, a page's line audio is held only for its own top-frame watch document while the switch is on, and a Netflix page open before the switch went on gets the Netflix scripts in its own top-frame document, which its reader asks for once and then follows the switch with. |
-| `youtube.mjs` | YouTube's recorder port and line audio are kept only for YouTube's own recorder page and top-frame YouTube document while YouTube mining is on (Netflix's switch, page and requests do not count), a YouTube page open before the switch went on gets the YouTube scripts and its reader follows the switch with them, a caption note's `{screenshot}` on a YouTube page is the video's frame from the exact document, while other text's, another document's frame and the switch off keep the viewport, a `{gif}` recording forwards a crop that fits in the tab and drops one that does not, a caption under the player's control bar is scanned from its own text while the switch is on, and with automatic switching a caption takes its track's language's profile. |
+| `youtube.mjs` | YouTube's recorder port and line audio are kept only for YouTube's own recorder page and top-frame YouTube document while YouTube mining is on (Netflix's switch, page and requests do not count), a YouTube page open before the switch went on gets the YouTube scripts and its reader follows the switch with them, a caption note's `{screenshot}` on a YouTube page is the video's frame from the exact document, a frame read from another document fails the screenshot, and other text's and the switch off keep the viewport, a `{gif}` recording forwards a crop that fits in the tab and drops one that does not, a caption under the player's control bar is scanned from its own text while the switch is on and outranks the bar's own text over it, while a menu's text over it comes first, and with automatic switching a caption takes its track's language's profile. |
 | `updates.mjs` | The managed-update schedule and checks in the worker, and Settings' update controls. |
 | `lookup-stats.mjs`, `audio.mjs` | Lookup statistics and the audio relay in the worker. |
 | `custom-dictionary.mjs` | The personal dictionary's storage ownership, its engine transaction through real WASM, and its Settings section. |
@@ -636,9 +636,10 @@ These run separately:
   YouTube player whose `<video>` plays a different tone each second and whose
   caption file it loads as json3 through `XMLHttpRequest`, as YouTube's does;
   the browser resolves no host but `127.0.0.1`. The player's file reaches the
-  reader without Hachidori fetching anything; an invisible control bar lies
-  over the caption, as YouTube's does while its controls are auto-hidden, so
-  every lookup finds the caption's glyph in its own text; hovering the playing caption
+  reader without Hachidori fetching anything; the player's controls are
+  auto-hidden and its invisible control bar lies over the caption with its
+  time display over the word, as YouTube's can, so every lookup of the word
+  finds the caption's glyph in its own text over the time display's; hovering the playing caption
   pauses and leaving resumes it through the player; a line heard at 1× gets
   the whole cue as its sentence and its audio, the cue with its pads, with no
   replay, player call or recorder frame; `{screenshot}` is the video's own

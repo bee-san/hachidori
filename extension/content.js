@@ -722,10 +722,11 @@
   const VIDEO_SITES = {
     "www.netflix.com": { flag: "netflixMining", api: () => globalThis.HDNetflix, target: "hachidori-netflix",
       load: "hd_netflix_load", recorder: "recordNetflixLine", subtitleLanguage: true,
-      lines: ".player-timedtext .player-timedtext-text-container" },
+      lines: ".player-timedtext .player-timedtext-text-container", controlBar: null },
     "www.youtube.com": { flag: "youtubeMining", api: () => globalThis.HDYouTube, target: "hachidori-youtube",
       load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false,
-      lines: "#movie_player .ytp-caption-window-container .caption-window" },
+      lines: "#movie_player .ytp-caption-window-container .caption-window",
+      controlBar: "#movie_player .ytp-chrome-bottom" },
   };
   const VIDEO_SITE = Object.hasOwn(VIDEO_SITES, location.hostname) ? VIDEO_SITES[location.hostname] : null;
   const NETFLIX_HOST = location.hostname === "www.netflix.com";
@@ -1014,7 +1015,17 @@
   // YouTube mining is on.
   function videoLineGlyphAt(clientX, clientY) {
     if (!NETFLIX_HOST && !videoMiningEnabled()) return null;
+    const contents = document.createRange();
     for (const box of document.querySelectorAll(VIDEO_SITE.lines)) {
+      // On YouTube the reader skips a caption window whose text has no client
+      // rect near the pointer, since none of its glyphs can contain it. A
+      // window whose own box holds the pointer is walked at once; its box is
+      // not enough to skip one, since YouTube lets text overflow it. Netflix's
+      // lines are walked as before.
+      if (!NETFLIX_HOST && !nearRect(box.getBoundingClientRect(), clientX, clientY)) {
+        contents.selectNodeContents(box);
+        if (![...contents.getClientRects()].some(rect => nearRect(rect, clientX, clientY))) continue;
+      }
       const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const offset = imposterOffsetAt(node, clientX, clientY);
@@ -1195,8 +1206,12 @@
     const glyph = document.createRange();
     glyph.setStart(node, offset);
     glyph.setEnd(node, offset + (text.codePointAt(offset) > 0xffff ? 2 : 1));
-    return [...glyph.getClientRects()].some((rect) => clientX >= rect.left - 2 && clientX <= rect.right + 2
-      && clientY >= rect.top - 2 && clientY <= rect.bottom + 2);
+    return [...glyph.getClientRects()].some(rect => nearRect(rect, clientX, clientY));
+  }
+
+  /** Whether the point is within two CSS pixels of `rect`, the slack a glyph allows the pointer. */
+  function nearRect(rect, clientX, clientY) {
+    return clientX >= rect.left - 2 && clientX <= rect.right + 2 && clientY >= rect.top - 2 && clientY <= rect.bottom + 2;
   }
 
   /**
@@ -1211,9 +1226,21 @@
     const hit = document.elementFromPoint(clientX, clientY);
     const field = scannableField(hit);
     if (field) return resolveFieldCandidate(field, clientX, clientY);
-    // The page's own glyph comes first, a Netflix menu over a line included.
-    const glyph = caretGlyphAt(hit, clientX, clientY) ?? (VIDEO_SITE !== null ? videoLineGlyphAt(clientX, clientY) : null);
+    // The page's own glyph comes first, a Netflix menu over a line included,
+    // but not text in YouTube's control bar: its time display and chapter
+    // title take the hit test over a caption while the bar is auto-hidden, and
+    // still as a move onto the caption brings the bar back, so a caption glyph
+    // under the pointer outranks them. YouTube shows no caption over the bar
+    // otherwise.
+    const own = caretGlyphAt(hit, clientX, clientY);
+    const glyph = VIDEO_SITE !== null && (own === null || inControlBar(own.node))
+      ? videoLineGlyphAt(clientX, clientY) ?? own : own;
     return glyph ? resolveCandidateAt(glyph.node, glyph.offset) : null;
+  }
+
+  /** Whether `node` is in the video site's control bar, whose text a line under the pointer outranks. */
+  function inControlBar(node) {
+    return VIDEO_SITE.controlBar !== null && Boolean(node.parentElement?.closest(VIDEO_SITE.controlBar));
   }
 
   /** The caret's glyph in `hit`, the element under the pointer, when the glyph contains the pointer. */
