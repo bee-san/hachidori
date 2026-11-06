@@ -198,6 +198,9 @@ let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController; // NOSONAR: shared with the other Settings modules
 let experimentalController;
+// Experimental switches apply in the order they were clicked: turning Multiple
+// languages off first settles the page's edits, and a click meanwhile waits.
+let experimentalToggles = Promise.resolve();
 let memoryController;
 let backingUp = false; // NOSONAR: shared with the other Settings modules
 let settingsSearch;
@@ -811,7 +814,8 @@ function updateKeybindSettings() {
       ? chrome.commands.openShortcutSettings() : chrome.tabs.create({ url: "chrome://extensions/shortcuts" })),
     browserShortcutsAvailable: HOST_CAPABILITIES.browserShortcuts,
     // Toggle option offers what the edited profile's language has (docs/languages.md 7.3),
-    // and Switch to the next language is offered once the records have profiles (16.2).
+    // and Switch to the next language is offered once the records have profiles and
+    // Multiple languages is on (16.2, 16.3).
     optionAvailable, languageName: () => languageName(),
     actionAvailable: action => action !== "switchLanguage"
       || (hasProfiles(storedOptionsRecord) && languagesEnabled(storedOptionsRecord)),
@@ -907,11 +911,21 @@ function updateSharingSettings() {
   sharingController.start();
 }
 
-async function toggleExperimental(id, enabled) {
+function toggleExperimental(id, enabled) {
+  experimentalToggles = experimentalToggles.then(() => applyExperimentalToggle(id, enabled));
+  return experimentalToggles;
+}
+
+async function applyExperimentalToggle(id, enabled) {
+  setSectionStatus("experimental-status", "");
+  if (options.experimental[id] === enabled) {
+    renderExperimentalSettings();
+    return;
+  }
   if (id === "multipleLanguages" && !enabled) {
     const refused = await showLookupLanguageFirst();
-    setSectionStatus("experimental-status", refused ?? "", refused === null ? "" : "error");
     if (refused !== null) {
+      setSectionStatus("experimental-status", refused, "error");
       // The switch shows the stored flag again.
       renderExperimentalSettings();
       return;
