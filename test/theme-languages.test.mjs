@@ -279,29 +279,25 @@ test("a display setting changes the presentation in themes that declare it and s
   } finally { run.dom.window.close(); }
 });
 
-test("Design shows a pack's display settings only for a theme that declares presentation, and hides the clicked-character dictionary of an undeclared theme outside Japanese (11.4, 11.5)", async () => {
+test("Design hides what the edited language lacks, and the clicked-character dictionary of an undeclared theme outside Japanese (11.4, 11.5)", async () => {
   const { window } = languageDom();
   try {
     const { document } = window;
     const section = document.createElement("section");
     section.innerHTML = `<p id="popup-theme-hint"></p><label data-theme-variants><select><option value="auto">Automatic</option></select></label>
       <div data-design-group><label data-design-setting="kanjiClickDictionary">Clicked kanji</label>
-        <label data-design-setting="showPitchAccentFurigana" data-requires="pitchAccent">Pitch</label></div>
-      <fieldset data-pack-settings-group="display"><legend>Arabic display</legend></fieldset>`;
+        <label data-design-setting="showPitchAccentFurigana" data-requires="pitchAccent">Pitch</label></div>`;
     const catalogue = JSON.parse(readFileSync(new URL("../extension/vendor/themes/index.json", import.meta.url), "utf8")).themes;
     const arabic = scenarioLanguage(window, SCENARIOS.ar);
     // Settings marks what the edited profile's language lacks (7.3).
     section.querySelector('[data-requires="pitchAccent"]').toggleAttribute("data-requirement-unmet", !arabic.capabilities.pitchAccent);
     for (const theme of catalogue) {
       applyDesignSettings(section, theme, { language: arabic });
-      const display = section.querySelector("[data-pack-settings-group]");
-      assert.equal(display.hidden, theme.language.presentation !== true, `${theme.slug} display settings`);
       assert.equal(section.querySelector('[data-design-setting="showPitchAccentFurigana"]').hidden, true, `${theme.slug} pitch needs pitch accent`);
     }
     const undeclared = { slug: "legacy", name: "Legacy", designSettings: ["kanjiClickDictionary"] };
     applyDesignSettings(section, undeclared, { language: arabic });
     assert.equal(section.querySelector('[data-design-setting="kanjiClickDictionary"]').hidden, true);
-    assert.equal(section.querySelector("[data-pack-settings-group]").hidden, true);
     applyDesignSettings(section, undeclared, { language: window.HDThemeHost.createLanguage() });
     assert.equal(section.querySelector('[data-design-setting="kanjiClickDictionary"]').hidden, false, "Japanese keeps it");
   } finally { window.close(); }

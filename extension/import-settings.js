@@ -12,7 +12,9 @@ import {
   formatSeconds,
 } from "./dictionary-progress.js";
 import { recommendedDictionaryInstalled } from "./managed-dictionary-source.js";
-import { RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue } from "./recommended-dictionaries.js";
+import {
+  RECOMMENDED_DICTIONARIES, describeRecommendedCatalogue, packDictionaryItem, packDictionaryLinks,
+} from "./recommended-dictionaries.js";
 import { readDictionaryArchiveIdentity } from "./dictionary-import-archive.js";
 import { IMPORT_ATTEMPTS, importWithRetries } from "./dictionary-import-attempts.js";
 import { dictionaryImportError } from "./dictionary-import-errors.js";
@@ -116,7 +118,7 @@ async function packRecommendations(code) {
   if (!recommendedLinks.has(code)) {
     recommendedLinks.set(code, fetch(new URL(`vendor/languages/${code}/language.json`, document.baseURI))
       .then(response => (response.ok ? response.json() : null))
-      .then(pack => (Array.isArray(pack?.host?.recommendedDictionaries) ? pack.host.recommendedDictionaries : []))
+      .then(packDictionaryLinks)
       .catch(() => []));
   }
   return recommendedLinks.get(code);
@@ -126,8 +128,7 @@ async function packRecommendations(code) {
 // user imports the file (decision record 0006).
 async function renderLanguageRecommendations() {
   const code = editedProfile.language;
-  const links = code === "ja" ? [] : (await packRecommendations(code))
-    .filter(entry => typeof entry?.name === "string" && String(entry?.url ?? "").startsWith("https://"));
+  const links = code === "ja" ? [] : await packRecommendations(code);
   if (editedProfile.language !== code) return;
   let block = element("recommended-language");
   if (links.length === 0) {
@@ -154,27 +155,14 @@ async function renderLanguageRecommendations() {
     element("recommended-starter").after(block);
   }
   element("recommended-language-heading").textContent = `Recommended ${languageName(code)} dictionaries`;
-  element("recommended-language-list").replaceChildren(...links.map(entry => {
-    const item = document.createElement("li");
-    const link = document.createElement("a");
-    link.className = "recommended-dictionary-link";
-    link.href = entry.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = entry.name;
-    const description = document.createElement("span");
-    description.textContent = [entry.description, entry.licence].filter(value => typeof value === "string" && value)
-      .join(" · ");
-    item.append(link, description);
-    return item;
-  }));
+  element("recommended-language-list").replaceChildren(...links.map(entry => packDictionaryItem(document, entry)));
 }
 
 // An import whose archive names another profile's language says so and offers
-// Move to {Language} (docs/languages.md 14).
+// Move to {Language} (docs/languages.md 14), while Multiple languages is on.
 function renderLanguageMoves() {
   for (const offer of document.querySelectorAll(".import-language-move")) offer.remove();
-  if (!libraryHasProfiles()) return;
+  if (!libraryHasProfiles() || !globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)) return;
   const profiles = globalThis.HDReaderOptions.profiles(storedOptionsRecord);
   for (const { title, index } of importedTitles) {
     const row = storedDictionaryState.dictionaries.find(entry => entry.title === title);

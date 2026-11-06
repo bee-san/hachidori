@@ -267,8 +267,8 @@ linked browser receives what it can read:
 - **Browsers that know about languages** opt in: they send the languages
   their own Hachidori has, and receive every profile as the host stores it.
   Each browser still chooses the language it reads in itself; the choice is
-  never shared. **Manage languages** on such a browser changes the
-  host's languages, offering those both Hachidoris have.
+  never shared. Settings → Advanced → Languages on such a browser changes
+  the host's languages, offering those both Hachidoris have.
 - A browser that **lacks one of the host's languages** (a language arrived
   with a newer Hachidori on the host) is refused at opt-in and works as an
   older browser does until it is updated. Settings → Sharing says which
@@ -318,8 +318,8 @@ existing clients. The client's `hello` never changes.
 4. **Requests.** `hd_profile_add` and `hd_profile_remove` are forwarded to
    `hoshidicts-offscreen` (both mutating) from an opted-in connection only;
    the host refuses an add for a language it has no pack for (*The linked
-   Hachidori does not have Arabic. Update it and try again.*) and never
-   forwards a first-run add. `hd_language_selection_write` is never forwarded.
+   Hachidori does not have Arabic. Update it and try again.*).
+   `hd_language_selection_write` is never forwarded.
    The linked Anki, Anki setup and linked-import requests keep a validated
    `profileId`; the upload host passes it to the import.
 5. **Forced reconnections.** A connection must reconnect when a commit

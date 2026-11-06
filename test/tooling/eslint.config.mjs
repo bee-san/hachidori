@@ -20,30 +20,33 @@ const chrome = readonly(["chrome"]);
 const published = readonly([
   "HDAnki", "HDAudio", "HDContent", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
-  "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVisualNovel", "HDWordHighlights",
-  "HDWordStatusOverrides",
+  "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVideoSite", "HDVisualNovel",
+  "HDWordHighlights", "HDWordStatusOverrides", "HDYouTube",
 ]);
 
 // Classic scripts sharing their world's global object: the manifest's content
-// scripts, the three netflix.js registers beside them while Netflix mining is
-// on, and the classic <script> files of extension pages.
+// scripts, the ones netflix.js and youtube.js register beside them while
+// Netflix or YouTube mining is on, and the classic <script> files of
+// extension pages.
 const CLASSIC = [
   ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
-  "design-preview.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
+  "youtube-content.js", "design-preview.js", "language-text.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in
 // Chrome's user-script world, which has none either.
 const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js"];
-// The service worker serializes this module's function into Netflix's page.
-const NETFLIX_PREVIEW = "netflix-preview.js";
+// The service worker serializes these modules' functions into Netflix's and
+// YouTube's pages.
+const INJECTED = ["netflix-preview.js", "youtube-frame.js"];
 // The MV3 service worker module and the modules only it loads.
 const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
   "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
-  "custom-javascript.js", "google-docs.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
-  "background-anki.js", "background-backup.js", "background-core.js", "background-netflix.js",
-  "background-requests.js", "background-sharing.js", "background-updates.js",
+  "custom-javascript.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
+  "site-scripts.js", "youtube.js", "background-anki.js", "background-backup.js", "background-core.js",
+  "background-netflix.js", "background-requests.js", "background-sharing.js", "background-updates.js",
+  "background-video.js", "background-youtube.js",
 ];
 // Dedicated module workers and the modules only they load.
 const WORKERS = [
@@ -72,12 +75,12 @@ export default defineConfig([
   // Extension pages, and the modules several contexts share.
   {
     files: ["extension/**"],
-    ignores: extension([...MAIN_WORLD, NETFLIX_PREVIEW, ...SERVICE_WORKER, ...WORKERS]),
+    ignores: extension([...MAIN_WORLD, ...INJECTED, ...SERVICE_WORKER, ...WORKERS]),
     languageOptions: { globals: { ...globals.browser, ...chrome } },
   },
   { files: extension(CLASSIC), languageOptions: { sourceType: "script", globals: published } },
   { files: extension(MAIN_WORLD), languageOptions: { sourceType: "script", globals: globals.browser } },
-  { files: extension([NETFLIX_PREVIEW]), languageOptions: { globals: globals.browser } },
+  { files: extension(INJECTED), languageOptions: { globals: globals.browser } },
   { files: extension(SERVICE_WORKER), languageOptions: { globals: { ...globals.serviceworker, ...chrome } } },
   { files: extension(WORKERS), languageOptions: { globals: globals.worker } },
   // Also runs in the engine workers, where the IDBFS mirror reads with

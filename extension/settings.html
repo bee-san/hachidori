@@ -47,6 +47,7 @@
             <option value="sharing">Sharing</option>
             <option value="backup">Backup &amp; restore</option>
             <option value="advanced">Advanced</option>
+            <option value="languages">Languages</option>
           </select>
         </label>
         <output id="settings-navigation-status" class="compact-nav-status" aria-live="polite"></output>
@@ -119,6 +120,10 @@
         <nav class="section-tabs" id="reading-navigation" aria-label="Reading sections" hidden>
           <a href="#lookup" data-label="Reading">Reading</a>
           <a href="#word-highlighting" data-label="Word highlighting">Word highlighting</a>
+        </nav>
+        <nav class="section-tabs" id="advanced-navigation" aria-label="Advanced sections" hidden>
+          <a href="#advanced" data-label="Advanced">Advanced</a>
+          <a href="#languages" data-label="Languages">Languages</a>
         </nav>
         <section
           class="card library"
@@ -927,8 +932,9 @@
                     <select id="opt-glossary-layout">
                       <option value="default">Default</option>
                       <option value="compact">Compact popup</option>
+                      <option value="compact-popup-anki">Compact popup and Anki</option>
                     </select>
-                    <span class="field-hint">Puts the glosses of each sense on one line, separated by |, as in Yomitan. Examples, notes and tables keep their own lines.</span>
+                    <span class="field-hint">Puts the glosses of each sense on one line, separated by |, as in Yomitan. Examples, notes and tables keep their own lines. Compact popup and Anki does the same in the glossary fields of new Anki cards.</span>
                   </label>
 
                   <label class="field" data-design-setting="popupImageSource">
@@ -1515,6 +1521,7 @@
             <p class="section-note">All experimental features are off by default and may change or be removed in a later version. Turning one off hides it but keeps its settings for the next time you turn it on.</p>
             <ul id="experimental-features" class="experimental-list"></ul>
             <p id="experimental-empty" class="hint" hidden>No experimental features are available in this version.</p>
+            <output class="custom-dictionary-status" id="experimental-status" aria-live="polite"></output>
           </fieldset>
           <fieldset class="lookup-group" id="debug-info-settings">
             <legend data-search-keywords="debug diagnostics bug report troubleshooting support logs version">Troubleshooting</legend>
@@ -1526,6 +1533,21 @@
               </div>
             </div>
           </fieldset>
+        </section>
+
+        <section
+          class="card"
+          id="languages"
+          aria-labelledby="languages-heading"
+          data-settings-group="Advanced"
+          data-settings-name="Languages"
+          hidden
+        >
+          <div class="card-head">
+            <h1 id="languages-heading" tabindex="-1">Languages</h1>
+            <p class="hint">Each language has its own dictionaries and settings. With two or more, settings every language shares say All languages.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
         </section>
       </main>
     </div>

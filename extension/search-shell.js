@@ -203,7 +203,8 @@ async function userScript(api) {
 }
 
 // Yomitan's search page clipboard monitor (#639; yomidevs/yomitan@ac1d839
-// ext/js/display/search-display-controller.js): text with Japanese in it,
+// ext/js/display/search-display-controller.js): text with Japanese in it (with
+// profiles, text in the language used for lookups; docs/languages.md 8.5),
 // copied in any tab or program, is searched in the frame, as a paste is, up
 // to Yomitan's 1,000 characters, which is all the offscreen document sends.
 // Only that text reaches the frame, which the user's script shares: other

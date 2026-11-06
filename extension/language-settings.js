@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The settings a language pack defines (docs/languages.md 7.5), rendered from
-// the pack's schema as experimental-settings.js renders its flags: Reading →
-// {Language} options for `group: "lookup"` and Design → {Language} display for
-// `group: "display"`. A display setting shows only while the selected theme
-// declares that it renders `presentation` (section 11.3). Settings imports
-// this module only once the edited profile's pack declares settings.
+// the pack's schema as experimental-settings.js renders its flags, under
+// Advanced → Languages: {Language} options for `group: "lookup"`, then
+// {Language} display for `group: "display"`. A display setting shows only
+// while the selected theme declares that it renders `presentation` (section
+// 11.3). Settings imports this module only once the edited profile's pack
+// declares settings.
 
 const GROUPS = {
-  lookup: { id: "language-lookup-settings", legend: name => `${name} options`,
-    place: document => document.getElementById("opt-japanese-only").closest("fieldset") },
-  display: { id: "language-display-settings", legend: name => `${name} display`,
-    place: document => document.querySelector("#design .design-controls > fieldset:not(#theme-store)") },
+  lookup: { id: "language-lookup-settings", legend: name => `${name} options` },
+  display: { id: "language-display-settings", legend: name => `${name} display` },
 };
 
 function settingValue(setting, values) {
@@ -92,9 +91,39 @@ function setValue(document, control, setting, value) {
 }
 
 // Builds, updates or removes the two fieldsets for `descriptor` (null: none).
-export function renderLanguageSettings({ document, descriptor, name, values, presentation, onChange }) {
+// A theme that does not declare presentation shows the stored headword, so
+// the pack's display settings would change nothing (section 11.4): the card
+// keeps its place and says so, with the way to Design, instead of its rows.
+function renderDisplayNote(document, fieldset, presentation, themeName) {
+  for (const row of fieldset.querySelectorAll(".language-setting")) {
+    if (row.hidden === presentation) row.hidden = !presentation;
+  }
+  let note = fieldset.querySelector(".language-display-note");
+  if (presentation) {
+    note?.remove();
+    return;
+  }
+  if (note === null) {
+    note = document.createElement("p");
+    note.className = "field-hint language-display-note";
+    fieldset.append(note);
+  }
+  // Rebuilt only when its text changes, so a focused link keeps focus.
+  const theme = themeName ? `The ${themeName} theme` : "The chosen theme";
+  const text = `${theme} does not use these settings. Choose another theme in `;
+  if (note.firstChild?.nodeValue !== text) {
+    const link = document.createElement("a");
+    link.href = "#design";
+    link.textContent = "Design";
+    note.replaceChildren(text, link, ".");
+  }
+}
+
+export function renderLanguageSettings({ document, descriptor, name, values, presentation, themeName = null, onChange }) {
   const settings = Array.isArray(descriptor?.settings) ? descriptor.settings : [];
-  for (const [group, { id, legend, place }] of Object.entries(GROUPS)) {
+  // Each group's card follows Your languages, or the group before it.
+  let anchor = document.getElementById("language-settings");
+  for (const [group, { id, legend }] of Object.entries(GROUPS)) {
     const own = settings.filter(setting => setting?.group === group && typeof setting.id === "string");
     let fieldset = document.getElementById(id);
     const key = JSON.stringify([descriptor?.code ?? null, own.map(setting => setting.id)]);
@@ -108,9 +137,6 @@ export function renderLanguageSettings({ document, descriptor, name, values, pre
       fieldset.className = "lookup-group";
       fieldset.id = id;
       fieldset.dataset.languageSettings = key;
-      // theme-store.js shows the display group only for themes that render
-      // presentation, as this module does below.
-      fieldset.dataset.packSettingsGroup = group;
       const caption = document.createElement("legend");
       fieldset.append(caption);
       for (const setting of own) {
@@ -121,15 +147,14 @@ export function renderLanguageSettings({ document, descriptor, name, values, pre
         wrapper.append(...nodes);
         fieldset.append(wrapper);
       }
-      place(document).after(fieldset);
+      anchor.after(fieldset);
     }
+    anchor = fieldset;
     fieldset.querySelector("legend").textContent = legend(name);
     for (const setting of own) {
       const control = document.getElementById(`opt-pack-${setting.id}`);
       setValue(document, control, setting, settingValue(setting, values));
     }
-    // A theme that does not declare presentation shows the stored headword,
-    // so the pack's display settings would change nothing (section 11.4).
-    if (group === "display") fieldset.hidden = !presentation;
+    if (group === "display") renderDisplayNote(document, fieldset, presentation, themeName);
   }
 }

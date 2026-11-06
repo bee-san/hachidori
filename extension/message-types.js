@@ -140,6 +140,11 @@
     "hd_upload_import",
     "hd_upload_reset",
     "hd_word_status_override",
+    "hd_youtube_capture_cancel",
+    "hd_youtube_capture_finish",
+    "hd_youtube_capture_start",
+    "hd_youtube_line_audio",
+    "hd_youtube_load",
   ];
 
   globalThis.HDMessageTypes = { MESSAGE_TYPES };

@@ -1,25 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Experimental Netflix mining, the reader's side. netflix.js registers this
-// classic script after netflix-subtitles.js and netflix-audio.js in the content
-// scripts' world on https://www.netflix.com/* (top frame, document_start)
-// while Settings → Advanced → Experimental features → Netflix mining is on. It
-// keeps the subtitle timelines netflix-page.js posts from the page, pins the
-// cue of a hovered `.player-timedtext` line, records that line for Anki from
-// what the viewer heard (netflix-audio.js) or while the page plays or replays
-// it, and pauses the video while a subtitle line or Hachidori's popup is hovered.
+// Experimental Netflix and YouTube mining, the reader's side: the video-site
+// layer both sites share. netflix.js registers this classic script after
+// netflix-subtitles.js and netflix-audio.js in the content scripts' world on
+// https://www.netflix.com/* (top frame, document_start) while Settings →
+// Advanced → Experimental features → Netflix mining is on, and youtube.js
+// registers it before youtube-content.js on https://www.youtube.com/* while
+// YouTube mining is on. A site's reader keeps the subtitle timelines the page
+// script (netflix-page.js, on either site) posts, pins the cue of a hovered
+// subtitle line, records that line for Anki from what the viewer heard
+// (netflix-audio.js) or while the page plays or replays it, and pauses the
+// video while a subtitle line or Hachidori's popup is hovered.
 (function () {
   "use strict";
 
-  const PAGE_EVENT = "hachidori-netflix-page";
-  const COMMAND_EVENT = "hachidori-netflix-command";
   // content.js announces its popup on `window`; nested popups open inside it.
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
   const WATCH_PATH = /^\/watch\/(\d+)/u;
-  const MOVIE_ID = /^\d+$/u;
-  const STATUSES = new Set(["image", "none", "failed"]);
-  const FORMATS = new Set(["webvtt", "ttml"]);
   // The page gives up on a replay after its two bounded seeks (10 s each) and
   // REPLAY_SLACK_MS in netflix-page.js; the reader waits a little longer for
   // that answer.
@@ -27,16 +25,50 @@
   // How long the line audio has to deliver what was played until now.
   const DRAIN_MS = 500;
   const SHOW_TEXT = 4;
+  // A track's BCP 47 language as a page names it (`ja`, `zh-Hans`).
+  const LANGUAGE_TAG = /^[A-Za-z]{2,3}(?:-[A-Za-z\d]{1,8})*$/u;
 
-  function createNetflix(window, subtitles = window.HDNetflixSubtitles, lineAudioApi = window.HDNetflixAudio) {
+  // What a video site's reader needs to know of its page: the events its page
+  // script talks on, its video IDs, subtitle formats and statuses, where its
+  // video and subtitles are, its recorder page and the worker requests that
+  // record a line (docs/architecture.md, Netflix mining). youtube-content.js
+  // describes YouTube the same way.
+  const NETFLIX = Object.freeze({
+    name: "Netflix",
+    // The mining request's field.
+    field: "netflix",
+    pageEvent: "hachidori-netflix-page",
+    commandEvent: "hachidori-netflix-command",
+    movieId: /^\d+$/u,
+    statuses: new Set(["image", "none", "failed"]),
+    formats: new Set(["webvtt", "ttml"]),
+    // Netflix reaches /watch/<id> by navigating inside one document.
+    watched: location => WATCH_PATH.exec(location.pathname)?.[1] ?? null,
+    video: document => document.querySelector(".watch-video video") ?? document.querySelector("video"),
+    // The subtitle layer, and a subtitle box in it.
+    subtitle: ".player-timedtext",
+    line: ".player-timedtext-text-container",
+    recorderPage: "netflix-recorder.html",
+    requests: { start: "hd_netflix_capture_start", finish: "hd_netflix_capture_finish",
+      cancel: "hd_netflix_capture_cancel", lineAudio: "hd_netflix_line_audio" },
+    // The viewer can drag the subtitles, and every lookup on the watch page is
+    // of the player's text, so any lookup pauses the video.
+    drag: true,
+    pauseOnLookup: true,
+  });
+
+  function createVideoSite(window, site, subtitles = window.HDNetflixSubtitles, lineAudioApi = window.HDNetflixAudio) {
     const { document, location } = window;
-    // movieId → { tracks: Map(trackId → { id, closedCaptions, cues }), status, chosen }
+    // movieId → { tracks: Map(trackId → { id, closedCaptions, cues, language }), status, chosen }
     const movies = new Map();
     // Movies this page has moved away from: their late posts are not wanted.
     const retired = new Set();
     const resent = new Set();
     const replays = new Map();
     let watched = null;
+    // The video the page says its player plays, for a site whose address does
+    // not say (YouTube, whose miniplayer plays on other pages).
+    let reported = null;
     // Hover pause, which content.js turns on with the switch. `held` while
     // the pause this reader asked for, or kept through a recording, is in
     // force; `restoring` from a replay's answer until the page's seek back has
@@ -58,12 +90,14 @@
     let subtitleLanguage = "ja";
 
     const command = message => {
-      document.dispatchEvent(new window.CustomEvent(COMMAND_EVENT, { detail: JSON.stringify(message) }));
+      document.dispatchEvent(new window.CustomEvent(site.commandEvent, { detail: JSON.stringify(message) }));
     };
-    const watchedMovie = () => WATCH_PATH.exec(location.pathname)?.[1] ?? null;
+    const watchedMovie = () => (site.reportsVideo ? reported : site.watched(location));
+    // The movie whose sound plays now: none while an ad plays (YouTube).
+    const playingMovie = () => (site.adShowing?.(document) === true ? null : watchedMovie());
 
-    // A new /watch/<id> drops the previous movie's timeline and any resume
-    // this reader still owed it.
+    // A new /watch/<id>, or on YouTube another video, drops the previous
+    // movie's timeline and any resume this reader still owed it.
     function sync() {
       const movieId = watchedMovie();
       if (movieId === watched) return movieId;
@@ -79,9 +113,20 @@
     }
 
     function movie(movieId) {
-      if (!movies.has(movieId)) movies.set(movieId, { tracks: new Map(), status: null, chosen: null });
+      if (!movies.has(movieId)) {
+        // YouTube's page posts the caption files of every player on it, its
+        // previews' too: as the page does, the reader keeps the watched
+        // video's timeline and the latest other one.
+        if (site.reportsVideo) for (const id of movies.keys()) if (id !== watched) movies.delete(id);
+        movies.set(movieId, { tracks: new Map(), status: null, chosen: null });
+      }
       return movies.get(movieId);
     }
+
+    // Why a replay failed, as a reason the note can name: the player is
+    // missing, a reason the site's page gives (YouTube: an ad is playing), or
+    // the replay did not finish.
+    const replayFailure = error => (error === "player" || site.replayErrors?.has(error) ? error : "replay");
 
     function settleReplay(message) {
       const pending = typeof message.id === "string" ? replays.get(message.id) : undefined;
@@ -92,8 +137,8 @@
         pending.resolve(message.anchors.filter(pair => Array.isArray(pair) && pair.length === 2
           && pair.every(Number.isFinite)));
       } else {
-        pending.reject(Object.assign(new Error(`Netflix's player could not replay the line (${message.error}).`),
-          { code: message.error === "player" ? "player" : "replay" }));
+        pending.reject(Object.assign(new Error(`${site.name}'s player could not replay the line (${message.error}).`),
+          { code: replayFailure(message.error) }));
       }
       // The page restores the viewer's state as it answers; its seek back
       // reports itself afterwards. Playing on seeks nowhere.
@@ -110,18 +155,22 @@
         return;
       }
       if (!message || typeof message !== "object") return;
+      // A page that says which video its player plays (YouTube).
+      if (site.reportsVideo && message.kind === "video") {
+        reported = typeof message.movieId === "string" && site.movieId.test(message.movieId) ? message.movieId : null;
+      }
       sync();
       if (message.kind === "replay") {
         settleReplay(message);
         return;
       }
-      if (typeof message.movieId !== "string" || !MOVIE_ID.test(message.movieId) || retired.has(message.movieId)) return;
-      if (message.kind === "status" && STATUSES.has(message.subtitles)) {
+      if (typeof message.movieId !== "string" || !site.movieId.test(message.movieId) || retired.has(message.movieId)) return;
+      if (message.kind === "status" && site.statuses.has(message.subtitles)) {
         movie(message.movieId).status ??= message.subtitles;
         return;
       }
       if (message.kind !== "subtitle" || typeof message.trackId !== "string" || message.trackId === ""
-          || typeof message.closedCaptions !== "boolean" || !FORMATS.has(message.format)
+          || typeof message.closedCaptions !== "boolean" || !site.formats.has(message.format)
           || typeof message.text !== "string") return;
       let cues;
       try {
@@ -131,7 +180,10 @@
         return;
       }
       movie(message.movieId).tracks.set(message.trackId, { id: message.trackId, closedCaptions: message.closedCaptions,
-        cues: cues.map(cue => ({ ...cue, key: subtitles.normaliseCueText(cue.text) })) });
+        cues: cues.map(cue => ({ ...cue, key: subtitles.normaliseCueText(cue.text) })),
+        // The track's language, where the page names it (YouTube).
+        ...(site.trackLanguage && typeof message.language === "string" && LANGUAGE_TAG.test(message.language)
+          ? { language: message.language } : {}) });
     }
 
     function visibleText(element) {
@@ -143,7 +195,7 @@
       return text;
     }
 
-    const mainVideo = () => document.querySelector(".watch-video video") ?? document.querySelector("video");
+    const mainVideo = () => site.video(document);
     // The line audio keeps the player's sound only, not a preview's on another page.
     const watchVideo = () => (watchedMovie() === null ? null : mainVideo());
 
@@ -153,13 +205,25 @@
     }
 
     // What the reader saw when the popup opened: the subtitle line under the
-    // pointer and the video's time. Null for anything but Netflix's subtitles.
+    // pointer and the video's time. Null for anything but the site's
+    // subtitles, and for an ad's own captions (YouTube). Where only a lookup of
+    // a subtitle pauses the video (YouTube), this is that lookup: content.js
+    // observes the root lookup as it shows its popup.
     function observe(element) {
-      const subtitle = element?.closest?.(".player-timedtext");
-      if (!subtitle) return null;
-      const container = element.closest(".player-timedtext-text-container") ?? subtitle;
+      const subtitle = element?.closest?.(site.subtitle);
+      if (!subtitle || site.adShowing?.(document) === true) return null;
+      if (!site.pauseOnLookup && !hovering) pauseIfPlaying();
+      const container = element.closest(site.line) ?? subtitle;
       return { movieId: sync(), mediaTimeMs: mediaTimeMs(), lineText: visibleText(container),
         hoveredText: visibleText(element) };
+    }
+
+    // The language of the track whose line `element` is, where the page names
+    // it (YouTube): the reader keeps one track per video, the one on screen.
+    function captionLanguage(element) {
+      if (!site.trackLanguage || !element?.closest?.(site.subtitle)) return null;
+      const tracks = [...(movies.get(sync())?.tracks.values() ?? [])];
+      return tracks.at(-1)?.language ?? null;
     }
 
     function askAgain(movieId) {
@@ -203,17 +267,17 @@
       return { reason: ambiguous ? "ambiguous" : "no-match" };
     }
 
-    // The mining request's Netflix fields. `sentence` is the root lookup's
-    // candidate, whose sentence becomes the whole cue; nested lookups keep
-    // their own sentence and inherit only the cue.
+    // The mining request's fields for the site (`netflix`, `youtube`).
+    // `sentence` is the root lookup's candidate, whose sentence becomes the
+    // whole cue; nested lookups keep their own sentence and inherit only the cue.
     function miningFields(observation, sentence = null) {
       if (!observation) return {};
       const resolved = resolve(observation);
-      if (!resolved.cue) return { netflix: { unavailable: resolved.reason } };
+      if (!resolved.cue) return { [site.field]: { unavailable: resolved.reason } };
       const { movieId, startMs, endMs, text } = resolved.cue;
       // A candidate of a language pack joins the cue's lines with its joiner.
       const whole = sentence ? subtitles.cueSentence(text, sentence.sentence, sentence.matchOffset, sentence.lineJoiner) : null;
-      return { netflix: { cue: { movieId, startMs, endMs } }, ...whole };
+      return { [site.field]: { cue: { movieId, startMs, endMs } }, ...whole };
     }
 
     // Has the page play the cue's line at 1×: from just before it, or with
@@ -230,7 +294,7 @@
       return new Promise((resolveReplay, rejectReplay) => {
         const timer = window.setTimeout(() => {
           replays.delete(id);
-          rejectReplay(Object.assign(new Error("Netflix's player did not finish replaying the line."), { code: "replay" }));
+          rejectReplay(Object.assign(new Error(`${site.name}'s player did not finish replaying the line.`), { code: "replay" }));
         }, cue.endMs - cue.startMs + 2 * padMs + REPLAY_SLACK_MS);
         replays.set(id, { resolve: resolveReplay, reject: rejectReplay, timer, playOn });
         command({ type: "replay", id, startMs: cue.startMs, endMs: cue.endMs, padMs, keepPaused: hoverPause,
@@ -241,13 +305,27 @@
     // The hidden extension frame that records the tab (netflix-capture.js).
     function recorderFrame() {
       const frame = document.createElement("iframe");
-      frame.src = window.chrome.runtime.getURL("netflix-recorder.html");
+      frame.src = window.chrome.runtime.getURL(site.recorderPage);
       frame.setAttribute("aria-hidden", "true");
       frame.tabIndex = -1;
       frame.style.setProperty("display", "none", "important");
-      // Outside Netflix's own app root, so its rendering cannot remove it.
+      // Outside the site's own app root, so its rendering cannot remove it.
       document.documentElement.append(frame);
       return frame;
+    }
+
+    // Where the video is in the viewport, as fractions of it, with the
+    // viewport's aspect ratio, so a GIF of a page with more than its player
+    // keeps only the video (YouTube).
+    function videoCrop() {
+      const rect = mainVideo()?.getBoundingClientRect();
+      const { innerWidth: width, innerHeight: height } = window;
+      if (!rect || width <= 0 || height <= 0) return null;
+      const left = Math.max(0, rect.left / width);
+      const top = Math.max(0, rect.top / height);
+      const right = Math.min(1, rect.right / width);
+      const bottom = Math.min(1, rect.bottom / height);
+      return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top, aspect: width / height } : null;
     }
 
     // Records the cue's line with tab capture: a recorder frame opens the tab's
@@ -258,7 +336,8 @@
     async function recordTab(cue, { send, templateId, audio, gif }) {
       const frame = recorderFrame();
       try {
-        const started = await send("hd_netflix_capture_start", { cue, audio, gif });
+        const crop = site.cropToVideo && gif ? videoCrop() : null;
+        const started = await send(site.requests.start, { cue, audio, gif, ...(crop ? { crop } : {}) });
         if (typeof started.unavailable === "string") return { unavailable: started.unavailable };
         if (typeof started.sessionId !== "string" || !Number.isFinite(started.padMs)) {
           throw new TypeError("the recording did not start.");
@@ -267,10 +346,10 @@
         try {
           anchors = await replay(cue, started.padMs);
         } catch (error) {
-          await send("hd_netflix_capture_cancel", { sessionId: started.sessionId }).catch(() => {});
-          return { unavailable: error.code === "player" ? "player" : "replay" };
+          await send(site.requests.cancel, { sessionId: started.sessionId }).catch(() => {});
+          return { unavailable: replayFailure(error.code) };
         }
-        return await send("hd_netflix_capture_finish", { sessionId: started.sessionId, anchors, templateId });
+        return await send(site.requests.finish, { sessionId: started.sessionId, anchors, templateId });
       } finally {
         frame.remove();
       }
@@ -309,7 +388,7 @@
     async function holdLine(clip, { send, templateId }) {
       if (clip === null) return { unavailable: "unheard" };
       if (lineAudioApi.isSilent(clip.samples)) return { unavailable: "silent" };
-      const held = await send("hd_netflix_line_audio", { data: lineAudioApi.wavBase64(clip), templateId });
+      const held = await send(site.requests.lineAudio, { data: lineAudioApi.wavBase64(clip), templateId });
       return typeof held.unavailable === "string" ? { unavailable: held.unavailable }
         : { token: held.token, filename: held.filename };
     }
@@ -357,7 +436,7 @@
     // subtitle box's text, which also span the gap between its lines. A layer
     // with no line showing has no text, so no bounds.
     function subtitleAt(x, y) {
-      for (const box of document.querySelectorAll(".player-timedtext .player-timedtext-text-container")) {
+      for (const box of document.querySelectorAll(`${site.subtitle} ${site.line}`)) {
         let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
         const walker = document.createTreeWalker(box, SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -378,12 +457,13 @@
     // creates, without overwriting its own inline positioning or transforms.
     // Offsets belong to this page session; switching the feature off restores
     // Netflix's layout and switching it back on keeps the chosen position.
+    // YouTube drags its own captions, so only a site with `drag` gets this.
     function setSubtitleDragging(enabled) {
       if (enabled === true) {
-        if (dragStyle) return;
+        if (dragStyle || !site.drag) return;
         dragStyle = document.createElement("style");
-        dragStyle.textContent = `.player-timedtext { translate: ${subtitleOffset.x}px ${subtitleOffset.y}px !important; }
-          .player-timedtext .player-timedtext-text-container { cursor: grab !important; user-select: none !important; pointer-events: auto !important; }`;
+        dragStyle.textContent = `${site.subtitle} { translate: ${subtitleOffset.x}px ${subtitleOffset.y}px !important; }
+          ${site.subtitle} ${site.line} { cursor: grab !important; user-select: none !important; pointer-events: auto !important; }`;
         document.documentElement.append(dragStyle);
       } else {
         dragStyle?.remove();
@@ -396,7 +476,7 @@
     function startSubtitleDrag(event) {
       if (event.button === 0) subtitleClick = false;
       if (!dragStyle || event.button !== 0 || sync() === null
-          || !event.target.closest?.(".player-timedtext")) return;
+          || !event.target.closest?.(site.subtitle)) return;
       const rect = subtitleAt(event.clientX, event.clientY);
       if (!rect) return;
       subtitleDrag = { ...rect, ...subtitleOffset, clientX: event.clientX, clientY: event.clientY };
@@ -451,8 +531,9 @@
 
     // A keyboard/selection lookup can open without the pointer ever entering
     // the native subtitle bounds. It needs the same pause as a subtitle hover.
+    // An ad's captions are not the video's (YouTube), so nothing pauses an ad.
     function pauseIfPlaying() {
-      if (!hoverPause || sync() === null || held || recordings > 0) return;
+      if (!hoverPause || sync() === null || held || recordings > 0 || site.adShowing?.(document) === true) return;
       const video = mainVideo();
       if (video === null || video.paused) return;
       held = true;
@@ -468,7 +549,7 @@
       else if (replays.size === 0 && !(restoring && event.type === "seeking")) held = false;
     }
 
-    // content.js turns hover pause on and off with the Netflix mining switch.
+    // content.js turns hover pause on and off with the site's mining switch.
     // Turned off, it forgets a pause in force rather than resuming it.
     function setHoverPause(enabled) {
       hoverPause = enabled === true;
@@ -481,35 +562,38 @@
     // stops keeping the video's sound and frees what it kept.
     function setLineAudio(enabled) {
       if (enabled === true) {
-        lineAudio ??= lineAudioApi.createLineAudio(window, { video: watchVideo, movie: watchedMovie });
+        lineAudio ??= lineAudioApi.createLineAudio(window, { video: watchVideo, movie: playingMovie });
         lineAudio.start();
       } else {
         lineAudio?.stop();
       }
     }
 
-    document.addEventListener(PAGE_EVENT, event => {
+    document.addEventListener(site.pageEvent, event => {
       if (typeof event.detail === "string") accept(event.detail);
     });
     // Window capture runs before the reader's selection gestures and Netflix's
     // player controls. Only a press on the actual subtitle text starts a drag.
-    window.addEventListener("mousedown", startSubtitleDrag, true);
+    if (site.drag) window.addEventListener("mousedown", startSubtitleDrag, true);
     window.addEventListener("mousemove", pointerMoved, true);
-    window.addEventListener("mouseup", endSubtitleDrag, true);
-    window.addEventListener("blur", () => { subtitleDrag = null; subtitleClick = false; });
-    window.addEventListener("click", event => {
-      if (!subtitleClick || event.button !== 0) return;
-      subtitleClick = false;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }, true);
+    if (site.drag) {
+      window.addEventListener("mouseup", endSubtitleDrag, true);
+      window.addEventListener("blur", () => { subtitleDrag = null; subtitleClick = false; });
+      window.addEventListener("click", event => {
+        if (!subtitleClick || event.button !== 0) return;
+        subtitleClick = false;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    }
     for (const type of ["play", "seeking", "seeked"]) document.addEventListener(type, videoChanged, true);
     window.addEventListener(POPUP_SHOWN_EVENT, () => {
       if (popupOpen) return;
       popupOpen = true;
       // If the viewer played on while still hovering, opening its popup does
-      // not undo that choice. A lookup with no subtitle hover pauses afresh.
-      if (!hovering) pauseIfPlaying();
+      // not undo that choice. A lookup with no subtitle hover pauses afresh:
+      // on Netflix any lookup, elsewhere one of a subtitle line (observe).
+      if (!hovering && site.pauseOnLookup) pauseIfPlaying();
     });
     window.addEventListener(POPUP_HIDDEN_EVENT, () => {
       popupOpen = false;
@@ -526,8 +610,17 @@
       command({ type: "language", language: code });
     }
 
-    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging, setSubtitleLanguage };
+    // A page that says which video its player plays is asked once now, in
+    // case it said so before this reader listened.
+    if (site.reportsVideo) command({ type: "state" });
+
+    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging, setSubtitleLanguage,
+      captionLanguage };
   }
 
-  globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };
+  const createNetflix = (window, subtitles, lineAudioApi) => createVideoSite(window, NETFLIX, subtitles, lineAudioApi);
+  globalThis.HDVideoSite = { createVideoSite };
+  // Netflix's reader, on Netflix: youtube.js loads this file for YouTube's,
+  // which youtube-content.js creates.
+  if (globalThis.location?.hostname === "www.netflix.com") globalThis.HDNetflix = { ...createNetflix(globalThis), createNetflix };
 }());

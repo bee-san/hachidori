@@ -67,7 +67,7 @@ function fixture(t, { browserShortcutsAvailable = true } = {}) {
   let writes = 0;
   const browser = { opened: 0, reads: 0, commands: [
     { name: "_execute_action", description: "", shortcut: "" },
-    { name: "toggleTextScanning", description: "Turn Japanese lookups on or off", shortcut: "Alt+Del" },
+    { name: "toggleTextScanning", description: "Turn lookups on or off", shortcut: "Alt+Del" },
     { name: "openSettingsPage", description: "Open Hachidori settings", shortcut: "" },
   ] };
   const controller = createKeybindSettingsController({ document, readKeybinds: () => keybinds,
@@ -200,7 +200,7 @@ test("browser shortcuts list Chrome's commands, link to its shortcut page and re
   const f = fixture(t);
   const listed = () => [...f.document.querySelectorAll("#browser-shortcut-list li")].map(item => item.textContent);
   await new Promise(resolveDone => setImmediate(resolveDone));
-  assert.deepEqual(listed(), ["Open the Hachidori toolbarNot set", "Turn Japanese lookups on or offAlt+Del",
+  assert.deepEqual(listed(), ["Open the Hachidori toolbarNot set", "Turn lookups on or offAlt+Del",
     "Open Hachidori settingsNot set"]);
   f.document.getElementById("browser-shortcuts-open").click();
   assert.equal(f.browser.opened, 1);

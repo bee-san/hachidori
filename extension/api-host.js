@@ -187,7 +187,8 @@ function requireStrings(value, name) {
 // its error. `readDictionaries(profileId)` is a profile's dictionary list,
 // `readAudioSources(profileId)` its enabled pronunciation sources,
 // `readAnkiTemplates(profileId)` its Anki Templates in Settings order and
-// `readSmallerAnkiCards()` whether Smaller Anki cards is on.
+// `readSmallerAnkiCards()` whether Smaller Anki cards is on and
+// `readCompactGlossaries()` whether Compact glossaries is Compact popup and Anki.
 // `resolveProfile(profileIndex)` names the profile a Yomitan profile index
 // selects, as { profileId } (undefined while the records have no profiles),
 // or null for an index that names none (docs/languages.md 12).
@@ -225,6 +226,7 @@ function matchedSegments(best, ruby) {
 }
 
 export function createApiHost({ engine, render, readDictionaries, readAudioSources, readAnkiTemplates, readSmallerAnkiCards, version,
+  readCompactGlossaries = async () => false,
   resolveProfile = async profileIndex => (profileIndex === 0 ? { profileId: undefined } : null),
   readProfile = async () => null }) {
   // Engine requests made for a profile name it (docs/languages.md 9.3).
@@ -255,6 +257,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       .map(item => [item.title, item.path]));
     const templates = Object.fromEntries(markers.map(marker => [marker, { value: `{${marker}}`, overwriteMode: "coalesce" }]));
     const compactGlossary = await readSmallerAnkiCards();
+    const compactGlossaries = await readCompactGlossaries();
     const fields = [], dictionaryMedia = [], audioMedia = [];
     const seenMedia = new Set();
     for (const result of maxEntries > 0 ? results.slice(0, maxEntries) : results) {
@@ -262,7 +265,7 @@ export function createApiHost({ engine, render, readDictionaries, readAudioSourc
       const sound = markers.includes("audio") && includeMedia ? await termAudio(profileId, profile, result) : null; // NOSONAR: results render one at a time, in order
       if (sound) audioMedia.push(sound.media);
       const built = await render({ type: "hd_anki_fields", request, templates, audio: sound?.audio ?? "", dictionaryPaths, // NOSONAR: results render one at a time, in order
-        compactGlossary, ...(profile === null ? {} : { profile }) });
+        compactGlossary, compactGlossaries, ...(profile === null ? {} : { profile }) });
       fields.push(Object.fromEntries(markers.map(marker => [marker, built.fields[marker] ?? ""])));
       if (includeMedia) dictionaryMedia.push(...await shownDictionaryMedia(built.media, fields.at(-1), seenMedia, generation)); // NOSONAR: results render one at a time, in order
     }

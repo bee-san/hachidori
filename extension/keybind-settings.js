@@ -61,9 +61,11 @@ function renderScopes(row, action, bind) {
 // `optionAvailable(key)` says whether the edited profile's language has what a
 // Toggle option target needs, and `languageName()` names that language
 // (docs/languages.md 7.3 and 7.4); both default to today's Japanese page.
+// `actionAvailable(id)` says whether the Action menu offers an action
+// (Switch to the next language once the records have profiles, 16.2).
 export function createKeybindSettingsController({ document, readKeybinds, editKeybinds, readAudioSources,
   getBrowserCommands, openBrowserShortcuts, browserShortcutsAvailable = true,
-  optionAvailable = () => true, languageName = () => "Japanese" }) {
+  optionAvailable = () => true, languageName = () => "Japanese", actionAvailable = () => true }) {
   const window = document.defaultView;
   const { KEYBIND_ACTIONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_MODIFIER_CODES, KEYBIND_SCOPES, KEYBIND_TOGGLE_OPTIONS,
     AUDIO_SOURCE_LABELS, DEFAULT_OPTIONS, keybindModifiers, keybindWheelKey } = window.HDReaderOptions;
@@ -204,10 +206,21 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
       if (choice.textContent !== label) choice.textContent = label;
       const hidden = choice.value !== bind.argument && !optionAvailable(choice.value);
       if (choice.hidden !== hidden) choice.hidden = hidden;
+      // Chrome's type-ahead still lands on a hidden option; a disabled one it skips.
+      if (choice.disabled !== hidden) choice.disabled = hidden;
     }
     const unavailable = bind.argument !== "" && !optionAvailable(bind.argument);
     setText(row.optionNote, unavailable ? `Not available in ${language}` : "");
     if (row.optionNote.hidden === unavailable) row.optionNote.hidden = !unavailable;
+  }
+
+  // An action that is not offered stays selected in a bind that has it.
+  function renderActionChoices(row, bind) {
+    for (const choice of row.action.options) {
+      const hidden = choice.value !== bind.action && !actionAvailable(choice.value);
+      if (choice.hidden !== hidden) choice.hidden = hidden;
+      if (choice.disabled !== hidden) choice.disabled = hidden;
+    }
   }
 
   function renderArgument(row, action, bind) {
@@ -230,6 +243,7 @@ export function createKeybindSettingsController({ document, readKeybinds, editKe
     setText(row.number, `Keybind ${index + 1}`);
     const display = formatKeybind(bind.key, bind.modifiers);
     if (row.input.value !== display) row.input.value = display;
+    renderActionChoices(row, bind);
     setValue(row.action, bind.action);
     renderArgument(row, action, bind);
     renderScopes(row, action, bind);

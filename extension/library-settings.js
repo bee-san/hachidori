@@ -11,9 +11,8 @@ import {
   CUSTOM_DICTIONARY_SOURCE_KEY,
   customDictionaryDocumentFor,
   normaliseCustomDictionaryDocument,
-  parseCustomDictionary,
-  personalDictionaryIdentity,
   personalDictionaryLanguage,
+  languageEntryCount,
 } from "./custom-dictionary.js";
 import {
   backingUp, characterViewName, dictionaryGroupController, editedProfile, element, languageName, listOf, memorySettings,
@@ -32,8 +31,8 @@ import {
 } from "./custom-dictionary-settings.js";
 import { normaliseKanjiClickOption, renderOptions } from "./option-settings.js";
 
-const { allPackages, hasDictionaryProfiles, hasProfiles: optionsHaveProfiles, profiles: optionProfiles,
-  projectDictionaryState } = globalThis.HDReaderOptions;
+const { allPackages, hasDictionaryProfiles, hasProfiles: optionsHaveProfiles,
+  languagesEnabled: optionsLanguagesEnabled, profiles: optionProfiles, projectDictionaryState } = globalThis.HDReaderOptions;
 
 let dictionaryState = { schemaVersion: 1, revision: -1, dictionaries: [], groups: [] }; // NOSONAR: shared with the other Settings modules
 // The state as stored: with profiles, the whole schema-2 record, of which
@@ -694,11 +693,13 @@ async function moveToProfile(id, profileId) {
 }
 
 // Dictionaries in your other languages (docs/languages.md 14): installed
-// packages this profile does not use, never a personal package.
+// packages this profile does not use, never a personal package, while
+// Multiple languages is on. The options record decides it too, so its changes
+// render it again.
 function renderOtherLanguageDictionaries() {
   let container = element("dict-other-languages");
   const used = new Set(dictionaries.map(entry => entry.id));
-  const others = libraryHasProfiles()
+  const others = libraryHasProfiles() && optionsLanguagesEnabled(storedOptionsRecord)
     ? storedDictionaryState.dictionaries.filter(row => !used.has(row.id) && !isManagedCustomDictionary(row)) : [];
   if (others.length === 0) {
     container?.remove();
@@ -1204,8 +1205,7 @@ function setLibraryResetStatus(message, tone = "", completed = false, error = nu
 }
 
 function removeAllConfirmation(count, personal, erasePersonal) {
-  const readingRequired = personalDictionaryIdentity(editedProfile.language)?.readingRequired ?? true;
-  const entries = personal === null ? 0 : parseCustomDictionary(personal.text, { readingRequired }).entries.length;
+  const entries = personal === null ? 0 : languageEntryCount(personal.text, editedProfile.language);
   const source = `the personal dictionary source and its ${countLabel(entries, "entry", "entries")}`;
   const packages = countLabel(count, "imported dictionary", "imported dictionaries");
   const parts = count === 0 ? [`Erase ${source}?`] : [
@@ -1267,9 +1267,8 @@ async function personalSources() {
   return languages.flatMap(language => {
     const document_ = customDictionaryDocumentFor(record, language);
     if (document_.text === "") return [];
-    const readingRequired = personalDictionaryIdentity(language)?.readingRequired ?? true;
     return [{ language, revision: document_.revision,
-      count: parseCustomDictionary(document_.text, { readingRequired }).entries.length,
+      count: languageEntryCount(document_.text, language),
       profileId: profiles.find(profile => profile.language === language)?.id ?? null }];
   });
 }
@@ -1508,7 +1507,8 @@ export {
   adoptDictionaryState, attachGroupHandlers, attachLibraryHandlers, bindNameDraft, commitDictionaries,
   commitGroups, committing, dictionaries, dictionaryLabel, dictionaryState, handleDictionaryStateChange,
   libraryHasProfiles, moveListItem, moveToProfile, pendingDictionaryCommits, reloadDictionaries, removing,
-  renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel, reprojectDictionaryState, setControlsDisabled,
+  renderChangedDictionaryState, renderDeferredAfterBlur, renderLibraryResetLabel, renderOtherLanguageDictionaries,
+  reprojectDictionaryState, setControlsDisabled,
   setPendingManagementFocus, settleDictionaryCommits, storedDictionaryState, stringValue, updateDictionary,
   updateItemById
 };

@@ -21,7 +21,7 @@ const template = (id, name, deck) => ({ id, name, deck, model: "Basic", tags: ["
 const japanese = normaliseAnki({ templates: [template("ja-words", "Japanese words", "Mining")] }).templates;
 const english = normaliseAnki({ templates: [template("en-words", "English words", "English"),
   template("en-sentences", "English sentences", "English")] }).templates;
-const records = () => ({ revision: 7, profiles: [
+const records = () => ({ revision: 7, experimental: { multipleLanguages: true }, profiles: [
   { id: "ja", language: "ja", settings: { anki: { templates: japanese } }, packSettings: {} },
   { id: "en", language: "en", settings: { anki: { templates: english } }, packSettings: {} },
 ] });

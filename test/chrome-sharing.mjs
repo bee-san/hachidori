@@ -1039,10 +1039,10 @@ try {
       centre: [...context.getImageData(Math.floor(bitmap.width / 2), Math.floor(bitmap.height / 2), 1, 1).data],
     };
   }, screenshotData);
-  // The configuration cache is valid for two seconds. Let it expire so this
-  // status call must ask the now-unavailable host endpoint.
-  await new Promise(resolveWait => setTimeout(resolveWait, 2200));
+  // A live check discovers disconnection and retires the cached metadata, so
+  // status retries discovery through the host rather than the client's Anki.
   hostAnki.state.online = false;
+  const unavailableCheck = await message(startup, "hachidori-anki", "hd_anki_preflight", { request });
   const unavailableAnki = await message(startup, "hachidori-anki", "hd_anki_status");
   hostAnki.state.online = true;
   const hostActions = hostAnki.state.calls.map(call => call.action);
@@ -1079,6 +1079,7 @@ try {
       && !browseCalls.some(call => call.action === "findNotes" && call.params.query.startsWith("nid:"))
       && stale?.ok === false && /dictionary generation changed/iu.test(stale.error)
       && addsBeforeStale === 1 && addsAfterStale === addsBeforeStale
+      && unavailableCheck?.ok === false && /AnkiConnect returned HTTP 503/u.test(unavailableCheck.error)
       && unavailableAnki?.ok === true && unavailableAnki.available === false
       && /AnkiConnect returned HTTP 503/u.test(unavailableAnki.error)
       && hostAnki.state.calls.every(call => call.key === "host-secret")
@@ -1100,6 +1101,7 @@ try {
       browsed,
       browseCalls,
       stale: { ok: stale?.ok, error: stale?.error, addsBeforeStale, addsAfterStale },
+      unavailableCheck,
       unavailableAnki,
       hostActions,
       hostKeys: [...new Set(hostAnki.state.calls.map(call => call.key))],

@@ -39,9 +39,17 @@ import {
 } from "./dictionary-import.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { dictionaryImportError, isImportMemoryError, nativeImportCall } from "./dictionary-import-errors.js";
+import { archiveHoldsRanks } from "./frequency-mode.js";
 // HDGlossary.parseTagList: the one U+0020 tag splitter the renderer, Anki and
 // the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
+
+// A language code as profiles and packs name languages (docs/languages.md 2),
+// and the dictionary state's schema once it has profiles (4.2). The engine
+// keeps its own copies: it imports the profile code only once the records
+// have profiles.
+const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
+const DICTIONARY_STATE_PROFILES_SCHEMA = 2;
 
 /*
  * Owns the single hoshidicts engine instance inside a dedicated Web Worker.
@@ -996,9 +1004,18 @@ function longKeyLengthFromScanIndex(path) {
   return view.getUint16(12, true);
 }
 
-function readDictionaryIndex(path) {
-  const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
+function readDictionaryIndex(path, FS = engine.FS) {
+  const json = new TextDecoder().decode(FS.readFile(`${path}/index.json`));
   return parseJson(json, `${path}/index.json`);
+}
+
+function writeDictionaryIndex(path, index, FS = engine.FS) {
+  const indexPath = `${path}/index.json`;
+  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
+  // serialized rewrite can be shorter than the engine-generated index, leaving
+  // trailing JSON bytes if it overwrites the file in place.
+  FS.unlink(indexPath);
+  FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
 }
 
 function importedIdentityFromIndex(path) {
@@ -1150,7 +1167,7 @@ function isObject(value) {
 // reader-options.js's hasDictionaryProfiles, without loading it: schema 2
 // with a profiles object. Any other state has the single-profile shape.
 function hasDictionaryProfiles(state) {
-  return isObject(state) && state.schemaVersion === 2 && isObject(state.profiles);
+  return isObject(state) && state.schemaVersion === DICTIONARY_STATE_PROFILES_SCHEMA && isObject(state.profiles);
 }
 
 function engineState(state) {
@@ -1268,7 +1285,7 @@ const JAPANESE_CUSTOM = Object.freeze({ language: null, identity: personalDictio
 function customRequest(message) {
   const language = message?.language ?? null;
   if (language === null) return JAPANESE_CUSTOM;
-  if (typeof language !== "string" || !/^[a-z]{2,3}$/u.test(language)) {
+  if (typeof language !== "string" || !LANGUAGE_CODE.test(language)) {
     throw new TypeError("the custom dictionary request named an invalid language");
   }
   const identity = personalDictionaryIdentity(language);
@@ -1927,7 +1944,7 @@ async function fetchLanguageFile(code, name) {
 
 async function loadLanguagePack(code) {
   if (loadedLanguages.has(code)) return;
-  if (!/^[a-z]{2,3}$/u.test(code)) throw new Error(`invalid language code ${JSON.stringify(code)}`);
+  if (!LANGUAGE_CODE.test(code)) throw new Error(`invalid language code ${JSON.stringify(code)}`);
   const languageJson = await fetchLanguageFile(code, "language.json");
   const transforms = parseJson(languageJson, `${code}/language.json`)?.lookup?.transforms;
   const transformsJson = typeof transforms === "string" && transforms !== "" ? await fetchLanguageFile(code, transforms) : "";
@@ -2183,7 +2200,7 @@ async function profileCasReadback(commitError, baseRevision, next, wantsLanguage
     state: committed };
 }
 
-// Adding a language (docs/languages.md 5.2, 6.3 and 16.1). Under the
+// Adding a language (docs/languages.md 5.2, 6.3 and 16.3). Under the
 // mutation lock the engine loads the pack and strict-loads every package that
 // enters the loaded set (a re-added language's personal package); the
 // worker's hd_profile_cas writes options and dictionaryState together; then
@@ -2198,7 +2215,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const plan = addedProfileState(snapshot, language, message.firstRun === true);
+    const plan = addedProfileState(snapshot, language);
     const { loadedCount, reply } = await commitAddedProfile(snapshot, plan, language, message);
     if (reply.ok === true) {
       adoptProfileRecords(reply);
@@ -2213,7 +2230,7 @@ async function addProfile(message) {
 
 function addedLanguage(message) {
   const language = text(message.language);
-  if (!/^[a-z]{2,3}$/u.test(language)) throw new TypeError("the language request named no language");
+  if (!LANGUAGE_CODE.test(language)) throw new TypeError("the language request named no language");
   if (message.copyFrom !== undefined && typeof message.copyFrom !== "string") {
     throw new TypeError("the language request named an invalid profile to copy");
   }
@@ -2222,14 +2239,13 @@ function addedLanguage(message) {
 
 // The records an added language leaves: its profile, holding its personal
 // package when the library has one, and whether a package enters the set.
-function addedProfileState(snapshot, language, firstRun) {
+function addedProfileState(snapshot, language) {
   const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
   const personal = personalDictionaryIdentity(language);
   const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
     ? [{ id: personal.id, enabled: true }] : [];
-  // A first-run choice makes the new profile the only one (section 16.1).
-  const profiles = { ...(firstRun ? {} : stored.profiles), [language]: { dictionaries: own, groups: [] } };
-  const next = { schemaVersion: 2, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
+  const profiles = { ...stored.profiles, [language]: { dictionaries: own, groups: [] } };
+  const next = { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
   const union = globalThis.HDReaderOptions.allPackages(next);
   const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
   return { next, union, personal, baseRevision: snapshot.state?.revision ?? 0,
@@ -2256,7 +2272,7 @@ async function commitAddedProfile(snapshot, plan, language, message) {
 async function askProfileAdd(plan, language, message) {
   try {
     return await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
-      firstRun: message.firstRun === true, baseRevision: plan.baseRevision,
+      baseRevision: plan.baseRevision,
       state: { dictionaries: plan.next.dictionaries, profiles: plan.next.profiles } });
   } catch (commitError) {
     return profileCasReadback(commitError, plan.baseRevision, plan.next, (languages) => languages.includes(language));
@@ -2336,7 +2352,7 @@ function removedLanguage(message) {
     throw new TypeError("the language request named an invalid profile");
   }
   const language = profileId ?? text(message.language);
-  if (!/^[a-z]{2,3}$/u.test(language) || (profileId === undefined && !erase)) {
+  if (!LANGUAGE_CODE.test(language) || (profileId === undefined && !erase)) {
     throw new TypeError("the language request named no language");
   }
   // An erase carries the document revision its confirmation read; a newer
@@ -2361,7 +2377,7 @@ function removedProfileState(stored, { erase, profileId, language }) {
   const kept = new Set(dictionaries.map((row) => row.id));
   const profiles = Object.fromEntries(Object.entries(stored.profiles).filter(([id]) => id !== profileId)
     .map(([id, profile]) => [id, { ...profile, dictionaries: profile.dictionaries.filter((entry) => kept.has(entry.id)) }]));
-  return { schemaVersion: 2, revision: stored.revision, dictionaries, profiles };
+  return { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: stored.revision, dictionaries, profiles };
 }
 
 async function askProfileRemove({ erase, profileId, language }, stored, next, baseDocumentRevision) {
@@ -2630,12 +2646,7 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
   }
   moveDictionaryFiles(currentPath, nextPath, true);
   index.title = nextTitle;
-  const indexPath = `${nextPath}/index.json`;
-  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
-  // serialized rewrite can be shorter than the engine-generated index, leaving
-  // trailing JSON bytes if it overwrites the moved file in place.
-  engine.FS.unlink(indexPath);
-  engine.FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
+  writeDictionaryIndex(nextPath, index);
 }
 
 async function cleanupCommittedDictionaries() {
@@ -2975,6 +2986,16 @@ function importStagingPaths(fileName, resources, diskRoot = null) {
   };
 }
 
+// The generated index keeps the archive's frequencyMode, except that a list
+// declaring occurrence counts whose values are ranks is stored as rank-based
+// (#684), so its averages and Auto direction treat it as one.
+async function correctRankFrequencyMode(module, archivePath, path) {
+  const index = nativeImportCall(module, () => readDictionaryIndex(path, module.FS));
+  if (index?.frequencyMode !== "occurrence-based") return;
+  if (!await archiveHoldsRanks(nativeImportCall(module, () => module.FS.readFile(archivePath)))) return;
+  nativeImportCall(module, () => writeDictionaryIndex(path, { ...index, frequencyMode: "rank-based" }, module.FS));
+}
+
 // Stages the archive in `module`'s scratch filesystem and runs its native
 // importer into `generationRoot`. Shared with the isolated import worker, whose
 // module is a second engine instance on the same OPFS root.
@@ -3027,6 +3048,9 @@ export async function importDictionaryArchive(
     }
     if (!report.success) {
       report.error = dictionaryImportError(report.error || "The engine returned no import error.", fileName, phase).message;
+    } else {
+      phase = "checking the frequency mode";
+      await correctRankFrequencyMode(module, archivePath, `${generationRoot}/${dictionaryFolderName(report.title)}`);
     }
     return report;
   } catch (error) {

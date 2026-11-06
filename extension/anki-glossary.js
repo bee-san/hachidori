@@ -46,6 +46,25 @@ function applyClassStyles(root) {
   for (const [element, cssText] of styled) element.setAttribute("style", cssText);
 }
 
+// Yomitan's anki-compact-gloss-style.js (67db60d) under Compact popup and
+// Anki, scoped to the glossary as its addGlossaryScopeToCss scopes it: a
+// structured `ul[data-sc-content="glossary"]` shares one line, its items
+// separated by a grey bar.
+const COMPACT_GLOSS_STYLES = `.yomitan-glossary ul[data-sc-content="glossary"] > li:not(:first-child)::before {
+  white-space: pre-wrap;
+  content: ' | ';
+  display: inline;
+  color: #777777;
+}
+.yomitan-glossary ul[data-sc-content="glossary"] > li {
+  display: inline;
+}
+.yomitan-glossary ul[data-sc-content="glossary"] {
+  display: inline;
+  list-style: none;
+  padding-left: 0;
+}`;
+
 const BLOCKS = new Set(["BR", "DIV", "LI", "OL", "P", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL"]);
 function plainText(node) {
   const stack = [node], output = [];
@@ -79,8 +98,10 @@ function imageSize(image, value) {
 
 // `language` is the language object (theme-host.js createLanguage) of the
 // profile the note is mined in, once the records have profiles; without one
-// the note is today's (docs/languages.md 4.5).
-export function createAnkiDefinitionRenderer(document, request, filenameFor, { compact = false, language = null } = {}) {
+// the note is today's (docs/languages.md 4.5). `compactGlossaries` is Design →
+// Compact glossaries → Compact popup and Anki; `compact` is Smaller Anki cards.
+export function createAnkiDefinitionRenderer(document, request, filenameFor,
+  { compact = false, compactGlossaries = false, language = null } = {}) {
   const inert = document.implementation.createHTMLDocument("");
   const groups = new Map();
   for (const glossary of request.term.glossaries) {
@@ -142,7 +163,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     const tag = language?.dictionaryLanguage(glossary.dictionary) ?? null;
     if (tag) body.lang = tag;
     globalThis.HDGlossary.appendTextOnlyGlossary(inert, body, glossary.glossary, {
-      dictionary: glossary.dictionary, layout: "anki", ...(language === null ? {} : { language }),
+      dictionary: glossary.dictionary, layout: "anki", compactGlossaries, ...(language === null ? {} : { language }),
       appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
     });
     const direction = rtlRules ? directionOf(glossary.dictionary) : null;
@@ -266,6 +287,11 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor, { c
     }
     root.append(list);
     appendStyles(root, selected);
+    if (compactGlossaries) {
+      const style = inert.createElement("style");
+      style.textContent = COMPACT_GLOSS_STYLES;
+      root.append(style);
+    }
     // Yomitan's {glossary} has no footer; {part-of-speech} and {conjugation}
     // carry this information, so compact fields leave it out (#399).
     if (!brief && !compact) appendDetails(root, rtlRules);

@@ -261,6 +261,19 @@ export function parseCustomDictionary(value, { readingRequired = true } = {}) {
   return { entries, errors };
 }
 
+// A language's rules for its personal source: whether an entry needs a
+// reading (docs/languages.md 15). Japanese's, and a language without an
+// identity's, require one.
+export function personalDictionaryRules(language = "ja") {
+  return { readingRequired: personalDictionaryIdentity(language)?.readingRequired ?? true };
+}
+
+// How many valid entries a language's personal document holds, read by that
+// language's rules (docs/languages.md 14).
+export function languageEntryCount(text, language = "ja") {
+  return parseCustomDictionary(text, personalDictionaryRules(language)).entries.length;
+}
+
 export function serializeCustomDictionaryEntry(value, rules = {}) {
   const { term, reading, definition } = normaliseEntry(value, rules);
   const encodedDefinition = definition
