@@ -2984,7 +2984,7 @@ function importStagingPaths(fileName, resources, diskRoot = null) {
 // declaring occurrence counts whose values are ranks is stored as rank-based
 // (#684), so its averages and Auto direction treat it as one.
 async function correctRankFrequencyMode(module, archivePath, path) {
-  const index = readDictionaryIndex(path, module.FS);
+  const index = nativeImportCall(module, () => readDictionaryIndex(path, module.FS));
   if (index?.frequencyMode !== "occurrence-based") return;
   if (!await archiveHoldsRanks(nativeImportCall(module, () => module.FS.readFile(archivePath)))) return;
   nativeImportCall(module, () => writeDictionaryIndex(path, { ...index, frequencyMode: "rank-based" }, module.FS));
