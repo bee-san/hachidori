@@ -205,6 +205,38 @@
   // The startup and search pages read in the active profile (8.1 rule 4).
   const READER_PAGE = location.protocol === EXTENSION_PROTOCOL;
 
+  // The language layer (docs/languages.md 5): the registry's copy for content
+  // scripts and the display transforms, which a Japanese-only frame never
+  // parses. While the records have profiles the worker registers both beside
+  // these scripts (language-scripts.js); a frame without them (open before
+  // the records gained profiles, or a reader page) imports them the first time
+  // its records have profiles. Until they have loaded the reader adopts
+  // nothing: the storage delivery that brought the profiles and every later
+  // one wait, in order, so profiles are always read with their descriptors.
+  const LANGUAGE_LAYER = ["vendor/languages/registry-reader.js", "language-text.js"];
+  let languageLayer = null;
+  let languageLayerLoaded = false;
+
+  async function loadLanguageLayer() {
+    try {
+      await Promise.all(LANGUAGE_LAYER.map(file => import(chrome.runtime.getURL(file))));
+    } catch (error) {
+      console.warn("hachidori: the language layer did not load", error);
+    }
+    languageLayerLoaded = true;
+  }
+
+  // Runs `adopt` now, or after the language layer while it loads or when
+  // `storedOptions` is the first record with profiles in a frame without it.
+  function afterLanguageLayer(storedOptions, adopt) {
+    if (languageLayer === null && globalThis.HDReaderOptions.hasProfiles(storedOptions)
+        && (globalThis.HDLanguages === undefined || globalThis.HDLanguageText === undefined)) {
+      languageLayer = loadLanguageLayer();
+    }
+    if (languageLayer === null || languageLayerLoaded) adopt();
+    else void languageLayer.then(adopt);
+  }
+
   // Today's Japanese rules: the gate, a scan from the cursor, sentence.js's
   // tables and word-highlights.js's chunk breaks (8.2-8.4).
   const JAPANESE_TEXT_RULES = Object.freeze({
@@ -5029,6 +5061,11 @@
     if (disposed || area !== "local") {
       return;
     }
+    afterLanguageLayer(changes.options?.newValue, () => adoptStorageChanges(changes));
+  }
+
+  function adoptStorageChanges(changes) {
+    if (disposed) return;
     let changed = false;
     const previousLevelCount = levels.length;
     let dictionaryChanged = false;
@@ -5256,19 +5293,25 @@
       chrome.runtime.onMessage?.addListener(onWordStatusChanged);
       chrome.storage.local.get({ dictionaryState: null, options: DEFAULT_OPTIONS, lookupStats: null,
         wordStatusOverrides: null, [LANGUAGE_SELECTION_KEY]: null }, (stored) => {
-        try {
-          if (disposed || chrome.runtime.lastError) return;
-          languageSelection ??= stored?.[LANGUAGE_SELECTION_KEY] ?? null;
-          adoptWordStatusOverrides(stored?.wordStatusOverrides, false);
-          const optionsAdoption = adoptOptions(stored && stored.options);
-          const adoption = adoptDictionaryState(stored && stored.dictionaryState);
-          adoptLookupStatsDescriptor(stored && stored.lookupStats);
-          if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
-            invalidateStoredState(adoption.dictionaryChanged);
-          } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
-        } finally {
+        if (disposed || chrome.runtime.lastError) {
           storageReady();
+          return;
         }
+        afterLanguageLayer(stored?.options, () => {
+          try {
+            if (disposed) return;
+            languageSelection ??= stored?.[LANGUAGE_SELECTION_KEY] ?? null;
+            adoptWordStatusOverrides(stored?.wordStatusOverrides, false);
+            const optionsAdoption = adoptOptions(stored && stored.options);
+            const adoption = adoptDictionaryState(stored && stored.dictionaryState);
+            adoptLookupStatsDescriptor(stored && stored.lookupStats);
+            if (optionsAdoption.lookupChanged || adoption.dictionaryChanged) {
+              invalidateStoredState(adoption.dictionaryChanged);
+            } else if (optionsAdoption.presentationChanged || adoption.presentationChanged) updateDictionaryPresentation();
+          } finally {
+            storageReady();
+          }
+        });
       });
     } catch {
       // Without storage access the defaults are still usable.

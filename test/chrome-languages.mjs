@@ -3,7 +3,8 @@
  * that stays Japanese in a build with other packs; English and Arabic added
  * in Settings → Advanced → Languages; one dictionary imported per language;
  * Settings shows and Use for lookups; hovers on inflected words on pages with
- * spaces, CJK and right-to-left text; switching from the toolbar, by the
+ * spaces, CJK and right-to-left text, one of them opened before English was
+ * added; switching from the toolbar, by the
  * shortcut and automatically by `lang`; one profile edited in Settings while
  * another is active; settings hidden per profile. It saves screenshots of the
  * welcome card, Advanced → Languages, the switcher and one lookup per script
@@ -59,6 +60,7 @@ const PLANNED = [
   "a popup that automatic switching gives English shows English's display name, custom buttons, theme and target language",
   "the search page and its frame take the active profile's palette and follow a switch",
   "Multiple languages off returns lookups, the toolbar and the badge to Japanese, and on again brings English back",
+  "a page opened while the records had no profiles looks English up once English is added, without a reload",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -297,6 +299,16 @@ try {
       && page.removable === 0 && page.offered.includes("en") && page.offered.includes("ar"), JSON.stringify({ off, page }));
   });
 
+  // Open while the records are Japanese-only, so its frame has no language
+  // layer until English is added (docs/languages.md 5).
+  const early = await browser.newPage();
+  early.on("pageerror", error => errors.push(`[early page] ${error.message}`));
+  early.on("console", entry => { if (["error", "warn"].includes(entry.type())) errors.push(`[early page] console: ${entry.text()}`); });
+  await early.setViewport({ width: 1280, height: 720 });
+  await early.goto(`${origin}/english.html`, { waitUntil: "load" });
+  // Puppeteer's clicks in Settings wait for frames, which a background tab does not draw.
+  await settings.bringToFront();
+
   await step(PLANNED[4], async () => {
     await importInto(archives.ja, "hachidori-fixture");
     // Add a language in Advanced → Languages, then import into the language
@@ -439,6 +451,14 @@ try {
     const state = await hoverAt("/english.html", "#sample", 10, current => current.plain.includes("to move swiftly on foot"));
     if (state) await screenshot(reading, "lookup-english");
     check(PLANNED[8], state?.plain.includes("run") && state.plain.includes("to move swiftly on foot"), JSON.stringify(state?.plain));
+  });
+
+  await step(PLANNED[22], async () => {
+    await early.bringToFront();
+    const state = await hoverForPopup(early, await popupReader(early), "#sample", { point: await characterPoint(early, "#sample", 10),
+      accept: current => current.plain.includes("to move swiftly on foot"), attempts: 20 });
+    check(PLANNED[22], state?.plain.includes("to move swiftly on foot"), JSON.stringify(state?.plain));
+    await early.close();
   });
 
   await step(PLANNED[9], async () => {

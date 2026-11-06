@@ -30,7 +30,7 @@ const published = readonly([
 // extension pages.
 const CLASSIC = [
   ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
-  "youtube-content.js", "design-preview.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
+  "youtube-content.js", "design-preview.js", "language-text.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in
@@ -43,7 +43,7 @@ const INJECTED = ["netflix-preview.js", "youtube-frame.js"];
 const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
   "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
-  "custom-javascript.js", "google-docs.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
+  "custom-javascript.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
   "site-scripts.js", "youtube.js", "background-anki.js", "background-backup.js", "background-core.js",
   "background-netflix.js", "background-requests.js", "background-sharing.js", "background-updates.js",
   "background-video.js", "background-youtube.js",

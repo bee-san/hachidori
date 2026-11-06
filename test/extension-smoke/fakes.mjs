@@ -789,6 +789,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
     applyGoogleDocsFlag: sandbox.applyGoogleDocsFlag ?? (() => Promise.resolve()),
+    applyLanguageScripts: sandbox.applyLanguageScripts ?? (() => Promise.resolve()),
     applyNetflixFlag: sandbox.applyNetflixFlag ?? (() => Promise.resolve()),
     applyYouTubeFlag: sandbox.applyYouTubeFlag ?? (() => Promise.resolve()),
     NETFLIX_SCRIPTS,

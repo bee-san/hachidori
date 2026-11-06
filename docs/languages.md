@@ -296,10 +296,18 @@ classic scripts that set `globalThis.HDLanguages`:
   modules (Settings loads `reader-options.js` with a tag too; startup and
   toolbar import it in their modules); the jsdom harnesses run pages with
   `runScripts: "outside-only"`, so the tag is inert there;
-- the manifest's content scripts list `registry-reader.js` before
-  `reader-options.js`; it holds only the fields the reader uses, within a
-  budget of 64 KB for every pack together, because every frame of every page
-  parses it;
+- content scripts get `registry-reader.js` and `language-text.js` only while
+  the records have profiles, so a Japanese-only frame parses neither. The
+  service worker registers both beside the manifest's content scripts for
+  every frame (`language-scripts.js`) while the records have profiles and
+  removes them when they have none. A frame without them, one that was open
+  when the records gained profiles or a startup or search page, imports both
+  (the manifest lists them as web-accessible) the first time its records have
+  profiles; until they have loaded the reader adopts nothing, and the storage
+  delivery that brought the profiles and every later one wait, in order.
+  `registry-reader.js` holds only the fields the reader uses, within a budget
+  of 64 KB for every pack together, because every frame of every page parses
+  it once the records have profiles;
 - the service worker imports `registry.js` statically (an MV3 service worker
   cannot import on demand). The engine worker imports `registry.js`,
   `reader-options.js` and `profile-state.js` with dynamic `import()` the first
@@ -315,9 +323,9 @@ classic scripts that set `globalThis.HDLanguages`:
 - the Design preview (`design-preview.html`) loads `registry.js` with a
   `<script>` tag;
 - `reader-page.js` injects the manifest's content scripts into the startup and
-  search pages after their own `registry.js` has run; `registry-reader.js`
-  leaves an `HDLanguages` that is already set in place, so those pages keep
-  the fuller copy.
+  search pages after their own `registry.js` has run; when `content.js`
+  imports `registry-reader.js` there, it leaves an `HDLanguages` that is
+  already set in place, so those pages keep the fuller copy.
 - `language-settings.js` (section 7.5) is loaded with a dynamic `import()`
   only when the edited profile's pack declares settings; the Japanese pack
   declares none.
@@ -2004,7 +2012,8 @@ GameSentenceMiner ships its own copy. So:
   Advanced → Languages, choose one in
   Settings shows and activate it with Use for lookups; import one dictionary
   per language; hover inflected words on sample
-  pages (spaces, CJK, right to left); add an Anki note through the fake
+  pages (spaces, CJK, right to left), one of them opened before English was
+  added; add an Anki note through the fake
   AnkiConnect, with an Arabic note's fields checked in a left-to-right and a
   right-to-left card template for a monolingual Arabic entry and an
   Arabic-English entry with an Arabic example: every list number drawn inside
@@ -2041,7 +2050,8 @@ GameSentenceMiner ships its own copy. So:
   Advanced → Languages, the switcher and one lookup per script.
 - **Firefox:** `firefox-e2e` unchanged, plus `firefox-languages`: Multiple
   languages turned on, English and Arabic added in Advanced → Languages, one
-  profile switch and one English and one Arabic lookup.
+  profile switch, an English lookup on a page opened before English was added
+  and on one opened after, and an Arabic lookup.
 - **Accessibility.** The `lang`, `dir` and label changes affect screen-reader
   semantics; the pull request carries the `accessibility` label and the
   screenshots of section 11.7.
@@ -2063,7 +2073,8 @@ GameSentenceMiner ships its own copy. So:
   fonts were missing, from layout of interleaved `en` and `ja` elements; a
   measured regression is fixed before merging, as AGENTS.md requires.
 - **Frame start-up**: content-script start in a page with many frames, before
-  and after, with every pack in `registry-reader.js`.
+  and after, with every pack in `registry-reader.js`. A Japanese-only frame
+  loads neither `registry-reader.js` nor `language-text.js` (section 5).
 - **Profile switch**: no reload; the first lookup after switching is as fast
   as any other. Measured from the toolbar click to the first popup.
 - **Engine start**: restart-to-first-lookup with the Japanese, English and

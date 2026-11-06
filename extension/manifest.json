@@ -121,7 +121,6 @@
       "run_at": "document_idle",
       "all_frames": true,
       "js": [
-        "vendor/languages/registry-reader.js",
         "reader-options.js",
         "dictionary-group-state.js",
         "lookup-stats-identity.js",
@@ -132,7 +131,6 @@
         "anki-content.js",
         "render/glossary.js",
         "render/popup.js",
-        "language-text.js",
         "theme-host.js",
         "word-status-overrides.js",
         "word-highlights.js",
@@ -167,7 +165,9 @@
         "browser-api.js",
         "render/reader.css",
         "icons.css",
-        "vendor/themes/*"
+        "vendor/themes/*",
+        "vendor/languages/registry-reader.js",
+        "language-text.js"
       ],
       "matches": [
         "<all_urls>"
