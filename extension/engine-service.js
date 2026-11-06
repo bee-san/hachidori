@@ -39,6 +39,7 @@ import {
 } from "./dictionary-import.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { dictionaryImportError, isImportMemoryError, nativeImportCall } from "./dictionary-import-errors.js";
+import { archiveHoldsRanks } from "./frequency-mode.js";
 // HDGlossary.parseTagList: the one U+0020 tag splitter the renderer, Anki and
 // the API host share; and the furigana split that withFurigana completes.
 import "./render/glossary.js";
@@ -996,9 +997,18 @@ function longKeyLengthFromScanIndex(path) {
   return view.getUint16(12, true);
 }
 
-function readDictionaryIndex(path) {
-  const json = new TextDecoder().decode(engine.FS.readFile(`${path}/index.json`));
+function readDictionaryIndex(path, FS = engine.FS) {
+  const json = new TextDecoder().decode(FS.readFile(`${path}/index.json`));
   return parseJson(json, `${path}/index.json`);
+}
+
+function writeDictionaryIndex(path, index, FS = engine.FS) {
+  const indexPath = `${path}/index.json`;
+  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
+  // serialized rewrite can be shorter than the engine-generated index, leaving
+  // trailing JSON bytes if it overwrites the file in place.
+  FS.unlink(indexPath);
+  FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
 }
 
 function importedIdentityFromIndex(path) {
@@ -2630,12 +2640,7 @@ function retitleImportedPackage(generationRoot, currentTitle, nextTitle) {
   }
   moveDictionaryFiles(currentPath, nextPath, true);
   index.title = nextTitle;
-  const indexPath = `${nextPath}/index.json`;
-  // WasmFS's OPFS writeFile does not reliably truncate an existing file. This
-  // serialized rewrite can be shorter than the engine-generated index, leaving
-  // trailing JSON bytes if it overwrites the moved file in place.
-  engine.FS.unlink(indexPath);
-  engine.FS.writeFile(indexPath, new TextEncoder().encode(JSON.stringify(index)));
+  writeDictionaryIndex(nextPath, index);
 }
 
 async function cleanupCommittedDictionaries() {
@@ -2975,6 +2980,16 @@ function importStagingPaths(fileName, resources, diskRoot = null) {
   };
 }
 
+// The generated index keeps the archive's frequencyMode, except that a list
+// declaring occurrence counts whose values are ranks is stored as rank-based
+// (#684), so its averages and Auto direction treat it as one.
+async function correctRankFrequencyMode(module, archivePath, path) {
+  const index = nativeImportCall(module, () => readDictionaryIndex(path, module.FS));
+  if (index?.frequencyMode !== "occurrence-based") return;
+  if (!await archiveHoldsRanks(nativeImportCall(module, () => module.FS.readFile(archivePath)))) return;
+  nativeImportCall(module, () => writeDictionaryIndex(path, { ...index, frequencyMode: "rank-based" }, module.FS));
+}
+
 // Stages the archive in `module`'s scratch filesystem and runs its native
 // importer into `generationRoot`. Shared with the isolated import worker, whose
 // module is a second engine instance on the same OPFS root.
@@ -3027,6 +3042,9 @@ export async function importDictionaryArchive(
     }
     if (!report.success) {
       report.error = dictionaryImportError(report.error || "The engine returned no import error.", fileName, phase).message;
+    } else {
+      phase = "checking the frequency mode";
+      await correctRankFrequencyMode(module, archivePath, `${generationRoot}/${dictionaryFolderName(report.title)}`);
     }
     return report;
   } catch (error) {
