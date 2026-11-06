@@ -28,22 +28,28 @@ async function checkHoverHitTesting(tab, popup) {
     fixture.innerHTML = '<h2 style="font:22px sans-serif;margin:24px">Hover glyph hit testing</h2>'
       + '<a id="hover-hit-label" style="position:absolute;left:64px;top:100px;width:200px;height:96px;padding:12px 24px;background:#edf2f7">食べたかった</a>'
       + '<a id="hover-hit-vertical" style="position:absolute;left:400px;top:100px;width:96px;height:260px;padding:24px 12px;background:#edf2f7;writing-mode:vertical-rl">食べたかった</a>'
+      + '<a id="hover-hit-rtl" dir="rtl" style="position:absolute;left:600px;top:100px;width:200px;height:96px;padding:12px 24px;background:#edf2f7">食べたかった</a>'
+      + '<a id="hover-hit-rtl-split" dir="rtl" style="position:absolute;left:600px;top:260px;width:200px;height:96px;padding:12px 24px;background:#edf2f7"><b>食べ</b>たかった</a>'
       + '<div id="hover-hit-cover" hidden style="position:absolute;left:64px;top:100px;width:248px;height:120px"></div>'
       + '<div id="hover-hit-pointer" style="position:fixed;width:10px;height:10px;border:2px solid #dc2626;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none"></div>';
     document.body.append(fixture);
   });
   try {
     const points = await tab.evaluate(() => {
-      const point = (id, vertical) => {
-        const node = document.getElementById(id).firstChild;
+      const point = (id, vertical, across = .7) => {
+        const element = document.getElementById(id);
+        const node = element.firstChild.nodeType === Node.TEXT_NODE ? element.firstChild : element.firstChild.firstChild;
         const range = document.createRange();
         range.setStart(node, 0); range.setEnd(node, 1);
         const rect = range.getBoundingClientRect();
-        return { glyph: { x: rect.left + rect.width * .7, y: rect.top + rect.height * .7 },
+        return { glyph: { x: rect.left + rect.width * across, y: rect.top + rect.height * .7 },
           padding: { x: rect.left - 20, y: rect.top + rect.height / 2 },
           below: { x: rect.left + rect.width / 2, y: rect.bottom + (vertical ? 220 : 20) } };
       };
-      return { horizontal: point("hover-hit-label", false), vertical: point("hover-hit-vertical", true) };
+      // On a right-to-left line Japanese is a left-to-right run: its first
+      // glyph's left half is the run's outer edge.
+      return { horizontal: point("hover-hit-label", false), vertical: point("hover-hit-vertical", true),
+        rightToLeft: point("hover-hit-rtl", false, .3), rightToLeftSplit: point("hover-hit-rtl-split", false, .3) };
     });
     async function move(name, point, expected) {
       await tab.keyboard.press("Escape");
@@ -76,6 +82,12 @@ async function checkHoverHitTesting(tab, popup) {
     await move("vertical-padding", points.vertical.padding, false);
     await move("vertical-below", points.vertical.below, false);
     check("vertical hover hits glyphs and rejects the surrounding padding",
+      outcomes.every(row => row.correct), JSON.stringify(outcomes));
+    outcomes.length = 0;
+    await move("rtl-glyph", points.rightToLeft.glyph, true);
+    await move("rtl-split-glyph", points.rightToLeftSplit.glyph, true);
+    await move("rtl-padding", points.rightToLeft.padding, false);
+    check("on a right-to-left line, hover hits a Japanese word from the outer half of its first glyph, across text nodes too, and rejects the padding",
       outcomes.every(row => row.correct), JSON.stringify(outcomes));
   } finally {
     await tab.keyboard.press("Escape");

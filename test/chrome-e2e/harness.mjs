@@ -319,6 +319,7 @@ const PLANNED = [
   "hovering positioned per-glyph boxes looks up and highlights the whole word",
   "hover hits glyphs and rejects padded tiles and transparent covering elements",
   "vertical hover hits glyphs and rejects the surrounding padding",
+  "on a right-to-left line, hover hits a Japanese word from the outer half of its first glyph, across text nodes too, and rejects the padding",
   "mouse resizing retains session dimensions without changing Design settings",
   "wheel over the popup scrolls neither the page nor its body wheel listeners",
   "Alt+wheel over the popup moves one entry per step without scrolling the pane or the page",
