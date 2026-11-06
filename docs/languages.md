@@ -988,9 +988,11 @@ leaves unfixed). Once the records have profiles:
   search page and the Design preview create gets `dir="ltr"` and `lang="en"`.
   The reader's shadow host resets inherited properties with `all: initial`,
   which does not reset `direction`, and `lang` is inherited through the host,
-  so without them the popup takes a right-to-left page's direction (mirroring
-  its English buttons and tabs) and the page's language (screen readers then
-  read the interface with the page's voice).
+  so without them the popup would take the page's language (screen readers
+  then read the interface with the page's voice). The direction is the host's
+  own in every installation, profiles or not: its inline style says
+  `direction: ltr !important`, so on a right-to-left page no popup mirrors its
+  English buttons and tabs (the owner's decision in #640).
 - **Language text.** Text in the profile's language is marked where it appears,
   in every theme:
 
@@ -1134,8 +1136,8 @@ tables inside disclosures reach into the indent, the external-link icon's
 margin and Crystal's example rule. The logical forms apply only in marked
 popups (`:where(.gsm-hoshidicts-popup[data-hd-language])`, at each rule's base
 specificity); the physical rules stay as they are for a popup without
-profiles, so a Japanese-only popup on a right-to-left page, which inherits the
-page's direction (section 21), lays out exactly as before.
+profiles, so a Japanese-only popup on a right-to-left page, which reads left to
+right as every popup does (10.1), lays out as on a left-to-right page.
 
 ### 10.3 Language of glossary text
 
@@ -2104,10 +2106,10 @@ language** (with Multiple languages on) and in every theme.
 - In a right-to-left text field, a lookup near the field's clipped edge may
   miss: the imposter's clipping assumes left-to-right scrolling.
 - The single-profile shape keeps today's markup exactly, including two
-  existing faults: the popup takes a right-to-left page's direction and
-  language, and right-to-left glosses get no direction. Both are fixed once a
-  second language is added (section 10); fixing them for Japanese-only
-  installations too is a separate change for the owner to decide.
+  existing faults: the popup takes a right-to-left page's language, and
+  right-to-left glosses get no direction. Both are fixed once a second
+  language is added (section 10). The page's direction no longer reaches any
+  popup (10.1).
 - The `-plain` Anki glossary markers join lines with `<br>` and have no
   element to carry a direction.
 - A linked client's request that is already running when the host forces a

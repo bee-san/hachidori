@@ -50,7 +50,7 @@ function pageHarness() {
     document.getElementById("host")?.remove();
     const host = document.createElement("div");
     host.id = "host";
-    host.style.cssText = ["all: initial !important", "position: fixed !important", "top: 0 !important", "left: 0 !important",
+    host.style.cssText = ["all: initial !important", "direction: ltr !important", "position: fixed !important", "top: 0 !important", "left: 0 !important",
       "width: 0 !important", "height: 0 !important", "z-index: 2147483647 !important"].join("; ");
     document.body.append(host);
     const shadow = host.attachShadow({ mode: "open" });
@@ -296,7 +296,9 @@ function pageHarness() {
       .map(list => view.getComputedStyle(list))
       .filter(style => style.listStyleType !== "none" && style.display !== "inline")
       .map(style => [style.paddingLeft, style.paddingRight]);
-    return { marked: state.popup.hasAttribute("data-hd-language"), textAlign: view.getComputedStyle(state.popup).textAlign, lists };
+    const close = state.popup.querySelector("[aria-label='Close'], .gsm-hoshidicts-close")?.getBoundingClientRect() ?? null;
+    return { marked: state.popup.hasAttribute("data-hd-language"), direction: view.getComputedStyle(state.popup).direction,
+      textAlign: view.getComputedStyle(state.popup).textAlign, lists, close: close && Math.round(close.left) };
   };
 }
 
@@ -465,11 +467,11 @@ try {
       }
     }
   }
-  // A Japanese-only popup (no profiles, so unmarked) on a right-to-left page keeps
-  // today's physical layout (design 4.5; logical forms apply only in marked
-  // popups): the themes' left alignment, and every list indent the stylesheets
-  // set on the left as on a left-to-right page. Lists that keep the browser's
-  // own 40px indent move with the page's direction, as they always did.
+  // A Japanese-only popup (no profiles, so unmarked) on a right-to-left page
+  // keeps today's physical layout (design 4.5; logical forms apply only in
+  // marked popups) and, since its host reads left to right whatever the page's
+  // direction (10.1), lays out as on a left-to-right page: the same direction,
+  // alignment, list indents and Close.
   for (const { theme, variant } of runs.filter(run => run.theme !== "legacy")) {
     const label = variant === "auto" ? theme : `${theme}-${variant}`;
     const layouts = {};
@@ -480,9 +482,9 @@ try {
       layouts[name] = await page.evaluate(() => window.unmarkedLayout());
     }
     const { ltr, rtl } = layouts;
-    const indents = ltr.lists.every(([left], index) => left === "40px" || rtl.lists[index]?.[0] === left);
-    check(`${chromeName} ${label} unmarked Japanese on a right-to-left page: today's physical layout`,
-      !rtl.marked && (theme === "default" || rtl.textAlign === "left") && indents, JSON.stringify(layouts));
+    check(`${chromeName} ${label} unmarked Japanese on a right-to-left page: laid out as on a left-to-right page`,
+      !rtl.marked && rtl.direction === "ltr" && (theme === "default" || rtl.textAlign === "left")
+        && JSON.stringify({ ...rtl, marked: false }) === JSON.stringify({ ...ltr, marked: false }), JSON.stringify(layouts));
   }
   // An undeclared theme outside Japanese: character clicks are ignored (11.4).
   for (const [profile, expected] of [["zh", 0], ["ja", 1]]) {
