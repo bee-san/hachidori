@@ -407,9 +407,13 @@ export function createAnkiMiningService({
   // the reply `preflight` would give it; a failure that belongs to one entry,
   // such as an empty first field, stays with that entry, while a failed shared
   // request fails every entry that waited on it.
+  function failedReply(error) {
+    return { state: "error", canAdd: false, error: error?.message || String(error) };
+  }
+
   function failedPreflight(request, error) {
     cached.delete(request?.templateId ?? "");
-    return { state: "error", canAdd: false, error: error?.message || String(error) };
+    return failedReply(error);
   }
 
   async function batchEntry(index, request) {
@@ -418,7 +422,7 @@ export function createAnkiMiningService({
       if (prepared.resources.deferDuplicateCheck === true) return { reply: await deferredReply(request, prepared) };
       return { entry: { index, request, prepared } };
     } catch (error) {
-      return { reply: failedPreflight(request, error) };
+      return { reply: failedReply(error), failed: true };
     }
   }
 
@@ -436,6 +440,11 @@ export function createAnkiMiningService({
 
   async function preflightMany(requests) {
     const prepared = await Promise.all(requests.map((request, index) => batchEntry(index, request)));
+    // A failed entry retires the metadata for a retry, as `preflight` does,
+    // once every entry has prepared. Retired earlier, an entry still waiting
+    // for its configuration's digest would discover Anki again, depending only
+    // on the order in which the digests resolve.
+    prepared.forEach(({ failed }, index) => { if (failed) cached.delete(requests[index]?.templateId ?? ""); });
     const replies = prepared.map(({ reply }) => reply);
     const groups = new Map();
     for (const { entry } of prepared) {
