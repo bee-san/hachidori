@@ -146,7 +146,7 @@
     "recommendedDictionaries": [
       {
         "name": "wty-la-en (wiktionary-to-yomitan)",
-        "url": "https://github.com/yomidevs/wiktionary-to-yomitan",
+        "url": "https://yomidevs.github.io/wiktionary-to-yomitan/download/",
         "description": "Latin-English dictionary from English Wiktionary, with macrons as readings and a form-of entry for each inflected form.",
         "licence": "CC BY-SA 4.0"
       }

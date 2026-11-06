@@ -119,7 +119,7 @@
   },
   "presentation": {
     "typography": {
-      "fontFamily": null,
+      "fontFamily": "\"Noto Sans\", system-ui, sans-serif",
       "wordBreak": null,
       "lineBreak": null,
       "joinedScript": false
