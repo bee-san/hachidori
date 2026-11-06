@@ -319,9 +319,9 @@ classic scripts that set `globalThis.HDLanguages`:
 - the Design preview (`design-preview.html`) loads `registry.js` with a
   `<script>` tag;
 - `reader-page.js` injects the manifest's content scripts into the startup and
-  search pages after their own `registry.js` has run; `registry-reader.js`
-  leaves an `HDLanguages` that is already set in place, so those pages keep
-  the fuller copy.
+  search pages after their own `registry.js` has run; when `content.js`
+  imports `registry-reader.js` there, it leaves an `HDLanguages` that is
+  already set in place, so those pages keep the fuller copy.
 - `language-settings.js` (section 7.5) is loaded with a dynamic `import()`
   only when the edited profile's pack declares settings; the Japanese pack
   declares none.
