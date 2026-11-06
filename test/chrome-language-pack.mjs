@@ -362,9 +362,14 @@ try {
     await settings.waitForFunction(id => document.getElementById(id)?.hidden === false, { timeout: 10_000 }, section);
   };
 
-  // 1. The language, added in Settings → Advanced → Languages.
+  // 1. The language, added in Settings → Advanced → Languages once
+  // Advanced → Experimental features → Multiple languages is on.
   await step(summary.profile, async () => {
     await showSection("advanced");
+    await settings.click("#opt-experimental-multipleLanguages");
+    const enabled = await until(async () => (await storage(["options"])).options?.experimental?.multipleLanguages === true);
+    if (!enabled) throw new Error("Multiple languages did not turn on");
+    await showSection("languages");
     const offered = await settings.waitForFunction(code => document.querySelector(
       `#settings-language-add-select option[value="${code}"]`) !== null, { timeout: 15_000 }, ADDED.code).catch(() => null);
     if (offered === null) throw new Error(`Add a language does not offer ${ADDED.pack.name}`);
@@ -387,7 +392,7 @@ try {
   const importInto = async (profileId, path) => {
     await settings.bringToFront();
     if ((await editedProfile()) !== profileId) {
-      await showSection("advanced");
+      await showSection("languages");
       await settings.select("#settings-language-select", profileId);
       const chosen = await until(() => settings.$eval("#settings-language-select",
         (select, id) => select.value === id && !select.disabled, profileId), { timeout: 30_000 });
@@ -434,7 +439,7 @@ try {
       const { title, seconds, status } = await importInto(CODE, dictionaryCopy);
       Object.assign(summary.dictionary, { title, seconds, status, ok: true });
       await importInto(OTHER.code, otherArchive);
-      await showSection("advanced");
+      await showSection("languages");
       await screenshot(settings, "languages", "#language-settings");
     });
   }

@@ -39,7 +39,7 @@ const puppeteer = await import(PUPPETEER.startsWith("/") ? `file://${PUPPETEER}`
 const PLANNED = [
   "the welcome card has no language menu in a build with other packs",
   "Set up manually keeps the records Japanese-only, with no catalogue download",
-  "a single-profile Settings page has main's sidebar and lists its language in Advanced → Languages",
+  "a single-profile Settings page has main's sidebar and Advanced, and Multiple languages reveals Advanced → Languages listing its language",
   "an import joins the edited profile, its row carrying the archive's targetLanguage",
   "Advanced → Languages adds English and Arabic, each edited at once and its import joining it",
   "the records hold three profiles, each with its own dictionary",
@@ -58,6 +58,7 @@ const PLANNED = [
   "the Arabic-English dictionary's block takes its targetLanguage as its default lang",
   "a popup that automatic switching gives English shows English's display name, custom buttons, theme and target language",
   "the search page and its frame take the active profile's palette and follow a switch",
+  "Multiple languages off returns lookups, the toolbar and the badge to Japanese, and on again brings English back",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -249,8 +250,30 @@ try {
     await settings.waitForFunction(id => document.getElementById(id)?.hidden === false, { timeout: 10_000 }, section);
   };
 
+  // Advanced → Experimental features → Multiple languages, clicked in the page.
+  const multipleLanguages = async enabled => {
+    await showSection("advanced");
+    await settings.waitForSelector("#opt-experimental-multipleLanguages", { timeout: 30_000 });
+    await settings.evaluate(wanted => {
+      const input = document.getElementById("opt-experimental-multipleLanguages");
+      if (input.checked !== wanted) input.click();
+    }, enabled);
+    return until(async () => (await storage(["options"])).options?.experimental?.multipleLanguages === enabled);
+  };
+
   await step(PLANNED[2], async () => {
     await settings.waitForSelector("#language-settings", { timeout: 30_000 });
+    // Off, Advanced has no Languages tab and #languages leads to Advanced.
+    await settings.evaluate(() => { location.hash = "#languages"; });
+    await settings.waitForFunction(() => document.getElementById("advanced").hidden === false, { timeout: 10_000 });
+    const off = await settings.evaluate(() => ({
+      tabs: document.getElementById("advanced-navigation").hidden,
+      tab: document.querySelector('#advanced-navigation a[href="#languages"]').hidden,
+      languages: document.getElementById("languages").hidden,
+    }));
+    if (!await multipleLanguages(true)) throw new Error("Multiple languages did not turn on");
+    await settings.waitForFunction(() => document.getElementById("advanced-navigation").hidden === false, { timeout: 10_000 });
+    await showSection("languages");
     const page = await settings.evaluate(async () => {
       // The sidebar as settings.html writes it.
       const markup = new DOMParser().parseFromString(await (await fetch(location.href)).text(), "text/html");
@@ -261,16 +284,17 @@ try {
         rail: document.querySelectorAll(".settings-nav a").length,
         outside: [...document.querySelectorAll("#settings-language-select, #language-auto-switch, [data-scope-note], [data-language-settings]")]
           .map(node => node.id || node.className),
-        section: card.closest("section").id, first: card === document.querySelector("#advanced fieldset"),
+        section: card.closest("section").id, first: card === document.querySelector("#languages fieldset"),
         legend: card.querySelector("legend").textContent,
         languages: [...card.querySelectorAll("#settings-language-profiles [data-profile-id]")].map(row => row.dataset.profileId),
         removable: card.querySelectorAll("#settings-language-profiles button").length,
         offered: [...document.getElementById("settings-language-add-select").options].map(option => option.value),
       };
     });
-    check(PLANNED[2], JSON.stringify(page.sidebar) === JSON.stringify(page.markup) && page.rail === 9 && page.outside.length === 0
-      && page.section === "advanced" && page.first && page.legend === "Languages" && page.languages.join() === "ja"
-      && page.removable === 0 && page.offered.includes("en") && page.offered.includes("ar"), JSON.stringify(page));
+    check(PLANNED[2], off.tabs && off.tab && off.languages
+      && JSON.stringify(page.sidebar) === JSON.stringify(page.markup) && page.rail === 9 && page.outside.length === 0
+      && page.section === "languages" && page.first && page.legend === "Your languages" && page.languages.join() === "ja"
+      && page.removable === 0 && page.offered.includes("en") && page.offered.includes("ar"), JSON.stringify({ off, page }));
   });
 
   await step(PLANNED[4], async () => {
@@ -278,7 +302,7 @@ try {
     // Add a language in Advanced → Languages, then import into the language
     // Settings now shows.
     const add = async code => {
-      await showSection("advanced");
+      await showSection("languages");
       await settings.select("#settings-language-add-select", code);
       await settings.click("#settings-language-add-row button");
       await until(async () => (await editedId()) === code, { timeout: 60_000 });
@@ -311,7 +335,7 @@ try {
   });
 
   await step(PLANNED[6], async () => {
-    await showSection("advanced");
+    await showSection("languages");
     await settings.select("#settings-language-select", "en");
     await until(async () => (await editedId()) === "en");
     const read = () => settings.evaluate(() => ({
@@ -445,6 +469,38 @@ try {
       JSON.stringify({ plain: state?.plain, hint, badge }));
   });
 
+  await step(PLANNED[21], async () => {
+    // English is used for lookups, and Settings shows English.
+    const toolbarState = () => toolbar.evaluate(() => ({
+      row: document.getElementById("language-switcher") !== null,
+      label: document.getElementById("lookup-toggle").getAttribute("aria-label"),
+      hint: document.getElementById("activation-hint").textContent,
+    }));
+    const badge = () => worker.evaluate(() => chrome.action.getBadgeText({}));
+    if (!await multipleLanguages(false)) throw new Error("Multiple languages did not turn off");
+    const off = await until(async () => {
+      const state = { toolbar: await toolbarState(), badge: await badge(), edited: await editedId() };
+      return !state.toolbar.row && state.badge === "" ? state : null;
+    }) ?? { toolbar: await toolbarState(), badge: await badge(), edited: await editedId() };
+    const kept = (await storage(["options", "languageSelection"]));
+    const japanese = await hoverAt("/japanese.html", "#sample", 0, current => current.plain.includes("食べる"));
+    // English text read in Japanese finds no English entry; a few tries are enough.
+    await reading.bringToFront();
+    await reading.goto(`${origin}/english.html`, { waitUntil: "load" });
+    const english = await hoverForPopup(reading, popup, "#sample", { point: await characterPoint(reading, "#sample", 10),
+      accept: current => current.plain.includes("to move swiftly on foot"), attempts: 3 });
+    if (!await multipleLanguages(true)) throw new Error("Multiple languages did not turn back on");
+    const on = await until(async () => {
+      const state = { toolbar: await toolbarState(), badge: await badge() };
+      return state.toolbar.row && state.badge === "EN" ? state : null;
+    });
+    check(PLANNED[21], !off.toolbar.row && off.toolbar.label === "Japanese lookups"
+      && off.toolbar.hint === "Hover over Japanese text to scan" && off.badge === "" && off.edited === "ja"
+      && kept.languageSelection?.activeProfileId === "en" && languagesOf(kept.options).join() === "ja,en,ar"
+      && Boolean(japanese) && english === null && on?.toolbar.hint === "Hover over English text to scan",
+    JSON.stringify({ off, kept, japanese: japanese?.plain, english: english?.plain, on }));
+  });
+
   await step(PLANNED[12], async () => {
     const stored = await storage(["options"]);
     const current = await messenger.evaluate(value => globalThis.HDReaderOptions.normaliseOptions(value).keybinds, stored.options);
@@ -490,7 +546,7 @@ try {
   // Advanced → Languages → Switch language automatically, clicked in the
   // page: Settings stays a background tab while the reading page is in front.
   const autoSwitch = async enabled => {
-    await showSection("advanced");
+    await showSection("languages");
     await settings.evaluate(wanted => {
       const input = document.getElementById("language-auto-switch");
       if (input.checked !== wanted) input.click();
@@ -551,7 +607,7 @@ try {
     const startedOn = await editedId();
     // The sidebar's link leads to Settings shows.
     await settings.evaluate(() => document.getElementById("settings-language-link").click());
-    const focused = await until(() => settings.evaluate(() => document.getElementById("advanced").hidden === false
+    const focused = await until(() => settings.evaluate(() => document.getElementById("languages").hidden === false
       && document.activeElement?.id === "settings-language-select"));
     await settings.select("#settings-language-select", "en");
     await until(async () => (await editedId()) === "en");
@@ -589,7 +645,7 @@ try {
       return value.pitch && value.kanji ? value : null;
     }) ?? await hidden();
     await screenshot(settings, "settings-english-design");
-    await showSection("advanced");
+    await showSection("languages");
     await settings.select("#settings-language-select", "ja");
     await until(async () => (await editedId()) === "ja");
     await showSection("design");

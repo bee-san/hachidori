@@ -594,8 +594,9 @@ These run separately:
 - **`chrome-language-pack.mjs`** (`node test/run.mjs chrome-language-pack`)
   checks one language pack of `extension/vendor/languages/` with a real
   dictionary: the check each language's pack passes before it merges. It is
-  not in CI, because it needs the dictionary. In a fresh profile Settings →
-  Advanced → Languages adds the language (`HACHIDORI_LANGUAGE`) beside
+  not in CI, because it needs the dictionary. In a fresh profile, with
+  Multiple languages turned on, Settings → Advanced → Languages adds the
+  language (`HACHIDORI_LANGUAGE`) beside
   Japanese and Settings imports the dictionary (`HACHIDORI_DICTIONARY`, any
   Yomitan .zip) into it. Each case of
   `HACHIDORI_CASES` (`sentence<TAB>word<TAB>expected headword`, by default the
@@ -740,8 +741,8 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   Firefox build, written to `test/tmp/firefox-languages/` by the launcher with
   `chrome-languages/builds.mjs`, whose registry holds Japanese and the English
   and Arabic fixture packs of `test/data/languages/`, whatever packs the build
-  ships. The welcome card has no language menu, Settings → Advanced →
-  Languages adds English and Arabic, each profile imports its fixture
+  ships. The welcome card has no language menu, Multiple languages is turned
+  on and Settings → Advanced → Languages adds English and Arabic, each profile imports its fixture
   dictionary (`make-language-fixtures.mjs`), Use for lookups makes English
   active, an English hover finds
   *run* in *running*, the toolbar switches to Arabic and the badge reads `AR`,
