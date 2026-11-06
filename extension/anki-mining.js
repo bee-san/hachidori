@@ -243,6 +243,11 @@ function addNoteContext(error, note) {
   return new Error(`${detail} (AnkiConnect: ${raw})`, { cause: error });
 }
 
+// The reply of a preflight that failed.
+function failedReply(error) {
+  return { state: "error", canAdd: false, error: error?.message || String(error) };
+}
+
 export function createAnkiMiningService({
   gateway,
   readConfig,
@@ -407,10 +412,6 @@ export function createAnkiMiningService({
   // the reply `preflight` would give it; a failure that belongs to one entry,
   // such as an empty first field, stays with that entry, while a failed shared
   // request fails every entry that waited on it.
-  function failedReply(error) {
-    return { state: "error", canAdd: false, error: error?.message || String(error) };
-  }
-
   function failedPreflight(request, error) {
     cached.delete(request?.templateId ?? "");
     return failedReply(error);
