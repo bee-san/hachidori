@@ -180,6 +180,14 @@
       "matches": [
         "https://www.netflix.com/*"
       ]
+    },
+    {
+      "resources": [
+        "youtube-recorder.html"
+      ],
+      "matches": [
+        "https://www.youtube.com/*"
+      ]
     }
   ]
 }

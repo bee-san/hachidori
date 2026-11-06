@@ -44,7 +44,7 @@ validated URL in the system browser.
 
 | File | Runs as | Role |
 | --- | --- | --- |
-| `background.js`, with the `background-*.js` modules it imports | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, the words marked as known or ignored, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. `background.js` registers the listeners and runs the start-up; `background-core.js` holds the targets, storage keys, offscreen relay, storage queue and dictionary-state rules, `background-requests.js` the requests the worker answers itself, recommended installs, linked browsers' requests and the Anki gateway, and `background-anki.js`, `background-backup.js`, `background-updates.js`, `background-sharing.js` and `background-netflix.js` those features. |
+| `background.js`, with the `background-*.js` modules it imports | the service worker | Routes every runtime message and owns everything in `chrome.storage.local`: dictionary metadata, options, the personal dictionary, update schedules, lookup counts, the words marked as known or ignored, automatic-backup metadata, first-run and sharing state. It also owns the alarms, the Anki gateway and the sharing host and client. It holds no engine state, so Chrome may stop it whenever it is idle. `background.js` registers the listeners and runs the start-up; `background-core.js` holds the targets, storage keys, offscreen relay, storage queue and dictionary-state rules, `background-requests.js` the requests the worker answers itself, recommended installs, linked browsers' requests and the Anki gateway, and `background-anki.js`, `background-backup.js`, `background-updates.js`, `background-sharing.js`, `background-netflix.js` and `background-youtube.js` those features; the last two are the Netflix and YouTube instances of `background-video.js`. |
 | `content.js`, with the classic scripts listed under `content_scripts` | every frame of a web page, and the startup and search pages, which load it themselves | Scans the Japanese text near the pointer and renders a popup in that frame, bounded by its viewport. `content-scan.js` holds how it reads page text (the caret, scans, sentences, selections and word-highlight runs) and `content-dictionaries.js` how it reads the stored dictionary list and a kanji group's replies; both load just before `content.js` and publish on `globalThis.HDContent`. The popup uses a shadow root through `theme-host.js` and the selected renderer (`render/popup.js` for Default), with Anki and pronunciation controls (`anki-content.js`, `audio-content.js`). `content.css` is the only style the page itself receives: the source highlight and the word highlights. |
 | `background.html`, `event-page.js` | Firefox's background page (Firefox build only) | Firefox has no extension service workers or offscreen documents. `background.html` runs `background.js` and holds `offscreen.html` in a frame; `event-page.js` keeps the page past Firefox's 30-second idle limit. The Chrome ZIP leaves both out. |
 | `offscreen.html`, `offscreen.js` | Chrome’s offscreen document, or the frame in Firefox's background page | Owns the dictionary engine. `engine-worker.js` runs the pthread build with direct OPFS once `opfs-capability-worker.js` has proved the browser can, and imports each archive in a short-lived second instance, `import-worker.js`, so lookups keep working; `engine-worker-idbfs.js` runs the pthread build on IDBFS when the browser has shared memory but no OPFS access handles (Electron), and `engine-worker-local.js` the single-thread build on IDBFS when there is no shared memory, all through `engine-worker-runtime.js`; `engine-service.js` runs in the document only where workers are unavailable. `engine-recycler.js` decides when Low memory mode replaces the worker, and `dictionary-index-storage.js` which hash indexes stay in memory ([docs/memory.md](../docs/memory.md)). Pronunciation, Anki and the first-run installer load here on demand. It also reads the clipboard for the search page's Clipboard monitor. |
@@ -166,6 +166,19 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
   or the page screenshot where there is none, and for `{sentence-audio}` while
   the video's sound does not yet go through Hachidori.
+- **YouTube mining.** The same features on `www.youtube.com` behind their own
+  experimental switch, on the same code: `netflix-content.js` is the
+  video-site reader both sites use (`createVideoSite`), and
+  `youtube-content.js` describes YouTube's player and captions to it.
+  `youtube.js` registers `netflix-page.js`, the page script both sites share
+  (main world: on YouTube it posts the json3 caption files YouTube's player
+  loads and which video the player plays, and replays, pauses and resumes
+  through YouTube's player), and the reader's scripts, through
+  `site-scripts.js` as `netflix.js` does; `background-youtube.js` is
+  YouTube's instance of the worker service in `background-video.js`, and
+  `youtube-recorder.html` (`youtube-recorder.js`) the recorder frame, which
+  crops a `{gif}` to the video. `youtube-frame.js` is what the worker runs in
+  the page for a caption note's `{screenshot}`: the video's own frame.
 - **Netflix preview screenshots.** A separate experimental switch uses
   `netflix-preview.js` on demand in the watch page's main world to obtain the
   player's timeline JPEG for `{screenshot}`. It avoids screen capture but has
@@ -246,7 +259,7 @@ and a newer choice cancels its result. Explicit ascending/descending choices sta
   `registry.js` and `registry-reader.js`, written by
   `scripts/sync-languages.mjs` after each submodule bump.
   `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
-  mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
+  and YouTube mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
   in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is

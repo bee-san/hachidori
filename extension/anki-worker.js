@@ -18,6 +18,9 @@ async function releaseCapturedMedia({ writeResources, invoke }) {
 }
 
 const SENTENCE_FURIGANA_MARKERS = new Set(["sentence-furigana", "sentence-furigana-plain"]);
+// The switch a recorded line's media need: Netflix mining's unless the YouTube
+// service (background-video.js) names YouTube mining's.
+const NETFLIX_MINING = { flag: "netflixMining", label: "Netflix mining" };
 
 // Media the reader captures for one mining action. Each kind is held under its
 // own token until the note is written, then stored inside the queued write.
@@ -295,9 +298,10 @@ export function createAnkiWorkerService({
         // Part of the checked configuration, so toggling Smaller Anki cards
         // between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
-        // Likewise for the experimental Netflix mining switch, which decides
-        // whether a Netflix request gets its sentence audio.
+        // Likewise for the experimental Netflix and YouTube mining switches,
+        // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
+        youtubeMining: options.experimental.youtubeMining === true,
         // And for the profile's language, which decides how the note is written.
         ...(profile === null ? {} : { profile }),
       };
@@ -389,13 +393,13 @@ export function createAnkiWorkerService({
     return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
   }
 
-  // Experimental Netflix mining: the WAV of the subtitle line the reader just
-  // had replayed and recorded. Like the screenshot it is held here and stored
-  // only inside the note's write.
-  async function sentenceAudio(data, key) {
+  // Experimental Netflix and YouTube mining: the WAV of the subtitle line the
+  // reader just had replayed and recorded. Like the screenshot it is held here
+  // and stored only inside the note's write. `feature` is the site's switch.
+  async function sentenceAudio(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
@@ -407,13 +411,13 @@ export function createAnkiWorkerService({
     return { token: held.token, filename: held.filename };
   }
 
-  // Experimental Netflix mining: the animated GIF of the subtitle line the
-  // reader just had replayed and recorded. Held here and stored only inside
-  // the note's write, exactly like the screenshot and the WAV.
-  async function gifImage(data, key) {
+  // Experimental Netflix and YouTube mining: the animated GIF of the subtitle
+  // line the reader just had replayed and recorded. Held here and stored only
+  // inside the note's write, exactly like the screenshot and the WAV.
+  async function gifImage(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental.netflixMining !== true) throw new Error("Netflix mining is turned off in Settings.");
+    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }

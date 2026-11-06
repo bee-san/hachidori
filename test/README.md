@@ -226,6 +226,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `lookup-stats` | Canonical lookup-count keys and their row updates. |
 | `message-types` | `extension/message-types.js` equals the `hd_*` names written in the code of every extension JavaScript file outside `vendor/`, comments aside: an unlisted or misspelt name fails, as does a listed name nothing uses. It loads the list as a classic script and as an ES module, and checks that blanking comments leaves strings, templates and regular expressions alone. |
 | `netflix`, `netflix-subtitles`, `netflix-page`, `netflix-content`, `netflix-capture`, `netflix-gif`, `netflix-audio`, `netflix-preview` | Experimental Netflix mining without Netflix: the flag, WebVTT/TTML parsing from `test/data/netflix/` (lines written for these tests), the page hooks, the player replay and a line played on without a seek, hover pause, the recorder's clock fit, GIF encoding, and the preview helper. `netflix-audio` drives the line audio with a jsdom video on a scripted timeline and fake Web Audio: a line heard at 1× is cut to within 2 ms of its media time, the silence between a pause and its event is not heard, a line paused and played on mid-block joins its two hearings sample for sample, other speeds, seeks and a new episode end a stretch, only 30 s stay, nothing joins a graph Chrome has not let start, and the switch going off stops the copy and frees the buffer; also the shared silence test and WAV encoder. `netflix-content` cuts a heard line with no replay or recorder frame, plays on a line stopped partway, replays one not heard, and records a `{gif}` with tab capture concealed while its sentence audio comes from the line audio, which a failed GIF recording does not take with it. Netflix's real playback and protected video are not covered by any automated suite, nor are preview availability and image quality on a signed-in title (see [capture research](../docs/netflix-screenshot-research.md)); `chrome-netflix-mining.mjs` runs the capture grant and the recording in a real Chrome on a fixture page. |
+| `youtube`, `youtube-subtitles`, `youtube-page`, `youtube-content` | Experimental YouTube mining without YouTube: the flag beside Netflix's, the scripts it registers and that the manifest exposes only the recorder page to `www.youtube.com`; json3 parsing from `test/data/youtube/` (captions written for these tests in YouTube's json3 shape): a typed track's cues, and an auto-generated window's lines ending where the next line starts while staying matched until they leave the screen; the page script (`netflix-page.js` on `www.youtube.com`) posting each json3 file the player loads with its video and language and nothing else, leaving JSON as YouTube's own, which video the player plays (on navigation and on the main video's media events), live streams, and replays, pauses and resumes through YouTube's player methods, refused while an ad plays; the reader (the video-site layer with YouTube's description) pinning a caption row's cue in the player's video, the latest file as the video's track and its language, previews' timelines not piling up, an ad's captions and sound kept for no video, a `{gif}` cropped to the video, hover pause and lookups of a caption pausing, the page around the player and ads not; the video frame for `{screenshot}` and the recorder's crop, letterboxing included. |
 | `note-editor` | The personal-dictionary pencil on term, kanji and missing-word views. |
 | `pitch-accent-colors`, `pitch-badges` | Pitch colours at 3:1 in every palette; Yomitan's pronunciation markup in the popup, with every accent in the first and later entries whatever their frequency tags, each repeated accent drawn once. |
 | `popup-scale`, `popup-theme`, `progressive-results` | Popup scale, AUTO appearance, the host attributes of Design options and progressively appended results. |
@@ -321,6 +322,7 @@ wasm module or the fixtures are missing.
 | `anki.mjs` | First-run Anki detection, the worker's Anki routes, word status and its overrides through the worker's storage queue, screenshots, linked Settings discovery. |
 | `backup.mjs` | The backup relay and lifecycle port, automatic backups in the worker, Settings retention. |
 | `netflix.mjs` | The recorder port is kept only for the recorder page in a watch tab while the switch is on, a page's line audio is held only for its own top-frame watch document while the switch is on, and a Netflix page open before the switch went on gets the Netflix scripts in its own top-frame document, which its reader asks for once and then follows the switch with. |
+| `youtube.mjs` | YouTube's recorder port and line audio are kept only for YouTube's own recorder page and top-frame YouTube document while YouTube mining is on (Netflix's switch, page and requests do not count), a YouTube page open before the switch went on gets the YouTube scripts and its reader follows the switch with them, a caption note's `{screenshot}` on a YouTube page is the video's frame from the exact document, a frame read from another document fails the screenshot, and other text's and the switch off keep the viewport, a `{gif}` recording forwards a crop that fits in the tab and drops one that does not, a caption under the player's control bar is scanned from its own text while the switch is on and outranks the bar's own text over it, while a menu's text over it comes first, and with automatic switching a caption takes its track's language's profile. |
 | `updates.mjs` | The managed-update schedule and checks in the worker, and Settings' update controls. |
 | `lookup-stats.mjs`, `audio.mjs` | Lookup statistics and the audio relay in the worker. |
 | `custom-dictionary.mjs` | The personal dictionary's storage ownership, its engine transaction through real WASM, and its Settings section. |
@@ -629,6 +631,24 @@ These run separately:
   also plays a real canvas-backed video through the production page command
   listener without Netflix's private API, checking hover/lookup pause and resume.
   It writes `test/tmp/ci/netflix-subtitle-drag.png`; no Netflix service is contacted.
+- **`chrome-youtube.mjs`**, included in `test:chrome`, mines a fixture page
+  served at a YouTube watch address by request interception, with a fake
+  YouTube player whose `<video>` plays a different tone each second and whose
+  caption file it loads as json3 through `XMLHttpRequest`, as YouTube's does;
+  the browser resolves no host but `127.0.0.1`. The player's file reaches the
+  reader without Hachidori fetching anything; the player's controls are
+  auto-hidden and its invisible control bar lies over the caption with its
+  time display over the word, as YouTube's can, so every lookup of the word
+  finds the caption's glyph in its own text over the time display's; hovering the playing caption
+  pauses and leaving resumes it through the player; a line heard at 1× gets
+  the whole cue as its sentence and its audio, the cue with its pads, with no
+  replay, player call or recorder frame; `{screenshot}` is the video's own
+  frame (a canvas stream's size and colour); the player's next video has its
+  own timeline; and with the switch off nothing pauses. It writes
+  `test/tmp/ci/youtube-popup.png`. With `HACHIDORI_YOUTUBE_GIF=1`, headful
+  (`xvfb-run -a`) and on Chrome 152, it also clicks the toolbar button through
+  CDP and checks a `{gif}` note's GIF has the player's shape, writing
+  `test/tmp/ci/youtube-line.gif`.
 - **`chrome-netflix-mining.mjs`**, outside the default runs (`xvfb-run -a`;
   headless Chrome records tab audio as silence), mines a fixture page served at
   a Netflix watch address into a fake AnkiConnect. Request interception serves

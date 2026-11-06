@@ -966,3 +966,19 @@ test("a filled sentence-audio field is kept and a custom note type uses its own 
   assert.equal((await custom.preflight({ netflix: NETFLIX_CUE })).sentenceAudio, true);
   assert.equal(Object.hasOwn(await custom.preflight({}), "sentenceAudio"), false);
 });
+
+test("a YouTube request is routed like a Netflix one, by YouTube mining's switch", async () => {
+  const youtubeCue = { cue: { movieId: "Ab3dEf6hI9k", startMs: 2000, endMs: 4200 } };
+  const f = netflixMining({ model: "Kiku", fields: ["Expression", "SentenceAudio", "Picture"], netflixMining: false,
+    fieldTemplates: { Expression: { value: "{expression}", overwriteMode: "overwrite" },
+      SentenceAudio: { value: "", overwriteMode: "coalesce" }, Picture: { value: "{gif}", overwriteMode: "coalesce" } } });
+  // Netflix mining's switch is not YouTube's.
+  assert.equal(Object.hasOwn(await f.preflight({ youtube: youtubeCue }), "sentenceAudio"), false);
+  f.change({ youtubeMining: true });
+  const reply = await f.preflight({ youtube: youtubeCue });
+  assert.deepEqual([reply.sentenceAudio, reply.gif, reply.screenshot], [true, true, true]);
+  assert.equal(f.rendered.at(-1).SentenceAudio.value, "{sentence-audio}");
+  assert.equal((await f.preflight({ youtube: { unavailable: "live" } })).sentenceAudio, true);
+  // YouTube's switch does not make a Netflix request one.
+  assert.equal(Object.hasOwn(await f.preflight({ netflix: NETFLIX_CUE }), "sentenceAudio"), false);
+});
