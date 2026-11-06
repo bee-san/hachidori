@@ -1395,6 +1395,13 @@
     if (startNode.nodeType !== Node.TEXT_NODE) {
       return null;
     }
+    // As on the page, only the glyph under the pointer: past a line's end or
+    // between lines the caret still lands on the text beside it.
+    let caretOffset = caretRange.startOffset;
+    if (caretOffset > 0 && ((startNode.nodeValue || "").charCodeAt(caretOffset) & 0xfc00) === 0xdc00) caretOffset -= 1;
+    if (!glyphContainsPoint(startNode, caretOffset, clientX, clientY)) {
+      return null;
+    }
     const lookupText = startNode.parentElement?.closest(DEFINITION_TEXT_SELECTOR);
     if (
       !lookupText ||
@@ -1426,7 +1433,6 @@
     }
     const profile = profileForDefinition(startNode.parentElement, level);
     const rules = profile?.text ?? JAPANESE_TEXT_RULES;
-    const caretOffset = Math.min(caretRange.startOffset, (startNode.nodeValue || "").length);
     const start = rules.words === null ? { node: startNode, offset: caretOffset }
       : wordStart(startNode, caretOffset, lookupText, rules.words, styleCache);
     let entries = collectScanEntries(
