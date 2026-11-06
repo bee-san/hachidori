@@ -117,6 +117,17 @@ const worker = (installation, type, fields = {}) => installation.message({ targe
 const lookup = (installation, text, profileId) => engine(installation, "hd_lookup", { text, maxResults: 16, scanLength: 16, options: {},
   ...(profileId === undefined ? {} : { profileId }) });
 const glossaries = reply => JSON.stringify(reply?.results ?? []);
+
+// Advanced → Experimental features → Multiple languages, which the toolbar's
+// language row needs (docs/languages.md 16.2); linked browsers share it.
+async function enableLanguages(installation) {
+  const { options } = await installation.storage(["options"]);
+  // A write carries every flag (docs/languages.md 16.3); the stored record may hold none.
+  const experimental = await installation.worker.evaluate(stored => ({
+    ...globalThis.HDReaderOptions.normaliseOptions(stored).experimental, multipleLanguages: true }), options);
+  const reply = await worker(installation, "hd_options_write", { baseRevision: options.revision, options: { experimental } });
+  if (reply?.ok !== true) throw new Error(`${installation.name} Multiple languages: ${JSON.stringify(reply)}`);
+}
 const languagesOf = options => (options?.profiles ?? []).map(profile => profile.language);
 
 async function link(installation) {
@@ -173,6 +184,7 @@ try {
     olderBefore = await older.storage(["options", "dictionaryState"]);
     const added = await engine(host, "hd_profile_add", { language: "en", copyFrom: "ja" });
     if (added?.ok !== true) throw new Error(`hd_profile_add en: ${JSON.stringify(added)}`);
+    await enableLanguages(host);
     await host.importArchive(buildLanguageFixtureZip(ENGLISH), ENGLISH.file, "en");
     await host.importArchive(buildTitledZip(HAN_TITLE, { terms: [["食べる", "たべる", "v1", "v1", 100, [HAN_GLOSSARY], 1, ""]],
       indexOverrides: { sourceLanguage: "ja", targetLanguage: "en" } }), `${HAN_TITLE}.zip`, "en");

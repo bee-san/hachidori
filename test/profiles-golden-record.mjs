@@ -14,9 +14,14 @@
 // that hands HDReaderOptions a recorder in every realm. <reader-options.js> is
 // the file of the commit the golden describes: main's, without the profile
 // layer (99960c7c at first, main 67a4e968 for the search page's keys of #663,
-// main fd53c854 for its history and keybind scope of #666). The capture is a
-// run of main's suites at that commit; running
-// this on the branch's reader-options.js records that file's behaviour instead.
+// main fd53c854 for its history and keybind scope of #666, and that file with
+// YouTube mining's experimental flag, `youtubeMining`, added after
+// `netflixPreviewScreenshots` as main's registry has it, and Multiple
+// languages' flag, `multipleLanguages`, after it, for the flags' defaults in
+// every record). The capture is a run of main's suites at that commit;
+// running this on the branch's reader-options.js records that file's
+// behaviour instead. A golden's own inputs and suites make a capture too, one
+// line per suite, which reproduces it.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -92,7 +97,8 @@ writeFileSync(output, `${JSON.stringify({
     + "recorded from reader-options.js before the profile layer (docs/languages.md 6.2). "
     + "`normalised` lists the keys of normaliseOptions' result that differ from `defaults`; the SHA-256 values are of "
     + "JSON.stringify of the complete results of normaliseOptions and projectStoredOptions, so key order is pinned too.",
-  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js",
+  recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js with the youtubeMining and multipleLanguages "
+    + "experimental flags",
   defaults,
   entries: [],
 }).slice(0, -3)}[\n${body}\n]}\n`);

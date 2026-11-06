@@ -108,16 +108,20 @@ function renderDisplayNote(document, fieldset, presentation, themeName) {
     note.className = "field-hint language-display-note";
     fieldset.append(note);
   }
+  // Rebuilt only when its text changes, so a focused link keeps focus.
   const theme = themeName ? `The ${themeName} theme` : "The chosen theme";
-  const link = document.createElement("a");
-  link.href = "#design";
-  link.textContent = "Design";
-  note.replaceChildren(`${theme} does not use these settings. Choose another theme in `, link, ".");
+  const text = `${theme} does not use these settings. Choose another theme in `;
+  if (note.firstChild?.nodeValue !== text) {
+    const link = document.createElement("a");
+    link.href = "#design";
+    link.textContent = "Design";
+    note.replaceChildren(text, link, ".");
+  }
 }
 
 export function renderLanguageSettings({ document, descriptor, name, values, presentation, themeName = null, onChange }) {
   const settings = Array.isArray(descriptor?.settings) ? descriptor.settings : [];
-  // Each group's card follows the Languages card, or the group before it.
+  // Each group's card follows Your languages, or the group before it.
   let anchor = document.getElementById("language-settings");
   for (const [group, { id, legend }] of Object.entries(GROUPS)) {
     const own = settings.filter(setting => setting?.group === group && typeof setting.id === "string");

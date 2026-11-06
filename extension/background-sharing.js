@@ -450,7 +450,7 @@ async function forwardProfileRequest(message) {
       throw new Error(`Update Hachidori in this browser to use ${languageNames(profiles.missingLanguages)} from ${host}.`);
     }
     if (language !== null && profiles === undefined) {
-      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages. If its Advanced has no Languages card, update it there.`);
+      throw new Error(`Add ${languageName(language)} on ${host} first, in Settings → Advanced → Languages, which Multiple languages in Advanced → Experimental features turns on. If it has no Multiple languages switch, update it there.`);
     }
     throw new Error("Add and remove languages on the linked Hachidori.");
   }

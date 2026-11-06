@@ -24,9 +24,8 @@ import {
   SHARED_STATE_KEYS, sharingHost, dictionaryCount, LOCAL_UPLOAD_OWNER, answerUploadRequest, sharingLinked,
   forwardToHost, forwardWorkerRequest, serialiseSharingTransition, SHARING_HANDLERS, initialiseSharing,
 } from "./background-sharing.js";
-import {
-  NETFLIX_TARGET, NETFLIX_RECORDER_PORT, NETFLIX_WATCH_URL, adoptNetflixRecorder, handleNetflixRequest,
-} from "./background-netflix.js";
+import { netflixMining } from "./background-netflix.js";
+import { youtubeMining } from "./background-youtube.js";
 import { extensionApi as chrome } from "./browser-api.js";
 import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
@@ -48,6 +47,7 @@ import {
 import { applyCustomJavaScript } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyNetflixFlag } from "./netflix.js";
+import { applyYouTubeFlag } from "./youtube.js";
 import { openSearchPage } from "./search-window.js";
 
 /*
@@ -132,9 +132,10 @@ let languageBadge = null;
 async function syncLanguageBadge(api, { hadProfiles = false } = {}) {
   if (typeof api.action?.setBadgeText !== "function") return;
   try {
-    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, profiles } = globalThis.HDReaderOptions;
+    const { LANGUAGE_SELECTION_KEY, activeProfileId, hasProfiles, languagesEnabled, profiles } = globalThis.HDReaderOptions;
     const stored = await api.storage.local.get([OPTIONS_KEY, LANGUAGE_SELECTION_KEY]);
-    const list = hasProfiles(stored[OPTIONS_KEY]) ? profiles(stored[OPTIONS_KEY]) : [];
+    const shown = hasProfiles(stored[OPTIONS_KEY]) && languagesEnabled(stored[OPTIONS_KEY]);
+    const list = shown ? profiles(stored[OPTIONS_KEY]) : [];
     const id = activeProfileId(stored[OPTIONS_KEY], stored[LANGUAGE_SELECTION_KEY]);
     const text = list.length < 2 ? "" : (list.find(profile => profile.id === id)?.language ?? id).toUpperCase();
     if (text === languageBadge || (languageBadge === null && text === "" && list.length === 0 && !hadProfiles)) return;
@@ -176,6 +177,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
+  void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.youtubeMining);
   const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
   if (lowMemoryMode === previous.lowMemoryMode && dictionaryEntryStorage === previous.dictionaryEntryStorage
@@ -207,30 +209,20 @@ chrome.storage.onChanged.addListener((changes, area) => {
   sharingHost?.wordStatusChanged(revision);
 });
 
-// Only this extension's own recorder page, framed in a Netflix tab, may
-// connect, and only while Netflix mining is on: the page is web-accessible to
-// Netflix, so a frame the page made itself is refused with the switch off.
+// Experimental Netflix and YouTube mining (background-video.js): each site's
+// recorder frame connects on its own port, which the site's service accepts
+// only from this extension's recorder page for that site while its switch is
+// on, and its reader's requests go to its own target.
+const VIDEO_SITES = [netflixMining, youtubeMining];
+
 chrome.runtime.onConnect.addListener(port => {
-  if (port.name !== NETFLIX_RECORDER_PORT) return;
-  const { sender } = port;
-  const tabId = sender?.tab?.id;
-  if (sender?.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("netflix-recorder.html")
-      || typeof tabId !== "number" || !sender.frameId || !NETFLIX_WATCH_URL.test(sender.tab.url ?? "")) {
-    port.disconnect();
-    return;
-  }
-  let open = true;
-  port.onDisconnect.addListener(() => { open = false; });
-  chrome.storage.local.get(OPTIONS_KEY).then(stored => {
-    if (!open) return;
-    if (normaliseOptions(stored[OPTIONS_KEY]).experimental.netflixMining === true) adoptNetflixRecorder(tabId, port);
-    else port.disconnect();
-  }, () => port.disconnect());
+  VIDEO_SITES.find(site => site.recorderPort === port.name)?.connectRecorder(port);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target !== NETFLIX_TARGET) return false;
-  handleNetflixRequest(message, sender).then(result => sendResponse(workerReply(message, result)),
+  const site = VIDEO_SITES.find(entry => entry.target === message?.target);
+  if (site === undefined) return false;
+  site.handleRequest(message, sender).then(result => sendResponse(workerReply(message, result)),
     error => sendResponse(failureReply(message, error)));
   return true;
 });
@@ -627,6 +619,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   void applyCustomJavaScript(chrome, options.customPopupJavascript);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
+  void applyYouTubeFlag(chrome, options.experimental.youtubeMining);
 });
 // Firefox grants userScripts only when Settings asks for it, so the saved code
 // applies once that grant arrives.

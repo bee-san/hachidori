@@ -167,7 +167,7 @@ test("content.js asks the worker for Settings → Anki on the popup's profile", 
   const opened = await contentNoteStage({
     async single() { return settingsRequest(Object.assign(await createHarness(undefined, { options: { anki } }), { single: true })); },
     async profiles() {
-      return settingsRequest(await createHarness(undefined, { options: { profiles: [
+      return settingsRequest(await createHarness(undefined, { options: { experimental: { multipleLanguages: true }, profiles: [
         { id: "ja", language: "ja", settings: { anki: { templates } }, packSettings: {} },
         { id: "ar", language: "ar", settings: {}, packSettings: {} },
       ] } }));
@@ -257,7 +257,7 @@ test("the worker opens Settings → Anki on the profile the popup names", async 
 
 test("Settings opened for a profile edits that profile; an unknown one leaves the active profile", async t => {
   const stored = {
-    options: { revision: 3, profiles: [
+    options: { revision: 3, experimental: { multipleLanguages: true }, profiles: [
       { id: "ja", language: "ja", settings: {}, packSettings: {} },
       { id: "en", language: "en", settings: {}, packSettings: {} },
     ] },

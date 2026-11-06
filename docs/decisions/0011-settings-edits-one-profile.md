@@ -3,7 +3,9 @@
 Status: accepted (multi-language design, Phase 1, revision 9). The languages
 have since moved under Settings → Advanced (docs/languages.md 16.3): the
 Language menu below is Advanced → Languages → **Settings shows**, and the
-sidebar names the edited language with a link to it.
+sidebar names the edited language with a link to it. That tab is the
+experimental feature Multiple languages; while it is off the edited profile is
+the Japanese profile, which lookups then use.
 
 ## Context
 

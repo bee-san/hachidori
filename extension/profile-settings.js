@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Settings → Advanced → Languages (docs/languages.md 5.3 and 16.3-16.5): your
-// languages with Add and Remove, and the languages held without a profile
-// with Erase; with two or more, Settings shows (the profile this page edits)
-// with Use for lookups, Switch language automatically and the sidebar link
-// that names the edited language. Also the All languages notes beside shared
-// settings and the reset hints. settings.js loads this module once the page
-// has a language registry and owns what a profile change does to the rest of
-// the page.
+// Settings → Advanced → Languages (docs/languages.md 5.3 and 16.3-16.5), the
+// tab Multiple languages reveals: your languages with Add and Remove, and the
+// languages held without a profile with Erase; with two or more, Settings
+// shows (the profile this page edits) with Use for lookups, Switch language
+// automatically and the sidebar link that names the edited language. Also the
+// All languages notes beside shared settings and the reset hints, while
+// Multiple languages is on. settings.js loads this module once the page has a
+// language registry and owns what a profile change does to the rest of the
+// page.
 
 import { describeErrorOrJson } from "./error-text.js";
 import { customDictionaryDocumentFor, languageEntryCount } from "./custom-dictionary.js";
 import { heldLanguages } from "./profile-state.js";
 
-const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, profiles: optionProfiles } = globalThis.HDReaderOptions;
+const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, languagesEnabled,
+  profiles: optionProfiles } = globalThis.HDReaderOptions;
 
 // Settings every language shares (section 16.4): fieldsets and sections whose
 // settings are all shared get the note under their heading; single shared
@@ -68,11 +70,10 @@ export function createProfileSettings({ document, element, send, setStatus, read
     return node;
   }
 
-  // The first card of Advanced, so the sidebar link and a search for a
+  // The first card of Languages, so the sidebar link and a search for a
   // language land on it. Only static markup; names and values are set below.
   const card = create("fieldset", { className: "lookup-group", id: "language-settings" });
-  card.innerHTML = `<legend data-search-keywords="profiles add remove">Languages</legend>
-    <p class="section-note" id="language-settings-help">Each language has its own dictionaries and settings. With two or more, settings every language shares say All languages.</p>
+  card.innerHTML = `<legend data-search-keywords="profiles add remove">Your languages</legend>
     <ul class="language-list" id="settings-language-profiles"></ul>
     <ul class="language-list" id="settings-language-held-list" hidden></ul>
     <div class="field" id="settings-language-add-row">
@@ -84,8 +85,8 @@ export function createProfileSettings({ document, element, send, setStatus, read
       <p class="field-hint" id="settings-language-add-help"></p>
     </div>
     <output class="section-note custom-dictionary-status" id="settings-language-status" aria-live="polite"></output>`;
-  element("advanced").querySelector(".options-feedback-slot").after(card);
-  const intro = card.querySelector("#language-settings-help");
+  element("languages").querySelector(".options-feedback-slot").after(card);
+  const legend = card.querySelector("legend");
   const addControls = card.querySelector("#settings-language-add-row .language-actions");
   const addSelect = card.querySelector("#settings-language-add-select");
   // No id, so search offers the row rather than a bare Add.
@@ -199,7 +200,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
         setStatus(`Could not change automatic switching: ${describeErrorOrJson(error)}`, "error", error);
       });
     });
-    intro.after(picker, row, help);
+    legend.after(picker, row, help);
     return { nodes: [picker, row, help], select, use, input, help, hint: picker.querySelector(".field-hint") };
   }
 
@@ -239,7 +240,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
       return;
     }
     if (link === null) {
-      link = create("a", { className: "settings-language-link", id: "settings-language-link", href: "#advanced" });
+      link = create("a", { className: "settings-language-link", id: "settings-language-link", href: "#languages" });
       link.addEventListener("click", event => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -555,20 +556,23 @@ export function createProfileSettings({ document, element, send, setStatus, read
 
   function render() {
     const withProfiles = hasProfiles(readOptionsRecord());
+    // While Multiple languages is off, Settings outside its hidden tab is
+    // today's: no link, notes or reset hints (section 16.3).
+    const shown = withProfiles && languagesEnabled(readOptionsRecord());
     const several = withProfiles && profileList().length > 1;
     // Records without profiles hold no other language (section 4.5).
     if (!withProfiles) held = [];
     renderEdited(several);
-    renderLink(several);
+    renderLink(several && shown);
     renderProfiles();
     renderAvailable();
     renderHeld();
     if (removing !== null && !profileList().some(profile => profile.id === removing.id)) closeRemoval();
     panelPart("settings-language-remove-confirm").disabled = busy;
     panelPart("settings-language-remove-cancel").disabled = busy;
-    renderScopeNotes(withProfiles);
-    renderResetHints(withProfiles);
-    renderClipboardHint(withProfiles);
+    renderScopeNotes(shown);
+    renderResetHints(shown);
+    renderClipboardHint(shown);
   }
 
   addButton.addEventListener("click", () => {
@@ -611,6 +615,12 @@ export function createProfileSettings({ document, element, send, setStatus, read
       const withProfiles = hasProfiles(readOptionsRecord());
       if (withProfiles) void refreshHeld().catch(error => setStatus(describeErrorOrJson(error), "error", error));
       if (withProfiles || isLinked()) void refreshHostLanguages();
+      // Unlinked without profiles: a former host's packs no longer filter
+      // the menu, and no request is sent.
+      else if (hostLanguages !== null) {
+        hostLanguages = null;
+        renderAvailable();
+      }
     },
     // Records changed while Advanced is shown: held languages may have too.
     recordsChanged() {

@@ -324,7 +324,7 @@ export function createAnkiSettingsController({
   send,
   capabilities = { screenshot: true },
   readOwnerKey = () => "",
-  // The stored experimental flags: a feature's markers are listed only while it is on.
+  // The stored experimental flags: a feature's markers are listed only while one of its flags is on.
   readExperimental = () => ({}),
   // The edited profile `{ id, language, packSettings }`, or null: every marker,
   // family and suggestion, as for Japanese.
@@ -431,7 +431,8 @@ export function createAnkiSettingsController({
     const id = `opt-anki-template-${++nextTemplateId}`;
     let record;
     const combobox = createMarkerCombobox(document, id, field, value => editTemplate(record.field, { value }),
-      marker => (!marker.experimental || readExperimental()[marker.experimental] === true) && markerAvailable(marker.marker));
+      marker => (!marker.experimental || marker.experimental.some(flag => readExperimental()[flag] === true))
+        && markerAvailable(marker.marker));
     const editor = combobox.editor;
     row.querySelector(".anki-template-mode").before(combobox.root);
     label.htmlFor = editor.id;

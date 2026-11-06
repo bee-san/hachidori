@@ -48,7 +48,7 @@ import {
 // HACHIDORI_BACKUP_RELEASE_ZIP uses a local copy of that ZIP, with the
 // release's SHA256SUMS file beside it, instead of the download.
 const [RELEASE_VERSION, RELEASE_COMMIT, RELEASE_SHA256] = (process.env.HACHIDORI_BACKUP_RELEASE
-  || "0.3.2 4745397e8188 39af65baa6a823bb1cd83adb12d3239651b9b4930ded1cceb1fcff1468feaaf9").split(/\s+/u);
+  || "0.4.0 b6e2328f8d63 7bb3d895ddc1e46390274f80c6a05c946312d976ecc4d9b697a17c99317f497d").split(/\s+/u);
 const RELEASE_ASSET = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-chrome.zip`;
 const RELEASE_SUMS = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-SHA256SUMS.txt`;
 

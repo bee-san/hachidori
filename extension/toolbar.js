@@ -11,7 +11,7 @@ captureDocumentActions(document, captureDebugLog(window, {
 
 const {
   activationLabel, normaliseOptions, hasProfiles, profiles, activeProfileId, LANGUAGE_SELECTION_KEY,
-  normaliseLanguageSelection,
+  normaliseLanguageSelection, languagesEnabled,
 } = globalThis.HDReaderOptions;
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(node => [node.id, node]));
 let options = null;
@@ -48,9 +48,10 @@ function languageName(code) {
 }
 
 // The profiles once the records have them (docs/languages.md 16.2); none in
-// the single-profile shape, whose toolbar is today's.
+// the single-profile shape or while Multiple languages is off, whose toolbar
+// is today's.
 function profileList() {
-  return hasProfiles(storedOptions) ? profiles(storedOptions) : [];
+  return hasProfiles(storedOptions) && languagesEnabled(storedOptions) ? profiles(storedOptions) : [];
 }
 
 // With two or more profiles, a radio group above today's controls, one
