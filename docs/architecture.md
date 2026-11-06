@@ -2625,8 +2625,9 @@ themes keep the glyph visible in both places.
 Reduced motion disables the animation.
 
 Design → Definitions → Compact glossaries (`glossaryLayoutMode`) is Yomitan's
-`general.glossaryLayoutMode` with its stored values `default` and `compact`
-(Compact popup). `createPopupAppearance` sets
+`general.glossaryLayoutMode` with its stored values `default`, `compact`
+(Compact popup) and `compact-popup-anki` (Compact popup and Anki). Both compact
+values look the same in the popup. `createPopupAppearance` sets
 `data-hoshidicts-glossary-layout="compact"` on the popup host, and
 `render/reader.css` applies Yomitan's compact rules to the unchanged glossary
 markup: a definition's plain glosses, with their tags, and the items of a
@@ -2639,6 +2640,17 @@ faint text is below 3:1 against the card, the bar uses its muted text colour.
 The reader and the Design preview relayout masonry on a change without
 re-rendering, so Note drafts and child popups survive it. Only Default's
 stylesheet has the rules, and Anki notes never load it.
+
+Compact popup and Anki also writes Anki glossary fields as Yomitan's
+`compact-popup-anki` does (yomidevs/yomitan@67db60d): a term-bank row with
+several glossary elements joins them with ` | ` instead of a list
+(`default-anki-field-templates.handlebars` L25-L26), and the field carries
+`anki-compact-gloss-style.js`'s rules scoped to `.yomitan-glossary`, so a
+structured `ul[data-sc-content="glossary"]` shows on one line. It is part of
+the checked Anki configuration, as Smaller Anki cards is. Smaller Anki cards
+resolves those rules like any dictionary CSS: a list or list item the cascade
+shows inline is written inline, so the field reads
+`to live on (e.g. a salary) | to live off | to subsist on` without bullets.
 
 Each popup owns one requested preview image, including a still-loading image.
 A load may resume only that current intent: it cannot replace a newer
