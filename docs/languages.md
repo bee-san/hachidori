@@ -708,9 +708,10 @@ is exactly today's:
 | The Activation, Personal dictionary and Word highlighting hints that say "Japanese text" | the same with {Language} |
 | "Clicked-kanji dictionary", "Look up kanji X" | the pack's `characterView.name` ("Clicked-hanzi dictionary") |
 
-The manifest's static strings ("Study Japanese vocabulary…", "Turn Japanese
-lookups on or off") cannot vary and are pinned by existing tests. They stay;
-section 21 lists them.
+The manifest's static strings cannot vary with the language, so they name no
+single one: the description says "Study Japanese and other languages…", with
+Japanese first as the default language, and the command "Turn lookups on or
+off" (the owner's decision in #640).
 
 ### 7.5 Settings a pack defines
 
@@ -2008,9 +2009,6 @@ in every theme.
 ## 21. Known limits
 
 - The user interface is English; only content follows the language.
-- The manifest description and the "Turn Japanese lookups on or off" command
-  name stay Japanese: they are static and pinned by tests. Renaming them is a
-  one-line change for the owner to decide.
 - One profile per language in version 1.
 - Recommended dictionaries for other languages are links, not one-click
   installs.

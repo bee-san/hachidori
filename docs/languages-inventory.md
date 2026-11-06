@@ -259,7 +259,7 @@ top level of a single-profile record.
 | Startup tagline "Blazing fast, feature rich Japanese dictionary by Bee", practice copy "Hover over Japanese text…" | startup.html:25; startup-practice.js:16-50 | Tagline unchanged; practice copy names the language |
 | Settings empty library "Your Japanese library starts here", glyph `辞` | library-settings.js:669; settings.html:186 | Names the language |
 | Toolbar `aria-label="Japanese lookups"`, hint "Hover over Japanese text to scan" | toolbar.html:14; toolbar.js:37 | Unchanged with one Japanese profile; names the language otherwise (16) |
-| Manifest description "Study Japanese vocabulary…", command "Turn Japanese lookups on or off" | manifest.json:6, 33 | Unchanged (pinned by tests; owner decision) |
+| Manifest description "Study Japanese and other languages…", command "Turn lookups on or off" | manifest.json:6, 36 | Language-neutral since the owner's decision in #640 (2026-11-06); Japanese stays first, as the default language |
 | Activation, highlighting and personal-dictionary hints that say "Japanese text" | settings.html | Name the language |
 | Store listing copy | docs/chrome-web-store.md:230-235 | Unchanged |
 
