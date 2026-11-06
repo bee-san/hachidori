@@ -3,6 +3,7 @@ import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
 import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
   MAX_LINKED_SCREENSHOT_BYTES, decodedBase64Length,
@@ -306,12 +307,19 @@ export function createAnkiWorkerService({
       if (!Number.isSafeInteger(request?.generation) || request.generation < 0
           || typeof request.term?.expression !== "string" || !request.term.expression
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
-      await currentGeneration(request);
-      const dictionaries = await readDictionaries(requestProfile(request));
-      const resources = { dictionaryPaths: Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.path])), compactGlossary: current.config.compactGlossary === true,
+      const resources = { dictionaryPaths: {}, compactGlossary: current.config.compactGlossary === true,
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
+      if (preflight && Object.values(current.resolved.templates).length === 1
+          && /^\{expression\}$/iu.test(current.resolved.templates[current.discovery.fields[0]]?.value ?? "")) {
+        // No offscreen document, dictionary reads or engine wake-up just to
+        // ask Anki about a word already supplied by this lookup.
+        return { ...resources, fields: await buildAnkiFields(request, current.resolved.templates, {}), media: [] };
+      }
+      await currentGeneration(request);
+      const dictionaries = await readDictionaries(requestProfile(request));
+      resources.dictionaryPaths = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
+        .map(item => [item.title, item.path]));
       await prepareFirstFieldAudio(request, current, resources, preflight);
       const pronunciation = resources.audio ? `[sound:${resources.audio.filename}]`
         : resources.deferDuplicateCheck ? "[sound:hachidori_pending_speech.wav]" : "";

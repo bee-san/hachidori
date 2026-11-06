@@ -391,16 +391,24 @@ export function createAnkiMiningService({
   }
 
   async function preflight(request) {
-    const prepared = await prepare(request, false);
-    if (prepared.resources.deferDuplicateCheck === true) return deferredReply(request, prepared);
-    return preflightReply(request, prepared, await decision(prepared, request, duplicateIndex));
+    try {
+      const prepared = await prepare(request, false);
+      if (prepared.resources.deferDuplicateCheck === true) return deferredReply(request, prepared);
+      return await preflightReply(request, prepared, await decision(prepared, request, duplicateIndex));
+    } catch (error) {
+      cached.delete(request?.templateId ?? "");
+      throw error;
+    }
   }
 
   // The popup's readiness for several results in one request. Each entry gets
   // the reply `preflight` would give it; a failure that belongs to one entry,
   // such as an empty first field, stays with that entry, while a failed shared
   // request fails every entry that waited on it.
-  const failedPreflight = error => ({ state: "error", canAdd: false, error: error?.message || String(error) });
+  function failedPreflight(request, error) {
+    cached.delete(request?.templateId ?? "");
+    return { state: "error", canAdd: false, error: error?.message || String(error) };
+  }
 
   async function batchEntry(index, request) {
     try {
@@ -408,7 +416,7 @@ export function createAnkiMiningService({
       if (prepared.resources.deferDuplicateCheck === true) return { reply: await deferredReply(request, prepared) };
       return { entry: { index, request, prepared } };
     } catch (error) {
-      return { reply: failedPreflight(error) };
+      return { reply: failedPreflight(request, error) };
     }
   }
 
@@ -417,11 +425,11 @@ export function createAnkiMiningService({
     try {
       decisions = await batchDecisions(entries, duplicateIndex);
     } catch (error) {
-      return entries.map(() => failedPreflight(error));
+      return entries.map(({ request }) => failedPreflight(request, error));
     }
     return Promise.all(entries.map(({ request, prepared }, position) => decisions[position]()
       .then(result => preflightReply(request, prepared, result))
-      .catch(failedPreflight)));
+      .catch(error => failedPreflight(request, error))));
   }
 
   async function preflightMany(requests) {

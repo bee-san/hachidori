@@ -58,7 +58,7 @@ export async function attachAnkiAddMedia(note, files, invoke) {
     const reference = file.type === "audio" ? `[sound:${file.filename}]` : `<img src="${file.filename}">`;
     const fields = Object.keys(note.fields).filter(field => note.fields[field].includes(file.filename));
     if (!fields.length) continue;
-    if (fields.every(field => note.fields[field] === reference)) {
+    if (!file.required && fields.every(field => note.fields[field] === reference)) {
       for (const field of fields) note.fields[field] = "";
       (note[file.type] ??= []).push({ filename: file.filename, data: file.data, fields, deleteExisting: false });
     } else uploads.push(file);

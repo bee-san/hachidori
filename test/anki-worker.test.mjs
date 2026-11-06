@@ -56,12 +56,14 @@ function testIndex(resolve = async () => []) {
   };
 }
 
+// Cross-model and overwrite policies retain the checked media/enrichment path.
+// anki-performance.test.mjs covers the native same-model add and its wire budget.
 function fixture(firstAudio = false, overwrite = false, { audioSources } = {}) {
   const calls = [], audioRequests = [], renders = [];
   const mediaFiles = new Set();
   let fields = overwrite ? { Front: "猫", Audio: `pronunciation[sound:${AUDIO_FILENAME}]` } : undefined;
   let generation = 3, changeDuringCheck = false, audioUnavailable = false, deferSpeech = false, deferAllSpeech = false;
-  const options = globalThis.HDReaderOptions.normaliseOptions({ ...(audioSources && { audioSources }), anki: { model: "Basic", deck: "Default",
+  const options = globalThis.HDReaderOptions.normaliseOptions({ ...(audioSources && { audioSources }), anki: { duplicateScope: "all", model: "Basic", deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: { Front: { value: firstAudio ? "{expression}{audio}" : "{expression}", overwriteMode: "overwrite" },
       Audio: { value: overwrite ? "pronunciation{audio}" : "{audio}", overwriteMode: "overwrite" } } } });
@@ -313,6 +315,7 @@ function dictionaryMediaFixture({
   ],
   existing = [],
   overwrite = false,
+  duplicateScope = "all",
 } = {}) {
   const calls = [];
   const files = new Set(existing);
@@ -324,6 +327,7 @@ function dictionaryMediaFixture({
   let duplicateRace = false;
   const options = globalThis.HDReaderOptions.normaliseOptions({ audioSources: [], anki: {
     model: "Basic",
+    duplicateScope,
     deck: "Default",
     duplicateBehavior: overwrite ? "overwrite" : "prevent",
     fieldTemplates: {
@@ -336,6 +340,10 @@ function dictionaryMediaFixture({
       models: ["Basic"], decks: ["Default"], errors: [] }),
     async invoke(action, params) {
       calls.push({ action, params });
+      if (action === "multi") return Promise.all(params.actions.map(async entry => {
+        try { return { result: await this.invoke(entry.action, entry.params), error: null }; }
+        catch (error) { return { result: null, error: error.message }; }
+      }));
       if (action === "canAddNotesWithErrorDetail") return [{
         canAdd: !overwrite,
         error: overwrite ? "cannot create note because it is a duplicate" : null,
@@ -438,17 +446,20 @@ test("dictionary PNG and SVG bytes are confirmed before addNote and every writte
   }
 });
 
-test("dictionary media store failure cannot create a note with a missing reference", async () => {
-  const f = dictionaryMediaFixture({ items: [
-    { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
-  ] });
-  f.fail(IMAGE_FILENAME);
-  f.request.configKey = (await f.service.status()).configKey;
-  await assert.rejects(f.service.submit(f.request), /media folder is read-only/u);
-  assert.equal(f.calls.some(call => call.action === "addNote" || call.action === "updateNoteFields"), false);
-  assert.equal(f.files.has(IMAGE_FILENAME), false);
-  assert.deepEqual(f.calls.filter(call => ["getMediaFilesNames", "hd_media", "storeMediaFile"].includes(call.action))
-    .map(call => call.action), ["getMediaFilesNames", "hd_media", "storeMediaFile", "getMediaFilesNames"]);
+test("dictionary media store failure cannot create a note with a missing reference", async t => {
+  for (const duplicateScope of ["all", "model"]) await t.test(duplicateScope, async () => {
+    const f = dictionaryMediaFixture({ duplicateScope, items: [
+      { dictionary: "Fixture", path: "media/picture.png", filename: IMAGE_FILENAME },
+    ] });
+    f.fail(IMAGE_FILENAME);
+    f.request.configKey = (await f.service.status()).configKey;
+    await assert.rejects(f.service.submit(f.request), /media folder is read-only/u);
+    assert.equal(f.calls.some(call => call.action === "addNote" || call.action === "updateNoteFields"), false);
+    assert.equal(f.files.has(IMAGE_FILENAME), false);
+    assert.deepEqual(f.calls.filter(call => ["getMediaFilesNames", "hd_media", "storeMediaFile"].includes(call.action))
+      .map(call => call.action), duplicateScope === "all"
+      ? ["getMediaFilesNames", "hd_media", "storeMediaFile", "getMediaFilesNames"] : ["hd_media", "storeMediaFile"]);
+  });
 });
 
 test("dictionary media store failure cannot update an existing note with a missing reference", async () => {
@@ -524,7 +535,7 @@ test("a mining screenshot is held until the note is written, then stored under i
   let check = { canAdd: true };
   const notes = new Map();
   let fields = null;
-  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic", deck: "Default", apiKey: "local-key",
+  const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { duplicateScope: "all", model: "Basic", deck: "Default", apiKey: "local-key",
     fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
       Audio: { value: "{screenshot}", overwriteMode: "overwrite" } } } });
   const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Audio"],
@@ -682,8 +693,8 @@ test("pronunciation enrichment keeps a failed or replaced screenshot unavailable
     let fields = overwrite ? { Front: "猫", Back: "preserved" } : undefined;
     const updates = [];
     const mediaFiles = new Set();
-    const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { model: "Basic",
-      duplicateBehavior: overwrite ? "overwrite" : "prevent", duplicateScope: "model",
+    const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { duplicateScope: "all", model: "Basic",
+      duplicateBehavior: overwrite ? "overwrite" : "prevent",
       fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
         Back: { value: `${overwrite ? "preserved" : ""}{screenshot}{audio}`, overwriteMode: "overwrite" } } } });
     const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
@@ -827,7 +838,7 @@ test("a recorded Netflix line is held until the note is written and stored as it
   let refuse = false, duplicate = false, lostReply = false, check = { canAdd: true }, fields = null;
   const options = globalThis.HDReaderOptions.normaliseOptions({
     experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
-    anki: { model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+    anki: { duplicateScope: "all", model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
       Back: { value: "{screenshot}{sentence-audio}", overwriteMode: "overwrite" } } } });
   const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
     models: ["Basic"], decks: ["Default"], errors: [] }),
@@ -928,7 +939,7 @@ test("a recorded Netflix GIF is held, stored under its own name, and falls back 
   let refuse = false, duplicate = false, fields = null;
   const options = globalThis.HDReaderOptions.normaliseOptions({
     experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
-    anki: { model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+    anki: { duplicateScope: "all", model: "Basic", deck: "Default", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
       // {gif} renders the GIF when present, otherwise the screenshot's <img>.
       Back: { value: "{gif}", overwriteMode: "overwrite" } } } });
   const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
@@ -1018,7 +1029,7 @@ test("pronunciation enrichment keeps a refused or replaced GIF out of its field,
     const mediaFiles = new Set();
     const options = globalThis.HDReaderOptions.normaliseOptions({
       experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true },
-      anki: { model: "Basic", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+      anki: { duplicateScope: "all", model: "Basic", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
         Back: { value: "{gif}{audio}", overwriteMode: "overwrite" } } } });
     const gateway = { discover: async () => ({ connected: true, model: "Basic", fields: ["Front", "Back"],
       models: ["Basic"], decks: ["Default"], errors: [] }), async invoke(action, params) {

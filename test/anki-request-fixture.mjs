@@ -17,9 +17,9 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
       Audio: template(audio ? "{audio}" : ""), Picture: template("{screenshot}"),
       SentenceFurigana: template("{sentence-furigana}") },
   } });
-  const calls = [], renders = [], notes = new Map(), files = new Map();
+  const calls = [], renders = [], engineCalls = [], notes = new Map(), files = new Map();
   const audioFilename = `hachidori_${"c".repeat(64)}.wav`;
-  let state;
+  let state, mediaError;
   const handle = async (action, params) => {
     switch (action) {
       case "deckNames": return ["Default"];
@@ -43,7 +43,9 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
       case "notesInfo": return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
         fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([key, value]) => [key, { value }])) }));
       case "getMediaFilesNames": return files.has(params.pattern) ? [params.pattern] : [];
-      case "storeMediaFile": files.set(params.filename, params.data); return params.filename;
+      case "storeMediaFile":
+        if (mediaError) throw mediaError;
+        files.set(params.filename, params.data); return params.filename;
       case "deleteMediaFile": files.delete(params.filename); return null;
       case "updateNoteFields": Object.assign(notes.get(params.note.id), params.note.fields); return null;
       case "guiBrowse": return [];
@@ -71,15 +73,19 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
   });
   const service = createAnkiWorkerService({ gateway, duplicateIndex,
     readOptions: async () => options, readDictionaries: async () => [],
-    engine: async message => message.type === "hd_segment" ? { segments: [{ spans: [] }, { spans: [] }] }
-      : { generation: 3, ready: true, loading: false },
+    engine: async message => {
+      engineCalls.push(message.type);
+      return message.type === "hd_segment" ? { segments: [{ spans: [] }, { spans: [] }] }
+        : { generation: 3, ready: true, loading: false };
+    },
     offscreen: async message => {
       if (message.type === "hd_anki_audio") return { filename: audioFilename, data: "YQ==" };
       renders.push(Object.keys(message.templates));
       return { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] };
     },
   });
-  return { service, calls, renders, notes, files, options, audioFilename,
+  return { service, gateway, calls, renders, engineCalls, notes, files, options, audioFilename,
+    failMedia(error) { mediaError = error; },
     capture: () => service.screenshot(async () => "data:image/jpeg;base64,YQ=="),
     async request(expression = "猫") {
       return { term: { expression, reading: "ねこ", glossaries: [], frequencies: [], pitches: [] },

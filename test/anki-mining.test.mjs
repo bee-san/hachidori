@@ -37,7 +37,7 @@ function testIndex(resolve = async () => []) {
 }
 
 function fixture() {
-  let config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+  let config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", duplicateScope: "all",
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front", definition: "Back" } };
   let exists = false, discovers = 0;
   const calls = [];
@@ -96,7 +96,7 @@ test("explicit add-anyway skips indexed and native duplicate checks without chan
   }
 });
 
-test("mining readiness shares its short source-backed cache and skips Anki when no model is configured", async () => {
+test("mining readiness shares its configuration cache and skips Anki when no model is configured", async () => {
   const f = fixture();
   const [a, b] = await Promise.all([f.service.status(), f.service.status()]);
   assert.equal(a.available, true);
@@ -109,7 +109,7 @@ test("mining readiness shares its short source-backed cache and skips Anki when 
 });
 
 test("View readiness uses only the canonical cache and a live preflight repairs a positive miss", async () => {
-  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+  const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", duplicateScope: "all",
     fields: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki.fields, expression: "Front" } };
   let cachedIds = [], liveLookups = 0, discoveries = 0;
   const duplicateIndex = {
@@ -275,7 +275,7 @@ test("submissions recheck inside one queue so stale cross-tab preflight cannot a
   assert.deepEqual(second.noteIds, [123]);
   assert.equal(f.calls.filter(action => action === "addNote").length, 1);
   assert.equal(f.calls.filter(action => action === "canAddNotesWithErrorDetail").length, 2);
-  assert.equal(f.discovers, 3, "each mutation refreshes authoritative model fields");
+  assert.equal(f.discovers, 1, "unchanged configuration reuses discovered model fields");
 });
 
 test("a committed note with failed readback skips enrichment and stale configuration never reaches mutation", async () => {
@@ -351,7 +351,7 @@ test("an ambiguous mutation failure is not retried or reported as a confirmed fa
 
 test("mining releases a queued unsent mutation but keeps a dispatched transport failure uncertain", async t => {
   for (const dispatched of [false, true]) await t.test(dispatched ? "dispatched" : "queued", async () => {
-    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic",
+    const config = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", duplicateScope: "all",
       fieldTemplates: {
         Front: { value: "{expression}", overwriteMode: "overwrite" },
         Back: { value: "{definition}", overwriteMode: "overwrite" },
@@ -867,7 +867,8 @@ test("a popup's batched readiness gives every entry its per-entry reply for a fi
       assert.deepEqual(batch.replies, single.replies, `${behavior}/${scope}: every entry keeps its per-entry reply`);
       if (behavior === "overwrite") continue;
       const fieldReads = scope === "model" ? [] : ["modelNamesAndIds", "multi[modelFieldNames,modelFieldNames,modelFieldNames]"];
-      assert.deepEqual(batch.requests, [...fieldReads, "multi[findNotes,findNotes]", "notesInfo", "canAddNotesWithErrorDetail"],
+      assert.deepEqual(batch.requests, scope === "model" ? ["canAddNotesWithErrorDetail"]
+        : [...fieldReads, "multi[findNotes,findNotes]", "notesInfo", "canAddNotesWithErrorDetail"],
         `${behavior}/${scope}: one lookup and one add check for the whole popup`);
       assert.ok(single.requests.length > batch.requests.length * 2);
     }
@@ -884,7 +885,7 @@ test("a popup's batched readiness gives every entry its per-entry reply for a fi
 // Experimental Netflix mining routes the presets' blank sentence-audio field.
 function netflixMining({ model, fields, fieldTemplates, netflixMining = true }) {
   const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
-  let config = { ...base, url: "http://127.0.0.1:8765", apiKey: "", model, deck: "Default", fieldTemplates, netflixMining };
+  let config = { ...base, url: "http://127.0.0.1:8765", apiKey: "", model, deck: "Default", fieldTemplates, netflixMining, duplicateScope: "all" };
   const rendered = [];
   const gateway = {
     async discover() { return { connected: true, model, models: [model], decks: ["Default"], fields, errors: [] }; },

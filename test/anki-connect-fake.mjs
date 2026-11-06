@@ -8,7 +8,7 @@ export class AnkiConnectError extends Error {}
 // AnkiConnect's addMediaFromNote/addMedia: native attachments append to named
 // fields, using the returned filename. A failed media store leaves readable
 // error text in the field and does not prevent creation of the text note.
-export async function applyAnkiNoteMedia(note, handle) {
+async function applyAnkiNoteMedia(note, handle) {
   const fields = { ...note.fields };
   for (const type of ["audio", "video", "picture"]) {
     for (const media of note[type] ?? []) {
@@ -18,6 +18,7 @@ export async function applyAnkiNoteMedia(note, handle) {
         const filename = await handle("storeMediaFile", media);
         suffix = filename === null ? "" : type === "picture" ? `<img src="${filename}">` : `[sound:${filename}]`;
       } catch (error) {
+        if (!(error instanceof AnkiConnectError)) throw error;
         suffix = error.message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
       }
       for (const field of media.fields) if (Object.hasOwn(fields, field)) fields[field] += suffix;
