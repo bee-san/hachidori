@@ -296,10 +296,14 @@ classic scripts that set `globalThis.HDLanguages`:
   modules (Settings loads `reader-options.js` with a tag too; startup and
   toolbar import it in their modules); the jsdom harnesses run pages with
   `runScripts: "outside-only"`, so the tag is inert there;
-- the manifest's content scripts list `registry-reader.js` before
-  `reader-options.js`; it holds only the fields the reader uses, within a
+- `content.js` imports `registry-reader.js` and `language-text.js`, which the
+  manifest lists as web-accessible rather than as content scripts, into its
+  frame the first time the records have profiles, so a Japanese-only frame
+  parses neither. Until both have loaded the reader adopts nothing: the
+  storage delivery that brought the profiles and every later one wait, in
+  order. `registry-reader.js` holds only the fields the reader uses, within a
   budget of 64 KB for every pack together, because every frame of every page
-  parses it;
+  parses it once the records have profiles;
 - the service worker imports `registry.js` statically (an MV3 service worker
   cannot import on demand). The engine worker imports `registry.js`,
   `reader-options.js` and `profile-state.js` with dynamic `import()` the first
@@ -2064,7 +2068,8 @@ GameSentenceMiner ships its own copy. So:
   fonts were missing, from layout of interleaved `en` and `ja` elements; a
   measured regression is fixed before merging, as AGENTS.md requires.
 - **Frame start-up**: content-script start in a page with many frames, before
-  and after, with every pack in `registry-reader.js`.
+  and after, with every pack in `registry-reader.js`. A Japanese-only frame
+  loads neither `registry-reader.js` nor `language-text.js` (section 5).
 - **Profile switch**: no reload; the first lookup after switching is as fast
   as any other. Measured from the toolbar click to the first popup.
 - **Engine start**: restart-to-first-lookup with the Japanese, English and
