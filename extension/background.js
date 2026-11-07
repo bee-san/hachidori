@@ -80,7 +80,7 @@ captureDebugLog(globalThis, { context: "service-worker", store: openDebugLogStor
 // cannot refresh its worker keeps working instead of reloading forever.
 const STALE_WORKER_RELOAD_KEY = "staleWorkerReload";
 if (BUILD_VERSION !== chrome.runtime.getManifest().version) {
-  reloadStaleWorker().catch((error) => {
+  reloadStaleWorker().catch((error) => { // NOSONAR -- top-level await prevents this MV3 worker from activating.
     console.error("hachidori: could not reload the out-of-date service worker:", describeErrorOrJson(error));
   });
 }
