@@ -10,7 +10,7 @@ on:
         required: true
         default: main
       publish:
-        description: Upload assets to the matching release and submit to Chrome Web Store
+        description: Upload assets to the matching release and submit to Chrome Web Store and addons.mozilla.org
         required: true
         type: boolean
         default: false
@@ -184,3 +184,47 @@ jobs:
             --item-id "$CHROME_WEBSTORE_EXTENSION_ID" \
             --expected-version "$version" \
             --publish-type DEFAULT_PUBLISH
+
+  firefox-add-ons:
+    name: Submit addons.mozilla.org update
+    if: github.event_name == 'push' || inputs.publish
+    needs: [package, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.release_commit }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: test/tooling/package-lock.json
+      # web-ext, pinned with the test tooling, is Mozilla's client for the AMO API.
+      - run: npm ci --prefix test/tooling
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: hachidori-release-${{ github.run_id }}
+          path: ${{ runner.temp }}/hachidori-release/
+      - name: Upload package and source and submit them for review
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          release="$RUNNER_TEMP/hachidori-release"
+          unpacked="$RUNNER_TEMP/hachidori-firefox"
+          python3 -m zipfile -e "$release"/*-firefox.zip "$unpacked"
+          # Mozilla reviews the listed version and builds it from the source ZIP,
+          # with the notes in amo-metadata.json; the job ends at submission
+          # instead of waiting for that review.
+          node test/tooling/node_modules/web-ext/bin/web-ext.js sign \
+            --no-config-discovery \
+            --source-dir "$unpacked" \
+            --artifacts-dir "$RUNNER_TEMP/web-ext-artifacts" \
+            --channel listed \
+            --upload-source-code "$release"/*-source.zip \
+            --amo-metadata .github/amo-metadata.json \
+            --approval-timeout 0

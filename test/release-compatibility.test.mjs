@@ -113,6 +113,17 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
   assert.match(workflow, /vars\.CHROME_WEBSTORE_EXTENSION_ID/u);
   assert.match(workflow, /node scripts\/chrome-web-store\.mjs/u);
   assert.match(workflow, /--publish-type DEFAULT_PUBLISH/u);
+  // The verified Firefox ZIP and its source go to addons.mozilla.org's listed channel.
+  assert.match(
+    workflow,
+    /firefox-add-ons:[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish[\s\S]*needs: \[package, publish\]/u,
+  );
+  assert.match(workflow, /WEB_EXT_API_KEY: \$\{\{ secrets\.AMO_JWT_ISSUER \}\}/u);
+  assert.match(workflow, /WEB_EXT_API_SECRET: \$\{\{ secrets\.AMO_JWT_SECRET \}\}/u);
+  assert.match(
+    workflow,
+    /\*-firefox\.zip[\s\S]*web-ext\.js sign[\s\S]*--channel listed[\s\S]*--upload-source-code "\$release"\/\*-source\.zip/u,
+  );
 });
 
 test("public compatibility copy agrees with the tested manifest minimum", () => {

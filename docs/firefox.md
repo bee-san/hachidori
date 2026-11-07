@@ -103,8 +103,19 @@ Two runtime rules keep one source for both browsers:
 Firefox ZIP, the matching source ZIP and `SHA256SUMS.txt` from the committed
 tree, and the Release workflow uploads all of them. The Firefox ZIP is the
 Chrome upload with `background.html`, `event-page.js` and the Firefox manifest.
-Nothing submits it to addons.mozilla.org: an AMO listing and its review are the
-owner's decision.
+
+The Release workflow's **Submit addons.mozilla.org update** job submits that
+Firefox ZIP as a new version of the listed add-on, with `web-ext sign`. It
+attaches the source ZIP, which Mozilla's reviewers build from
+([source-build.md](source-build.md)), and the reviewer notes in
+`.github/amo-metadata.json`. The job ends once AMO has validated the upload and
+created the version; Mozilla then reviews it, and the listing updates on
+approval. It needs an AMO API key from
+[Manage API Keys](https://addons.mozilla.org/en-US/developers/addon/api/key/),
+stored as the repository secrets `AMO_JWT_ISSUER` (the JWT issuer) and
+`AMO_JWT_SECRET` (the JWT secret). AMO accepts each version number once, even
+after a rejection, so a failed submission is retried by re-running that job
+(`gh run rerun <run-id> --failed`) or with a new version.
 
 Firefox builds using the previous ID `hachidori@bee-san` have separate storage.
 To move your settings and dictionaries, export a backup from the old installation
