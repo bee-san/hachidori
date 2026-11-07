@@ -794,6 +794,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     applyYouTubeFlag: sandbox.applyYouTubeFlag ?? (() => Promise.resolve()),
     NETFLIX_SCRIPTS,
     YOUTUBE_SCRIPTS,
+    // The worker's scripts belong to the version its fake manifest names.
+    BUILD_VERSION: "0.0.0-smoke",
   });
   const context = createContext(sandbox);
   context.globalThis = context;

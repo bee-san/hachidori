@@ -61,9 +61,11 @@ that is a separate PR that must land BEFORE the release PR.
 git switch -c release/<version> origin/main
 ```
 
-Change exactly two things:
+Change exactly these things:
 
 - the `"version"` field of `extension/manifest.json`, set to `<version>`;
+- `BUILD_VERSION` in `extension/build-version.js`, set to the same
+  `<version>` (`check-release.mjs` refuses a mismatch);
 - a new `docs/releases/<version>.md` with the release notes (step 2).
 
 ## 2. Write the release notes
@@ -110,7 +112,7 @@ node scripts/check-release.mjs --tag <version>
 #   → "Hachidori <version>: Chrome <min> minimum, <cur> current; tag <version>"
 node --test test/release-compatibility.test.mjs
 node test/run.mjs chrome-backup-release   # the pinned previous release's backup restores here, in Chrome and Firefox; re-pin after release
-git add extension/manifest.json docs/releases/<version>.md
+git add extension/manifest.json extension/build-version.js docs/releases/<version>.md
 git commit -m "release: prepare Hachidori <version>"
 python3 scripts/package-store.py --output-dir /tmp/hachidori-release-<version>
 ( cd /tmp/hachidori-release-<version> && sha256sum -c ./*-SHA256SUMS.txt )
