@@ -84,6 +84,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       readJson(resolve(ROOT, "test/tooling/package.json")),
       commandLineTag(process.argv.slice(2)),
     );
+    // The service worker reloads itself when this differs from the manifest.
+    const { BUILD_VERSION } = await import("../extension/build-version.js");
+    if (BUILD_VERSION !== contract.version) {
+      fail(`extension/build-version.js names ${BUILD_VERSION}; it must be manifest.version ${contract.version}`);
+    }
     console.log(
       `Hachidori ${contract.version}: Chrome ${contract.minimumChrome} minimum, `
       + `${contract.currentChrome} current; tag ${contract.expectedTag}`,

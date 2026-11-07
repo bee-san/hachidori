@@ -50,6 +50,7 @@ import { applyLanguageScripts } from "./language-scripts.js";
 import { applyNetflixFlag } from "./netflix.js";
 import { applyYouTubeFlag } from "./youtube.js";
 import { openSearchPage } from "./search-window.js";
+import { BUILD_VERSION } from "./build-version.js";
 
 /*
  * Service worker for Hachidori.
@@ -71,6 +72,30 @@ import { openSearchPage } from "./search-window.js";
 // failed replies, kept across its restarts in the extension's debug log ring
 // (debug-log.js).
 captureDebugLog(globalThis, { context: "service-worker", store: openDebugLogStore(globalThis.indexedDB) });
+
+// An unpacked copy whose files are replaced in place can keep running the
+// previous release's scripts after a browser restart: Chrome reports the new
+// manifest and pages load the new files, but it re-registers the worker only
+// when the extension reloads (#706). Reload once per version, so a host that
+// cannot refresh its worker keeps working instead of reloading forever.
+const STALE_WORKER_RELOAD_KEY = "staleWorkerReload";
+if (BUILD_VERSION !== chrome.runtime.getManifest().version) {
+  reloadStaleWorker().catch((error) => {
+    console.error("hachidori: could not reload the out-of-date service worker:", describeErrorOrJson(error));
+  });
+}
+
+async function reloadStaleWorker() {
+  const version = chrome.runtime.getManifest().version;
+  const stored = await chrome.storage.local.get(STALE_WORKER_RELOAD_KEY);
+  if (stored[STALE_WORKER_RELOAD_KEY] === version) {
+    console.error(`hachidori: the service worker runs ${BUILD_VERSION}'s scripts, not ${version}'s;`
+      + " reload Hachidori in chrome://extensions");
+    return;
+  }
+  await writeLocalState({ [STALE_WORKER_RELOAD_KEY]: version });
+  chrome.runtime.reload();
+}
 
 // The overlay host (Electron 43) exposes chrome.alarms, and create()/get()
 // even record the alarm, but onAlarm never dispatches to the worker; a host
