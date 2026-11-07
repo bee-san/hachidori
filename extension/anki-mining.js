@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ANKI_DECK_UNSET, ankiAvailability, isUndispatchedAnkiTransportError } from "./anki.js";
+import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
@@ -515,10 +515,12 @@ export function createAnkiMiningService({
           error: `Anki already has a note in deck “${note.deckName}” (note type “${note.modelName}”) whose first field “${firstField}” is `
             + `${firstValue ? `“${firstValue}”` : "empty"}.` };
       }
-      if (isUndispatchedAnkiTransportError(error)) {
+      if (isUndispatchedAnkiTransportError(error) || isAnkiEditorConflict(error)) {
         // A failed endpoint generation rejected this queued mutation before it
-        // entered fetch. Its note cannot exist, so release request-owned media
-        // and return a definitive retryable failure instead of uncertainty.
+        // entered fetch, or AnkiConnect refused it before writing because an
+        // open editor shows the note. Nothing changed in Anki, so release
+        // request-owned media and return a definitive retryable failure
+        // instead of uncertainty.
         await releaseRejected();
         throw error;
       }

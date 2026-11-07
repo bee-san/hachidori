@@ -4,7 +4,7 @@ import test from "node:test";
 import "../extension/reader-options.js";
 import { createAnkiMiningService, verifyAnkiFields } from "../extension/anki-mining.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
-import { AnkiTransportError, createAnkiGateway } from "../extension/anki.js";
+import { AnkiTransportError, createAnkiGateway, describeAnkiConnectError } from "../extension/anki.js";
 import { createAnkiDuplicateIndex } from "../extension/anki-index-cache.js";
 import { lookupAnkiIndex, lookupAnkiIndexMany } from "../extension/anki-index.js";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
@@ -607,7 +607,7 @@ function sceneFixture(fieldTemplates, saved = null) {
     term: { expression: "声明", reading: "せいめい", rules: "", glossaries: [], frequencies: [], pitches: [] },
     trace: [], sentence, matchOffset, matched: "声明", popupSelectionText: "", searchQuery: "声明", documentTitle,
     dictionaryAliases: {}, dictionaryIds: {}, frequencyDictionaries: [], ...extra });
-  return { state, service, lookup, submit: async (...args) => service.submit(await lookup(...args)) };
+  return { state, service, lookup, gateway: f.gateway, submit: async (...args) => service.submit(await lookup(...args)) };
 }
 
 test("an update from a lookup whose sentence is only its word leaves the note's sentence fields as they are", async () => {
@@ -630,6 +630,31 @@ test("an update from a lookup whose sentence is only its word leaves the note's 
   assert.equal((await f.submit("声明を読んだ。", { documentTitle: "Novel" })).state, "updated");
   assert.deepEqual(f.state.updates.at(-1), { sentence: `${scene}${sceneGroup("スキナーの", "")}${sceneGroup("", "を読んだ。")}`,
     sentenceFurigana: `${furiganaScene}<span class="group">スキナーの<b>声明</b></span><span class="group"><b>声明</b>を読んだ。</span>` });
+});
+
+// Issue #698: AnkiConnect refuses, before writing, to change a note that Anki's
+// Browser or an Edit window shows. That is a definite failure the reader may
+// retry once the window is closed, not an unconfirmed write.
+test("an update refused because an Anki editor shows the note fails definitely and succeeds once it is closed", async () => {
+  const f = sceneFixture({ word: { value: "{expression}", overwriteMode: "skip" },
+    miscInfo: { value: "{document-title}", overwriteMode: "overwrite" } }, { word: "声明", miscInfo: "Page" });
+  let editorOpen = true;
+  const invoke = f.gateway.invoke;
+  f.gateway.invoke = async (action, params) => {
+    if (action === "updateNoteFields" && editorOpen) {
+      throw new Error(describeAnkiConnectError("Close the affected editor before this API write, even if its content is saved."));
+    }
+    return invoke(action, params);
+  };
+  await assert.rejects(f.submit("声明"), error => {
+    assert.match(error.message, /Browser or an Edit window has it open/u);
+    assert.doesNotMatch(error.message, /could not be confirmed/u);
+    return true;
+  });
+  assert.deepEqual(f.state.fields, { word: "声明", miscInfo: "Page" });
+  editorOpen = false;
+  assert.equal((await f.submit("声明")).state, "updated");
+  assert.deepEqual(f.state.fields, { word: "声明", miscInfo: "Search" });
 });
 
 test("a word-only update keeps a sentence field in every mode and leaves an empty one empty, while a new note takes the word", async () => {
