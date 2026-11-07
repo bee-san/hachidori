@@ -1,6 +1,6 @@
 ---
 name: cut-release
-description: Cut a Hachidori release end to end. On a release/X.Y.Z branch, bump the manifest and add docs/releases/X.Y.Z.md, verify the release contract and packaging locally, then open and squash-merge the PR. Push the bare version tag on the merge commit so release.yml packages the release, creates it from those notes and submits it to the Chrome Web Store, then verify every artifact. Use when asked to release, ship, tag, or bump the version.
+description: Cut a Hachidori release end to end. On a release/X.Y.Z branch, bump the manifest and add docs/releases/X.Y.Z.md, verify the release contract and packaging locally, then open and squash-merge the PR. Push the bare version tag on the merge commit so release.yml packages the release, creates it from those notes and submits it to the Chrome Web Store and addons.mozilla.org, then verify every artifact. Use when asked to release, ship, tag, or bump the version.
 ---
 
 # Cut a Hachidori release
@@ -10,7 +10,7 @@ the next patch version from `extension/manifest.json` and confirm with the
 user before doing anything.
 
 The release pipeline is `.github/workflows/release.yml`. A pushed tag matching
-`[0-9]*` triggers its three jobs:
+`[0-9]*` triggers its four jobs:
 
 1. **Package release** refuses a tag that isn't exactly `manifest.version`, a
    tag whose commit is not on `origin/main`, and a manifest or pins that fail
@@ -21,9 +21,13 @@ The release pipeline is `.github/workflows/release.yml`. A pushed tag matching
    only uploads the assets.
 3. **Submit Chrome Web Store update** uploads the Chrome ZIP and submits it for
    review.
+4. **Submit addons.mozilla.org update** submits the Firefox ZIP, with the source
+   ZIP and the reviewer notes in `.github/amo-metadata.json`, as a new version
+   of the listed add-on (`docs/firefox.md#packaging-and-addonsmozillaorg`).
 
-A tag cannot be reused once its package has been submitted to the store
-(`docs/chrome-web-store.md`, "maintain").
+A tag cannot be reused once its package has been submitted to either store
+(`docs/chrome-web-store.md`, "maintain"). AMO refuses a version number it has
+seen before, even a rejected one.
 
 Never push to `main` directly (AGENTS.md working agreement). The version bump
 and the notes go through a PR. Only the tag is pushed by hand, and only after
@@ -38,7 +42,7 @@ git submodule update --init --recursive
 gh auth status
 gh run list --workflow runtime-tests.yml --branch main --limit 1   # main must be green
 gh release view <prev>                  # what the last release looked like
-gh run list --workflow release.yml --limit 1   # did the last store submission pass?
+gh run list --workflow release.yml --limit 1   # did the last store submissions pass?
 node -p "require('./extension/manifest.json').version"           # current version
 ```
 
@@ -50,6 +54,7 @@ If the last run's **Submit Chrome Web Store update** job failed, read its log
 before continuing. 0.3.0 got HTTP 400 "Your submission does not meet the
 requirements to be published in the store. Check the Developer Dashboard."
 Only the owner can resolve that, in the dashboard. Tell the user before you tag.
+Do the same if its **Submit addons.mozilla.org update** job failed.
 
 Check whether the pinned Anki add-on release in `extension/anki-addon.js`
 should move with this release (see AGENTS.md → hachidori-anki). If it should,
@@ -177,7 +182,7 @@ Do not create the release first. The publish job creates it from
 merge the change to that file through a PR, then run
 `gh release edit <version> --notes-file docs/releases/<version>.md`.
 
-All three jobs must succeed. On a failure, read
+All four jobs must succeed. On a failure, read
 `gh run view <run-id> --log-failed`. Common causes and fixes:
 
 - "manifest.version is not a Chrome-compatible release version", or a tag
@@ -192,9 +197,17 @@ All three jobs must succeed. On a failure, read
   (`CHROME_WEBSTORE_PUBLISHER_ID`, `CHROME_WEBSTORE_EXTENSION_ID`,
   `CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON`); see
   `docs/chrome-web-store.md#publish-step-by-step`.
+- The addons.mozilla.org step fails on auth (HTTP 401): check the secrets
+  `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`.
+- The addons.mozilla.org step fails with "Validation failed" or "Submission
+  failed": the log has AMO's reasons. If an earlier run already submitted this
+  version, there is nothing to fix; any other rejection needs a new version.
 
-In either store case, re-run with `workflow_dispatch` (`ref=<version>`,
-`publish=true`) once it is fixed. The asset upload is idempotent (`--clobber`).
+In any store case, once it is fixed, re-run only the failed job:
+`gh run rerun <run-id> --failed`. A new `workflow_dispatch` run
+(`ref=<version>`, `publish=true`) submits to both stores again, and AMO refuses
+the version a second time. Use one only when the run's artifact has expired
+(30 days). The asset upload is idempotent (`--clobber`).
 
 ## 6. Verify the artifacts
 
@@ -218,19 +231,24 @@ with `DEFAULT_PUBLISH`. The user has to confirm "Pending review" in the
 Developer Dashboard; you cannot see it. Google's review takes hours to days,
 and the listing updates by itself on approval.
 
+A successful addons.mozilla.org job means AMO validated the Firefox ZIP and
+created the listed version with its source attached. The user confirms it in
+the AMO Developer Hub; Mozilla's review can take days and may ask questions
+about the source build.
+
 ## 7. Report
 
 Tell the user:
 
 - the release URL and the merge commit;
-- the workflow run URL and the result of each of its three jobs;
+- the workflow run URL and the result of each of its four jobs;
 - the three asset names and the checksum result;
-- that the store submission is pending review, or what blocked it.
+- that both store submissions are pending review, or what blocked them.
 
 ## Do not
 
 - Do not tag a commit that is not the release PR's squash merge on `main`.
 - Do not create the GitHub release by hand before the tag is pushed.
-- Do not reuse or move a tag after the Chrome Web Store job has run.
+- Do not reuse or move a tag after either store job has run.
 - Do not include unrelated changes in the release PR.
 - Do not `git push` to `main`.
