@@ -2,7 +2,7 @@
 
 Each release's `hachidori-<version>-<commit>-source.zip` includes Hachidori's
 tracked files, the complete recursive Hoshidicts submodules, and the pinned
-unminified zip.js and gifenc sources. It contains no Git metadata and
+unminified zip.js, gifenc and lamejs sources. It contains no Git metadata and
 does not require access to a private repository. `SOURCE_REVISIONS.json`
 records the repository commits and downloaded dependency checksums.
 
@@ -41,19 +41,25 @@ cp wasm/build-fallback/hoshidicts.mjs wasm/build-fallback/hoshidicts.wasm extens
 The source archive already includes each CMake dependency under
 `third_party/hoshidicts/external/`; no submodule checkout is needed.
 
-## zip.js, gifenc and validation
+## zip.js, gifenc, lamejs and validation
 
 `third_party/store-sources/zipjs/lib/` contains zip.js 2.11.2's editable source;
 its upstream `README.md` and `package.json` describe the library. The release
 uses its existing `dist/zip-core-external.min.js`, copied unchanged to
 `extension/vendor/zip.js`. Likewise `third_party/store-sources/gifenc/src/`
 contains gifenc 1.0.3's editable source, and the release uses its existing
-`dist/gifenc.esm.js`, copied unchanged to `extension/vendor/gifenc.js`. No npm
-install or JavaScript build is needed to restore those shipped files:
+`dist/gifenc.esm.js`, copied unchanged to `extension/vendor/gifenc.js`.
+`third_party/store-sources/lamejs-source/src/` contains lamejs 1.2.7's
+editable source, at the commit its npm package was published from, and the
+release uses that package's existing `dist/lamejs.js`
+(`third_party/store-sources/lamejs/`), copied unchanged to
+`extension/vendor/lamejs.js`. No npm install or JavaScript build is needed to
+restore those shipped files:
 
 ```sh
 cp third_party/store-sources/zipjs/dist/zip-core-external.min.js extension/vendor/zip.js
 cp third_party/store-sources/gifenc/dist/gifenc.esm.js extension/vendor/gifenc.js
+cp third_party/store-sources/lamejs/dist/lamejs.js extension/vendor/lamejs.js
 node test/make-fixture.mjs
 node test/node-smoke.mjs
 node test/extension-smoke.mjs

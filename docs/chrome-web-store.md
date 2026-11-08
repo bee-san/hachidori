@@ -156,8 +156,8 @@ for its exact changes and any test-environment limitations.
 
 Google needs **`manifest.json` at the ZIP root**. The release command packages
 tracked runtime files with their licenses and the privacy policy, then creates
-a matching source ZIP containing recursive submodules and pinned zip.js and
-gifenc sources. Existing dictionary Wasm bundles are included unchanged unless
+a matching source ZIP containing recursive submodules and pinned zip.js,
+gifenc and lamejs sources. Existing dictionary Wasm bundles are included unchanged unless
 the release intentionally rebuilds them. See [source/build instructions](source-build.md)
 and [Google's package preparation](https://developer.chrome.com/docs/webstore/prepare).
 

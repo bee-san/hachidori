@@ -1,0 +1,2 @@
+# Byte for byte the published package (scripts/package-store.py checks it), trailing spaces included.
+extension/vendor/lamejs.js -whitespace
