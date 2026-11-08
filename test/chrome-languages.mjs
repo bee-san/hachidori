@@ -265,11 +265,12 @@ try {
 
   await step(PLANNED[2], async () => {
     await settings.waitForSelector("#language-settings", { timeout: 30_000 });
-    // Off, Advanced has no Languages tab and #languages leads to Advanced.
+    // Off, Advanced has no Languages tab, only User scripts, and #languages
+    // leads to Advanced.
     await settings.evaluate(() => { location.hash = "#languages"; });
     await settings.waitForFunction(() => document.getElementById("advanced").hidden === false, { timeout: 10_000 });
     const off = await settings.evaluate(() => ({
-      tabs: document.getElementById("advanced-navigation").hidden,
+      tabs: [...document.querySelectorAll("#advanced-navigation a:not([hidden])")].map(link => link.textContent),
       tab: document.querySelector('#advanced-navigation a[href="#languages"]').hidden,
       languages: document.getElementById("languages").hidden,
     }));
@@ -293,7 +294,7 @@ try {
         offered: [...document.getElementById("settings-language-add-select").options].map(option => option.value),
       };
     });
-    check(PLANNED[2], off.tabs && off.tab && off.languages
+    check(PLANNED[2], off.tabs.join() === "Advanced,User scripts" && off.tab && off.languages
       && JSON.stringify(page.sidebar) === JSON.stringify(page.markup) && page.rail === 9 && page.outside.length === 0
       && page.section === "languages" && page.first && page.legend === "Your languages" && page.languages.join() === "ja"
       && page.removable === 0 && page.offered.includes("en") && page.offered.includes("ar"), JSON.stringify({ off, page }));

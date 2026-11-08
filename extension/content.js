@@ -32,7 +32,7 @@
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
-  // Asks Custom JavaScript's bridge (custom-javascript-bridge.js) to attach the
+  // Asks the user scripts' bridge (custom-javascript-bridge.js) to attach the
   // popup's closed root from the user-script world.
   const POPUP_ROOT_EVENT = "hachidori-popup-root";
   const EXTENSION_PROTOCOL = (() => {
@@ -115,7 +115,7 @@
   ) {
     return;
   }
-  // The search page's own document, where search.js runs Custom JavaScript (#644).
+  // The search page's own document, where search.js runs user scripts (#644).
   const SEARCH_FRAME = location.protocol === EXTENSION_PROTOCOL
     && location.href === chrome.runtime.getURL("search-frame.html");
 
@@ -2331,16 +2331,16 @@
   }
 
   // Dark Reader traverses open roots and rewrites their styles, so the popup's
-  // root is always closed. While Custom JavaScript is saved, its bridge
-  // attaches that root from the user-script world and returns it through
-  // host.shadowRoot to the saved scripts alone; it sees the request only once
-  // the host is in the page. Where user scripts do not run (Chrome's switch is
-  // off, a frame, an extension page) the reader attaches the root itself. The
-  // search page's frame runs the saved script in the reader's own world
-  // instead (#644), and nothing but the extension reaches its pages, so there
-  // the root is open.
+  // root is always closed. While a switched-on user script has JavaScript, the
+  // bridge attaches that root from the user-script world and returns it
+  // through host.shadowRoot to the user scripts alone; it sees the request
+  // only once the host is in the page. Where user scripts do not run (Chrome's
+  // switch is off, a frame, an extension page) the reader attaches the root
+  // itself. The search page's frame runs the user scripts in the reader's own
+  // world instead (#644), and nothing but the extension reaches its pages, so
+  // there the root is open.
   function attachPopupRoot() {
-    if (options.customPopupJavascript) {
+    if (globalThis.HDReaderOptions.javaScriptUserScripts(options.userScripts).length > 0) {
       if (SEARCH_FRAME) return host.attachShadow({ mode: "open" });
       host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
       const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
@@ -2374,7 +2374,7 @@
     appearance = globalThis.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = globalThis.HDPopup.createCustomPopupStyle(shadow);
-    customStyle.update(options.customPopupCss);
+    customStyle.update(globalThis.HDReaderOptions.userPopupStyles(options));
     themeHost.attach(shadow);
 
     highlighter = globalThis.HDPopup.createSourceHighlighter(
@@ -5219,7 +5219,7 @@
     // After the appearance, so a changed theme's palette is on the host.
     syncWordHighlights();
     if (sizeChanged) for (const level of levels) level.view?.hideImagePreview();
-    const cssChanged = customStyle?.update(options.customPopupCss);
+    const cssChanged = customStyle?.update(globalThis.HDReaderOptions.userPopupStyles(options));
     if (highlightChanged) {
       for (const level of levels) level.view?.setSourceHighlightEnabled(options.sourceHighlightEnabled);
     }

@@ -200,7 +200,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `chrome-web-store` | The service-account assertion and its token endpoint. |
 | `custom-button-settings`, `custom-buttons-renderer`, `external-link-host` | Link templates and Anki Template selection, button editing, the overlay host request/result boundary, live editing without replacing cards or drafts. |
 | `custom-dictionary` | The personal dictionary's source and ZIP contract: parsing, comments, ordered duplicates, malformed-line reports, CRLF append, escape round trips, a byte-deterministic multi-bank ZIP (imported through the real WASM engine by the smoke suite). |
-| `custom-javascript` | Custom JavaScript sits beneath Custom CSS with one warning and persists as a Design option; its registration runs `custom-javascript-bridge.js` first, which attaches the reader's closed root and returns it through `host.shadowRoot`. |
+| `custom-javascript` | Advanced → User scripts holds the one warning and Design points to it; `userScripts` is a global option that Custom JavaScript migrates into; the popup's stylesheets are switched-on packages' CSS, then Custom CSS; the registration runs `custom-javascript-bridge.js` first, which attaches the reader's closed root and returns it through `host.shadowRoot`, then one source per switched-on package, each in its own function. |
 | `debug-info`, `debug-log`, `debug-log-languages` | The debug report's contents without reader content; the log's capture, redaction (with profiles, also of the other languages' text, docs/languages.md 8.5), named actions and shown errors, the IndexedDB ring's batches, repeat counts, entry and byte limits across writers, and a reloaded page's report. |
 | `definition-blur-frequency` | Frequency blur options and their inclusive boundaries. |
 | `definition-tag-colors` | Definition tags take Yomitan's colour for their category, each at 4.5:1 for its label in light and dark palettes and 7:1 in High contrast (#604). |
@@ -245,6 +245,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `sharing-profiles` | Sharing with language profiles (docs/languages.md 17.3-17.6) through the worker's own sharing code, an in-memory relay and older and profile-aware linked browsers: today's frames for a single-profile host, the opt-in and its refusals, the Japanese view in hellos, change frames and replies, forced reconnections with requests in flight, profile requests through a link, unlink and overlay mode with profiles, and the allowlists' `profileId`. |
 | `theme-renderer` | The popup theme renderers (Nazeka, Plain, JL, Bee, Crystal): their DOM, actions, tabs, Notes, the Design settings each theme declares and the colour variants it lists. |
 | `toolbar` | The toolbar toggle and its revision conflicts; Search beside Settings and Reading's switch for it. |
+| `user-script-settings` | Advanced → User scripts' list and editor on settings.html's markup: a name and JavaScript or CSS before Add script, Edit and Cancel, the switch, the arrows and Delete's confirmation saving with focus kept on the row, and Import files' .js and .css. |
 | `word-highlights`, `word-status-overrides` | Word highlighting with jsdom and a fake engine (#520), and the Mark as known/Ignore record. |
 | `yomitan-parity` | The renderer against Yomitan's own output at 67db60d (each card's dictionary tag at d3c54c1), written inline. |
 
@@ -519,7 +520,7 @@ These run separately:
   copies and cuts or a copy made while a Note is written; a 300,000-character
   copy must be searched, and read, as its first 1,000 characters; Settings must
   not be able to read the clipboard. Only text the reader would search may reach
-  the search page's frame, where Custom JavaScript runs; a click on the switch
+  the search page's frame, where user scripts run; a click on the switch
   must leave the reader's keybinds working (Alt+P plays the result), a click on
   the focused switch must leave focus on it, and a 120 ms touch tap must hand
   focus back like a click (#644).
@@ -720,7 +721,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `first-run.mjs` | Start setup downloads the five recommended archives (intercepted), one failing once and installed by Retry; an unreachable Anki; practice looks up its word; Finish; Remove all imported dictionaries. |
   | `import.mjs` | Settings imports a Yomitan ZIP into IndexedDB, a batch with a malformed archive, a replacing re-import; an alias, disabling and a group. |
   | `reader.mjs` | Shift-hover lookups, deinflection, furigana, the source highlight, frequency and pitch, structured content, its image and the dictionary's `styles.css`, Latin text, Escape, a frame, a nested lookup, kanji and Back, Alt+ArrowDown, a selection, lookup counts, click-to-reveal blur, every registered popup theme, custom CSS and the toolbar switch. |
-  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, Custom JavaScript saved before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
+  | `settings.mjs` | The Note form, autosave, the Design preview, keybinds, Firefox's shortcut manager, a user script added in Advanced → User scripts before Firefox grants the optional `userScripts` permission and run once it does, reaching the popup through `host.shadowRoot` while the page sees no root, Get debug info. |
   | `search.mjs` | The popup window opens one search page, at the size Reading → Search page sets (#656), and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, a click on it hands focus back to the page, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644); a click on a word of the query shows its results with Look up words with a click on, and the Anki Template switch's choice becomes the built-in Template (#656); the search history keeps typed lines, Up and Down in the box walk them back to the draft, Right moves the searched text's cursor and looks the next word up, Up past its top row shows the earlier line between its neighbours, and `HDSearchHistory` lists the lines, edits one and looks a word up. |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |

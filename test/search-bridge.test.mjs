@@ -218,7 +218,7 @@ function frameHost() {
   let reloads = 0;
   connectSearchFrame({ window, frame, reload: () => { reloads += 1; },
     serve: (port) => { served.push(port.name); return () => { port.closed = true; }; },
-    connection: sandboxed => ({ id: "hachidori", customJavaScript: sandboxed ? "code" : "" }) });
+    connection: sandboxed => ({ id: "hachidori", userScripts: sandboxed ? ["code"] : [] }) });
   const port = name => ({ name, postMessage: data => connected.push([name, data]) });
   const offer = (source, origin, ports, type = "hachidori-search-bridge") => listeners.message({ source, origin, data: { type }, ports });
   return { listeners, frame, served, connected, port, offer, reloads: () => reloads };
@@ -235,7 +235,7 @@ test("search.html connects its frame's first offer only, and reloads when the fr
   offer(frame.contentWindow, "null", [first]);
   offer(frame.contentWindow, "null", [port("second")]);
   assert.deepEqual(served, ["first"]);
-  assert.deepEqual(connected, [["first", { kind: "connect", id: "hachidori", customJavaScript: "code" }]]);
+  assert.deepEqual(connected, [["first", { kind: "connect", id: "hachidori", userScripts: ["code"] }]]);
   assert.equal(frame.focused, 1);
   listeners["frame load"]();
   assert.equal(reloads(), 0);
@@ -243,10 +243,10 @@ test("search.html connects its frame's first offer only, and reloads when the fr
   assert.equal(reloads(), 1);
   assert.equal(first.closed, true);
 
-  // Firefox before 154: the frame is not sandboxed, has this page's origin and no Custom JavaScript.
+  // Firefox before 154: the frame is not sandboxed, has this page's origin and no user scripts.
   const unsandboxed = frameHost();
   unsandboxed.offer(unsandboxed.frame.contentWindow, "chrome-extension://hachidori", [unsandboxed.port("153")]);
-  assert.deepEqual(unsandboxed.connected, [["153", { kind: "connect", id: "hachidori", customJavaScript: "" }]]);
+  assert.deepEqual(unsandboxed.connected, [["153", { kind: "connect", id: "hachidori", userScripts: [] }]]);
 });
 
 // search-bridge.js in a sandboxed document: `chrome` is absent until it runs.
@@ -278,7 +278,7 @@ test("the frame offers search.html one port, to the extension's origin, and its 
     if (data.kind === "send" && data.message.type === "hd_kanji") port.postMessage({ kind: "reply", id: data.id, error: "Extension context invalidated." });
     if (data.kind === "history") port.postMessage({ kind: "reply", id: data.id, value: [{ id: 3, text: data.op }] });
   };
-  port.postMessage({ kind: "connect", id: "hachidori", manifest: { version: "1" }, customJavaScript: "code" });
+  port.postMessage({ kind: "connect", id: "hachidori", manifest: { version: "1" }, userScripts: ["code"] });
   // A second connect changes nothing.
   port.postMessage({ kind: "connect", id: "second", manifest: { version: "2" } });
   assert.equal(await context.HDSearchBridge.ready.then(connection => connection.id), "hachidori");

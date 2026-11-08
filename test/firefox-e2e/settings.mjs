@@ -122,32 +122,28 @@ describe("settings", () => {
     }
   });
 
-  step("Custom JavaScript and debug info", async () => {
+  step("User scripts and debug info", async () => {
     await activate(page);
-    await showSettingsSection(page, "design");
-    await page.evaluate(() => {
-      for (let node = document.getElementById("custom-javascript"); node; node = node.parentElement) {
-        if (node.tagName === "DETAILS") node.open = true;
-      }
-      document.getElementById("custom-javascript-allow").scrollIntoView({ block: "center" });
-    });
+    await showSettingsSection(page, "user-scripts");
+    await page.evaluate(() => document.getElementById("custom-javascript-allow").scrollIntoView({ block: "center" }));
     const before = await page.evaluate(() => ({ allowHidden: document.getElementById("custom-javascript-allow-row").hidden,
       text: document.getElementById("custom-javascript-permission").textContent }));
     // The script is saved before Firefox grants user scripts, so it runs only
     // once background.js applies it on the grant. It also marks the popup with
     // the mode of the root its host.shadowRoot returns.
     await page.evaluate(code => {
-      const editor = document.getElementById("opt-custom-popup-javascript");
-      editor.value = code;
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
-      editor.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("user-script-add").click();
+      document.getElementById("user-script-name").value = "Firefox check";
+      document.getElementById("user-script-javascript").value = code;
+      document.getElementById("user-script-submit").click();
     }, ["document.documentElement.dataset.hachidoriUserScript = 'ran';",
       "setInterval(() => {",
       "  const root = document.querySelector('hachidori-host')?.shadowRoot;",
       "  const popup = root?.querySelector('.gsm-hoshidicts-popup');",
       "  if (popup) popup.dataset.customScript = root.mode;",
       "}, 50);"].join("\n"));
-    await waitFor(async () => (await readStorage(page, ["options"])).options?.customPopupJavascript?.includes("hachidoriUserScript") || false);
+    await waitFor(async () => (await readStorage(page, ["options"])).options?.userScripts
+      ?.some(script => script.javascript.includes("hachidoriUserScript")) || false);
     const early = await openPage(`${serverUrl}/?user-script-before`);
     await sleep(1_000);
     const ranBefore = await early.evaluate(() => document.documentElement.dataset.hachidoriUserScript ?? null);
@@ -169,7 +165,7 @@ describe("settings", () => {
     const reader = await openPage(`${serverUrl}/?user-script`);
     const ran = await waitFor(() => reader.evaluate(() => document.documentElement.dataset.hachidoriUserScript === "ran" || false),
       { timeout: 10_000 });
-    check("Custom JavaScript runs on pages once Firefox grants user scripts",
+    check("A user script's JavaScript runs on pages once Firefox grants user scripts",
       before.allowHidden === false && before.text.startsWith("Firefox asks") && ranBefore === null && granted === true && ran === true,
       JSON.stringify({ before, ranBefore, granted, registered, ran }));
     // The saved script reaches the popup through host.shadowRoot, while the
@@ -179,11 +175,11 @@ describe("settings", () => {
       exposed: root.host.shadowRoot !== null,
       marker: root.querySelector(".gsm-hoshidicts-popup")?.dataset.customScript ?? null })`)
       .then(state => (state?.marker ? state : null)), { timeout: 10_000 });
-    check("Custom JavaScript reaches the popup through host.shadowRoot while the page sees no root",
+    check("A user script reaches the popup through host.shadowRoot while the page sees no root",
       reached?.marker === "closed" && reached.mode === "closed" && reached.exposed === false,
       JSON.stringify({ shown: Boolean(shown), reached }));
     await reader.close();
-    await writeOptions(page, { customPopupJavascript: "" });
+    await writeOptions(page, { userScripts: [] });
     await reloadPage(page);
 
     await activate(page);

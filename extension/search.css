@@ -9,7 +9,7 @@ body.search-shell {
   height: 100%;
 }
 /* search.html holds the page below, search-frame.html, over its whole window
-   (#644): the frame is sandboxed so that Custom JavaScript can run in it. */
+   (#644): the frame is sandboxed so that user scripts can run in it. */
 body.search-shell {
   overflow: hidden;
 }

@@ -49,14 +49,17 @@ async function designPreviewStage() {
       const base = {};
       shadow.adoptedStyleSheets = [base];
       const owner = window.HDPopup.createCustomPopupStyle(shadow);
-      const empty = !owner.update("") && parses === 0 && attachments === 1;
-      const first = owner.update(".gsm-hoshidicts-popup { color: red; }");
+      const empty = !owner.update(["", ""]) && parses === 0 && attachments === 1;
+      const first = owner.update(["", ".gsm-hoshidicts-popup { color: red; }"]);
       const sheet = sheets.at(-1);
-      const unchanged = !owner.update(sheet.text) && parses === 1 && attachments === 2;
-      const second = owner.update("invalid CSS");
+      const unchanged = !owner.update([sheet.text]) && parses === 1 && attachments === 2;
+      const second = owner.update(["invalid CSS"]);
       cssOwner = empty && first && unchanged && second && sheets[0] === base && sheets.at(-1) === sheet
-        && parses === 2 && attachments === 2 && owner.update("") && sheets.length === 1;
-      owner.update("b { color: blue; }");
+        && parses === 2 && attachments === 2 && owner.update([""]) && sheets.length === 1;
+      // A user script's CSS and Custom CSS each have a sheet, so the rule the
+      // first leaves open cannot swallow the second.
+      cssOwner &&= owner.update(["p {", "b { color: blue; }"]) && sheets.length === 3 && sheets[0] === base
+        && sheets[1].text === "p {" && sheets[2].text === "b { color: blue; }";
       owner.destroy();
       cssOwner &&= sheets.length === 1 && sheets[0] === base;
       parses = 0;

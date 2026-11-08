@@ -92,7 +92,7 @@ export async function checkDarkReader(settings, pageUrl) {
     await tab.$eval("body", body => { body.style.backgroundColor = "#fff"; body.style.color = "#111"; });
   };
   try {
-    await writeOptions({ hoverEnabled: true, lookupMode: "hover", customPopupJavascript: "", definitionBlurCountEnabled: false,
+    await writeOptions({ hoverEnabled: true, lookupMode: "hover", userScripts: [], definitionBlurCountEnabled: false,
       definitionBlurAnkiMature: false, definitionBlurFrequencyEnabled: false });
     await tab.setViewport({ width: 1280, height: 900 });
     await tab.goto(pageUrl, { waitUntil: "load" });
@@ -114,10 +114,11 @@ export async function checkDarkReader(settings, pageUrl) {
     // host.shadowRoot, while the page and Dark Reader still see no root.
     await allowUserScripts(browser, extensionId, true);
     scriptsAllowed = true;
-    await writeOptions({ popupTheme: "auto", customPopupCss: "", customPopupJavascript: CUSTOM_JAVASCRIPT });
+    await writeOptions({ popupTheme: "auto", customPopupCss: "", userScripts: [{ id: "dark-reader-check", name: "Dark Reader check",
+      enabled: true, javascript: CUSTOM_JAVASCRIPT, css: "" }] });
     // Settings is a background tab, where animation frames do not run.
     await settings.waitForFunction(async code => (await chrome.userScripts.getScripts())
-      .some(script => script.js.some(source => source.code === code)), { polling: 100 }, CUSTOM_JAVASCRIPT);
+      .some(script => script.js.some(source => source.code?.includes(code))), { polling: 100 }, CUSTOM_JAVASCRIPT);
     await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     await tab.reload({ waitUntil: "load" });
     await loadPage();
@@ -126,11 +127,12 @@ export async function checkDarkReader(settings, pageUrl) {
       { timeout: 10_000 }), "closed", "saved Custom JavaScript did not reach the closed root through host.shadowRoot");
   } finally {
     await tab.close();
-    await writeOptions(Object.fromEntries(["hoverEnabled", "lookupMode", "popupTheme", "customPopupCss", "customPopupJavascript",
-      "definitionBlurCountEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled"].map(key => [key, saved[key]])));
+    await writeOptions({ ...Object.fromEntries(["hoverEnabled", "lookupMode", "popupTheme", "customPopupCss",
+      "definitionBlurCountEnabled", "definitionBlurAnkiMature", "definitionBlurFrequencyEnabled"].map(key => [key, saved[key]])),
+    userScripts: saved.userScripts ?? [] });
     if (scriptsAllowed) {
-      // Clearing the code removes the registration while Chrome still allows it.
-      if (!saved.customPopupJavascript) {
+      // Clearing the scripts removes the registration while Chrome still allows it.
+      if (!saved.userScripts?.length) {
         await settings.waitForFunction(async () => (await chrome.userScripts.getScripts()).length === 0, { polling: 100 });
       }
       await allowUserScripts(browser, extensionId, false);

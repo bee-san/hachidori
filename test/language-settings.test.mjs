@@ -64,8 +64,9 @@ test("a Japanese-only page has languages only in Advanced → Languages, once Mu
   assert.equal(el("language-auto-switch"), null);
   assert.equal(document.querySelectorAll("[data-scope-note]").length, 0, "no All languages notes");
   assert.equal(document.querySelectorAll("#language-lookup-settings, #language-display-settings").length, 0);
-  // Off, as every experimental feature starts: Advanced is today's, without a
-  // tab row, and Languages is out of the picker, the search and the address.
+  // Off, as every experimental feature starts: Advanced has only its User
+  // scripts tab, and Languages is out of the tabs, the picker, the search and
+  // the address.
   assert.equal(languagesSwitch(settings).checked, false);
   assert.equal(languagesTab(settings).hidden, true);
   assert.equal(el("settings-section").querySelector('option[value="languages"]').hidden, true);
@@ -73,7 +74,8 @@ test("a Japanese-only page has languages only in Advanced → Languages, once Mu
   settings.navigate("languages");
   await settle();
   assert.deepEqual(visible(), ["advanced"], "#languages leads to the switch that reveals it");
-  assert.equal(el("advanced-navigation").hidden, true);
+  assert.deepEqual([...el("advanced-navigation").querySelectorAll("a:not([hidden])")].map(link => link.textContent),
+    ["Advanced", "User scripts"]);
   assert.deepEqual(settings.messages.filter(message => /^hd_(?:profile|language_selection|sharing_status)/u.test(message.type)), [],
     "showing Advanced sends no language request");
   el("opt-scan-length").value = "20";
@@ -91,7 +93,7 @@ test("a Japanese-only page has languages only in Advanced → Languages, once Mu
   assert.equal(enable.profileId, undefined, "a Japanese-only write names no profile");
   assert.equal(el("advanced-navigation").hidden, false, "Advanced gains its Languages tab");
   assert.deepEqual([...el("advanced-navigation").querySelectorAll("a:not([hidden])")].map(link => link.textContent),
-    ["Advanced", "Languages"]);
+    ["Advanced", "User scripts", "Languages"]);
   const open_ = languagesSwitch(settings).closest("li").querySelector('a[href="#languages"]');
   assert.equal(open_.hidden, false, "the switch links to its settings");
   settings.navigate("languages");
@@ -340,9 +342,10 @@ test("shared settings say All languages once the records have profiles, and the 
     // A control with a hint has the note as the hint's last line.
     || el(el(id).getAttribute("aria-describedby")?.split(" ")[0] ?? "")?.querySelector("[data-scope-note]"));
   for (const id of ["opt-popup-width", "opt-popup-height", "opt-popup-scale", "opt-popup-toolbar", "opt-source-highlight",
-    "opt-custom-popup-css", "opt-custom-popup-javascript", "opt-popup-nesting-depth", "opt-smaller-anki-cards", "opt-anki-url"]) {
+    "opt-custom-popup-css", "opt-popup-nesting-depth", "opt-smaller-anki-cards", "opt-anki-url"]) {
     assert.ok(noted(id), id);
   }
+  assert.ok(document.querySelector("#user-scripts > .card-head > [data-scope-note]"), "user scripts are shared");
   for (const id of ["opt-scan-length", "opt-popup-opacity", "opt-popup-columns"]) assert.equal(noted(id), false, id);
   const legend = text => [...document.querySelectorAll("legend")].find(node => node.textContent === text);
   for (const text of ["Activation", "Popup closing", "Search page"]) {

@@ -31,6 +31,7 @@ import { setStatusOutput, showErrorCopy } from "./settings-dom.js";
 import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomButtonSettings } from "./custom-button-settings.js";
+import { createUserScriptSettings } from "./user-script-settings.js";
 import { createDictionaryNameDrafts } from "./dictionary-name-drafts.js";
 import { createDictionaryGroupController } from "./dictionary-groups.js";
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
@@ -84,6 +85,7 @@ const OPTION_SECTIONS = {
   // Backup & restore → Automatic backups → Days kept.
   backup: "Backup & restore",
   advanced: "Advanced",
+  "user-scripts": "User scripts",
   // A language's own settings (docs/languages.md 7.5).
   languages: "Languages",
   // Dictionaries → Personal dictionary owns its lookup switches.
@@ -94,7 +96,7 @@ const {
   POPUP_THEME_GROUPS, POPUP_RENDERER_IDS, POPUP_THEME_VARIANTS, popupRenderer, DESIGN_OPTION_KEYS, DEFINITION_BLUR_DIRECTIONS,
   DEFINITION_BLUR_REVEALS,
   DEFINITION_BLUR_FREQUENCY_ORDERS, EXPERIMENTAL_FEATURES, WORD_HIGHLIGHT_STYLES, definitionBlurFrequencyDictionary,
-  activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection,
+  activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection, normaliseUserScripts,
   normaliseOptions, JAPANESE_PROFILE_ID, OPTION_REQUIREMENTS, languageDescriptor, optionRequirementMet,
   hasProfiles, projectOptions, profileDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
   languagesEnabled, profiles: recordProfiles,
@@ -197,6 +199,7 @@ let backupLifecyclePort = null;
 let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController; // NOSONAR: shared with the other Settings modules
+let userScriptController; // NOSONAR: shared with the other Settings modules
 let experimentalController;
 // Experimental switches apply in the order they were clicked: turning Multiple
 // languages off first settles the page's edits, and a click meanwhile waits.
@@ -262,10 +265,14 @@ function configureFirefoxUi() {
 }
 
 function configureBrowserUi() {
+  // A host without a user-script world has no Advanced → User scripts.
   if (!HOST_CAPABILITIES.customJavaScript) {
-    const customJavascript = element("custom-javascript");
-    customJavascript.dataset.settingsUnavailable = "true";
-    customJavascript.hidden = true;
+    const userScripts = element("user-scripts");
+    userScripts.dataset.settingsUnavailable = "true";
+    userScripts.hidden = true;
+    document.querySelector('.section-tabs a[href="#user-scripts"]').hidden = true;
+    element("settings-section").querySelector('option[value="user-scripts"]').hidden = true;
+    element("custom-javascript-moved").hidden = true;
   }
   // The search page opens from the browser's shortcuts and toolbar menu,
   // which an overlay host does not have.
@@ -767,6 +774,16 @@ function showSettingsSection(focus = false) {
     });
     customButtonController.render();
   }
+  if (activeSection === "user-scripts") {
+    userScriptController ??= createUserScriptSettings({ document,
+      readScripts: () => options.userScripts,
+      saveScripts: (scripts) => {
+        options.userScripts = normaliseUserScripts(scripts);
+        writeOptions();
+      },
+    });
+    userScriptController.render();
+  }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (window.location.hash === "#settings-content") element("settings-content").focus();
   else if (focus) element(activeSection).querySelector("h1").focus();
@@ -1026,7 +1043,7 @@ function updateBackupSettings() {
       if (importing || installingRecommended || updating || removing || committing || customLoading || customSaving || pendingDictionaryCommits > 0) {
         throw new Error("Wait for the current dictionary operation to finish, then try again.");
       }
-      if (customDictionaryDirty() || customButtonController?.dirty() || ankiController?.dirty()
+      if (customDictionaryDirty() || customButtonController?.dirty() || userScriptController?.dirty() || ankiController?.dirty()
           || savingOptions !== null || optionsEditRevision !== null
           || Object.keys(pendingOptions).length > 0 || savingSchedule !== null || pendingSchedule !== null
           || nameDrafts.hasPendingChanges()) {
@@ -1326,7 +1343,8 @@ function attachHandlers() {
   window.addEventListener("beforeunload", (event) => {
     if (!importing && !backingUp && pendingDictionaryCommits === 0 && savingOptions === null && optionsEditRevision === null
         && Object.keys(pendingOptions).length === 0 && savingSchedule === null && pendingSchedule === null
-        && !nameDrafts.hasPendingChanges() && !customButtonController?.dirty() && !ankiController?.dirty()) {
+        && !nameDrafts.hasPendingChanges() && !customButtonController?.dirty() && !userScriptController?.dirty()
+        && !ankiController?.dirty()) {
       return;
     }
     // Leaving can revoke an import's blob URL or discard a queued settings draft.
@@ -1462,7 +1480,7 @@ export {
   renderEngineStatus, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
   savedOptions, scheduleStatusPoll, send, storedOptionsRecord,
   setSectionStatus, setStatus, sharingLinkedAddress, syncNavigationStatus, TARGET, themeStore, UPDATE_TARGET,
-  updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings,
+  updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings, userScriptController,
   WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET
 };
 

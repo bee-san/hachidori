@@ -619,20 +619,21 @@ describe("search page", () => {
       }
     };
     let blocked, allowed, onPage = false;
+    const userScripts = javascript => [{ id: "search-page-check", name: "Search page check", enabled: true, javascript, css: "" }];
     try {
-      await writeOptions({ customPopupJavascript: script });
+      await writeOptions({ userScripts: userScripts(script) });
       blocked = await searched();
       await allowUserScripts(true);
       // The worker registers the saved script when the options next change,
       // for pages opened from then on.
-      await writeOptions({ customPopupJavascript: `${script}\n` });
+      await writeOptions({ userScripts: userScripts(`${script}\n`) });
       for (let attempt = 0; attempt < 10 && !onPage; attempt += 1) onPage = await read();
       allowed = await searched();
     } finally {
-      await writeOptions({ customPopupJavascript: originalOptions.customPopupJavascript });
+      await writeOptions({ userScripts: originalOptions.userScripts ?? [] });
       await allowUserScripts(false);
     }
-    check("Custom JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages",
+    check("A user script's JavaScript runs on the search page, where it reaches the docked result, only once Chrome allows user scripts, as on web pages",
       blocked.shown && blocked.page === null && blocked.popup === null
         && allowed.shown && allowed.page === "ran" && allowed.popup === "reached" && onPage,
       JSON.stringify({ blocked, allowed, onPage }));

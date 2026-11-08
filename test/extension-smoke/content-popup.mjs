@@ -424,30 +424,35 @@ describe("content script: popup", () => {
     const result = await contentNoteStage({ isolation: async () => {
       const cases = [
         ["normal popups keep their styles in a closed shadow root and never ask for another", "", false],
-        ["saved Custom JavaScript reaches the popup through the closed root its bridge attached", "document.body.dataset.custom = 'yes';", true],
-        ["saved Custom JavaScript where user scripts do not run still gets a closed root", "document.body.dataset.custom = 'yes';", false],
+        ["a user script's JavaScript reaches the popup through the closed root its bridge attached", "document.body.dataset.custom = 'yes';", true],
+        ["a user script's JavaScript where user scripts do not run still gets a closed root", "document.body.dataset.custom = 'yes';", false],
+        ["a switched-off user script asks for no root", "off", true],
       ];
+      // One package with this JavaScript; "off" is a switched-off package.
+      const scriptOptions = code => ({ userScripts: code === "" ? [] : [{ id: "smoke", name: "Smoke", enabled: code !== "off",
+        javascript: code === "off" ? "document.body.dataset.custom = 'off';" : code, css: "" }] });
       const outcomes = {};
-      for (const [name, customPopupJavascript, userScripts] of cases) {
-        const harness = await createHarness(null, { options: { customPopupJavascript }, userScripts });
+      for (const [name, code, userScripts] of cases) {
+        const harness = await createHarness(null, { options: scriptOptions(code), userScripts });
         try {
           const root = harness.popup.getRootNode();
           // With the bridge loaded, root.host.shadowRoot is what Custom JavaScript sees.
-          outcomes[name] = root.mode === "closed" && root.host.shadowRoot === (userScripts ? root : null)
-            && harness.rootRequests === (customPopupJavascript === "" ? 0 : 1);
+          const asks = code !== "" && code !== "off";
+          outcomes[name] = root.mode === "closed" && root.host.shadowRoot === (userScripts && asks ? root : null)
+            && harness.rootRequests === (asks ? 1 : 0);
         } finally { harness.close(); }
       }
-      // The search page's frame runs the saved script in the reader's own world
-      // (#644), so there the root is open while Custom JavaScript is saved.
-      // Other extension pages, where no user script runs, keep it closed.
-      for (const [name, customPopupJavascript, page, mode] of [
-        ["the search page's frame gives saved Custom JavaScript an open root without asking a bridge",
+      // The search page's frame runs user scripts in the reader's own world
+      // (#644), so there the root is open while one has JavaScript. Other
+      // extension pages, where no user script runs, keep it closed.
+      for (const [name, code, page, mode] of [
+        ["the search page's frame gives a user script's JavaScript an open root without asking a bridge",
           "document.body.dataset.custom = 'yes';", "search-frame.html", "open"],
-        ["the search page's frame keeps a closed root while no Custom JavaScript is saved", "", "search-frame.html", "closed"],
-        ["the startup page keeps a closed root while Custom JavaScript is saved", "document.body.dataset.custom = 'yes';",
+        ["the search page's frame keeps a closed root while no user script has JavaScript", "", "search-frame.html", "closed"],
+        ["the startup page keeps a closed root while a user script has JavaScript", "document.body.dataset.custom = 'yes';",
           "startup.html", "closed"],
       ]) {
-        const harness = await createHarness(null, { options: { customPopupJavascript },
+        const harness = await createHarness(null, { options: scriptOptions(code),
           url: `chrome-extension://hachidoricontnotesmoke/${page}` });
         try {
           const root = harness.popup.getRootNode();
@@ -457,7 +462,7 @@ describe("content script: popup", () => {
       }
       // A first lookup can start before the stored options arrive (the CI race
       // in #651). The host waits for them, so it still takes the bridge's root.
-      const early = await createHarness(null, { options: { customPopupJavascript: "document.body.dataset.custom = 'yes';" },
+      const early = await createHarness(null, { options: scriptOptions("document.body.dataset.custom = 'yes';"),
         userScripts: true, deferInitialStorage: true, prebuildUi: false });
       try {
         const lookup = early.driver.runLookup(early.candidate);
