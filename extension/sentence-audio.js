@@ -51,7 +51,7 @@ export async function encodeSentenceAudio(samples, sampleRate) {
   for (let start = 0; start < pcm.length; start += CHUNK) {
     parts.push(encoder.encodeBuffer(pcm.subarray(start, start + CHUNK)));
     if (performance.now() - slice >= SLICE_MS) {
-      await new Promise(resolve => setTimeout(resolve));
+      await new Promise(resolve => setTimeout(resolve)); // NOSONAR: the page gets its thread back between slices
       slice = performance.now();
     }
   }
