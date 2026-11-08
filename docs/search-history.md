@@ -197,8 +197,8 @@ click that takes focus from the text does not move what is under the pointer.
 
 ## For user scripts: `HDSearchHistory`
 
-Design → Custom JavaScript runs on the search page in its frame once the
-browser allows user scripts ([Search page](architecture.md#search-page)): from
+Advanced → User scripts' JavaScript runs on the search page in its frame once
+the browser allows user scripts ([Search page](architecture.md#search-page)): from
 Chrome's Allow User Scripts, and in Firefox from version 154, which sandboxes
 the frame. There, `globalThis.HDSearchHistory` is the history. It is undefined
 on web pages, where the same script runs too, so a script for the search page
@@ -217,7 +217,7 @@ read, edit and delete the history's lines through it, which no web page can.
 | `"change"` event | `event.detail` is `{ type: "edit", line }`, `{ type: "remove", id }`, `{ type: "clear" }` or `{ type: "prune", before }` once the lines older than the id `before` are gone |
 
 ```js
-// Custom JavaScript runs as a classic script: no top-level await.
+// A user script is a classic script in a function of its own: return ends it, and there is no top-level await.
 if (globalThis.HDSearchHistory) {
   HDSearchHistory.list({ limit: 5 }).then((lines) => { for (const line of lines) console.log(line.text); });
   HDSearchHistory.addEventListener("line", event => console.log("kept", event.detail.text));
@@ -236,12 +236,12 @@ A texthooker view built on `HDSearchHistory`, inspired by
 as [`texthooker.js`](https://raw.githubusercontent.com/bee-san/hachidori/assets/search-history/search-history/texthooker.js), rather than kept in this repository. It
 lists the kept lines with their counts and times, pauses the Clipboard monitor,
 edits and deletes lines and looks up a clicked word. To use it, switch on
-Settings → Advanced → Search history, paste the file into Design → Custom
-JavaScript and switch on the search page's Clipboard monitor. It has no
+Settings → Advanced → Search history, add the file in Advanced → User scripts
+(Import files) and switch on the search page's Clipboard monitor. It has no
 websocket client, as texthooker-ui has for Textractor's and mpv's plugins: the
 Clipboard monitor brings in what those programs copy, and the search page opens
-no connection of its own. Firefox 153 runs no Custom JavaScript on the search
-page, so it needs Firefox 154 or later there.
+no connection of its own. Firefox 153 runs no user scripts on the search page,
+so it needs Firefox 154 or later there.
 
 ## Tests
 

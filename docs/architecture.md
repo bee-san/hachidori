@@ -7,10 +7,10 @@ frame; [Firefox](firefox.md) describes what differs.
 
 The reader popup uses a closed shadow root, so neither page scripts nor
 extensions such as Dark Reader (or a site's own dark theme built on its
-library) can rewrite its palette, dictionary styles or Custom CSS. Saved
-**Design → Custom JavaScript** still reaches the popup through `host.shadowRoot`.
-The service worker registers `custom-javascript-bridge.js` ahead of that code
-in the same user-script world. When the reader builds its host it dispatches
+library) can rewrite its palette, dictionary styles or Custom CSS. The
+JavaScript of **Advanced → User scripts** ([user scripts](user-scripts.md))
+still reaches the popup through `host.shadowRoot`. The service worker registers
+`custom-javascript-bridge.js` ahead of that code in the same user-script world. When the reader builds its host it dispatches
 `hachidori-popup-root` on it, the bridge attaches the closed root from that
 world and returns it to those scripts alone, and the reader reads it back with
 `chrome.dom.openOrClosedShadowRoot` (Chrome) or `openOrClosedShadowRoot`
@@ -24,8 +24,8 @@ reader attaches its own closed root, and saved scripts cannot reach that popup
 until the page loads again. The Design preview remains open inside its
 extension page. The [search page](#search-page) runs the same script in its
 sandboxed frame, in the reader's own world, where nothing but the extension
-can reach the popup, so the reader there attaches an open root while Custom
-JavaScript is saved.
+can reach the popup, so the reader there attaches an open root while a
+switched-on user script has JavaScript.
 
 ## Runtime layout
 
@@ -1145,22 +1145,23 @@ choice and keep focus. Yomitan's profile switch chooses a whole profile;
 Hachidori has no profiles until the multi-language work adds them (#640), which
 leaves profile switching to it.
 
-**Custom JavaScript.** **Design → Custom JavaScript** runs on the search page
-as it does on web pages (#644). Chrome and Firefox run no user script in an
+**User scripts.** The JavaScript of **Advanced → User scripts** runs on the
+search page as it does on web pages (#644). Chrome and Firefox run no user script in an
 extension page: `userScripts.register` refuses a `chrome-extension:` match
 pattern, `userScripts.execute` and `scripting.executeScript` cannot access the
 page, and an extension page's policy forbids running a string as code. So
 `search.html` holds the page itself, `search-frame.html`, in a sandboxed frame
 (`manifest.json` → `sandbox`), whose policy allows `eval` and still refuses
-inline script. Once the reader is ready, the frame runs the script the worker
-registered for web pages (`custom-javascript.js`), so the script runs only
-where it runs on web pages: once Chrome's **Allow User Scripts** or Firefox's
+inline script. Once the reader is ready, the frame runs each source the worker
+registered for web pages (`custom-javascript.js`), in order and each in its own
+`try`, so the scripts run only where they run on web pages: once Chrome's **Allow User Scripts** or Firefox's
 `userScripts` permission is on. It shares the frame's document with the
 reader and reaches the docked result through `host.shadowRoot`, as on a web
 page; unlike a user script in its own world, it also shares the reader's
 JavaScript globals. There is no `custom-javascript-bridge.js` in the frame:
-nothing but the extension reaches its pages, so while Custom JavaScript is
-saved the reader in `search-frame.html` attaches an open root itself.
+nothing but the extension reaches its pages, so while a switched-on user
+script has JavaScript the reader in `search-frame.html` attaches an open root
+itself.
 
 A sandboxed frame has no extension APIs, so `search-shell.js` in `search.html`
 answers for it over one `MessagePort`: `search-bridge.js` makes the channel and
@@ -3063,8 +3064,10 @@ length limit or trimming is imposed; existing options transport validation still
 applies. The browser parses the stylesheet and ignores invalid rules.
 
 The live reader and preview share one small constructed-stylesheet owner. It
-adopts the custom sheet last in the popup shadow root, after built-in adopted
-sheets and ordinary dictionary styles (including ones loaded later). Normal CSS
+adopts the user's sheets last in the popup shadow root, after built-in adopted
+sheets and ordinary dictionary styles (including ones loaded later): one per
+switched-on user script with CSS, in list order, then Custom CSS
+([user scripts](user-scripts.md)). Normal CSS
 specificity and `!important` still apply. Shadow DOM supplies the scope without
 rewriting selectors or wrapping CSS; use `.gsm-hoshidicts-popup` to target the
 popup. The sheet is not added to the page document or the source-highlight layer.
