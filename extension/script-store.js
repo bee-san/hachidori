@@ -68,7 +68,7 @@ export function createScriptStore({
     button.type = "button";
     button.className = "ghost";
     button.textContent = installed ? `Update to ${entry.version}` : "Install";
-    button.setAttribute("aria-label", `${installed ? `Update ${entry.name} to` : "Install"} ${installed ? entry.version : entry.name}`);
+    button.setAttribute("aria-label", installed ? `Update ${entry.name} to ${entry.version}` : `Install ${entry.name}`);
     button.addEventListener("click", () => (installed ? update(installed, entry) : install(entry)));
     return button;
   }

@@ -153,8 +153,8 @@ export function createUserScriptSettings({
     const summary = document.createElement("span");
     summary.className = "user-script-summary";
     const contents = [script.javascript.trim() && "JavaScript", script.css.trim() && "CSS"].filter(Boolean);
-    summary.textContent = `${script.store ? `Script Store v${script.store.version} · ` : ""}${contents.join(" and ") || "Empty"}`
-      + ` · ${packageSize(script)}${script.enabled ? "" : " · Off"}`;
+    const source = script.store ? `Script Store v${script.store.version} · ` : "";
+    summary.textContent = `${source}${contents.join(" and ") || "Empty"} · ${packageSize(script)}${script.enabled ? "" : " · Off"}`;
     text.append(label, summary);
     const actions = document.createElement("div");
     actions.className = "user-script-actions";
