@@ -214,6 +214,9 @@ async function launchFirefox(profile) {
       "extensions.webextensions.keepUuidOnUninstall": true,
       // permissions.request() for userScripts and clipboardRead is granted without a prompt.
       "extensions.webextOptionalPermissionPrompts": false,
+      // about:addons opens on the Extensions list. Without a remembered
+      // category Firefox opens Recommendations, which has no installed add-ons.
+      "extensions.ui.lastCategory": "addons://list/extension",
       "browser.download.dir": downloadDir,
       "browser.download.folderList": 2,
       "browser.download.useDownloadDir": true,
