@@ -23,6 +23,15 @@ Reddit self-promotion links to FrameX, not to the supplied `ppkojack…` store I
 The asbplayer comparison is reproducible from its
 [capture implementation](https://github.com/killergerbah/asbplayer/blob/72661f223e989c403179cf520b60e9232ae6b7a6/extension/src/services/capture-visible-tab.ts).
 
+Hachidori's Netflix mining now takes a subtitle note's viewport screenshot the
+way Migaku, FrameX and Video Screenshot do: it hides Netflix's subtitles,
+controls and overlays, waits two animation frames, captures the visible tab and
+crops it to the video's picture
+([Page screenshot when mining](architecture.md#page-screenshot-when-mining)).
+Migaku's Early Access build 1.31.0 hides the same Netflix controls and overlays
+by class name. Like theirs, the picture is still what Chrome composites, so
+this does not change what protected video shows.
+
 ## Migaku, unpacked and traced
 
 The official Web Store package was downloaded and inspected. The CRX-to-ZIP
