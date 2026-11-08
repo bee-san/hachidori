@@ -3812,9 +3812,9 @@ its mean (RMS) level to −20 dBFS, louder or quieter, as far as its loudest
 sample can go without passing −1 dBFS, so a line sounds the same whatever the
 player's volume (which the element applies before the line audio's tap) or the
 title's mix. The reader encodes on the page's own thread, where a line of a few
-seconds takes hundreds of milliseconds, so the encoder works through it eight
-frames at a time and hands the thread back to the page whenever 40 ms of work
-have run. The reader loads the module by its extension URL
+seconds takes hundreds of milliseconds, so the encoder works through it four
+frames at a time and hands the thread back to the page whenever 25 ms of work
+have run, which keeps the page's tasks under about 50 ms. The reader loads the module by its extension URL
 (`import(chrome.runtime.getURL("sentence-audio.js"))`, as `content.js` loads
 `overlay-mode.js`) when it first adds a line, so pages that never add one never
 load it; the manifest exposes `sentence-audio.js`, `base64.js` and

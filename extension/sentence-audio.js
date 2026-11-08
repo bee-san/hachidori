@@ -19,9 +19,10 @@ const PEAK_DBFS = -1;
 const amplitude = dbfs => 10 ** (dbfs / 20);
 // The reader encodes on the page's own thread, where a line of a few seconds
 // takes hundreds of milliseconds, so the encoder hands the thread back to the
-// page whenever a slice of work has run this long. A chunk is eight frames.
-const SLICE_MS = 40;
-const CHUNK = 8 * 1152;
+// page whenever a slice of work has run this long, keeping each task the page
+// sees under 50 ms. A chunk is four frames.
+const SLICE_MS = 25;
+const CHUNK = 4 * 1152;
 
 // What the samples are multiplied by to reach the level.
 export function levelGain(samples) {
