@@ -102,6 +102,9 @@ try {
   const settings = watch(await browser.newPage(), "settings");
   await settings.goto(`chrome-extension://${extensionId}/settings.html`, { waitUntil: "domcontentloaded" });
   for (const page of await browser.pages()) if (page.url().endsWith("/startup.html")) await page.close();
+  // An import sent while the engine starts is refused ("engine-starting").
+  await settings.waitForFunction(() => document.getElementById("engine-status")?.textContent.includes("Ready"),
+    { polling: 100, timeout: 60_000 });
   const imported = await settings.evaluate(async base64 => {
     const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
     const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
