@@ -168,7 +168,7 @@ quota failures, and the failed import report carries the same error as the reply
 A memory failure gets one reduced-memory retry after the failed transaction has
 rolled back. Direct OPFS starts a fresh import worker with one importer thread
 and stages the archive and any MDD resources on disk in its new, uncommitted
-generation instead of keeping the input file in MEMFS as well as its mapping.
+generation instead of keeping the input file in MEMFS.
 Transferred bytes are read again before the retry and their length is checked;
 the normal metadata review and commit revalidation still apply. The IDBFS path
 reuses its intact input bytes and retries single-threaded. Failed rollback and

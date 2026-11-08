@@ -33,8 +33,10 @@ linear memory and copying the bytes in. Five things follow:
   engine reads a file from OPFS (or IDBFS) when a popup or an Anki export asks
   for it, and the popup caches what it shows.
 - **Linear memory never shrinks.** Importing a dictionary unzips it, builds its
-  indexes and, on the threaded engine, runs an eight-thread worker group. On
-  direct OPFS that work happens in a separate import worker that is terminated
+  indexes and, on the threaded engine, runs an eight-thread worker group. The
+  importer reads the archive's entries as it needs them instead of mapping the
+  whole archive into the heap. On direct OPFS that work happens in a separate
+  import worker that is terminated
   afterwards, so its peak is returned to the browser and the engine's heap grows
   only by the new dictionary's resident files and shared page cache; on IDBFS
   (Electron) the import runs inside the engine and the memory that peak needs is kept for the
