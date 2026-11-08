@@ -726,7 +726,7 @@ extracted release ZIP, and `HACHIDORI_FIREFOX_PROFILE` keeps the profile.
   | `search.mjs` | The popup window opens one search page, at the size Reading → Search page sets (#656), and brings it forward on a second request; a typed word's lookup docks under the search box; the Clipboard monitor switch grants and gives back `clipboardRead`, a click on it hands focus back to the page, and Japanese copied to Firefox's clipboard is searched while it is on and not once it is off (#639); Custom JavaScript runs there from Firefox 154 and reaches the docked result (#644); a click on a word of the query shows its results with Look up words with a click on, and the Anki Template switch's choice becomes the built-in Template (#656); the search history keeps typed lines, Up and Down in the box walk them back to the draft, Right moves the searched text's cursor and looks the next word up, Up past its top row shows the earlier line between its neighbours, and `HDSearchHistory` lists the lines, edits one and looks a word up. |
   | `anki.mjs` | URL pronunciation playback; Anki discovery, Add to Anki with a page screenshot and View in Anki against a fake AnkiConnect on the page server; word highlighting. |
   | `backup.mjs` | Check now and Update against a local HTTPS update server; Export backup asking where to save and saving through Firefox's downloads; restoring the 0.1.1 and 0.3.0 Chrome backups in `test/data/backups/`; restoring the Firefox backup in a fresh profile. |
-  | `sharing.mjs` | Settings downloads the pinned relay, which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
+  | `sharing.mjs` | Settings downloads the pinned relay (answered from `HACHIDORI_ANKI_ADDON` when it is set), which runs from that archive; this Firefox shares through it and a second Firefox links and looks words up. |
   | `restart.mjs` | The engine keeps its dictionaries past Firefox's 30-second idle limit with every tab closed; a restart on the same profile keeps the library, settings and counts; removal; Access local files in `about:addons` and a `file:` lookup. |
 
   WebDriver BiDi does not report the background page's own requests and will
@@ -868,7 +868,7 @@ compiler. Nothing else needs a native compiler.
 | `HACHIDORI_FALLBACK_EXTENSION` | where `chrome-fallback.mjs` writes its temporary extension copy |
 | `HACHIDORI_HEADLESS=shell`, `HACHIDORI_DUMPIO=1` | `chrome-e2e.mjs` on the old headless shell; Chrome's own output |
 | `HACHIDORI_WASM_VARIANT` | `threaded-idbfs` or `fallback` for `node-smoke.mjs` |
-| `HACHIDORI_SHARING_PORT`, `HACHIDORI_ANKI_ADDON`, `HACHIDORI_RELAY_SERVER` | the sharing relay's port, a local add-on archive, the relay server script to run |
+| `HACHIDORI_SHARING_PORT`, `HACHIDORI_ANKI_ADDON`, `HACHIDORI_RELAY_SERVER` | the sharing relay's port, a local add-on archive (CI downloads the pinned one with retries and sets it for chrome-sharing, chrome-languages and firefox-e2e), the relay server script to run |
 | `HACHIDORI_ANKI_URL`, `HACHIDORI_CUSTOM_BUTTONS_*` | the real-Anki custom-buttons harness |
 | `HACHIDORI_LANGUAGE`, `HACHIDORI_DICTIONARY`, `HACHIDORI_CASES`, `HACHIDORI_SCREENSHOTS` | `chrome-language-pack.mjs`: the pack's code, the dictionary .zip, the cases file and the screenshot directory (default `test/tmp/language-pack/<code>/`) |
 | `HACHIDORI_AUTOMATIC_BACKUP_BENCHMARK`, `HACHIDORI_AUTOMATIC_BACKUP_BROWSER_BENCHMARK`, `HACHIDORI_SHARING_BENCHMARK` | write benchmark evidence to that path |

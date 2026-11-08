@@ -13,12 +13,12 @@ import { readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe } from "node:test";
-import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_VERSION } from "../../extension/anki-addon.js";
+import { ANKI_ADDON_FILE_NAME, ANKI_ADDON_URL, ANKI_ADDON_VERSION } from "../../extension/anki-addon.js";
 import { startAnkiRelayServer } from "../anki-relay-server.mjs";
 import { check, step } from "./harness.mjs";
 import {
   activate, downloadedFiles, downloadsDirectory, hoverForPopup, installHachidori, launchFirefox, openExtensionPage,
-  openPage, page, sendRuntime, serverUrl, showSettingsSection, sleep, waitFor,
+  openPage, page, routes, sendRuntime, serverUrl, showSettingsSection, sleep, waitFor,
 } from "./session.mjs";
 
 const sharing = (target, type, fields = {}) => sendRuntime(target, { target: "hachidori-sharing", type,
@@ -29,6 +29,9 @@ describe("sharing", () => {
     await activate(page);
     await showSettingsSection(page, "sharing");
     const existing = new Set(downloadedFiles());
+    // HACHIDORI_ANKI_ADDON (an .ankiaddon) answers Settings' request for the
+    // pinned release, as in chrome-sharing.mjs; CI supplies it.
+    if (process.env.HACHIDORI_ANKI_ADDON) routes.set(ANKI_ADDON_URL, { body: readFileSync(process.env.HACHIDORI_ANKI_ADDON) });
     await waitFor(() => page.evaluate(() => document.getElementById("sharing-addon")?.hidden === false
       && !document.getElementById("sharing-addon-download").disabled || false), { timeout: 15_000 });
     await page.evaluate(() => document.getElementById("sharing-addon-download").click());

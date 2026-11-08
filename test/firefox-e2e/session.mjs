@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { after } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { ANKI_ADDON_URL } from "../../extension/anki-addon.js";
 import { RECOMMENDED_DICTIONARIES as CATALOGUE } from "../../extension/recommended-dictionaries.js";
 import { makeAudioWav, RECOMMENDED_FIXTURE_METADATA } from "../make-fixture.mjs";
 import { diagnostics, fatal, keepProfiles, report } from "./harness.mjs";
@@ -143,9 +144,10 @@ async function answerIntercepted(session, event) {
 }
 
 // The catalogue's archives, which the engine downloads in place of the
-// publishers' real ones.
+// publishers' real ones, and the pinned Relay add-on, which sharing.mjs answers
+// from HACHIDORI_ANKI_ADDON when it is set; otherwise it comes from GitHub.
 function interceptedUrls() {
-  return RECOMMENDED.flatMap(entry => [entry.downloadUrl, entry.indexUrl]);
+  return [...RECOMMENDED.flatMap(entry => [entry.downloadUrl, entry.indexUrl]), ANKI_ADDON_URL];
 }
 
 // Headless Firefox cannot show a Save dialog. A stand-in file picker in the
