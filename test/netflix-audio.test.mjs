@@ -9,7 +9,7 @@ import "../extension/netflix-audio.js";
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
   || resolve(process.env.XDG_CACHE_HOME || resolve(homedir(), ".cache"), "hachidori-e2e")] }));
-const { createLineAudio, encodeMonoWav, isSilent, wavBase64 } = globalThis.HDNetflixAudio;
+const { createLineAudio, isSilent } = globalThis.HDNetflixAudio;
 const MOVIE = "81000001";
 const TIME_ORIGIN = 1_000_000;
 const RATE = 1000;
@@ -303,24 +303,7 @@ test("settled waits for what has played until now to arrive", async t => {
   assert.ok(Date.now() - started < 1000);
 });
 
-test("only exact zeros are silence, and a clip is a 16-bit mono PCM WAV in base64", () => {
+test("only exact zeros are silence", () => {
   assert.equal(isSilent(new Float32Array(48)), true);
   assert.equal(isSilent(Float32Array.of(0, 0, 1e-7)), false);
-  const samples = Float32Array.of(0, 0.5, -0.5, 1, -1, 2);
-  const wav = Buffer.from(encodeMonoWav(samples, 48_000));
-  assert.equal(wav.toString("ascii", 0, 4), "RIFF");
-  assert.equal(wav.readUInt32LE(4), wav.length - 8);
-  assert.equal(wav.toString("ascii", 8, 16), "WAVEfmt ");
-  assert.deepEqual([wav.readUInt16LE(20), wav.readUInt16LE(22), wav.readUInt32LE(24), wav.readUInt32LE(28),
-    wav.readUInt16LE(32), wav.readUInt16LE(34)], [1, 1, 48_000, 96_000, 2, 16]);
-  assert.equal(wav.toString("ascii", 36, 40), "data");
-  assert.equal(wav.readUInt32LE(40), 12);
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map(index => wav.readInt16LE(44 + index * 2)), [0, 16383, -16384, 32767, -32768, 32767]);
-  assert.throws(() => encodeMonoWav([0], 48_000), /Float32/u);
-  assert.throws(() => encodeMonoWav(new Float32Array(1), 0), /sample rate/u);
-  // Longer than one base64 chunk, so the chunks join up.
-  const long = Float32Array.from({ length: 20_000 }, (_, index) => Math.sin(index / 7));
-  const encoded = wavBase64({ samples: long, sampleRate: 48_000 });
-  assert.match(encoded, /^UklG/u);
-  assert.deepEqual(Buffer.from(encoded, "base64"), Buffer.from(encodeMonoWav(long, 48_000)));
 });

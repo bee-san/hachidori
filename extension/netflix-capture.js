@@ -2,15 +2,16 @@
 import { encodeBase64 } from "./base64.js";
 import { GIF_MAX_FPS, GIF_MAX_WIDTH, encodeLoopingGif, selectGifFrames } from "./netflix-gif.js";
 import "./netflix-audio.js";
+import { sentenceAudioBase64 } from "./sentence-audio.js";
 
 // Experimental Netflix mining's recorder, which YouTube mining shares.
 // netflix-recorder.html (youtube-recorder.html on YouTube) runs this in a
 // hidden extension frame inside the site's tab while the page replays one
 // subtitle line: it records the tab's audio from a chrome.tabCapture stream,
 // then cuts the line out of it by the media times the page reported and
-// encodes a mono WAV for Anki. When a field is mapped to {gif}, it also records
-// the stream's video track and encodes a looping GIF of the line. Only the WAV
-// and the GIF leave the frame. The page's own line audio (netflix-audio.js)
+// encodes its sentence audio for Anki (sentence-audio.js). When a field is
+// mapped to {gif}, it also records the stream's video track and encodes a
+// looping GIF of the line. Only the sentence audio and the GIF leave the frame. The page's own line audio (netflix-audio.js)
 // records sentence audio without it where it can; this frame then records
 // only the GIF.
 //
@@ -19,7 +20,7 @@ import "./netflix-audio.js";
 // offscreen document is cross-origin isolated for the threaded engine, so it
 // runs in another process than the service worker. Chrome mutes a tab while it
 // is captured, so the replay can be silent.
-const { PAD_MS, clockDomain, encodeMonoWav, isSilent, monoSamples } = globalThis.HDNetflixAudio;
+const { PAD_MS, clockDomain, isSilent, monoSamples } = globalThis.HDNetflixAudio;
 
 // The audio kept before and after the cue.
 export const SENTENCE_PAD_MS = PAD_MS;
@@ -241,7 +242,7 @@ export function createNetflixRecorder(window, {
     if (session !== null) stop(session);
     // The audio track is opened either way: it mutes the tab for the replay
     // and tells finish when the capture has caught up. Only a {sentence-audio}
-    // field needs its WAV, and video is captured only for a {gif} field.
+    // field needs its sound, and video is captured only for a {gif} field.
     const current = { stream: null, reader: null, chunks: [], sampleRate: null, timer: null, waiter: null,
       clock: createAudioFrameClock({ timeOrigin: window.performance.timeOrigin, now }), audio,
       gif, crop, videoReader: null, frames: [], lastVideoMs: null, canvas: null, context: null, gifWidth: 0,
@@ -315,7 +316,7 @@ export function createNetflixRecorder(window, {
       startMs: startMs - SENTENCE_PAD_MS + offset, endMs: endMs + SENTENCE_PAD_MS + offset });
     if (samples === null) throw new Error("No audio was recorded while the line played.");
     if (isSilent(samples)) return { silent: true, ...(gif ? { gif } : {}) };
-    return { silent: false, data: encodeBase64(encodeMonoWav(samples, current.sampleRate)), ...(gif ? { gif } : {}) };
+    return { silent: false, data: await sentenceAudioBase64(samples, current.sampleRate), ...(gif ? { gif } : {}) };
   }
 
   return { start, finish, stop: () => { if (session !== null) stop(session); } };

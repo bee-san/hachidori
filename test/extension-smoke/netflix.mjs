@@ -46,7 +46,7 @@ async function netflixRecorderPortStage() {
       browsePage: browsePage.disconnected, on: on.disconnected }));
 }
 
-// Experimental Netflix mining: the WAV the player page cut from what the viewer
+// Experimental Netflix mining: the MP3 the player page cut from what the viewer
 // heard is held for the note for that top-frame watch document only, with the
 // switch on. Nothing was captured, so it need not be the active tab.
 async function netflixLineAudioStage() {
@@ -71,13 +71,14 @@ async function netflixLineAudioStage() {
   const anki = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
   const experimental = { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: true };
   await storage.api().local.set({ options: { revision: 1, anki, experimental } });
-  const wav = Buffer.from("RIFF\u0024\u0000\u0000\u0000WAVEfmt ", "latin1").toString("base64");
-  const ask = (sender, data = wav) => bus.sendMessage("reader", { target: "hachidori-netflix", type: "hd_netflix_line_audio",
+  // How an MP3 begins: an MPEG-1 Layer III frame header.
+  const mp3 = Buffer.from([0xff, 0xfb, 0x50, 0xc4, 0, 0, 0, 0]).toString("base64");
+  const ask = (sender, data = mp3) => bus.sendMessage("reader", { target: "hachidori-netflix", type: "hd_netflix_line_audio",
     requestId: "netflix-line-audio", data, templateId: "default" }, sender);
   const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id, url: tab.url } };
   const held = await ask(reader);
   const subframe = await ask({ ...reader, frameId: 2 });
-  const notWav = await ask(reader, Buffer.from("GIF89a").toString("base64"));
+  const notMp3 = await ask(reader, Buffer.from("RIFF\u0024\u0000\u0000\u0000WAVEfmt ", "latin1").toString("base64"));
   documentId = "replacement-document";
   const reloaded = await ask(reader);
   documentId = reader.documentId;
@@ -87,14 +88,14 @@ async function netflixLineAudioStage() {
   await storage.api().local.set({ options: { revision: 2, anki, experimental: { ...experimental, netflixMining: false } } });
   const off = await ask(reader);
   check("the Netflix line audio is held only for the watch page's own top-frame document, with the switch on",
-    held?.ok === true && /^hachidori-sentence-audio-[0-9a-f-]{36}\.wav$/u.test(held.filename ?? "")
+    held?.ok === true && /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u.test(held.filename ?? "")
       && /^[0-9a-f-]{36}$/u.test(held.token ?? "")
       && subframe?.ok === false && subframe.error.includes("Netflix player page")
-      && notWav?.ok === false && notWav.error.includes("no WAV")
+      && notMp3?.ok === false && notMp3.error.includes("no MP3")
       && reloaded?.ok === false && reloaded.error.includes("page changed")
       && browsing?.ok === false && browsing.error.includes("no longer playing")
       && off?.ok === false && off.error.includes("turned off in Settings"),
-    JSON.stringify({ held, subframe, notWav, reloaded, browsing, off }));
+    JSON.stringify({ held, subframe, notMp3, reloaded, browsing, off }));
 }
 
 // Experimental Netflix mining: a Netflix page that was open before the switch

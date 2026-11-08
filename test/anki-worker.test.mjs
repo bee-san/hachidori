@@ -27,6 +27,8 @@ wav.writeUInt16LE(16, 34);
 wav.write("data", 36, "ascii");
 wav.writeUInt32LE(2, 40);
 const AUDIO_DATA = wav.toString("base64");
+// How a line's MP3 begins: an MPEG-1 Layer III frame header, mono at 64 kbit/s.
+const SENTENCE_AUDIO_DATA = Buffer.from([0xff, 0xfb, 0x50, 0xc4, 0, 0, 0, 0]).toString("base64");
 // A minimal GIF89a byte string; the worker checks the base64 "R0lG" prefix.
 const GIF_DATA = Buffer.from("GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;", "latin1").toString("base64");
 
@@ -846,7 +848,7 @@ test("a sentence furigana template segments the text around the match with the h
     scanLength: 12, options: { frequencyDictionary: "F", frequencyOrder: "auto", personalDictionary: true } });
 });
 
-test("a recorded Netflix line is held until the note is written and stored as its own WAV, beside the screenshot", async () => {
+test("a recorded Netflix line is held until the note is written and stored as its own MP3, beside the screenshot", async () => {
   const uploads = [], deletions = [];
   let refuse = false, duplicate = false, lostReply = false, check = { canAdd: true }, fields = null;
   const options = globalThis.HDReaderOptions.normaliseOptions({
@@ -870,7 +872,7 @@ test("a recorded Netflix line is held until the note is written and stored as it
         fields: Object.fromEntries(Object.entries(fields).map(([field, value]) => [field, { value }])) }];
       if (action !== "storeMediaFile") throw new Error(`Unexpected ${action}`);
       uploads.push(params.filename);
-      if (refuse && params.filename.endsWith(".wav")) throw new Error("media folder is read-only");
+      if (refuse && params.filename.endsWith(".mp3")) throw new Error("media folder is read-only");
       return params.filename;
     } };
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
@@ -883,11 +885,12 @@ test("a recorded Netflix line is held until the note is written and stored as it
     documentTitle: "Netflix", dictionaryAliases: {}, frequencyDictionaries: [],
     netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } };
   const { configKey } = await service.status();
-  const SENTENCE_AUDIO = /^hachidori-sentence-audio-[0-9a-f-]{36}\.wav$/u;
+  const SENTENCE_AUDIO = /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u;
 
-  // Holding stores nothing; only a WAV is held.
-  await assert.rejects(service.sentenceAudio("bm90IHdhdg==", "default"), /no WAV audio/u);
-  const held = await service.sentenceAudio(AUDIO_DATA, "default");
+  // Holding stores nothing; only an MP3 is held, not the WAV a line used to be.
+  await assert.rejects(service.sentenceAudio("bm90IG1wMw==", "default"), /no MP3 audio/u);
+  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /no MP3 audio/u);
+  const held = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.match(held.filename, SENTENCE_AUDIO);
   assert.equal(uploads.length, 0);
   const picture = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
@@ -903,7 +906,7 @@ test("a recorded Netflix line is held until the note is written and stored as it
   assert.match(stale.warnings.join(" "), /Sentence audio: the recorded line was replaced/u);
   assert.equal(fields.Back, "");
   refuse = true;
-  const refusedLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  const refusedLine = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   const refused = await service.submit({ ...request, term: { ...request.term, expression: "鳥" }, configKey,
     sentenceAudio: refusedLine });
   assert.equal(refused.state, "added");
@@ -916,35 +919,35 @@ test("a recorded Netflix line is held until the note is written and stored as it
   // A definitive no-write releases the held line; a definitively refused write
   // deletes the stored one; an uncertain write keeps it.
   check = { canAdd: false, error: "cannot create note because it is a duplicate" };
-  const duplicateLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  const duplicateLine = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.equal((await service.submit({ ...request, configKey, sentenceAudio: duplicateLine })).state, "duplicate");
   check = { canAdd: true };
   assert.match((await service.submit({ ...request, configKey, sentenceAudio: duplicateLine })).warnings.join(" "),
     /recorded line was replaced/u);
   duplicate = true;
-  const rejectedLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  const rejectedLine = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.equal((await service.submit({ ...request, term: { ...request.term, expression: "馬" }, configKey,
     sentenceAudio: rejectedLine })).state, "duplicate");
   assert.deepEqual(deletions, [rejectedLine.filename]);
   duplicate = false;
   deletions.length = 0;
   lostReply = true;
-  const uncertainLine = await service.sentenceAudio(AUDIO_DATA, "default");
+  const uncertainLine = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.equal((await service.submit({ ...request, configKey, sentenceAudio: uncertainLine })).state, "uncertain");
   assert.equal(uploads.at(-1), uncertainLine.filename);
   assert.deepEqual(deletions, [], "an uncertain write must retain its uploaded line");
   lostReply = false;
 
   // An abandoned submission releases its own line only.
-  const abandoned = await service.sentenceAudio(AUDIO_DATA, "default");
+  const abandoned = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.deepEqual(service.discardScreenshot({ token: "someone-else" }), { discarded: true });
   service.discardScreenshot({ token: abandoned.token });
   assert.match((await service.submit({ ...request, term: { ...request.term, expression: "牛" }, configKey,
     sentenceAudio: abandoned })).warnings.join(" "), /recorded line was replaced/u);
 
-  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "deleted"), /no longer available/u);
+  await assert.rejects(service.sentenceAudio(SENTENCE_AUDIO_DATA, "deleted"), /no longer available/u);
   options.experimental.netflixMining = false;
-  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /turned off in Settings/u);
+  await assert.rejects(service.sentenceAudio(SENTENCE_AUDIO_DATA, "default"), /turned off in Settings/u);
 });
 
 test("a recorded Netflix GIF is held, stored under its own name, and falls back to the screenshot", async () => {

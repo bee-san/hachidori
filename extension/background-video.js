@@ -1,5 +1,5 @@
 // Experimental Netflix and YouTube mining in the service worker: a site's
-// recorder frame's port, line recordings, and the WAV the player page cuts from
+// recorder frame's port, line recordings, and the MP3 the player page cuts from
 // what the viewer heard. background-netflix.js and background-youtube.js give
 // each site its names.
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -54,11 +54,11 @@ function askRecorder(port, message, reply) {
 
 // One site's mining service (docs/architecture.md, Netflix mining). The player
 // page cuts a line's sentence audio from what the viewer heard and sends its
-// WAV with `line_audio`. Otherwise, while the page replays the line, a hidden
+// MP3 with `line_audio`. Otherwise, while the page replays the line, a hidden
 // recorder frame in the site's tab records the tab: `start` lets that frame
 // open its tab-capture stream, `finish` has it cut the line out and gives its
-// WAV and GIF to the Anki worker to hold for the note, `cancel` stops it. The
-// frame connects on a port; the worker holds no media itself and only the WAV
+// MP3 and GIF to the Anki worker to hold for the note, `cancel` stops it. The
+// frame connects on a port; the worker holds no media itself and only the MP3
 // and GIF reach Anki. `load` adds the site's scripts to a page that was open
 // before the switch went on.
 //
@@ -207,9 +207,9 @@ function createVideoSiteService(site) {
       if (recording === current) stopRecording();
     }
     const mining = getAnkiMining();
-    // The GIF, when the recorder made one, is held like the WAV: on its own token
+    // The GIF, when the recorder made one, is held like the MP3: on its own token
     // for the {gif} field, independent of whether the audio was silent. A
-    // recording for a {gif} field alone has no WAV to hold.
+    // recording for a {gif} field alone has no MP3 to hold.
     const gif = typeof clip.gif === "string" ? await mining.gifImage(clip.gif, template(message), feature) : null;
     let audio = null;
     if (clip.silent === true) audio = { unavailable: "silent" };
@@ -224,7 +224,7 @@ function createVideoSiteService(site) {
     return { cancelled: true };
   }
 
-  // The WAV the player page cut from what the viewer heard (netflix-audio.js),
+  // The MP3 the player page cut from what the viewer heard (netflix-audio.js),
   // held for the note like a recorded one. Nothing was captured, so the page
   // need not be the active tab.
   async function holdLineAudio(message, sender) {

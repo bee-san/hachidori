@@ -398,9 +398,11 @@ export function createAnkiWorkerService({
     return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
   }
 
-  // Experimental Netflix and YouTube mining: the WAV of the subtitle line the
-  // reader just had replayed and recorded. Like the screenshot it is held here
-  // and stored only inside the note's write. `feature` is the site's switch.
+  // Experimental Netflix and YouTube mining: the MP3 of the subtitle line the
+  // reader just cut or had recorded (sentence-audio.js). Like the screenshot it
+  // is held here and stored only inside the note's write. `feature` is the
+  // site's switch. In base64 an MP3 frame's sync, eleven set bits, is a "/"
+  // and then "+" or "/".
   async function sentenceAudio(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
@@ -408,17 +410,17 @@ export function createAnkiWorkerService({
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
-    if (decodedBase64Length(data) === null || !data.startsWith("UklG")) {
-      throw new Error("The recording produced no WAV audio.");
+    if (decodedBase64Length(data) === null || !/^\/[+/]/u.test(data)) {
+      throw new Error("The recording produced no MP3 audio.");
     }
-    const held = { token: crypto.randomUUID(), filename: `hachidori-sentence-audio-${crypto.randomUUID()}.wav`, data };
+    const held = { token: crypto.randomUUID(), filename: `hachidori-sentence-audio-${crypto.randomUUID()}.mp3`, data };
     pendingMedia["sentence-audio"] = held;
     return { token: held.token, filename: held.filename };
   }
 
   // Experimental Netflix and YouTube mining: the animated GIF of the subtitle
   // line the reader just had replayed and recorded. Held here and stored only
-  // inside the note's write, exactly like the screenshot and the WAV.
+  // inside the note's write, exactly like the screenshot and the sentence audio.
   async function gifImage(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);

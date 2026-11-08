@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import "../extension/netflix-audio.js";
+import { sentenceAudioBase64 } from "../extension/sentence-audio.js";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require(require.resolve("jsdom", { paths: [process.env.HACHIDORI_JSDOM
@@ -26,7 +27,9 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
   { url: `https://www.netflix.com/watch/${movieId}`, runScripts: "outside-only" });
   t.after(() => dom.window.close());
   const { window } = dom;
-  window.chrome = { runtime: { getURL: path => `chrome-extension://hachidori/${path}` } };
+  // The reader imports its modules from the checkout; pages keep the extension's address.
+  window.chrome = { runtime: { getURL: path => (path.endsWith(".js") ? new URL(`../extension/${path}`, import.meta.url).href
+    : `chrome-extension://hachidori/${path}`) } };
   if (lineAudio) window.HDNetflixAudio = { ...globalThis.HDNetflixAudio, createLineAudio: () => lineAudio };
   for (const source of SCRIPTS) window.eval(source);
   const video = window.document.querySelector("video");
@@ -355,7 +358,7 @@ test("a line the viewer heard is cut from what was kept: no replay, recorder fra
     { audio: { token: "t1", filename: "hachidori-sentence-audio-a.wav" } });
   assert.deepEqual(audio.calls, ["start", "settled", ["clip", "81000001", 750, 3750]]);
   assert.deepEqual(sent.map(([type, fields]) => [type, fields.templateId]), [["hd_netflix_line_audio", "default"]]);
-  assert.deepEqual(Buffer.from(sent[0][1].data, "base64"), Buffer.from(globalThis.HDNetflixAudio.encodeMonoWav(LINE.samples, 48_000)));
+  assert.equal(sent[0][1].data, await sentenceAudioBase64(LINE.samples, 48_000), "the line, as its MP3");
   assert.equal(replays.length, 0);
   assert.equal(concealed, 0, "nothing is captured, so the reader stays visible");
 

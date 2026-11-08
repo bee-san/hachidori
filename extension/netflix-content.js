@@ -386,9 +386,9 @@
 
     // Records the cue's line with tab capture: a recorder frame opens the tab's
     // stream, the page replays the line, then the frame cuts the clip (with
-    // audio unset, no WAV; with gif set, a looping GIF of the line) and the
-    // worker holds its files for the note. Resolves with { audio, gif } for
-    // the fields, or with why there is none.
+    // audio unset, no sentence audio; with gif set, a looping GIF of the line)
+    // and the worker holds its files for the note. Resolves with { audio, gif }
+    // for the fields, or with why there is none.
     async function recordTab(cue, { send, templateId, audio, gif }) {
       const frame = recorderFrame();
       try {
@@ -440,11 +440,14 @@
     }
 
     // A clip of the line for its {sentence-audio} field: held by the worker,
-    // or why there is none.
+    // or why there is none. Its MP3 encoder (sentence-audio.js) loads with the
+    // first line the page adds.
     async function holdLine(clip, { send, templateId }) {
       if (clip === null) return { unavailable: "unheard" };
       if (lineAudioApi.isSilent(clip.samples)) return { unavailable: "silent" };
-      const held = await send(site.requests.lineAudio, { data: lineAudioApi.wavBase64(clip), templateId });
+      const { sentenceAudioBase64 } = await import(window.chrome.runtime.getURL("sentence-audio.js"));
+      const data = await sentenceAudioBase64(clip.samples, clip.sampleRate);
+      const held = await send(site.requests.lineAudio, { data, templateId });
       return typeof held.unavailable === "string" ? { unavailable: held.unavailable }
         : { token: held.token, filename: held.filename };
     }
