@@ -108,7 +108,7 @@ async function youtubeCropStage() {
     JSON.stringify({ fits, outside, records }));
 }
 
-// The WAV the YouTube page cut from what the viewer heard is held for that
+// The MP3 the YouTube page cut from what the viewer heard is held for that
 // top-frame YouTube document only, with YouTube mining on.
 async function youtubeLineAudioStage() {
   const bus = makeBus(), storage = makeStorage();
@@ -131,9 +131,9 @@ async function youtubeLineAudioStage() {
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
   const anki = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
   await storage.api().local.set({ options: { revision: 1, anki, experimental: flags(true) } });
-  const wav = Buffer.from("RIFF\u0024\u0000\u0000\u0000WAVEfmt ", "latin1").toString("base64");
+  const mp3 = Buffer.from([0xff, 0xfb, 0x50, 0xc4, 0, 0, 0, 0]).toString("base64");
   const ask = (sender, type = "hd_youtube_line_audio", target = "hachidori-youtube") => bus.sendMessage("reader",
-    { target, type, requestId: "youtube-line-audio", data: wav, templateId: "default" }, sender);
+    { target, type, requestId: "youtube-line-audio", data: mp3, templateId: "default" }, sender);
   const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id, url: tab.url } };
   const held = await ask(reader);
   const subframe = await ask({ ...reader, frameId: 2 });
@@ -150,7 +150,7 @@ async function youtubeLineAudioStage() {
   await storage.api().local.set({ options: { revision: 2, anki, experimental: flags(false, { netflixMining: true }) } });
   const off = await ask(reader);
   check("the YouTube line audio is held only for a YouTube page's own top-frame document, with YouTube mining on",
-    held?.ok === true && /^hachidori-sentence-audio-[0-9a-f-]{36}\.wav$/u.test(held.filename ?? "")
+    held?.ok === true && /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u.test(held.filename ?? "")
       && subframe?.ok === false && subframe.error.includes("YouTube player page")
       && asNetflix?.ok === false && asNetflix.error.includes("Netflix mining is turned off")
       && wrongTarget?.ok === false && wrongTarget.error.includes("Unknown YouTube request")

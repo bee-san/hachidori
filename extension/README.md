@@ -161,8 +161,9 @@ stores it as `rank-based` when its values are ranks (#684).
   Drag the subtitle text with the left mouse button to move the native subtitle
   box. New lines keep that offset until the page reloads; turning Netflix mining
   off restores Netflix's position. Word lookups still work on the moved text.
-  `{sentence-audio}` attaches the line's WAV, cut from what
-  `netflix-audio.js` kept. `netflix-recorder.html`
+  `{sentence-audio}` attaches the line's MP3, cut from what
+  `netflix-audio.js` kept and encoded by `sentence-audio.js` with the vendored
+  `vendor/lamejs.js`. `netflix-recorder.html`
   (`netflix-recorder.js`, `netflix-capture.js`) is the hidden frame that
   records the replayed line inside the Netflix tab for `{gif}`, a looping GIF
   of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
@@ -268,7 +269,9 @@ stores it as `rank-based` when its values are ranks (#684).
   `registry.js` and `registry-reader.js`, written by
   `scripts/sync-languages.mjs` after each submodule bump.
   `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
-  and YouTube mining GIF encoder), its source and checksum in `scripts/store-sources.json`.
+  and YouTube mining GIF encoder), its source and checksum in `scripts/store-sources.json`,
+  and `vendor/lamejs.js` the pinned lamejs runtime (their MP3 encoder for
+  sentence audio), recorded there with the source it was built from.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
   in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is

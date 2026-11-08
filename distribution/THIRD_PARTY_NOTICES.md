@@ -20,6 +20,7 @@ submodules and the pinned source distributions listed below.
 | kanji-processor | `kanji-processor-LICENSE` | Kanji-variant source data |
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
 | gifenc 1.0.3, Matt DesLauriers | `gifenc/LICENSE.md` and `vendor/gifenc-LICENSE` | Experimental Netflix mining's looping GIF encoder, under the MIT licence |
+| lamejs 1.2.7 (`@breezystack/lamejs`), Alex Zhukov's port of LAME | `lamejs/LICENSE` and `vendor/lamejs-LICENSE` | Experimental Netflix and YouTube mining's MP3 encoder for sentence audio, under the LGPL-3.0 |
 | KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |
 | jitendex-data kanwa, Stephen Kraus (Jitendex) | `kanwa-NOTICE` and `vendor/kanwa/source.json` | Character and compound readings that split headword furigana where KANJIDIC2's cannot, under CC BY-SA 4.0 |
 | Subadub, Russel Simmons, at [`a03b1b94`](https://github.com/rsimmons/subadub/tree/a03b1b94e59328c11e31485c6016626fcfeb2790) | `subadub-LICENSE` and the header of `netflix-page.js` | Experimental Netflix mining's subtitle-profile and track-list hooks, under the MIT licence |
@@ -39,6 +40,10 @@ The zip.js source archive URL and checksum are recorded in
 `dist/zip-core-external.min.js` file is byte-checked against the shipped
 `vendor/zip.js` when packaging. The gifenc source is recorded the same way, and
 its `dist/gifenc.esm.js` is byte-checked against the shipped `vendor/gifenc.js`.
+So is the lamejs npm package, whose `dist/lamejs.js` is byte-checked against
+the shipped `vendor/lamejs.js`; that package holds only the built file, so the
+source of the commit it was published from is recorded beside it as
+`lamejs-source`.
 
 User-selected dictionaries, media, and external audio services are separate
 from this distribution. Their licenses and terms are supplied by their owners.

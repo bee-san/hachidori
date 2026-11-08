@@ -1,6 +1,6 @@
 // Experimental Netflix mining in the service worker: Netflix's names for the
 // video-site service (background-video.js): the recorder frame's port, line
-// recordings, and the WAV the player page cuts from what the viewer heard.
+// recordings, and the MP3 the player page cuts from what the viewer heard.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { createVideoSiteService } from "./background-video.js";
 import { NETFLIX_SCRIPTS } from "./netflix.js";

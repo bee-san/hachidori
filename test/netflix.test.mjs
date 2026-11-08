@@ -68,14 +68,16 @@ test("turning the flag off unregisters both scripts, rapid toggles apply in orde
   assert.deepEqual(await applyNetflixFlag({}, true), { supported: false, registered: false });
 });
 
-test("the manifest asks for tab capture, exposes only the recorder page to Netflix and never injects the scripts itself", async () => {
+test("the manifest asks for tab capture, exposes only the recorder page and the MP3 encoder to Netflix and never injects the scripts itself", async () => {
   const manifest = JSON.parse(await readFile(new URL("manifest.json", extension), "utf8"));
   assert.ok(manifest.permissions.includes("tabCapture"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.equal(manifest.optional_permissions?.includes("tabCapture") ?? false, false, "tab capture is not optional");
   assert.equal(/netflix/iu.test(JSON.stringify(manifest.content_scripts)), false, "no Netflix content script is declared");
   const netflixResources = manifest.web_accessible_resources.filter(entry => /netflix/iu.test(JSON.stringify(entry)));
-  assert.deepEqual(netflixResources, [{ resources: ["netflix-recorder.html"], matches: ["https://www.netflix.com/*"] }]);
+  assert.deepEqual(netflixResources, [{ resources: ["netflix-recorder.html"], matches: ["https://www.netflix.com/*"] },
+    { resources: ["sentence-audio.js", "base64.js", "vendor/lamejs.js"],
+      matches: ["https://www.netflix.com/*", "https://www.youtube.com/*"] }]);
   const page = await readFile(new URL("netflix-recorder.html", extension), "utf8");
   assert.match(page, /<script type="module" src="netflix-recorder\.js"><\/script>/u);
 });

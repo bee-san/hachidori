@@ -36,6 +36,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { MP3_SLACK_MS, decodeSentenceAudio } from "./sentence-audio-decode.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const require = createRequire(resolve(root, "test/tooling/package.json"));
@@ -434,14 +435,13 @@ try {
   start = await playback();
   let note = await addNote();
   assert.match(note.fields.Back, /^朝ごはんを<b>食べたかった<\/b><br>\[sound:/u, "the sentence is the whole cue, with its audio");
-  const audioFile = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.wav)\]/u.exec(note.fields.Back)?.[1];
-  const clip = Buffer.from(media.get(audioFile), "base64");
-  const rate = clip.readUInt32LE(24);
-  const samples = new Float32Array(clip.readUInt32LE(40) / 2);
-  for (let index = 0; index < samples.length; index++) samples[index] = clip.readInt16LE(44 + index * 2) / 0x8000;
+  const audioFile = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.mp3)\]/u.exec(note.fields.Back)?.[1];
+  const { rate, mono, samples } = await decodeSentenceAudio(settings, media.get(audioFile));
+  assert.ok(mono, "the MP3 is mono");
   const fromMs = CUE.startMs - PAD_MS;
   const durationMs = samples.length * 1000 / rate;
-  assert.ok(Math.abs(durationMs - (CUE.endMs - CUE.startMs + 2 * PAD_MS)) <= 5, `the clip is the cue with its pads (${durationMs} ms)`);
+  const cutMs = CUE.endMs - CUE.startMs + 2 * PAD_MS;
+  assert.ok(durationMs >= cutMs - 5 && durationMs <= cutMs + MP3_SLACK_MS, `the clip is the cue with its pads (${durationMs} ms)`);
   // Each second's tone is where it played, away from the changes of tone.
   for (const atMs of [1850, 2500, 3500]) {
     const length = Math.round(rate / 50);

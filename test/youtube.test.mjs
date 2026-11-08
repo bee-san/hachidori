@@ -48,13 +48,15 @@ test("the flag registers the page script and the reader's scripts for www.youtub
   assert.deepEqual(await applyYouTubeFlag({}, true), { supported: false, registered: false });
 });
 
-test("the manifest exposes only YouTube's recorder page to www.youtube.com and asks for no new permission", async () => {
+test("the manifest exposes only YouTube's recorder page and the MP3 encoder to www.youtube.com and asks for no new permission", async () => {
   const manifest = JSON.parse(await readFile(new URL("manifest.json", extension), "utf8"));
   assert.equal(/youtube/iu.test(JSON.stringify(manifest.content_scripts)), false, "no YouTube content script is declared");
   assert.equal(/youtube/iu.test(JSON.stringify([manifest.permissions, manifest.host_permissions,
     manifest.optional_permissions])), false);
   assert.deepEqual(manifest.web_accessible_resources.filter(entry => /youtube/iu.test(JSON.stringify(entry))),
-    [{ resources: ["youtube-recorder.html"], matches: ["https://www.youtube.com/*"] }]);
+    [{ resources: ["youtube-recorder.html"], matches: ["https://www.youtube.com/*"] },
+    { resources: ["sentence-audio.js", "base64.js", "vendor/lamejs.js"],
+      matches: ["https://www.netflix.com/*", "https://www.youtube.com/*"] }]);
   const page = await readFile(new URL("youtube-recorder.html", extension), "utf8");
   assert.match(page, /<script type="module" src="youtube-recorder\.js"><\/script>/u);
   assert.match(await readFile(new URL("youtube-recorder.js", extension), "utf8"),

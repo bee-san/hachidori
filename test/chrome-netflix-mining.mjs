@@ -12,7 +12,7 @@
 // the Netflix scripts, so that hovering the playing line pauses it through the
 // player and leaving resumes it, and its note says that the episode's timing
 // needs a reload. After the reload it mines the subtitle word through the real
-// popup. Each note's WAV, decoded, must be the cue with its pads, audible
+// popup. Each note's MP3, decoded, must be the cue with its pads, audible
 // except within 125 ms of its ends, with the tone of every second the padded
 // cue covers and no other, each change of tone within 125 ms of its place:
 // - before any click on Hachidori's toolbar button: a line the viewer heard is
@@ -50,6 +50,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
+import { MP3_SLACK_MS, decodeSentenceAudio } from "./sentence-audio-decode.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const require = createRequire(resolve(root, "test/tooling/package.json"));
@@ -506,22 +507,18 @@ try {
     return { ...decoded, kib: bytes.length / 1024 };
   }
 
-  // The note's WAV, decoded, must be the cue with its pads, with the
-  // fixture's tone for every second of media time the padded cue covers and
-  // no other: each audible window that holds no silence, away from a change of
-  // tone, holds its own second's tone, and each change lands within
-  // TOLERANCE_MS of its place. It must be audible throughout, except within
-  // TOLERANCE_MS of its ends, where a clip that is that late or early holds
-  // what played before or after the line.
-  function checkLineAudio(back, label) {
-    const filename = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.wav)\]/u.exec(back)?.[1];
-    assert.ok(filename, `${label}: the note references the line's WAV: ${back}`);
-    const clip = Buffer.from(media.get(filename), "base64");
-    assert.equal(clip.toString("ascii", 0, 4), "RIFF");
-    assert.equal(clip.readUInt16LE(22), 1, `${label}: the WAV is mono`);
-    const rate = clip.readUInt32LE(24);
-    const samples = new Float32Array(clip.readUInt32LE(40) / 2);
-    for (let index = 0; index < samples.length; index++) samples[index] = clip.readInt16LE(44 + index * 2) / 0x8000;
+  // The note's MP3, decoded by Chrome, must be the cue with its pads (and the
+  // MP3's own delay and last frame), with the fixture's tone for every second
+  // of media time the padded cue covers and no other: each audible window
+  // that holds no silence, away from a change of tone, holds its own second's
+  // tone, and each change lands within TOLERANCE_MS of its place. It must be
+  // audible throughout, except within TOLERANCE_MS of its ends, where a clip
+  // that is that late or early holds what played before or after the line.
+  async function checkLineAudio(back, label) {
+    const filename = /\[sound:(hachidori-sentence-audio-[0-9a-f-]{36}\.mp3)\]/u.exec(back)?.[1];
+    assert.ok(filename, `${label}: the note references the line's MP3: ${back}`);
+    const { rate, mono, samples } = await decodeSentenceAudio(settings, media.get(filename));
+    assert.ok(mono, `${label}: the MP3 is mono`);
     const fromMs = CUE.startMs - PAD_MS;
     const toMs = CUE.endMs + PAD_MS;
     const durationMs = samples.length * 1000 / rate;
@@ -539,7 +536,8 @@ try {
       + `changes of tone at ${offsets.map(offset => (offset === null ? "none" : `${offset >= 0 ? "+" : ""}${offset} ms`)).join(", ")}; `
       + `quietest 20 ms inside at ${quietest.toFixed(3)} RMS; longest near-silent run ${longestGapMs.toFixed(1)} ms`
       + `${longestGapMs > 0 ? ` at media ${gapAtMs.toFixed(1)} ms` : ""}`);
-    assert.ok(Math.abs(durationMs - (toMs - fromMs)) <= 5, `${label}: the clip is the cue with its pads (${durationMs} ms)`);
+    assert.ok(durationMs >= toMs - fromMs - 5 && durationMs <= toMs - fromMs + MP3_SLACK_MS,
+      `${label}: the clip is the cue with its pads (${durationMs} ms)`);
     assert.ok(quietest > AUDIBLE_RMS, `${label}: no 20 ms of the clip is silent, away from its ends (${quietest})`);
     assert.deepEqual([...heard].sort(), [...expected].sort(), `${label}: the clip holds the tones of the padded cue's seconds and no other`);
     assert.deepEqual(misplaced.map(window => Math.round(window.centreMs)), [], `${label}: each second's tone is where it was played`);
@@ -656,7 +654,7 @@ try {
   start = await playback();
   note = await addNote();
   assert.match(note.fields.Back, /^朝ごはんを<b>食べたかった<\/b>/u, "the sentence is the whole cue");
-  checkLineAudio(note.fields.Back, "heard");
+  await checkLineAudio(note.fields.Back, "heard");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), [], "nothing replayed or played the line");
   assert.equal(after.seeks, start.seeks, "nothing seeked");
@@ -674,7 +672,7 @@ try {
   await tab.evaluate(() => document.querySelector("video").pause());
   start = await playback();
   note = await addNote();
-  checkLineAudio(note.fields.Back, "replayed");
+  await checkLineAudio(note.fields.Back, "replayed");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), ["play", "pause"], "the line was replayed once through the player");
   assert.deepEqual(after.seekTargets.slice(start.seeks), [CUE.startMs - PAD_MS, after.seekTargets.at(-1)],
@@ -695,7 +693,7 @@ try {
   const pausedAt = (await playback()).mediaMs;
   assert.ok(pausedAt > CUE.startMs - PAD_MS && pausedAt < CUE.endMs - 1000, `paused partway through the line (${pausedAt} ms)`);
   note = await addNote();
-  checkLineAudio(note.fields.Back, "played on");
+  await checkLineAudio(note.fields.Back, "played on");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), ["pause", "play", "pause"], "the rest of the line played once");
   assert.equal(after.seeks, start.seeks, "nothing seeked");
@@ -709,7 +707,7 @@ try {
   await mapBack("{sentence}<br>{sentence-audio}<br>{gif}");
   start = await standAt(CUE.endMs + PAD_MS + 50);
   note = await addNote();
-  checkLineAudio(note.fields.Back, "heard, with a GIF but no grant");
+  await checkLineAudio(note.fields.Back, "heard, with a GIF but no grant");
   assert.doesNotMatch(note.fields.Back, /hachidori-gif-/u, "no GIF without the grant");
   await waitForStatus(/GIF: Chrome has not let Hachidori record this tab yet\. Click Hachidori's toolbar button/u,
     "the note says the GIF needs the toolbar button");
@@ -761,7 +759,7 @@ try {
   // viewer's state is restored.
   start = await standAt(3500, 1.25);
   note = await addNote();
-  checkLineAudio(note.fields.Back, "recorded from the tab");
+  await checkLineAudio(note.fields.Back, "recorded from the tab");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), ["play while recording", "pause"],
     "the line was replayed once through the player while the recorder ran");
@@ -780,14 +778,14 @@ try {
   box = await (await tab.$("#word")).boundingBox();
 
   // A line never heard at 1× ({gif} mapped): one replay records the GIF with
-  // tab capture, and the line audio keeps that replay's sound for the WAV.
+  // tab capture, and the line audio keeps that replay's sound for the MP3.
   await setSwitch(false);
   await setSwitch(true);
   start = await standAt(3500, 1.25);
   note = await addNote();
   if (!/\[sound:/u.test(note.fields.Back)) console.log("diagnostics:", JSON.stringify(await diagnose(tab)));
   assert.match(note.fields.Back, /^朝ごはんを<b>食べたかった<\/b>/u, "the sentence is the whole cue");
-  checkLineAudio(note.fields.Back, "replayed for its GIF");
+  await checkLineAudio(note.fields.Back, "replayed for its GIF");
   // The {gif} field holds the line's animated GIF: Chrome decodes it into more
   // than one distinct frame, from the moving band the fixture painted while the
   // line played, looping forever and at most 480 px wide.
@@ -907,7 +905,7 @@ try {
   console.log(`Netflix mining fixture: ${notes.length} notes; a page open before the switch went on got the scripts, `
     + "paused and resumed, and said to reload; without a capture grant, line audio heard, replayed and played on, "
     + "tab capture asking for the toolbar button; after the click, a line recorded from the tab, a GIF and its line "
-    + "audio from one replay, a {gif}-only note, a screenshot of the video alone; each WAV the cue's seconds' tones; "
+    + "audio from one replay, a {gif}-only note, a screenshot of the video alone; each MP3 the cue's seconds' tones; "
     + "playback restored, hover pause and resume through the watch session only, no play while recording — passed");
 } finally {
   await browser?.close();

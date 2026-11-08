@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SENTENCE_PAD_MS, clipSamples, createAudioFrameClock, createNetflixRecorder,
   mediaClockOffset } from "../extension/netflix-capture.js";
+import { sentenceAudioBase64 } from "../extension/sentence-audio.js";
 import { readGif } from "./gif-structure.mjs";
 
 test("the media clock offset is the median of the page's (wall, media) pairs", () => {
@@ -113,12 +114,10 @@ test("the recorder opens its own tab's stream, trims to the cue's padded media t
   const clip = await recorder.finish({ startMs: 1000, endMs: 2000, anchors: [[1_001_500, 1000], [1_002_000, 1500]] });
   assert.equal(clip.silent, false);
   assert.ok(record.stopped >= 1 && record.cancelled >= 1, "the stream and its reader are stopped");
-  const wav = Buffer.from(clip.data, "base64");
-  assert.equal(wav.readUInt32LE(24), 1000);
-  assert.equal(wav.readUInt32LE(40), 1500 * 2);
-  const levels = [...Array(1500).keys()].map(index => wav.readInt16LE(44 + index * 2));
-  assert.equal(levels[0], Math.trunc(3 / 64 * 0x7fff), "the clip starts in the block holding frame 250");
-  assert.equal(levels.at(-1), Math.trunc(18 / 64 * 0x7fff), "and ends in the block holding frame 1749");
+  // Frames 250–1749, from the block holding frame 250 (level 3/64) to the
+  // one holding frame 1749 (18/64), as the line's MP3.
+  const line = Float32Array.from({ length: 1500 }, (_, index) => (Math.floor((250 + index) / 100) + 1) / 64);
+  assert.equal(clip.data, await sentenceAudioBase64(line, 1000));
   await assert.rejects(recorder.finish({ startMs: 1000, endMs: 2000, anchors: [[1, 1]] }), /replaced or stopped/u);
 });
 
@@ -258,7 +257,7 @@ test("without gif, no video track is opened and no GIF is returned", async () =>
   assert.equal(clip.silent, false);
 });
 
-test("for a {gif} field alone, the recorder returns the GIF and encodes no WAV", async () => {
+test("for a {gif} field alone, the recorder returns the GIF and encodes no sentence audio", async () => {
   const { window, record, clock } = gifRecorderWindow();
   const recorder = createNetflixRecorder(window);
   await recorder.start({ targetTabId: 7, limitMs: 60_000, audio: false, gif: true });

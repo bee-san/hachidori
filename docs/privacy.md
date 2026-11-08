@@ -193,7 +193,7 @@ the line first if you had not heard all of it. When a field maps `{gif}`, or
 before the sound goes through Hachidori, Hachidori replays that one line and
 records the tab while it plays: its audio, and for `{gif}` also its video
 frames. That recording exists only in the memory of a hidden Hachidori frame in
-that tab until it is cut to the line and encoded. The line is sent as a WAV for
+that tab until it is cut to the line and encoded. The line is sent as an MP3 for
 `{sentence-audio}` and a short looping GIF for `{gif}` to your configured
 AnkiConnect server with the note. Audio that no field maps is discarded, and
 turning the switch off frees the kept audio and keeps no more. Where no GIF can
