@@ -779,25 +779,18 @@ function showSettingsSection(focus = false) {
     });
     customButtonController.render();
   }
+  // User scripts and the Script Store both save the one list of packages.
+  const readScripts = () => options.userScripts;
+  const saveScripts = (scripts) => {
+    options.userScripts = normaliseUserScripts(scripts);
+    writeOptions();
+  };
   if (activeSection === "user-scripts") {
-    userScriptController ??= createUserScriptSettings({ document,
-      readScripts: () => options.userScripts,
-      saveScripts: (scripts) => {
-        options.userScripts = normaliseUserScripts(scripts);
-        writeOptions();
-      },
-    });
+    userScriptController ??= createUserScriptSettings({ document, readScripts, saveScripts });
     userScriptController.render();
   }
   if (activeSection === "script-store") {
-    scriptStoreController ??= createScriptStore({ document,
-      fetch: (...args) => window.fetch(...args),
-      readScripts: () => options.userScripts,
-      saveScripts: (scripts) => {
-        options.userScripts = normaliseUserScripts(scripts);
-        writeOptions();
-      },
-    });
+    scriptStoreController ??= createScriptStore({ document, fetch: (...args) => window.fetch(...args), readScripts, saveScripts });
     scriptStoreController.render();
   }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
