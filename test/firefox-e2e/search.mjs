@@ -81,11 +81,12 @@ describe("search page", () => {
     // extension pages from 154; before, the frame is an ordinary extension
     // page, where it cannot run.
     const sandboxes = Number(/(\d+)\./u.exec(await browser.version())[1]) >= 154;
-    await writeOptions(page, { customPopupJavascript: `document.documentElement.dataset.customScript = "ran";
+    await writeOptions(page, { userScripts: [{ id: "search-page-check", name: "Search page check", enabled: true, css: "",
+      javascript: `document.documentElement.dataset.customScript = "ran";
       setInterval(() => {
         const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
         if (popup && !popup.hidden) popup.dataset.customScript = "reached";
-      }, 50);` });
+      }, 50);` }] });
     const registered = await waitFor(() => page.evaluate(async () => (await chrome.userScripts.getScripts({
       ids: ["hachidori-custom-javascript"] })).length === 1 || false), { timeout: 10_000 });
     // The page hands the frame the script as it loads.
@@ -101,8 +102,8 @@ describe("search page", () => {
       const popup = document.querySelector("hachidori-host")?.shadowRoot?.querySelector(".gsm-hoshidicts-popup");
       return { page: document.documentElement.dataset.customScript ?? null, popup: popup?.dataset.customScript ?? null };
     }).then(found => (found.popup === "reached" || !sandboxes ? found : false)), { timeout: 5_000 });
-    await writeOptions(page, { customPopupJavascript: "" });
-    check("Custom JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
+    await writeOptions(page, { userScripts: [] });
+    check("A user script's JavaScript runs on the search page from Firefox 154, reaching the docked result, once Firefox grants user scripts",
       registered === true && result === "食べる" && sandboxed === sandboxes
         && (sandboxes ? marks?.page === "ran" && marks.popup === "reached" : marks?.page === null && marks.popup === null),
       JSON.stringify({ registered, result, sandboxes, sandboxed, marks }));

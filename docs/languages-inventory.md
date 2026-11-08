@@ -38,7 +38,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `popupThemeVariant` (auto) | Design → Colours | None | P |
 | `popupToolbarPosition` (auto) | Design | None | G (geometry) |
 | `customPopupCss` ("") | Design → Custom CSS | None | G; can target `[data-hd-language]` |
-| `customPopupJavascript` ("") | Design → Custom JavaScript | None | G |
+| `userScripts` ([]) | Advanced → User scripts; replaced `customPopupJavascript` (Design → Custom JavaScript), which migrates into it | None | G |
 | `customLinks` ([]) | derived from `customButtons` | `%w`, `%r` word and reading | P (derived) |
 | `customButtons` ([]) | Design → Custom buttons; placeholder "Search Jisho" | Link targets are language sites | P |
 | `audioSources` (speech: reading) | Audio | `text-to-speech-reading`; speech is `ja-JP` (speech.js:30-35) | P; pack default source and speech language (13) |

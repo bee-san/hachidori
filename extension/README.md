@@ -250,12 +250,15 @@ stores it as `rank-based` when its values are ranks (#684).
 - **Renderer.** `render/` is the Default popup renderer ported from GameSentenceMiner,
   which adapts Hoshi Reader and Yomitan; `render/ATTRIBUTION.md` records what
   came from where.
-- **Custom JavaScript.** `custom-javascript.js` registers Design → Custom
-  JavaScript as a user script, with `custom-javascript-bridge.js` ahead of it in
-  the same world: the bridge attaches the popup's closed root when the reader
-  asks and returns it to the saved code through `host.shadowRoot`
-  ([architecture](../docs/architecture.md)). The search page runs the same
-  code in its sandboxed frame, where the reader gives the popup an open root.
+- **User scripts.** `user-script-settings.js` is Settings → Advanced → User
+  scripts, the user's packages of JavaScript and CSS
+  ([user scripts](../docs/user-scripts.md)). `custom-javascript.js` registers
+  each switched-on package's JavaScript as a user script, with
+  `custom-javascript-bridge.js` ahead of it in the same world: the bridge
+  attaches the popup's closed root when the reader asks and returns it to the
+  packages through `host.shadowRoot` ([architecture](../docs/architecture.md)).
+  The search page runs the same code in its sandboxed frame, where the reader
+  gives the popup an open root. Their CSS joins Custom CSS in the popup.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
   GameSentenceMiner overlay flips in its copy. It also defines the shared
   host-capability policy used by Settings, the toolbar, the reader and the

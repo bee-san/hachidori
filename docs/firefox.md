@@ -83,9 +83,9 @@ Two runtime rules keep one source for both browsers:
   in `about:addons` → Hachidori → **Permissions and data**, off by default.
   Extensions cannot open that page, so **Read saved pages too** says where it
   is instead of offering a button.
-- **Custom JavaScript.** Settings → Design → Custom JavaScript has an **Allow
-  user scripts** button; Firefox asks once, and the saved script runs from then
-  on. On the search page it runs from Firefox 154, the first with sandboxed
+- **User scripts.** Settings → Advanced → User scripts has an **Allow user
+  scripts** button; Firefox asks once, and the packages' JavaScript runs from
+  then on ([user scripts](user-scripts.md)). On the search page it runs from Firefox 154, the first with sandboxed
   extension pages ([Search page](architecture.md#search-page)), and so do
   scripts that use its history ([search history](search-history.md#for-user-scripts-hdsearchhistory)).
 - **Clipboard monitor.** Firefox asks for `clipboardRead` each time the search
@@ -132,7 +132,7 @@ Before a first upload:
   and a linked browser sends its lookups to the sharing host
   ([privacy.md](privacy.md)). Nothing goes to Hachidori's publisher.
 - **User scripts.** AMO's policy allows the `userScripts` API only in user
-  script managers. A listed version may have to leave Custom JavaScript out of
+  script managers. A listed version may have to leave user scripts out of
   the Firefox manifest, and with it the search page's sandbox policy that
   allows `eval`.
 
@@ -145,8 +145,8 @@ fourteen warnings, all in code shared with Chrome:
   a packaged theme, and zip.js's worker.
 - `chrome-offscreen.js` tests for `chrome.offscreen.createDocument` and calls it
   when it exists. Firefox has no offscreen API, so it never makes the call.
-- The search page's sandboxed frame runs Custom JavaScript (#644): `search.js`
-  calls `eval` on the user's script, `content_security_policy.sandbox` allows
+- The search page's sandboxed frame runs user scripts (#644): `search.js`
+  calls `eval` on each package's JavaScript, `content_security_policy.sandbox` allows
   `eval` (two warnings), and the `sandbox` key, its `pages` and
   `content_security_policy.sandbox` arrive in Firefox 154, after the minimum,
   153 (six warnings, desktop and Android).

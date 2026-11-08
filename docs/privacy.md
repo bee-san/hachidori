@@ -32,7 +32,7 @@ in this browser profile: they are not sent anywhere, linked browsers do not
 share them, and backups do not include them. The same Settings section turns
 this off (the lines already kept stay), sets how many lines are kept (10,000
 unless you change it) and has **Clear history**, which deletes them.
-Custom JavaScript you save can read and change them on the search page.
+User scripts you add can read and change them on the search page.
 
 Your browser profile stores imported dictionaries and their indexes, personal
 dictionary entries, preferences, dictionary update settings, local lookup

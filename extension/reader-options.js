@@ -166,7 +166,10 @@
     popupThemeVariant: "auto",
     popupToolbarPosition: "auto",
     customPopupCss: "",
-    customPopupJavascript: "",
+    // Advanced → User scripts: packages of JavaScript and CSS, in the order
+    // they run (docs/user-scripts.md). Design → Custom JavaScript became the
+    // first of them.
+    userScripts: [],
     customLinks: [],
     customButtons: [],
     audioSources: [{ id: "default-tts", type: "text-to-speech-reading", enabled: true, url: "", voice: "" }],
@@ -328,7 +331,7 @@
   for (const id of POPUP_RENDERER_IDS) POPUP_THEME_IDS.add(id);
   const popupRenderer = theme => POPUP_RENDERER_IDS.includes(theme) ? theme : "default";
   const DESIGN_OPTION_KEYS = [
-    "popupTheme", "popupThemeVariant", "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
+    "popupTheme", "popupThemeVariant", "popupToolbarPosition", "customPopupCss", "customLinks", "customButtons", "popupWidthPx", "popupHeightPx", "popupScalePercent", "popupOpacityPercent", "sourceHighlightEnabled", "popupColumns",
     "glossaryLayoutMode", "showCompactDefinitionSummary", "compactDefinitionSummaryCount", "compactDefinitionSummaryDictionary",
     "kanjiClickDictionary", "popupImageSource", "imageHoverPreview", "averageFrequency", "showFrequencyTagsWithAverage",
     "showFrequencyDictionaryNames",
@@ -459,6 +462,33 @@
       ids.add(button.id);
       return [normalized];
     });
+  }
+
+  // A package is switched on or off as a whole; either of its parts may be empty.
+  function normaliseUserScripts(value) {
+    if (!Array.isArray(value)) return [];
+    const ids = new Set();
+    return value.flatMap(script => {
+      if (!script || !validIdentifier(script.id) || ids.has(script.id)
+          || typeof script.name !== "string" || !script.name.trim() || /[\u0000-\u001f\u007f]/u.test(script.name)
+          || typeof script.enabled !== "boolean" || typeof script.javascript !== "string"
+          || typeof script.css !== "string") return [];
+      ids.add(script.id);
+      return [{ id: script.id, name: script.name, enabled: script.enabled, javascript: script.javascript, css: script.css }];
+    });
+  }
+
+  // The switched-on packages with JavaScript: what the worker registers as
+  // user scripts, and what the reader opens its popup root for.
+  function javaScriptUserScripts(scripts) {
+    return scripts.filter(script => script.enabled && script.javascript.trim() !== "");
+  }
+
+  // The popup's own stylesheets, after Hachidori's and the dictionaries': each
+  // switched-on package's CSS in list order, then Design → Custom CSS, which
+  // stays the last word.
+  function userPopupStyles(options) {
+    return [...options.userScripts.filter(script => script.enabled).map(script => script.css), options.customPopupCss];
   }
 
   function customLinksFromButtons(buttons) {
@@ -752,6 +782,7 @@
       case "audioSources": return normaliseAudioSources(value);
       case "customLinks": return normaliseCustomLinks(value);
       case "customButtons": return normaliseCustomButtons(value);
+      case "userScripts": return normaliseUserScripts(value);
       case "keybinds": return normaliseKeybinds(value);
       case "anki": return normaliseAnki(value);
       case "experimental": return normaliseExperimental(value);
@@ -867,10 +898,10 @@
     return (group?.dictionaryIds || []).filter(id => titles.has(id)).map(id => titles.get(id));
   }
 
-  // Keys an older stored record or backup may still carry. `modifier` and
-  // `definitionBlurEnabled` migrate; `hoverDelayMs` was never adjustable and is
-  // dropped rather than read as `scanDelayMs`.
-  const RETIRED_OPTION_KEYS = ["modifier", "definitionBlurEnabled", "hoverDelayMs"];
+  // Keys an older stored record or backup may still carry. `modifier`,
+  // `definitionBlurEnabled` and `customPopupJavascript` migrate; `hoverDelayMs`
+  // was never adjustable and is dropped rather than read as `scanDelayMs`.
+  const RETIRED_OPTION_KEYS = ["modifier", "definitionBlurEnabled", "hoverDelayMs", "customPopupJavascript"];
 
   // `definitionBlurEnabled` was renamed; the new key wins when both are present.
   function legacyBlurCountOption(source, strict) {
@@ -881,9 +912,20 @@
     return {};
   }
 
+  // Design → Custom JavaScript became Advanced → User scripts' first package.
+  // Only stored records and backups migrate, so a write from a linked browser
+  // that still has Custom JavaScript cannot replace the packages.
+  function legacyUserScriptsOption(source, strict) {
+    const code = source.customPopupJavascript;
+    if (strict || Object.hasOwn(source, "userScripts") || typeof code !== "string" || code.trim() === "") return {};
+    return { userScripts: [{ id: "custom-javascript", name: "Custom JavaScript", enabled: true, javascript: code, css: "" }] };
+  }
+
   function projectOptionKeys(value, strict) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    const result = { ...legacyActivationOptions(source, strict), ...legacyBlurCountOption(source, strict) };
+    const result = {
+      ...legacyActivationOptions(source, strict), ...legacyBlurCountOption(source, strict), ...legacyUserScriptsOption(source, strict),
+    };
     // Keep the existing mining choice when the experiment becomes an Anki
     // option. An explicit new option takes precedence over the old flag.
     if (!Object.hasOwn(source, "smallerAnkiCards") && typeof source.experimental?.smallerAnkiCards === "boolean") {
@@ -915,7 +957,7 @@
     if (key === "keybinds") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((bind, index) => raw[index] && typeof raw[index] === "object" && JSON.stringify(bind)
         === JSON.stringify(Object.fromEntries(Object.keys(bind).map(field => [field, raw[index][field]]))));
-    if (key === "audioSources" || key === "customLinks" || key === "customButtons") return Array.isArray(raw) && raw.length === normalized.length
+    if (key === "audioSources" || key === "customLinks" || key === "customButtons" || key === "userScripts") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
@@ -998,7 +1040,7 @@
   const GLOBAL_OPTION_KEYS = Object.freeze([
     "hoverEnabled", "lookupMode", "activationKey", "definitionLookupMode", "scanDelayMs", "definitionScanDelayMs",
     "popupHideDelayMs", "hidePopupOnCursorExit", "hidePopupOnCursorExitDelayMs", "popupNestingMaxDepth",
-    "popupToolbarPosition", "customPopupCss", "customPopupJavascript", "smallerAnkiCards", "experimental",
+    "popupToolbarPosition", "customPopupCss", "userScripts", "smallerAnkiCards", "experimental",
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
     "showToolbarSearchButton", "searchClickLookup", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",
@@ -1008,7 +1050,7 @@
   const PROFILE_OPTION_KEYS = Object.freeze(OPTION_KEYS.filter(key => !GLOBAL_KEYS.has(key) && key !== "anki"));
   const PROFILE_KEYS = new Set(PROFILE_OPTION_KEYS);
   // Retired keys migrate into the scope of the key they became.
-  const GLOBAL_RETIRED_KEYS = ["modifier", "hoverDelayMs"];
+  const GLOBAL_RETIRED_KEYS = ["modifier", "hoverDelayMs", "customPopupJavascript"];
   const LANGUAGE_CODE = /^[a-z]{2,3}$/u;
   // `Hani` in a requirement matches every script code that includes Han.
   const HAN_SCRIPTS = new Set(["Hani", "Hans", "Hant", "Hanb", "Jpan", "Kore"]);
@@ -1409,7 +1451,7 @@
     EXPERIMENTAL_FEATURES,
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
-    normaliseCustomButtons, normaliseExperimental, ankiTemplateConfig,
+    normaliseCustomButtons, normaliseUserScripts, javaScriptUserScripts, userPopupStyles, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,

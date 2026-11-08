@@ -47,6 +47,7 @@
             <option value="sharing">Sharing</option>
             <option value="backup">Backup &amp; restore</option>
             <option value="advanced">Advanced</option>
+            <option value="user-scripts">User scripts</option>
             <option value="languages">Languages</option>
           </select>
         </label>
@@ -123,6 +124,7 @@
         </nav>
         <nav class="section-tabs" id="advanced-navigation" aria-label="Advanced sections" hidden>
           <a href="#advanced" data-label="Advanced">Advanced</a>
+          <a href="#user-scripts" data-label="User scripts">User scripts</a>
           <a href="#languages" data-label="Languages">Languages</a>
         </nav>
         <section
@@ -1112,20 +1114,7 @@
                   <button id="reset-custom-css" type="button" class="ghost">Reset custom CSS</button>
                 </div>
                 <p class="field-hint">Invalid rules are ignored by the browser. Styles using URLs can request external resources.</p>
-                <div id="custom-javascript">
-                  <label class="field-label" for="opt-custom-popup-javascript">Custom JavaScript</label>
-                  <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
-                  <p class="field-hint" id="custom-javascript-permission">Enable user scripts for Hachidori on Chrome's Extensions page before using this.</p>
-                  <div class="setting-row" id="custom-javascript-allow-row" hidden>
-                    <button id="custom-javascript-allow" type="button" class="ghost">Allow user scripts</button>
-                  </div>
-                  <textarea id="opt-custom-popup-javascript" rows="8" spellcheck="false" autocapitalize="off"
-                    aria-describedby="custom-javascript-warning custom-javascript-count"></textarea>
-                  <div class="custom-css-footer">
-                    <span id="custom-javascript-count" class="field-hint">0 characters</span>
-                    <button id="reset-custom-javascript" type="button" class="ghost">Reset custom JavaScript</button>
-                  </div>
-                </div>
+                <p class="field-hint" id="custom-javascript-moved">Custom JavaScript is in <a href="#user-scripts">Advanced → User scripts</a>, where each script can be switched off, replaced or deleted on its own.</p>
               </details>
               <div class="lookup-group">
                 <div class="setting-row">
@@ -1532,6 +1521,73 @@
                 <output class="custom-dictionary-status" id="debug-info-status" aria-live="polite"></output>
               </div>
             </div>
+          </fieldset>
+        </section>
+
+        <section
+          class="card"
+          id="user-scripts"
+          aria-labelledby="user-scripts-heading"
+          data-settings-group="Advanced"
+          data-settings-name="User scripts"
+          hidden
+        >
+          <div class="card-head">
+            <h1 id="user-scripts-heading" tabindex="-1" data-search-keywords="userscripts custom javascript css code scripts packages">User scripts</h1>
+            <p class="hint">Packages of JavaScript and CSS that change the popup and the search page. Switch each one on or off, replace it or delete it on its own.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <fieldset class="lookup-group">
+            <p class="field-hint" id="custom-javascript-permission">Chrome runs a script's JavaScript once Allow User Scripts is on for Hachidori on its Extensions page. CSS needs nothing.</p>
+            <div class="setting-row" id="custom-javascript-allow-row" hidden>
+              <button id="custom-javascript-allow" type="button" class="ghost">Allow user scripts</button>
+            </div>
+          </fieldset>
+          <fieldset class="lookup-group" id="user-script-settings">
+            <legend>Your scripts</legend>
+            <p class="section-note">Scripts run top to bottom. Their JavaScript runs on the pages you open or reload and on the search page; their CSS styles the popup after Hachidori's and the dictionaries' styles and before Design → Custom CSS. A script that fails does not stop the others.</p>
+            <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
+            <ol id="user-script-list" class="user-script-list"></ol>
+            <p id="user-script-empty" class="field-hint">No scripts yet.</p>
+            <div class="setting-row">
+              <div class="options-actions">
+                <button id="user-script-add" type="button" class="primary-button">Add script</button>
+                <label class="file-button ghost"><span>Import files</span><input id="user-script-import" type="file" accept=".js,.css,text/javascript,text/css" multiple aria-describedby="user-script-import-help"></label>
+              </div>
+              <p class="field-hint" id="user-script-import-help">A .js file, a .css file or one of each opens as a new script.</p>
+              <output class="custom-dictionary-status" id="user-script-status" aria-live="polite"></output>
+            </div>
+            <form id="user-script-form" class="user-script-form" novalidate hidden aria-labelledby="user-script-form-heading">
+              <h2 id="user-script-form-heading">New script</h2>
+              <label class="field">
+                <span class="field-label">Name</span>
+                <input id="user-script-name" type="text" autocomplete="off" spellcheck="false" />
+              </label>
+              <div class="user-script-part">
+                <div class="user-script-part-head">
+                  <label class="field-label" for="user-script-javascript">JavaScript</label>
+                  <label class="file-button ghost"><span>Load .js file</span><input id="user-script-javascript-file" type="file" accept=".js,text/javascript"></label>
+                </div>
+                <textarea id="user-script-javascript" rows="10" spellcheck="false" autocapitalize="off"
+                  aria-describedby="custom-javascript-warning user-script-javascript-count"
+                  placeholder="window.addEventListener(&quot;hachidori-popup-shown&quot;, () =&gt; {&#10;  const popup = document.querySelector(&quot;hachidori-host&quot;).shadowRoot;&#10;});"></textarea>
+                <span id="user-script-javascript-count" class="field-hint">0 characters</span>
+              </div>
+              <div class="user-script-part">
+                <div class="user-script-part-head">
+                  <label class="field-label" for="user-script-css">CSS</label>
+                  <label class="file-button ghost"><span>Load .css file</span><input id="user-script-css-file" type="file" accept=".css,text/css"></label>
+                </div>
+                <textarea id="user-script-css" rows="6" spellcheck="false" autocapitalize="off"
+                  aria-describedby="user-script-css-count" placeholder=".gloss-image {&#10;  border-radius: 8px;&#10;}"></textarea>
+                <span id="user-script-css-count" class="field-hint">0 characters</span>
+              </div>
+              <output id="user-script-error" class="custom-dictionary-status is-error" aria-live="polite"></output>
+              <div class="options-actions">
+                <button id="user-script-submit" type="submit" class="primary-button">Add script</button>
+                <button id="user-script-cancel" type="button" class="ghost">Cancel</button>
+              </div>
+            </form>
           </fieldset>
         </section>
 

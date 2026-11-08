@@ -1624,8 +1624,8 @@ reader's other keys, and may send the two requests the reader sends with
 profiles, each checked for its shape: `hd_language_selection_write` with only
 `baseRevision` and `activeProfileId` (the Switch to the next language
 keybind), and `hd_open_settings` for the Anki section only. Both act on this
-browser's own choices, so the user's Custom JavaScript, which shares the
-frame, gains nothing it could not do from the toolbar.
+browser's own choices, so the user's scripts, which share the frame, gain
+nothing they could not do from the toolbar.
 
 ### 16.3 Settings
 
@@ -1725,7 +1725,7 @@ settings *All languages*:
   Anki's connection card, which has no legend;
 - beside single shared controls in fieldsets that mix scopes: Design →
   Appearance's Width, Height, Scale, Headword and toolbar position and
-  Highlight the word on the page; Design's Custom CSS and Custom JavaScript;
+  Highlight the word on the page; Design's Custom CSS;
   Reading → Results' Maximum child popups; Anki's Smaller Anki cards.
 
 **Reset Design to defaults** resets the edited profile's Design keys and says

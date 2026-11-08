@@ -200,7 +200,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[OPTIONS_KEY]) return;
   void reconcileAnkiIndex();
-  void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).customPopupJavascript);
+  void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).userScripts);
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
   void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.youtubeMining);
@@ -643,7 +643,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   // The toolbar badge names the active language once the records have profiles.
   if (globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY])) void syncLanguageBadge(chrome);
   const options = normaliseOptions(stored[OPTIONS_KEY]);
-  void applyCustomJavaScript(chrome, options.customPopupJavascript);
+  void applyCustomJavaScript(chrome, options.userScripts);
   void applyGoogleDocsFlag(chrome, options.experimental.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
   void applyYouTubeFlag(chrome, options.experimental.youtubeMining);
@@ -654,7 +654,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
 chrome.permissions?.onAdded.addListener(({ permissions = [] }) => {
   if (!permissions.includes("userScripts")) return;
   void chrome.storage.local.get(OPTIONS_KEY)
-    .then(stored => applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).customPopupJavascript));
+    .then(stored => applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).userScripts));
 });
 
 if (OVERLAY_MODE) {

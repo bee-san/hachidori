@@ -507,7 +507,7 @@ test("switching after a retired lookup applies saved actions to the next rendere
 // Colours (popupThemeVariant) is core too: a host attribute for every renderer,
 // shown for a theme whose catalogue entry lists colour variants.
 const CORE_DESIGN_SETTINGS = ["popupTheme", "popupThemeVariant", "popupWidthPx", "popupHeightPx", "popupScalePercent",
-  "sourceHighlightEnabled", "customPopupCss", "customPopupJavascript", "customLinks"];
+  "sourceHighlightEnabled", "customPopupCss", "customLinks"];
 const designResult = { matched: "食べた", deinflected: "食べる", preprocessorSteps: 0,
   trace: [{ name: "-た", description: "past" }],
   term: { expression: "食べる", reading: "たべる", rules: "v1", score: 0,
