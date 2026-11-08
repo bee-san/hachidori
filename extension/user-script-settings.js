@@ -19,6 +19,15 @@ export function nameFromFile(fileName) {
   return fileName.replace(/\.(?:js|css)$/iu, "").replace(/[-_]+/gu, " ").trim();
 }
 
+// A chosen file's text, or an error that names the file.
+async function readText(file) {
+  try {
+    return await file.text();
+  } catch (cause) {
+    throw new Error(`${file.name} could not be read: ${cause?.message ?? cause}`);
+  }
+}
+
 export function createUserScriptSettings({
   document,
   readScripts,
@@ -228,14 +237,6 @@ export function createUserScriptSettings({
     form.hidden = true;
     commit(next);
     focusRow(id, "edit");
-  }
-
-  async function readText(file) {
-    try {
-      return await file.text();
-    } catch (cause) {
-      throw new Error(`${file.name} could not be read: ${cause?.message ?? cause}`);
-    }
   }
 
   // Import: a .js file, a .css file or one of each open as a new package.
