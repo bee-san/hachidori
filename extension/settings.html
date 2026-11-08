@@ -48,7 +48,6 @@
             <option value="backup">Backup &amp; restore</option>
             <option value="advanced">Advanced</option>
             <option value="user-scripts">User scripts</option>
-            <option value="script-store">Script Store</option>
             <option value="languages">Languages</option>
           </select>
         </label>
@@ -126,7 +125,6 @@
         <nav class="section-tabs" id="advanced-navigation" aria-label="Advanced sections" hidden>
           <a href="#advanced" data-label="Advanced">Advanced</a>
           <a href="#user-scripts" data-label="User scripts">User scripts</a>
-          <a href="#script-store" data-label="Script Store">Script Store</a>
           <a href="#languages" data-label="Languages">Languages</a>
         </nav>
         <section
@@ -1535,11 +1533,11 @@
           hidden
         >
           <div class="card-head">
-            <h1 id="user-scripts-heading" tabindex="-1" data-search-keywords="userscripts custom javascript css code scripts packages">User scripts</h1>
-            <p class="hint">Packages of JavaScript and CSS that change the popup and the search page. Switch each one on or off, replace it or delete it on its own.</p>
+            <h1 id="user-scripts-heading" tabindex="-1" data-search-keywords="userscripts custom javascript css code scripts packages script store community install update catalogue">User scripts</h1>
+            <p class="hint">Packages of JavaScript and CSS that change the popup and the search page. Write your own, or install one that people share in the Script Store below.</p>
           </div>
           <div class="options-feedback-slot"></div>
-          <fieldset class="lookup-group">
+          <fieldset class="lookup-group" id="user-script-permission">
             <p class="field-hint" id="custom-javascript-permission">Chrome runs a script's JavaScript once Allow User Scripts is on for Hachidori on its Extensions page. CSS needs nothing.</p>
             <div class="setting-row" id="custom-javascript-allow-row" hidden>
               <button id="custom-javascript-allow" type="button" class="ghost">Allow user scripts</button>
@@ -1547,10 +1545,9 @@
           </fieldset>
           <fieldset class="lookup-group" id="user-script-settings">
             <legend>Your scripts</legend>
-            <p class="section-note">Scripts run top to bottom. Their JavaScript runs on the pages you open or reload and on the search page; their CSS styles the popup after Hachidori's and the dictionaries' styles and before Design → Custom CSS. A script that fails does not stop the others.</p>
-            <p class="field-hint" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
+            <p class="section-note">Scripts run top to bottom, on the pages you open or reload and on the search page. Their CSS comes after Hachidori's and the dictionaries' styles and before Design → Custom CSS. A script that fails does not stop the others.</p>
             <ol id="user-script-list" class="user-script-list"></ol>
-            <p id="user-script-empty" class="field-hint">No scripts yet.</p>
+            <p id="user-script-empty" class="field-hint">No scripts yet. Add your own, or install one from the Script Store below.</p>
             <div class="setting-row">
               <div class="options-actions">
                 <button id="user-script-add" type="button" class="primary-button">Add script</button>
@@ -1571,6 +1568,7 @@
                   <label class="field-label" for="user-script-javascript">JavaScript</label>
                   <label class="file-button ghost"><span>Load .js file</span><input id="user-script-javascript-file" type="file" accept=".js,text/javascript"></label>
                 </div>
+                <p class="field-hint user-script-warning" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
                 <textarea id="user-script-javascript" rows="10" spellcheck="false" autocapitalize="off"
                   aria-describedby="custom-javascript-warning user-script-javascript-count"
                   placeholder="window.addEventListener(&quot;hachidori-popup-shown&quot;, () =&gt; {&#10;  const popup = document.querySelector(&quot;hachidori-host&quot;).shadowRoot;&#10;});"></textarea>
@@ -1592,24 +1590,10 @@
               </div>
             </form>
           </fieldset>
-        </section>
-
-        <section
-          class="card"
-          id="script-store"
-          aria-labelledby="script-store-heading"
-          data-settings-group="Advanced"
-          data-settings-name="Script Store"
-          hidden
-        >
-          <div class="card-head">
-            <h1 id="script-store-heading" tabindex="-1" data-search-keywords="userscripts user scripts community packages install update catalogue">Script Store</h1>
-            <p class="hint">Packages of JavaScript and CSS that people share in <a href="https://github.com/bee-san/hachidori-scripts" target="_blank" rel="noopener noreferrer">bee-san/hachidori-scripts</a>, where Bee reviews each one before it is listed. Install copies a package into <a href="#user-scripts">User scripts</a>, where you can switch it off or delete it; a newer version shows Update here.</p>
-          </div>
-          <div class="options-feedback-slot"></div>
           <fieldset class="lookup-group" id="script-store-settings">
+            <legend>Script Store</legend>
             <div class="setting-row">
-              <p class="field-hint" id="script-store-help">Hachidori asks GitHub for the list only when you check.</p>
+              <p class="field-hint" id="script-store-help">Scripts that people share in <a href="https://github.com/bee-san/hachidori-scripts" target="_blank" rel="noopener noreferrer">bee-san/hachidori-scripts</a>, where Bee reviews each one before it is listed. Hachidori asks GitHub for the list only when you check.</p>
               <div class="options-actions">
                 <button type="button" class="ghost" id="script-store-check" aria-describedby="script-store-help">Check for scripts</button>
                 <output class="custom-dictionary-status" id="script-store-status" aria-live="polite"></output>

@@ -36,19 +36,28 @@ list order, top to bottom.
 
 ## Settings
 
+Settings → Advanced → User scripts lists the user's packages under **Your
+scripts**, with the **Script Store** below them.
+
+- A notice above the list says how to let the browser run the packages'
+  JavaScript, and shows only until it can: on Chrome while Allow User Scripts
+  is off, checked when Settings opens and whenever it comes back into view, and
+  on Firefox until the optional permission is granted.
 - **Add script** opens the editor under the list: a name, the JavaScript and
   the CSS, each with **Load .js file** or **Load .css file** to replace it from
-  a file. **Import files** opens a `.js` file, a `.css` file or one of each as a
-  new package named after the file.
-- A row's switch turns its package on or off, the arrows move it, **Edit** opens
-  it in the editor and **Delete** asks once before removing it.
+  a file. The warning about pasting JavaScript you do not understand is beside
+  the JavaScript. **Import files** opens a `.js` file, a `.css` file or one of
+  each as a new package named after the file.
+- A row's switch turns its package on or off, the arrows move it (once there
+  are two packages), **Edit** opens it in the editor and **Delete** asks once
+  before removing it.
 - The editor saves on **Save script** or **Add script**, not as you type, so a
   half-written script never runs.
 
 ## Script Store
 
-Settings → Advanced → Experimental features → Script Store adds Advanced →
-Script Store (`script-store.js`): the packages people share in
+The Script Store, under Your scripts (`script-store.js`), lists the packages
+people share in
 [bee-san/hachidori-scripts](https://github.com/bee-san/hachidori-scripts),
 where Bee reviews each one before it is merged.
 
@@ -58,14 +67,14 @@ where Bee reviews each one before it is merged.
   JavaScript and CSS in it, so one request gives one consistent list.
   Hachidori refuses a list that is not in that shape and shows names and
   descriptions as text.
-- **Install** copies a package into User scripts, switched on, with its slug
+- **Install** copies a package into Your scripts, switched on, with its slug
   and version (`store: { slug, version }`). It then runs as the user's own
   scripts do. **Update to** replaces its name and parts once the catalogue's
-  version differs, and keeps its switch and place.
+  version differs, and keeps its switch and place. Both lists save the one
+  list of packages, so an install, update or delete in either shows in the
+  other at once.
 - Editing an installed package and saving a change makes it the user's own:
   it loses its slug and version, so Update can no longer replace the change.
-- Turning the switch off hides Script Store; installed packages stay in User
-  scripts.
 
 ## Storage
 
@@ -85,6 +94,9 @@ packages.
 
 - `test/script-store.test.mjs`: the catalogue's shape, Check for scripts,
   Install, Installed, Update and a failed check, and the `store` field.
+- `test/advanced-settings.test.mjs`: the Script Store's place in User scripts,
+  with no switch, tab or section of its own, and a package installed from it
+  showing in Your scripts at once.
 - `test/custom-javascript.test.mjs`: the option, its migration and validation,
   the order of the popup's stylesheets, the registration (one source per
   switched-on package, after the bridge) and each package's own function.

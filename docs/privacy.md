@@ -78,13 +78,13 @@ its download hosts. They receive ordinary network information, including your
 IP address and the requested resource. The download does not send your
 dictionaries, lookup text, settings, or Anki data to GitHub.
 
-**Script Store.** While the experimental Script Store is on, **Check for
-scripts** under Settings → Advanced → Script Store downloads the list of shared
-scripts from GitHub, which receives ordinary network information, including
-your IP address. Nothing is downloaded until you press it, and nothing else is
-sent. **Install** copies a script into Advanced → User scripts, where its
-JavaScript runs on the pages you open, as scripts you add yourself do, and can
-read and change those pages.
+**Script Store.** **Check for scripts**, in the Script Store under Settings →
+Advanced → User scripts, downloads the list of shared scripts from GitHub,
+which receives ordinary network information, including your IP address.
+Nothing is downloaded until you press it, and nothing else is sent.
+**Install** copies a script into your user scripts, where its JavaScript runs
+on the pages you open, as scripts you add yourself do, and can read and change
+those pages.
 
 **Pronunciation.** Playing or listing pronunciations, testing an audio source,
 and mining a note with pronunciation audio can send the word and/or reading to

@@ -134,8 +134,8 @@ Before a first upload:
 - **User scripts.** AMO's policy allows the `userScripts` API only in user
   script managers. A listed version may have to leave user scripts out of
   the Firefox manifest, and with it the search page's sandbox policy that
-  allows `eval`. The experimental Script Store installs shared packages
-  through the same API.
+  allows `eval`. The Script Store, in Advanced → User scripts, installs
+  shared packages through the same API.
 
 `web-ext lint` (the addons.mozilla.org validator) reports no errors and
 fourteen warnings, all in code shared with Chrome:

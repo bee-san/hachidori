@@ -4,8 +4,9 @@
 // JavaScript and CSS, in the order they run. A row switches its package on or
 // off, moves it, opens it in the editor below the list, or deletes it once the
 // row's confirmation is accepted. The editor saves explicitly, so half-typed
-// code never runs. A package installed from the Script Store (script-store.js)
-// keeps its slug and version until an edit makes it the user's own.
+// code never runs. A package installed from the Script Store under the list
+// (script-store.js) keeps its slug and version until an edit makes it the
+// user's own.
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
 
@@ -158,11 +159,15 @@ export function createUserScriptSettings({
     text.append(label, summary);
     const actions = document.createElement("div");
     actions.className = "user-script-actions";
-    const up = button("", `Move up: ${script.name}`, () => move(index, -1), { action: "up", icon: "arrow-up" });
-    const down = button("", `Move down: ${script.name}`, () => move(index, 1), { action: "down", icon: "arrow-down" });
-    up.disabled = index === 0;
-    down.disabled = index === count - 1;
-    actions.append(up, down,
+    // One script has nothing to move past.
+    if (count > 1) {
+      const up = button("", `Move up: ${script.name}`, () => move(index, -1), { action: "up", icon: "arrow-up" });
+      const down = button("", `Move down: ${script.name}`, () => move(index, 1), { action: "down", icon: "arrow-down" });
+      up.disabled = index === 0;
+      down.disabled = index === count - 1;
+      actions.append(up, down);
+    }
+    actions.append(
       button("Edit", `Edit ${script.name}`, () => openForm(script), { action: "edit" }),
       button("Delete", `Delete ${script.name}`, () => {
         confirming = script.id;

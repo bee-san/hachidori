@@ -47,6 +47,8 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
     ["error-text.js", ["describeErrorOrJson"]],
+    ["user-script-settings.js", ["createUserScriptSettings"]],
+    ["script-store.js", ["createScriptStore"]],
   ]) {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }
@@ -81,6 +83,35 @@ test("Advanced keeps dictionary experiments and discards removed media settings"
   window.dispatchEvent(new window.Event("hashchange"));
   assert.deepEqual(visible(), ["advanced"]);
   assert.equal(el("experimental-empty").hidden, true);
+});
+
+test("the Script Store is part of Advanced → User scripts, with no switch or tab, and installs show in Your scripts at once", async t => {
+  const { window, el, visible } = fixture(t, { hash: "#user-scripts", stored: { experimental: { scriptStore: true } } });
+  assert.equal(el("script-store"), null, "no section of its own");
+  assert.equal(el("advanced-navigation").querySelector('a[href="#script-store"]'), null);
+  assert.equal(el("settings-section").querySelector('option[value="script-store"]'), null);
+  assert.equal(el("opt-experimental-scriptStore"), null);
+  assert.equal(Object.hasOwn(window.readOptions().experimental, "scriptStore"), false);
+  assert.deepEqual(visible(), ["user-scripts"]);
+  assert.ok(el("user-scripts").contains(el("script-store-settings")));
+  el("settings-search").value = "script store";
+  el("settings-search").dispatchEvent(new window.Event("input"));
+  assert.ok([...el("settings-search-matches").querySelectorAll("strong")].some(node => node.textContent === "User scripts"));
+  // Install from the store below; Your scripts above lists it straight away,
+  // and deleting it there offers Install again.
+  window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ schema: 1, scripts: [{ slug: "texthooker",
+    name: "Texthooker", description: "A texthooker.", author: "bee-san", version: "1.0.0", license: "GPL-3.0-or-later",
+    javascript: "1;", css: "" }] }) });
+  el("script-store-check").click();
+  for (let turn = 0; turn < 5; turn += 1) await new Promise(resolve => setTimeout(resolve, 0));
+  el("script-store-list").querySelector("button").click();
+  const names = () => [...el("user-script-list").querySelectorAll(".user-script-name")].map(node => node.textContent);
+  assert.deepEqual(names(), ["Texthooker"]);
+  assert.equal(el("user-script-empty").hidden, true);
+  el("user-script-list").querySelector('[data-action="delete"]').click();
+  el("user-script-list").querySelector('[data-action="confirm"]').click();
+  assert.deepEqual(names(), []);
+  assert.equal(el("script-store-list").querySelector("button").textContent, "Install");
 });
 
 test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch", t => {

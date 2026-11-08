@@ -87,7 +87,6 @@ const OPTION_SECTIONS = {
   backup: "Backup & restore",
   advanced: "Advanced",
   "user-scripts": "User scripts",
-  "script-store": "Script Store",
   // A language's own settings (docs/languages.md 7.5).
   languages: "Languages",
   // Dictionaries → Personal dictionary owns its lookup switches.
@@ -252,11 +251,12 @@ function configureFirefoxUi() {
   element("browser-shortcuts-help").textContent = "Firefox runs these on any page. Popup actions need an open popup."
     + " Change them in Firefox's add-on shortcuts.";
   element("browser-shortcuts-open").textContent = "Change in Firefox";
+  element("custom-javascript-permission").textContent = "Firefox asks before Hachidori can run user scripts. Allow them before using this.";
+  // The notice shows only until Firefox grants them.
   const renderUserScripts = async () => {
     const granted = await chrome.permissions.contains({ permissions: ["userScripts"] }).catch(() => false);
+    element("user-script-permission").hidden = granted;
     element("custom-javascript-allow-row").hidden = granted;
-    element("custom-javascript-permission").textContent = granted ? "Firefox lets Hachidori run user scripts."
-      : "Firefox asks before Hachidori can run user scripts. Allow them before using this.";
   };
   // Firefox prompts only for a request made while it handles the click.
   element("custom-javascript-allow").addEventListener("click", () => {
@@ -267,22 +267,41 @@ function configureFirefoxUi() {
   void renderUserScripts();
 }
 
-function configureBrowserUi() {
-  // A host without a user-script world has no Advanced → User scripts or Script Store.
-  if (!HOST_CAPABILITIES.customJavaScript) {
-    for (const id of ["user-scripts", "script-store"]) {
-      const section = element(id);
-      section.dataset.settingsUnavailable = "true";
-      section.hidden = true;
-      document.querySelector(`.section-tabs a[href="#${id}"]`).hidden = true;
-      element("settings-section").querySelector(`option[value="${id}"]`).hidden = true;
+// Chrome runs a script's JavaScript once Allow User Scripts is on (Developer
+// mode before Chrome 138); until then the API's methods throw, as
+// custom-javascript.js finds when it registers. The notice shows only while
+// they do, checked again whenever the page comes back from Chrome's own pages.
+function configureChromeUserScripts() {
+  const render = async () => {
+    let allowed;
+    try {
+      await chrome.userScripts.getScripts({ ids: [] });
+      allowed = true;
+    } catch {
+      allowed = false;
     }
+    element("user-script-permission").hidden = allowed;
+  };
+  window.addEventListener("focus", () => { void render(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void render(); });
+  void render();
+}
+
+function configureBrowserUi() {
+  // A host without a user-script world has no Advanced → User scripts.
+  if (!HOST_CAPABILITIES.customJavaScript) {
+    const section = element("user-scripts");
+    section.dataset.settingsUnavailable = "true";
+    section.hidden = true;
+    document.querySelector('.section-tabs a[href="#user-scripts"]').hidden = true;
+    element("settings-section").querySelector('option[value="user-scripts"]').hidden = true;
     element("custom-javascript-moved").hidden = true;
   }
   // The search page opens from the browser's shortcuts and toolbar menu,
   // which an overlay host does not have.
   if (!HOST_CAPABILITIES.browserShortcuts) element("search-page-settings").hidden = true;
   if (isFirefox(chrome)) configureFirefoxUi();
+  else if (HOST_CAPABILITIES.customJavaScript) configureChromeUserScripts();
 }
 
 function sectionHasPendingWork(id) {
@@ -779,18 +798,19 @@ function showSettingsSection(focus = false) {
     });
     customButtonController.render();
   }
-  // User scripts and the Script Store both save the one list of packages.
+  // Your scripts and the Script Store below them save the one list of
+  // packages, so a save from either redraws both.
   const readScripts = () => options.userScripts;
   const saveScripts = (scripts) => {
     options.userScripts = normaliseUserScripts(scripts);
     writeOptions();
+    userScriptController?.render();
+    scriptStoreController?.render();
   };
   if (activeSection === "user-scripts") {
     userScriptController ??= createUserScriptSettings({ document, readScripts, saveScripts });
-    userScriptController.render();
-  }
-  if (activeSection === "script-store") {
     scriptStoreController ??= createScriptStore({ document, fetch: (...args) => window.fetch(...args), readScripts, saveScripts });
+    userScriptController.render();
     scriptStoreController.render();
   }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
