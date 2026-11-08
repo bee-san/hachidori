@@ -2489,7 +2489,7 @@ textarea {
 .custom-button-form input[type="text"] { width: 100%; }
 
 /* Advanced → User scripts: a switch, the package and its actions on a row; an
-   off row is tinted across the card, as a library row is. */
+   off row is tinted across the card, as a library row is, and its name dims. */
 .user-script-list { margin: 0; padding: 0; list-style: none; }
 .user-script-row {
   display: grid;
@@ -2501,11 +2501,19 @@ textarea {
   border-top: 1px solid var(--border);
 }
 .user-script-row.is-off { background: var(--surface-sunken); }
+.user-script-row.is-off .user-script-name { color: var(--text-dim); }
 .user-script-row[aria-current="true"] { box-shadow: inset 3px 0 var(--accent-fill); }
 .user-script-text { display: grid; gap: 3px; min-width: 0; }
 .user-script-name { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
 .user-script-summary { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
-.user-script-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.user-script-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+/* A row's buttons draw their border only when pointed at or focused, so a list
+   of rows reads as rows rather than as a grid of boxes. */
+.user-script-actions button.ghost:not(:hover, :focus-visible),
+.user-script-actions button.ghost:disabled {
+  border-color: transparent;
+  background: transparent;
+}
 .user-script-confirm {
   grid-column: 1 / -1;
   display: flex;
@@ -2556,8 +2564,8 @@ textarea {
   .user-script-row { grid-template-columns: auto minmax(0, 1fr); }
   .user-script-actions { grid-column: 2; justify-content: flex-start; }
 }
-/* Advanced → Script Store: a package's name, description and details beside
-   Install, Update or Installed. */
+/* Advanced → User scripts → Script Store: a package's name, description and
+   details beside Install, Update or Installed. */
 .script-store-list { margin: 0; padding: 0; list-style: none; }
 .script-store-row {
   display: grid;
@@ -2571,9 +2579,18 @@ textarea {
 .script-store-name { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
 .script-store-description { max-width: 66ch; margin: 0; overflow-wrap: anywhere; }
 .script-store-details { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
-.script-store-installed { color: var(--ok); font-weight: var(--weight-medium); }
+.script-store-installed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  color: var(--ok);
+  font-weight: var(--weight-medium);
+}
 @container (max-width: 560px) {
   .script-store-row { grid-template-columns: minmax(0, 1fr); }
+  /* Install, Update and Installed keep their own width under the text. */
+  .script-store-row > :last-child { justify-self: start; }
 }
 
 .keybind-list {
