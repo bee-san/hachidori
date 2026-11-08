@@ -190,13 +190,13 @@ feature gets `{sentence-audio}` rather than adding a separate one:
      hears the rest of the line once;
    - **otherwise** → the existing replay through Netflix's player, now audible,
      recorded by the same buffer.
-4. Exact zeros are still "silent", with the same note text. The WAV goes to the
+4. Exact zeros are still "silent", with the same note text. The clip goes to the
    worker, which holds it like a recorded one (`sentenceAudio`), so
    `{sentence-audio}`, the Kiku/Lapis/Senren routing and the upload lifecycle are
    unchanged.
 5. `{gif}` keeps the tab-capture replay and its grant. Chrome mutes the tab for
    that replay at its output, after the page's Web Audio graph, so the buffer
-   still records the replay's sound and the WAV comes from there. The
+   still records the replay's sound and the sentence audio comes from there. The
    tab-capture recorder still records sentence audio when the buffer is not
    running: Chrome has not let the page start audio yet (a browser shortcut is
    not a page gesture, but it does grant tab capture), or another extension or
@@ -216,7 +216,7 @@ feature gets `{sentence-audio}` rather than adding a separate one:
 | `video.captureStream()` | Refused for EME media |
 | Server-side clips (Language Reactor) | Sends Netflix's audio off the machine |
 | Disabling cross-origin isolation for the offscreen document | The threaded dictionary engine needs it |
-| MP3 or Opus instead of WAV | Unchanged from #510; a separate card-size question |
+| Opus instead of WAV | AnkiMobile plays neither Ogg nor Opus. Sentence audio is now a levelled 64 kbit/s MP3 ([architecture](architecture.md#netflix-mining-experimental)) |
 
 Known costs of routing the video through Web Audio:
 

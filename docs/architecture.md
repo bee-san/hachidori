@@ -3635,7 +3635,7 @@ match at the reader's sentence found inside it; when that sentence is not in the
 cue exactly once, the reader's own sentence is kept. Nested lookups inherit the
 cue but keep their own sentence.
 
-**Anki.** `{sentence-audio}` renders `[sound:hachidori-sentence-audio-<uuid>.wav]`
+**Anki.** `{sentence-audio}` renders `[sound:hachidori-sentence-audio-<uuid>.mp3]`
 once a recording is held and stored, and is refused in the first field like
 `{screenshot}`. For a recognised Kiku or Lapis note type a blank
 `SentenceAudio`, and for Senren a blank `sentenceAudio`, receive
@@ -3711,8 +3711,8 @@ at the clip's end, keeping the paused state the reader asked for) and the
 buffer keeps the rest. Otherwise the page replays the line through the player,
 which the viewer now hears, and the clip is cut afterwards. A line not all
 heard at 1× in the end is `unheard`. A clip of exact zeros is reported as
-silent; otherwise its 16-bit mono WAV (base64, as extension messages are JSON)
-goes to the worker as `hd_netflix_line_audio`, which requires the switch and
+silent; otherwise its MP3 (see **Sentence audio**, in base64 as extension
+messages are JSON) goes to the worker as `hd_netflix_line_audio`, which requires the switch and
 the top-frame watch document that asked, as `hd_netflix_capture_start` does but
 not the active tab, since nothing is captured, and holds it with the same
 `sentenceAudio` lifecycle as a recorded one. The reader stays visible: nothing
@@ -3754,8 +3754,8 @@ draws over its video is hidden for the replay. A recording of the sound alone
 hides and crops nothing.
 When no field maps `{sentence-audio}`, or the line audio records it, the request
 sets `audio: false`: the frame still opens the audio track, which mutes the tab
-for the replay and tells it when the capture has caught up, but encodes no WAV
-and the worker holds none. Chrome mutes a captured tab, so the replay is silent,
+for the replay and tells it when the capture has caught up, but encodes no
+sentence audio and the worker holds none. Chrome mutes a captured tab, so the replay is silent,
 but its sound reaches the line audio's graph before that mute, so the buffer
 keeps the line and the reader cuts its sentence audio from that once the
 recording is over. A recording nobody
@@ -3779,8 +3779,8 @@ and need not list the watch page's last (#548).
 `hd_netflix_capture_finish` has the frame wait up to 500 ms for the last audio,
 stop the stream, take the median wall-minus-media offset of the pairs, and cut
 the PCM to the cue ± 250 ms. A clip of exact zeros is reported as silent;
-otherwise it is encoded as a 16-bit mono WAV (the removed recorder's encoder)
-and passed to the worker on the port. When video was captured, the frame places
+otherwise it is encoded as the line's MP3 (see **Sentence audio**) and passed
+to the worker on the port. When video was captured, the frame places
 the kept frames by the same offset, keeps those inside the cue's own window
 (not padded), and encodes a looping GIF of them with the pinned MIT encoder
 gifenc (`extension/vendor/gifenc.js`, see `distribution/THIRD_PARTY_NOTICES.md`),
@@ -3790,7 +3790,7 @@ quantiser costs nearly as much for one detailed frame as for the whole line, so
 a palette per frame took 7–9 s for a 4 s line of anime-style frames against
 about 0.7 s for one. A GIF
 it cannot make is simply absent, so `{gif}` falls back to the screenshot. The
-GIF is passed to the worker beside the WAV, even when the audio was silent. The
+GIF is passed to the worker beside the MP3, even when the audio was silent. The
 worker holds each like the screenshot:
 one pending recording, stored with `storeMediaFile` inside the queued write,
 its fields emptied and a warning added when the upload is refused, released
@@ -3799,6 +3799,28 @@ kept after an uncertain one, and discarded by token
 (`hd_anki_screenshot_discard`, which releases any kind) when the reader
 abandons the submission. A replay that fails cancels the recording with
 `hd_netflix_capture_cancel`, and the reader removes the frame whatever happens.
+
+**Sentence audio.** Both the line audio and the recorder frame encode a line
+with `sentence-audio.js`: a mono MP3 at 64 kbit/s, about 8 kB a second against
+the 16-bit WAV's 96 kB, which `[sound:]` plays in every Anki client (AnkiMobile
+plays neither Ogg nor Opus). The encoder is lamejs 1.2.7 (`@breezystack/lamejs`,
+Alex Zhukov's JavaScript port of LAME, LGPL-3.0, `extension/vendor/lamejs.js`,
+see `distribution/THIRD_PARTY_NOTICES.md`): an ES module with no `eval` or
+WebAssembly. It keeps a 44.1 or 48 kHz sound at its rate (MPEG-1 Layer III)
+and resamples others. Before encoding, the clip is levelled: one gain brings
+its mean (RMS) level to −20 dBFS, louder or quieter, as far as its loudest
+sample can go without passing −1 dBFS, so a line sounds the same whatever the
+player's volume (which the element applies before the line audio's tap) or the
+title's mix. The reader encodes on the page's own thread, where a line of a few
+seconds takes hundreds of milliseconds, so the encoder works through it eight
+frames at a time and hands the thread back to the page whenever 40 ms of work
+have run. The reader loads the module by its extension URL
+(`import(chrome.runtime.getURL("sentence-audio.js"))`, as `content.js` loads
+`overlay-mode.js`) when it first adds a line, so pages that never add one never
+load it; the manifest exposes `sentence-audio.js`, `base64.js` and
+`vendor/lamejs.js` to `https://www.netflix.com/*` and `https://www.youtube.com/*`
+for that, and the recorder frame imports it directly. The worker holds only an
+MP3: the base64 must begin with an MPEG frame's sync, eleven set bits.
 
 **Subtitle positioning.** With Netflix mining on, the reader calls
 `HDNetflix.setSubtitleDragging(true)`. A left-button drag on the native subtitle
@@ -3866,7 +3888,7 @@ Netflix's subtitle data, the profile name and the player API are Netflix's
 private interfaces and may change without notice; when they do, notes keep their
 text and screenshot and say why they have no line audio or GIF. Nothing of
 Netflix is stored: timelines and the last 30 seconds of sound live in the
-page's memory, a tab recording in the recorder frame's, and only the final WAV
+page's memory, a tab recording in the recorder frame's, and only the final MP3
 and GIF reach Anki. Routing the video through Web Audio has costs: the picture
 can lead the sound by the context's output latency, because Chrome's Web Audio
 source tells the media clock of no output delay, which is small on wired output
@@ -4010,7 +4032,7 @@ supported.
 YouTube's caption files, player methods and page markup are YouTube's private
 interfaces and may change without notice; when they do, notes keep their text
 and screenshot and say why they have no line audio or GIF. Nothing of YouTube
-is stored: timelines live in the page's memory and only the WAV, GIF and JPEG
+is stored: timelines live in the page's memory and only the MP3, GIF and JPEG
 reach Anki.
 
 ## Managed custom dictionary
@@ -4349,7 +4371,7 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix or YouTube line) whose token a reader abandoned; answered locally when linked |
-| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held WAV and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
+| `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held MP3 and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 | `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
 | `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | Experimental YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining-experimental)) |
 | `hd_youtube_load` | Experimental YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
