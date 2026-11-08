@@ -3435,7 +3435,7 @@ Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
 reply is the picture's name, not its upload, so the reader shows itself again as
-soon as the pixels are taken. The worker holds that one pending picture and stores
+soon as the pixels are taken (and, for a Netflix subtitle note, cropped). The worker holds that one pending picture and stores
 it through the ordinary `storeMediaFile` gateway under its own
 `hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
 generation, configuration and duplicate decisions have been made, so duplicate
@@ -3482,6 +3482,29 @@ frame.
 With **YouTube mining** on, `{screenshot}` for a note from a YouTube caption is
 the video's own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
 
+With **Netflix mining** on, `{screenshot}` for a note from a Netflix subtitle
+(a request with a `netflix` field) is the video's picture alone. The reader
+asks Netflix's reader (`HDNetflix.screenshot`) to take it: that hides what
+Netflix draws over the video, its subtitles, controls, skip and next-episode
+buttons and paused-title overlay, with one stylesheet of Netflix's own class
+names that sets `opacity: 0` and `transition: none`, so they are gone before
+the reader's two-frame wait rather than fading out during it. It then sends
+`hd_anki_screenshot` with a `crop`: where the `<video>`'s picture is, as
+fractions of the viewport. Netflix's `<video>` fills its player, so a picture
+whose shape is not the player's is drawn whole and centred in it
+(`object-fit: contain`) with bars beside it; the crop is that picture, worked
+out from the element's box and the video's `videoWidth` and `videoHeight`.
+The worker validates the crop, takes the viewport capture as usual and, after
+its ownership checks, cuts the crop out of it with `createImageBitmap` and an
+`OffscreenCanvas` into a JPEG at quality 0.92, for a linked browser too; a
+picture that fills the viewport, such as a 16:9 title full screen on a 16:9
+display, is kept as captured rather than encoded again.
+Hiding is counted like the reader's concealment and lifted once the picture
+is taken. Netflix may rename these classes, which would leave its drawing in
+the picture; a protected video that captures as black now captures as an
+all-black picture. Notes from other pages, YouTube's, and Netflix preview
+screenshots, which have no page UI to begin with, are unchanged.
+
 **Netflix preview screenshots** is a separate experimental switch, off by
 default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
 preview JPEG for `{screenshot}`. These images are lower resolution and can show
@@ -3503,7 +3526,8 @@ switch nor a subtitle timeline, recording grant, replay or additional permission
 Migaku takes its card screenshot with `tabs.captureVisibleTab`. Its Chrome Web Store
 package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
 for the reading tab's window as PNG and crops the picture to the video;
-Hachidori's default screenshot path keeps the whole viewport. Migaku's audio clip comes from a
+Hachidori's default screenshot path keeps the whole viewport, and a Netflix
+mining note's is cropped to the video in the same way. Migaku's audio clip comes from a
 `tabCapture` stream. Both calls receive what Chrome composites for that window,
 so in the same browser, graphics settings and frame, Chrome decides for both
 whether the picture includes protected video:
@@ -3723,6 +3747,11 @@ stream's video track too and reads it with a second `MediaStreamTrackProcessor`:
 it draws each `VideoFrame` into an `OffscreenCanvas` at most 480 px wide, reads
 back its RGBA and closes the frame at once, keeping no more than ten frames a
 second by the frames' own timestamps and placing each on the same wall clock.
+The GIF is of the video alone: the reader sends the crop a `{screenshot}` of
+the line gets (see [Page screenshot when mining](#page-screenshot-when-mining)),
+which the frame cuts out of each frame as it does YouTube's, and what Netflix
+draws over its video is hidden for the replay. A recording of the sound alone
+hides and crops nothing.
 When no field maps `{sentence-audio}`, or the line audio records it, the request
 sets `audio: false`: the frame still opens the audio track, which mutes the tab
 for the replay and tells it when the capture has caught up, but encodes no WAV
@@ -3944,8 +3973,9 @@ controls in step. Requests are `hd_youtube_line_audio`,
 `hd_youtube_capture_cancel`, checked as Netflix's are, except that the tab
 needs only to show a `www.youtube.com` page; the recorder connects on
 `hachidori-youtube-recorder`. A YouTube page has more than its player, so a
-`{gif}` keeps only the video: the reader sends the `<video>`'s place in the
-viewport as fractions of it, with the viewport's aspect ratio, and the recorder
+`{gif}` keeps only the video: the reader sends the place of the `<video>`'s
+picture in the viewport as fractions of it, with the viewport's aspect ratio
+(YouTube sizes its `<video>` to its picture, so that is the element's box), and the recorder
 cuts that part out of each frame, allowing for the bars Chrome adds when it
 fits the tab into the capture's size. For a note from a caption (the reader
 sends `hd_anki_screenshot` with `videoFrame: true` when the request has a

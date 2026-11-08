@@ -55,6 +55,15 @@
     // of the player's text, so any lookup pauses the video.
     drag: true,
     pauseOnLookup: true,
+    // A picture of the line, its screenshot or its GIF, is of the video alone:
+    // what Netflix draws over the video is hidden while it is taken, and it is
+    // cropped to the picture. These are Netflix's own class names for its
+    // subtitles, controls, skip and next-episode buttons and paused-title
+    // overlay; Netflix may change them.
+    overVideo: [".player-timedtext", ".watch-video--bottom-controls-container", ".watch-video--back-container",
+      ".watch-video--flag-container", ".watch-video--skip-content", ".SeamlessControls--container",
+      ".evidence-overlay"].join(", "),
+    cropToVideo: true,
   });
 
   function createVideoSite(window, site, subtitles = window.HDNetflixSubtitles, lineAudioApi = window.HDNetflixAudio) {
@@ -86,6 +95,9 @@
     let subtitleOffset = { x: 0, y: 0 };
     let subtitleDrag = null;
     let subtitleClick = false;
+    // What the site draws over its video, hidden while pictures of it are taken.
+    let overVideoStyle = null;
+    let overVideoHidden = 0;
     // The reading language whose subtitle tracks the page posts (docs/languages.md 8.5).
     let subtitleLanguage = "ja";
 
@@ -314,18 +326,62 @@
       return frame;
     }
 
-    // Where the video is in the viewport, as fractions of it, with the
-    // viewport's aspect ratio, so a GIF of a page with more than its player
-    // keeps only the video (YouTube).
+    // Where the video's picture is in the viewport, as fractions of it, with
+    // the viewport's aspect ratio, so a picture of a page with more than its
+    // player keeps only the video (YouTube), and one of a player whose shape
+    // is not the video's loses the bars beside it (Netflix). A video shows its
+    // picture whole and centred in its box unless the page has it fill or
+    // cover the box, and one with no picture yet has only its box.
     function videoCrop() {
-      const rect = mainVideo()?.getBoundingClientRect();
+      const video = mainVideo();
+      const box = video?.getBoundingClientRect();
       const { innerWidth: width, innerHeight: height } = window;
-      if (!rect || width <= 0 || height <= 0) return null;
-      const left = Math.max(0, rect.left / width);
-      const top = Math.max(0, rect.top / height);
-      const right = Math.min(1, rect.right / width);
-      const bottom = Math.min(1, rect.bottom / height);
+      if (!box || width <= 0 || height <= 0) return null;
+      let picture = box;
+      if (video.videoWidth > 0 && video.videoHeight > 0 && window.getComputedStyle(video).objectFit === "contain") {
+        const scale = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
+        const shownWidth = video.videoWidth * scale;
+        const shownHeight = video.videoHeight * scale;
+        const pictureLeft = box.left + (box.width - shownWidth) / 2;
+        const pictureTop = box.top + (box.height - shownHeight) / 2;
+        picture = { left: pictureLeft, top: pictureTop, right: pictureLeft + shownWidth, bottom: pictureTop + shownHeight };
+      }
+      const left = Math.max(0, picture.left / width);
+      const top = Math.max(0, picture.top / height);
+      const right = Math.min(1, picture.right / width);
+      const bottom = Math.min(1, picture.bottom / height);
       return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top, aspect: width / height } : null;
+    }
+
+    // While a picture of the video is taken, a screenshot or a GIF's replay,
+    // what the site draws over the video (`overVideo`) is hidden, at once
+    // rather than by its own fade, so it has gone before the capture. Counted
+    // like the reader's own concealment, so one picture cannot show it again
+    // while another is being taken.
+    async function hideOverVideo(during) {
+      if (!site.overVideo) return during();
+      if (overVideoHidden === 0) {
+        overVideoStyle = document.createElement("style");
+        overVideoStyle.textContent = `${site.overVideo} { opacity: 0 !important; transition: none !important; }`;
+        document.documentElement.append(overVideoStyle);
+      }
+      overVideoHidden += 1;
+      try {
+        return await during();
+      } finally {
+        overVideoHidden -= 1;
+        if (overVideoHidden === 0) {
+          overVideoStyle.remove();
+          overVideoStyle = null;
+        }
+      }
+    }
+
+    // A screenshot for a note from the site's subtitles: `capture` asks the
+    // worker for it, cropped to where the video's picture is, while what the
+    // site draws over the video is hidden.
+    function screenshot(capture) {
+      return hideOverVideo(() => capture(videoCrop()));
     }
 
     // Records the cue's line with tab capture: a recorder frame opens the tab's
@@ -393,6 +449,13 @@
         : { token: held.token, filename: held.filename };
     }
 
+    // A tab recording of the cue's line with Hachidori's overlays concealed;
+    // a GIF's replay also hides what the site draws over its video.
+    function captureTab(cue, { conceal, ...recording }) {
+      const concealed = () => conceal(() => recordTab(cue, recording));
+      return recording.gif ? hideOverVideo(concealed) : concealed();
+    }
+
     // Records the cue's line for the fields that map it: `audio` for
     // {sentence-audio}, `gif` for {gif}. Sentence audio comes from what the
     // viewer heard, played on or replayed if need be, while the line audio
@@ -402,12 +465,12 @@
     async function record(cue, { send, templateId, audio = true, gif = false, conceal = during => during() }) {
       recordings += 1;
       try {
-        if (!audio || lineAudio?.ready() !== true) return await conceal(() => recordTab(cue, { send, templateId, audio, gif }));
+        if (!audio || lineAudio?.ready() !== true) return await captureTab(cue, { send, templateId, audio, gif, conceal });
         let clip = await heardLine(cue);
         const result = {};
         if (gif) {
           try {
-            const recorded = await conceal(() => recordTab(cue, { send, templateId, audio: false, gif }));
+            const recorded = await captureTab(cue, { send, templateId, audio: false, gif, conceal });
             result.gif = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.gif;
           } catch (error) {
             // The GIF and the sentence audio are recorded apart, so a failed
@@ -614,8 +677,8 @@
     // case it said so before this reader listened.
     if (site.reportsVideo) command({ type: "state" });
 
-    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging, setSubtitleLanguage,
-      captionLanguage };
+    return { observe, resolve, miningFields, record, screenshot, setHoverPause, setLineAudio, setSubtitleDragging,
+      setSubtitleLanguage, captionLanguage };
   }
 
   const createNetflix = (window, subtitles, lineAudioApi) => createVideoSite(window, NETFLIX, subtitles, lineAudioApi);

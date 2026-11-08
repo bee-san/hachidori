@@ -61,7 +61,7 @@ function assertChecking(item) {
     action: "add",
   });
 }
-function fixture(t, send, capture = send, wait, conceal, recordNetflixLine, recordYouTubeLine) {
+function fixture(t, send, capture = send, wait, conceal, recordNetflixLine, recordYouTubeLine, videoScreenshot) {
   const dom = new JSDOM("<!doctype html><body><section></section></body>");
   t.after(() => dom.window.close());
   const popup = dom.window.document.querySelector("section");
@@ -72,7 +72,7 @@ function fixture(t, send, capture = send, wait, conceal, recordNetflixLine, reco
   const controllerSend = send.handlesBatches === true ? viewOrSend : answerBatches(viewOrSend);
   const controller = globalThis.HDAnki.createAnkiController({ send: controllerSend, capture, onChange() {},
     ...(wait ? { wait } : {}), ...(conceal ? { conceal } : {}), ...(recordNetflixLine ? { recordNetflixLine } : {}),
-    ...(recordYouTubeLine ? { recordYouTubeLine } : {}) });
+    ...(recordYouTubeLine ? { recordYouTubeLine } : {}), ...(videoScreenshot ? { videoScreenshot } : {}) });
   const context = { owner, popup, request, isCurrent: () => true,
     getRequest: result => ({ term: result.term }) };
   const items = ["猫", "犬", "鳥"].map(expression => {
@@ -893,16 +893,20 @@ test("a submission Anki answers as a duplicate or invalid releases its screensho
 });
 
 test("a Netflix note records its line concealed after the screenshot, and a missing line is a warning, never a failure", async t => {
-  const calls = [], concealed = [], recordings = [];
+  const calls = [], concealed = [], recordings = [], screenshots = [];
   let decision = { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true };
   let recorded = async () => ({ audio: { token: "line-a", filename: "hachidori-sentence-audio-a.wav" }, gif: null });
   let netflix = { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } };
   let submittedRequest = null;
-  const f = fixture(t, async (type, { request } = {}) => {
+  const crop = { left: 0, top: 0.125, width: 1, height: 0.75, aspect: 4 / 3 };
+  const f = fixture(t, async (type, fields = {}) => {
     calls.push(type);
     if (type === "hd_anki_status") return { available: true, configKey: "current" };
-    if (type === "hd_anki_screenshot") return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
-    if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 12, warnings: [] }; }
+    if (type === "hd_anki_screenshot") {
+      screenshots.push(fields);
+      return { token: "shot-a", filename: "hachidori-screenshot-a.jpg" };
+    }
+    if (type === "hd_anki_submit") { submittedRequest = fields.request; return { state: "added", noteId: 12, warnings: [] }; }
     return decision;
   }, undefined, undefined, async during => {
     concealed.push("hidden");
@@ -913,6 +917,13 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
     // The page conceals the reader with the function it is given, around tab capture.
     recordings.push([cue, templateId, calls.at(-1)]);
     return conceal(() => recorded());
+  }, undefined, async capture => {
+    // The page hides what Netflix draws over the video around the reader's
+    // own concealment, and says where the video's picture is.
+    concealed.push("video only");
+    const taken = await capture(crop);
+    concealed.push("video shown");
+    return taken;
   });
   f.context.getRequest = result => ({ term: result.term, netflix });
   f.controller.update(configured);
@@ -925,9 +936,11 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
   };
 
   assert.equal(await mine(0), "Added note 12.");
-  // The picture first, then the line, each with the reader hidden, then the write.
+  // The picture first, then the line, each with the reader hidden, then the
+  // write. The picture is of the video alone, cropped to where it is.
   assert.deepEqual(recordings, [[netflix.cue, "default", "hd_anki_screenshot"]]);
-  assert.deepEqual(concealed, ["hidden", "restored", "hidden", "restored"]);
+  assert.deepEqual(concealed, ["video only", "hidden", "restored", "video shown", "hidden", "restored"]);
+  assert.deepEqual(screenshots, [{ templateId: "default", crop }]);
   assert.deepEqual(calls.filter(type => ["hd_anki_screenshot", "hd_anki_submit"].includes(type)),
     ["hd_anki_screenshot", "hd_anki_submit"]);
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "hachidori-sentence-audio-a.wav" });

@@ -167,7 +167,11 @@ stores it as `rank-based` when its values are ranks (#684).
   records the replayed line inside the Netflix tab for `{gif}`, a looping GIF
   of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
   or the page screenshot where there is none, and for `{sentence-audio}` while
-  the video's sound does not yet go through Hachidori.
+  the video's sound does not yet go through Hachidori. A subtitle note's
+  `{screenshot}` and `{gif}` are of the video alone: `netflix-content.js`
+  hides what Netflix draws over its video while they are taken and sends where
+  the video's picture is, which `background-anki.js` cuts out of the
+  screenshot and the recorder frame out of each GIF frame.
 - **YouTube mining.** The same features on `www.youtube.com` behind their own
   experimental switch, on the same code: `netflix-content.js` is the
   video-site reader both sites use (`createVideoSite`), and

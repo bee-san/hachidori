@@ -61,6 +61,8 @@ const profile = mkdtempSync(resolve(tmpdir(), "hachidori-netflix-mining-"));
 const WATCH = "https://www.netflix.com/watch/81000001";
 // The same page playing its video through its own Web Audio graph.
 const OWN_GRAPH = `${WATCH}?graph=page`;
+// The same page showing a picture under Netflix's controls instead of a sound.
+const PICTURE = `${WATCH}?picture`;
 const SAMPLE_RATE = 48_000;
 const AUDIO_SECONDS = 8;
 // The fixture's tone in each second of media time: 400 Hz, 600 Hz, … 1800 Hz.
@@ -112,11 +114,16 @@ const vtt = `WEBVTT\n\n1\n00:00:02.000 --> 00:00:03.600 position:50.00%,middle a
 // Like Netflix's, its session is named `watch-…`, says which movie it plays
 // and has its element inside the player; Netflix's player API lists after it
 // the next episode it prepares, whose element is outside the player and whose
-// calls are recorded as `background`.
+// calls are recorded as `background`. The <video> fills the player, as
+// Netflix's does.
 const page = `<!doctype html><meta charset="utf-8"><title>Netflix fixture</title>
 <style>body{margin:0;background:#000;color:#fff;font:40px sans-serif}
+video{position:absolute;left:0;top:0;width:100%;height:100%}
 .player-timedtext{position:absolute;left:0;right:0;top:300px;text-align:center}
-#motion{position:absolute;left:0;top:0;width:1200px;height:260px;display:block}</style>
+#motion{position:absolute;left:0;top:0;width:1200px;height:260px;display:block}
+.watch-video--bottom-controls-container,.evidence-overlay{position:absolute;background:#f0f;transition:opacity 2s}
+.watch-video--bottom-controls-container{left:0;right:0;bottom:0;height:120px}
+.evidence-overlay{left:300px;top:100px;width:400px;height:120px}</style>
 <div class="watch-video"><div data-uia="player" data-videoid="81000001"><video preload="auto"></video>
 <canvas id="motion" width="1200" height="260"></canvas>
 <div class="player-timedtext"><div class="player-timedtext-text-container"><span>朝ごはんを</span><br><span id="word">食べたかった</span></div></div></div></div>
@@ -179,8 +186,32 @@ video.addEventListener("loadeddata", () => {
   JSON.parse(${JSON.stringify(manifest)});
   evidence.ready = true;
 }, { once: true });
-// A blob is seekable; an intercepted response without range support is not.
-fetch("/fixture/line.wav").then(response => response.blob()).then(blob => { video.src = URL.createObjectURL(blob); });
+// With ?picture, the video shows a still 4:3 picture instead, which the
+// 1200 × 700 player pillarboxes, under Netflix's controls and paused-title
+// overlay, each fading as Netflix's do, on a page whose colour would show
+// beside the picture.
+if (new URLSearchParams(location.search).has("picture")) {
+  motion.style.display = "none";
+  document.body.style.background = "rgb(220, 0, 0)";
+  const box = document.querySelector("[data-uia=player]");
+  for (const name of ["watch-video--bottom-controls-container", "evidence-overlay"]) {
+    box.append(Object.assign(document.createElement("div"), { className: name }));
+  }
+  const still = Object.assign(document.createElement("canvas"), { width: 160, height: 120 });
+  const fill = () => {
+    const context = still.getContext("2d");
+    context.fillStyle = "rgb(0, 200, 80)";
+    context.fillRect(0, 0, still.width, still.height);
+  };
+  fill();
+  setInterval(fill, 50);
+  // A stream's video shows its picture once it plays.
+  video.srcObject = still.captureStream();
+  video.play();
+} else {
+  // A blob is seekable; an intercepted response without range support is not.
+  fetch("/fixture/line.wav").then(response => response.blob()).then(blob => { video.src = URL.createObjectURL(blob); });
+}
 </script>`;
 
 // The reader's own world and the popup's Anki statuses, through CDP: Puppeteer
@@ -363,18 +394,19 @@ try {
     }
   }, readFileSync(resolve(root, "test/fixtures/hachidori-fixture.zip")).toString("base64"));
   console.log("fixture imported");
-  // The Basic note type's Back field template, written through the options queue.
-  const mapBack = back => settings.evaluate(async (ankiUrl, value) => {
+  // The Basic note type's Back field template, written through the options
+  // queue, with screenshots off unless `screenshot` is set.
+  const mapBack = (back, screenshot = false) => settings.evaluate(async (ankiUrl, value, captureScreenshot) => {
     const { options } = await chrome.storage.local.get("options");
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
       baseRevision: options.revision, options: { hoverEnabled: true, lookupMode: "hover",
         // The same word is added again and again.
-        anki: { ...HDReaderOptions.DEFAULT_OPTIONS.anki, url: ankiUrl, model: "Basic", captureScreenshot: false,
+        anki: { ...HDReaderOptions.DEFAULT_OPTIONS.anki, url: ankiUrl, model: "Basic", captureScreenshot,
           duplicateBehavior: "new",
           fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
             Back: { value, overwriteMode: "overwrite" } } } } });
     if (!reply.ok) throw new Error(reply.error);
-  }, `http://127.0.0.1:${anki.address().port}`, back);
+  }, `http://127.0.0.1:${anki.address().port}`, back, screenshot);
   await mapBack("{sentence}<br>{sentence-audio}");
   // The switch, through the options queue. The open Netflix page keeps its
   // scripts, which follow the switch once its reader has the new options. The
@@ -406,7 +438,7 @@ try {
     const url = request.url();
     // A locked-down page: no frames of its own, no capture features. The
     // extension's recorder frame and tab capture must still work.
-    if (url === WATCH || url === OWN_GRAPH) {
+    if (url === WATCH || url === OWN_GRAPH || url === PICTURE) {
       return request.respond({ contentType: "text/html; charset=utf-8", body: page, headers: {
         "Content-Security-Policy": "frame-src 'none'; child-src 'none'; object-src 'none'",
         "Permissions-Policy": "microphone=(), camera=(), display-capture=()" } });
@@ -825,6 +857,42 @@ try {
   const second = await decodeGif(onlyGif);
   assert.ok(second.frames > 1 && second.distinct > 1, `the {gif}-only GIF decodes into distinct frames: ${JSON.stringify(second)}`);
 
+  // A subtitle note's screenshot is of the video alone: the picture the player
+  // pillarboxes, without the page beside it, Netflix's subtitles, controls or
+  // paused-title overlay (which would have taken two seconds to fade), or the
+  // popup. Decoded in an extension page from what Anki received.
+  await mapBack("{screenshot}", true);
+  await leaveLine();
+  await tab.goto(PICTURE);
+  await tab.waitForFunction(() => window.__fixture?.ready === true);
+  box = await (await tab.$("#word")).boundingBox();
+  note = await addNote();
+  const shot = /^<img src="(hachidori-screenshot-[0-9a-f-]{36}\.jpg)">$/u.exec(note.fields.Back)?.[1];
+  assert.ok(shot, `the note holds the screenshot alone: ${note.fields.Back}`);
+  const picture = await settings.evaluate(async base64 => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${base64}`)).blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0);
+    // Inside its edges, where the crop's whole pixels meet the picture's.
+    const edge = 3, width = bitmap.width - 2 * edge, height = bitmap.height - 2 * edge;
+    const pixels = context.getImageData(edge, edge, width, height).data;
+    let green = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] < 60 && pixels[index + 1] > 160 && pixels[index + 2] > 40 && pixels[index + 2] < 120) green++;
+    }
+    return { width: bitmap.width, height: bitmap.height, green: green / (width * height) };
+  }, media.get(shot));
+  console.log(`screenshot ${picture.width}×${picture.height}, ${(picture.green * 100).toFixed(2)}% the video's green`);
+  // The 1200 × 700 player shows the 160 × 120 picture 933⅓ px wide in its middle.
+  assert.ok(Math.abs(picture.width - 700 * 4 / 3) <= 2 && picture.height === 700,
+    `the screenshot is the video's picture: ${JSON.stringify(picture)}`);
+  assert.ok(picture.green > 0.995, `nothing covers the video's picture: ${JSON.stringify(picture)}`);
+  await leaveLine();
+  await tab.goto(WATCH);
+  await tab.waitForFunction(() => window.__fixture?.ready === true);
+  box = await (await tab.$("#word")).boundingBox();
+
   // Switched off, the page that still has the scripts pauses nothing.
   await setSwitch(false);
   start = await playFrom(CUE.startMs + 200);
@@ -839,8 +907,8 @@ try {
   console.log(`Netflix mining fixture: ${notes.length} notes; a page open before the switch went on got the scripts, `
     + "paused and resumed, and said to reload; without a capture grant, line audio heard, replayed and played on, "
     + "tab capture asking for the toolbar button; after the click, a line recorded from the tab, a GIF and its line "
-    + "audio from one replay, a {gif}-only note; each WAV the cue's seconds' tones; playback restored, hover pause and "
-    + "resume through the watch session only, no play while recording — passed");
+    + "audio from one replay, a {gif}-only note, a screenshot of the video alone; each WAV the cue's seconds' tones; "
+    + "playback restored, hover pause and resume through the watch session only, no play while recording — passed");
 } finally {
   await browser?.close();
   anki.close();
