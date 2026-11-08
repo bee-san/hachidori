@@ -32,6 +32,7 @@ import { HOST_CAPABILITIES, MINING_CAPABILITIES, OVERLAY_MODE } from "./overlay-
 import { createRecommendedInstallClient } from "./recommended-install-client.js";
 import { createCustomButtonSettings } from "./custom-button-settings.js";
 import { createUserScriptSettings } from "./user-script-settings.js";
+import { createScriptStore } from "./script-store.js";
 import { createDictionaryNameDrafts } from "./dictionary-name-drafts.js";
 import { createDictionaryGroupController } from "./dictionary-groups.js";
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
@@ -86,6 +87,7 @@ const OPTION_SECTIONS = {
   backup: "Backup & restore",
   advanced: "Advanced",
   "user-scripts": "User scripts",
+  "script-store": "Script Store",
   // A language's own settings (docs/languages.md 7.5).
   languages: "Languages",
   // Dictionaries → Personal dictionary owns its lookup switches.
@@ -200,6 +202,7 @@ let backupLifecycleReconnectTimer = null;
 const backupLifecycleTokens = new Set();
 let customButtonController; // NOSONAR: shared with the other Settings modules
 let userScriptController; // NOSONAR: shared with the other Settings modules
+let scriptStoreController; // NOSONAR: shared with the other Settings modules
 let experimentalController;
 // Experimental switches apply in the order they were clicked: turning Multiple
 // languages off first settles the page's edits, and a click meanwhile waits.
@@ -265,13 +268,15 @@ function configureFirefoxUi() {
 }
 
 function configureBrowserUi() {
-  // A host without a user-script world has no Advanced → User scripts.
+  // A host without a user-script world has no Advanced → User scripts or Script Store.
   if (!HOST_CAPABILITIES.customJavaScript) {
-    const userScripts = element("user-scripts");
-    userScripts.dataset.settingsUnavailable = "true";
-    userScripts.hidden = true;
-    document.querySelector('.section-tabs a[href="#user-scripts"]').hidden = true;
-    element("settings-section").querySelector('option[value="user-scripts"]').hidden = true;
+    for (const id of ["user-scripts", "script-store"]) {
+      const section = element(id);
+      section.dataset.settingsUnavailable = "true";
+      section.hidden = true;
+      document.querySelector(`.section-tabs a[href="#${id}"]`).hidden = true;
+      element("settings-section").querySelector(`option[value="${id}"]`).hidden = true;
+    }
     element("custom-javascript-moved").hidden = true;
   }
   // The search page opens from the browser's shortcuts and toolbar menu,
@@ -774,15 +779,19 @@ function showSettingsSection(focus = false) {
     });
     customButtonController.render();
   }
+  // User scripts and the Script Store both save the one list of packages.
+  const readScripts = () => options.userScripts;
+  const saveScripts = (scripts) => {
+    options.userScripts = normaliseUserScripts(scripts);
+    writeOptions();
+  };
   if (activeSection === "user-scripts") {
-    userScriptController ??= createUserScriptSettings({ document,
-      readScripts: () => options.userScripts,
-      saveScripts: (scripts) => {
-        options.userScripts = normaliseUserScripts(scripts);
-        writeOptions();
-      },
-    });
+    userScriptController ??= createUserScriptSettings({ document, readScripts, saveScripts });
     userScriptController.render();
+  }
+  if (activeSection === "script-store") {
+    scriptStoreController ??= createScriptStore({ document, fetch: (...args) => window.fetch(...args), readScripts, saveScripts });
+    scriptStoreController.render();
   }
   if (activeSection === "custom-dictionary" && !customEditorLoaded) void loadCustomDictionarySource();
   if (window.location.hash === "#settings-content") element("settings-content").focus();
@@ -1480,7 +1489,7 @@ export {
   renderEngineStatus, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
   savedOptions, scheduleStatusPoll, send, storedOptionsRecord,
   setSectionStatus, setStatus, sharingLinkedAddress, syncNavigationStatus, TARGET, themeStore, UPDATE_TARGET,
-  updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings, userScriptController,
+  scriptStoreController, updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings, userScriptController,
   WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET
 };
 

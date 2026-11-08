@@ -18,7 +18,7 @@ import {
   renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
   savedOptions, send, setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
-  updateKeybindSettings, userScriptController, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
+  scriptStoreController, updateKeybindSettings, userScriptController, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
 } from "./settings.js";
 import { dictionaries, dictionaryLabel, dictionaryState } from "./library-settings.js";
 import {
@@ -529,6 +529,7 @@ function renderOptions() {
   renderCustomCss();
   customButtonController?.render();
   userScriptController?.render();
+  scriptStoreController?.render();
   const toolbar = element("opt-popup-toolbar");
   if (toolbar !== document.activeElement) toolbar.value = options.popupToolbarPosition;
   const imageHoverPreview = element("opt-image-hover-preview");

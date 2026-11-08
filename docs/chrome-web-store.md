@@ -43,6 +43,14 @@ The welcome and settings copy provide the relevant
   WASM. Dictionary ZIPs, update indexes, audio lists and media are data, not
   downloaded extension logic. The manifest's `'wasm-unsafe-eval'` is Chrome's
   supported mechanism for bundled Wasm, not permission to execute remote scripts.
+- **Script Store packages:** while the experimental Script Store is on, a
+  package the user chooses to install from `bee-san/hachidori-scripts` is
+  JavaScript and CSS kept as one of the user's own scripts. Its JavaScript runs
+  only through the User Scripts API, as the user's own scripts do, and in the
+  search page's sandboxed frame; both are exempt in
+  [Additional Requirements for Manifest V3](https://developer.chrome.com/docs/webstore/program-policies/mv3-requirements).
+  Nothing else Hachidori runs comes from outside the package
+  ([user scripts](user-scripts.md)).
   See [remote hosted code](https://developer.chrome.com/docs/extensions/develop/migrate/remote-hosted-code)
   and [extension CSP](https://developer.chrome.com/docs/extensions/reference/manifest/content-security-policy).
 - **Page screenshots:** the enabled-by-default **Screenshot the page when mining** switch
@@ -268,8 +276,10 @@ reference for the package and publishing screenshots.
 In the dashboard, choose **Add new item**, upload the ZIP, and complete Store
 listing, Privacy practices, Distribution and Test instructions. Supply the
 single purpose, actual permission justifications, policy URL and accurate data
-categories. For the audited local JS/WASM implementation, the remote-code answer
-is **No**; re-audit dependencies if the candidate changes.
+categories. The remote-code answer is **Yes**: Script Store packages, which the
+user installs and which run only through the User Scripts API and the search
+page's sandboxed frame. Everything else is the audited local JS/WASM; re-audit
+dependencies if the candidate changes.
 
 Use Public for general discovery, Unlisted for link-based access, or Private
 for selected testers. Visibility does not bypass policy review.

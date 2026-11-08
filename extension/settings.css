@@ -1504,7 +1504,8 @@ textarea {
 .design-controls .lookup-group,
 #keybind-settings,
 #audio-sources,
-#user-script-settings {
+#user-script-settings,
+#script-store-settings {
   container-type: inline-size;
 }
 .lookup-group:has(> legend) {
@@ -2554,6 +2555,25 @@ textarea {
 @container (max-width: 560px) {
   .user-script-row { grid-template-columns: auto minmax(0, 1fr); }
   .user-script-actions { grid-column: 2; justify-content: flex-start; }
+}
+/* Advanced → Script Store: a package's name, description and details beside
+   Install, Update or Installed. */
+.script-store-list { margin: 0; padding: 0; list-style: none; }
+.script-store-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 18px;
+  padding: var(--row-padding) 0;
+  border-top: 1px solid var(--border);
+}
+.script-store-text { display: grid; gap: 3px; min-width: 0; }
+.script-store-name { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
+.script-store-description { max-width: 66ch; margin: 0; overflow-wrap: anywhere; }
+.script-store-details { color: var(--text-dim); font-size: var(--font-caption); overflow-wrap: anywhere; }
+.script-store-installed { color: var(--ok); font-weight: var(--weight-medium); }
+@container (max-width: 560px) {
+  .script-store-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 .keybind-list {
