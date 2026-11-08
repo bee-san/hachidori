@@ -43,8 +43,8 @@ The welcome and settings copy provide the relevant
   WASM. Dictionary ZIPs, update indexes, audio lists and media are data, not
   downloaded extension logic. The manifest's `'wasm-unsafe-eval'` is Chrome's
   supported mechanism for bundled Wasm, not permission to execute remote scripts.
-- **Script Store packages:** while the experimental Script Store is on, a
-  package the user chooses to install from `bee-san/hachidori-scripts` is
+- **Script Store packages:** a package the user chooses to install from
+  `bee-san/hachidori-scripts` (Advanced → User scripts → Script Store) is
   JavaScript and CSS kept as one of the user's own scripts. Its JavaScript runs
   only through the User Scripts API, as the user's own scripts do, and in the
   search page's sandboxed frame; both are exempt in

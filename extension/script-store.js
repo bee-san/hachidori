@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Advanced → Script Store (docs/user-scripts.md), behind the scriptStore
-// experimental switch: the packages people share in bee-san/hachidori-scripts.
+// Advanced → User scripts → Script Store (docs/user-scripts.md): the packages
+// people share in bee-san/hachidori-scripts, under the user's own scripts.
 // Check for scripts reads the catalogue.json that the repository's
 // tools/build-catalogue.mjs writes, and nothing is fetched before the user
-// asks. Install copies a package into Advanced → User scripts with its slug and
+// asks. Install copies a package into the user's scripts with its slug and
 // version; Update replaces an installed package's parts with the catalogue's
 // once the version differs. A package's JavaScript then runs as the user's own
 // scripts do, through the User Scripts API.
@@ -61,12 +61,17 @@ export function createScriptStore({
     if (installed?.store.version === entry.version) {
       const done = document.createElement("span");
       done.className = "script-store-installed";
-      done.textContent = "Installed";
+      const mark = document.createElement("span");
+      mark.className = "hd-icon";
+      mark.dataset.icon = "checkmark";
+      mark.setAttribute("aria-hidden", "true");
+      done.append(mark, "Installed");
       return done;
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "ghost";
+    // An update is the one thing in the list waiting on the user.
+    button.className = installed ? "primary-button" : "ghost";
     button.textContent = installed ? `Update to ${entry.version}` : "Install";
     button.setAttribute("aria-label", installed ? `Update ${entry.name} to ${entry.version}` : `Install ${entry.name}`);
     button.addEventListener("click", () => (installed ? update(installed, entry) : install(entry)));
@@ -116,7 +121,7 @@ export function createScriptStore({
       css: entry.css, store: { slug: entry.slug, version: entry.version } }]);
     render();
     focusRow(entry.slug);
-    setStatus(`Installed ${entry.name} in User scripts. It runs on the pages you open or reload.`, "ready");
+    setStatus(`Installed ${entry.name}. It runs on the pages you open or reload.`, "ready");
   }
 
   function update(installed, entry) {

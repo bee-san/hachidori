@@ -259,9 +259,9 @@ stores it as `rank-based` when its values are ranks (#684).
   packages through `host.shadowRoot` ([architecture](../docs/architecture.md)).
   The search page runs the same code in its sandboxed frame, where the reader
   gives the popup an open root. Their CSS joins Custom CSS in the popup.
-  `script-store.js` is Advanced → Script Store, behind its experimental
-  switch: it reads `bee-san/hachidori-scripts`' catalogue when asked and
-  installs and updates packages in User scripts.
+  `script-store.js` is the Script Store under the user's scripts in the same
+  section: it reads `bee-san/hachidori-scripts`' catalogue when asked and
+  installs and updates packages in the list above it.
 - **Overlay mode.** `overlay-mode.js` is the one switch a host such as the
   GameSentenceMiner overlay flips in its copy. It also defines the shared
   host-capability policy used by Settings, the toolbar, the reader and the

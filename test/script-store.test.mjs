@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Advanced → Script Store (script-store.js): the catalogue of
+// Advanced → User scripts → Script Store (script-store.js): the catalogue of
 // bee-san/hachidori-scripts and installing from it, on settings.html's markup.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -11,7 +11,7 @@ import { createScriptStore, parseCatalogue, SCRIPT_STORE_CATALOGUE } from "../ex
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
 const html = await readFile(new URL("../extension/settings.html", import.meta.url), "utf8");
-const start = html.lastIndexOf("<section", html.indexOf('id="script-store"'));
+const start = html.lastIndexOf("<section", html.indexOf('id="user-scripts"'));
 const section = html.slice(start, html.indexOf("</section>", start) + "</section>".length);
 
 const entry = (slug, fields = {}) => ({ slug, name: `Name ${slug}`, description: "What it does.", author: "someone",
@@ -34,7 +34,7 @@ test("the catalogue reads as the repository's tools write it, and anything else 
 function open({ scripts = [], respond }) {
   const { window } = new JSDOM(`<!doctype html><body><main>${section}</main></body>`);
   const { document } = window;
-  document.getElementById("script-store").hidden = false;
+  document.getElementById("user-scripts").hidden = false;
   const requests = [];
   let stored = scripts;
   let next = 0;
@@ -71,6 +71,7 @@ test("Check for scripts asks GitHub once per press, then Install, Installed and 
   assert.deepEqual(page.stored()[1], { id: "id-1", name: "Name texthooker", enabled: true, javascript: "window.a = 1;", css: "",
     store: { slug: "texthooker", version: "1.0.0" } });
   assert.equal(page.row("texthooker").querySelector(".script-store-installed").textContent, "Installed");
+  assert.equal(page.el("script-store-status").textContent, "Installed Name texthooker. It runs on the pages you open or reload.");
   assert.equal(page.document.activeElement, page.row("texthooker").querySelector("a"));
   // A newer version replaces the package's parts and keeps its switch and place.
   page.stored()[1] = { ...page.stored()[1], enabled: false };
@@ -78,12 +79,13 @@ test("Check for scripts asks GitHub once per press, then Install, Installed and 
   await page.check();
   const update = page.row("texthooker").querySelector("button");
   assert.equal(update.textContent, "Update to 1.1.0");
+  assert.equal(update.className, "primary-button", "an update is the list's one filled button");
   update.click();
   assert.deepEqual(page.stored().map(script => script.id), ["own", "id-1"]);
   assert.deepEqual(page.stored()[1], { id: "id-1", name: "Name texthooker", enabled: false, javascript: "window.b = 2;", css: "q {}",
     store: { slug: "texthooker", version: "1.1.0" } });
   assert.equal(page.el("script-store-status").textContent, "Updated Name texthooker to version 1.1.0.");
-  // Deleting it in User scripts offers Install again.
+  // Deleting it in Your scripts offers Install again.
   page.stored().splice(1, 1);
   page.store.render();
   assert.equal(page.row("texthooker").querySelector("button").textContent, "Install");
