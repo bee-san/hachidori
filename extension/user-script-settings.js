@@ -4,7 +4,8 @@
 // JavaScript and CSS, in the order they run. A row switches its package on or
 // off, moves it, opens it in the editor below the list, or deletes it once the
 // row's confirmation is accepted. The editor saves explicitly, so half-typed
-// code never runs.
+// code never runs. A package installed from the Script Store (script-store.js)
+// keeps its slug and version until an edit makes it the user's own.
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
 
@@ -43,6 +44,7 @@ export function createUserScriptSettings({
   const error = document.getElementById("user-script-error");
   const submit = document.getElementById("user-script-submit");
   const add = document.getElementById("user-script-add");
+  const storeNote = document.getElementById("user-script-store-note");
   const parts = ["javascript", "css"].map(key => ({
     key,
     editor: document.getElementById(`user-script-${key}`),
@@ -151,7 +153,8 @@ export function createUserScriptSettings({
     const summary = document.createElement("span");
     summary.className = "user-script-summary";
     const contents = [script.javascript.trim() && "JavaScript", script.css.trim() && "CSS"].filter(Boolean);
-    summary.textContent = `${contents.join(" and ") || "Empty"} · ${packageSize(script)}${script.enabled ? "" : " · Off"}`;
+    summary.textContent = `${script.store ? `Script Store v${script.store.version} · ` : ""}${contents.join(" and ") || "Empty"}`
+      + ` · ${packageSize(script)}${script.enabled ? "" : " · Off"}`;
     text.append(label, summary);
     const actions = document.createElement("div");
     actions.className = "user-script-actions";
@@ -199,6 +202,7 @@ export function createUserScriptSettings({
     confirming = null;
     fill(values);
     heading.textContent = isNew ? "New script" : `Edit “${script.name}”`;
+    storeNote.hidden = isNew || !script.store;
     submit.textContent = isNew ? "Add script" : "Save script";
     error.textContent = "";
     status.textContent = "";
@@ -230,9 +234,15 @@ export function createUserScriptSettings({
     const scripts = readScripts();
     const id = editing.id ?? createId();
     const saved = { name: label, javascript: values.javascript, css: values.css };
+    // A changed Script Store package becomes the user's own, which Update leaves alone.
+    const edited = (script) => {
+      const result = { ...script, ...saved };
+      if (Object.keys(saved).some(key => saved[key] !== script[key])) delete result.store;
+      return result;
+    };
     const next = editing.id === null
       ? [...scripts, { id, enabled: true, ...saved }]
-      : scripts.map(script => (script.id === id ? { ...script, ...saved } : script));
+      : scripts.map(script => (script.id === id ? edited(script) : script));
     editing = null;
     form.hidden = true;
     commit(next);

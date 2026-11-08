@@ -41,6 +41,10 @@
     // switches language; the profiles and this browser's choice are kept.
     { id: "multipleLanguages", label: "Multiple languages", section: "languages",
       description: "Read other languages besides Japanese, such as English, Korean, Spanish or Arabic, each with its own dictionaries, settings, Anki Templates and pronunciation sources. Adds Languages under Advanced, where you add a language and choose the one lookups use; with two or more, the toolbar switches between them. Turning this off returns lookups to Japanese and keeps the languages you added, with their settings and dictionaries, for the next time you turn it on." },
+    // docs/user-scripts.md: Advanced → Script Store, which reads the catalogue
+    // of bee-san/hachidori-scripts and installs into Advanced → User scripts.
+    { id: "scriptStore", label: "Script Store", section: "script-store",
+      description: "Browse the packages of JavaScript and CSS that people share in bee-san/hachidori-scripts, and install them into Advanced → User scripts. Adds Script Store under Advanced, whose Check for scripts asks GitHub for the list. Installed scripts stay in User scripts when this is off." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -464,6 +468,14 @@
     });
   }
 
+  // An installed Script Store package's slug and version, which Update compares
+  // with the catalogue's; null for the user's own.
+  function normaliseScriptStoreSource(value) {
+    if (!value || typeof value !== "object" || typeof value.slug !== "string" || !value.slug
+        || typeof value.version !== "string" || !value.version) return null;
+    return { slug: value.slug, version: value.version };
+  }
+
   // A package is switched on or off as a whole; either of its parts may be empty.
   function normaliseUserScripts(value) {
     if (!Array.isArray(value)) return [];
@@ -474,7 +486,9 @@
           || typeof script.enabled !== "boolean" || typeof script.javascript !== "string"
           || typeof script.css !== "string") return [];
       ids.add(script.id);
-      return [{ id: script.id, name: script.name, enabled: script.enabled, javascript: script.javascript, css: script.css }];
+      const normalized = { id: script.id, name: script.name, enabled: script.enabled, javascript: script.javascript, css: script.css };
+      const store = normaliseScriptStoreSource(script.store);
+      return [store === null ? normalized : { ...normalized, store }];
     });
   }
 
@@ -957,7 +971,12 @@
     if (key === "keybinds") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((bind, index) => raw[index] && typeof raw[index] === "object" && JSON.stringify(bind)
         === JSON.stringify(Object.fromEntries(Object.keys(bind).map(field => [field, raw[index][field]]))));
-    if (key === "audioSources" || key === "customLinks" || key === "customButtons" || key === "userScripts") return Array.isArray(raw) && raw.length === normalized.length
+    // A package is valid as written: no field dropped, a Script Store source included.
+    if (key === "userScripts") return Array.isArray(raw) && raw.length === normalized.length
+      && normalized.every((script, index) => raw[index] && typeof raw[index] === "object"
+        && Object.keys(raw[index]).length === Object.keys(script).length
+        && JSON.stringify(script) === JSON.stringify(Object.fromEntries(Object.keys(script).map(field => [field, raw[index][field]]))));
+    if (key === "audioSources" || key === "customLinks" || key === "customButtons") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }

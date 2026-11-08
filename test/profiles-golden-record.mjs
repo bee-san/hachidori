@@ -19,8 +19,9 @@
 // `netflixPreviewScreenshots` as main's registry has it, and Multiple
 // languages' flag, `multipleLanguages`, after it, for the flags' defaults in
 // every record, `compact-popup-anki` added to its GLOSSARY_LAYOUT_MODES for
-// #673's third Compact glossaries value, and Advanced → User scripts'
-// `userScripts` in place of `customPopupJavascript`, which migrates into it).
+// #673's third Compact glossaries value, Advanced → User scripts'
+// `userScripts` in place of `customPopupJavascript`, which migrates into it,
+// with its Script Store source, and the Script Store's `scriptStore` flag).
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one
@@ -101,7 +102,8 @@ writeFileSync(output, `${JSON.stringify({
     + "`normalised` lists the keys of normaliseOptions' result that differ from `defaults`; the SHA-256 values are of "
     + "JSON.stringify of the complete results of normaliseOptions and projectStoredOptions, so key order is pinned too.",
   recordedFrom: "bee-san/hachidori main fd53c854 extension/reader-options.js with the youtubeMining and multipleLanguages "
-    + "experimental flags, the compact-popup-anki glossary layout and userScripts in place of customPopupJavascript",
+    + "experimental flags, the compact-popup-anki glossary layout, userScripts in place of customPopupJavascript "
+    + "and the scriptStore experimental flag",
   defaults,
   entries: [],
 }).slice(0, -3)}[\n${body}\n]}\n`);

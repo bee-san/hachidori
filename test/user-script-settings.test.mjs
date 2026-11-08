@@ -129,6 +129,23 @@ test("Import files opens a .js and a .css file as one new package, and refuses o
   assert.equal(page.stored()[0].name, "copy word");
 });
 
+test("a Script Store package says so, keeps its source when saved unchanged and becomes the user's own when edited", () => {
+  const store = { slug: "texthooker", version: "1.0.0" };
+  const page = open([script("texthooker", { store })]);
+  assert.equal(page.row(0).querySelector(".user-script-summary").textContent, "Script Store v1.0.0 · JavaScript · 13 B");
+  page.action(0, "edit").click();
+  assert.equal(page.el("user-script-store-note").hidden, false);
+  page.submit();
+  assert.deepEqual(page.stored()[0].store, store);
+  page.action(0, "edit").click();
+  page.type("user-script-css", "p {}");
+  page.submit();
+  assert.equal(Object.hasOwn(page.stored()[0], "store"), false);
+  assert.equal(page.row(0).querySelector(".user-script-summary").textContent, "JavaScript and CSS · 17 B");
+  page.el("user-script-add").click();
+  assert.equal(page.el("user-script-store-note").hidden, true);
+});
+
 test("a package's size counts both parts in UTF-8, and names come from file names", () => {
   assert.equal(packageSize({ javascript: "a", css: "食" }), "4 B");
   assert.equal(packageSize({ javascript: "a".repeat(1536), css: "" }), "1.5 KB");

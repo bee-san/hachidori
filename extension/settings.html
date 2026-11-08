@@ -48,6 +48,7 @@
             <option value="backup">Backup &amp; restore</option>
             <option value="advanced">Advanced</option>
             <option value="user-scripts">User scripts</option>
+            <option value="script-store">Script Store</option>
             <option value="languages">Languages</option>
           </select>
         </label>
@@ -125,6 +126,7 @@
         <nav class="section-tabs" id="advanced-navigation" aria-label="Advanced sections" hidden>
           <a href="#advanced" data-label="Advanced">Advanced</a>
           <a href="#user-scripts" data-label="User scripts">User scripts</a>
+          <a href="#script-store" data-label="Script Store">Script Store</a>
           <a href="#languages" data-label="Languages">Languages</a>
         </nav>
         <section
@@ -1559,6 +1561,7 @@
             </div>
             <form id="user-script-form" class="user-script-form" novalidate hidden aria-labelledby="user-script-form-heading">
               <h2 id="user-script-form-heading">New script</h2>
+              <p class="field-hint" id="user-script-store-note" hidden>This script came from the Script Store. Saving a change makes it yours, and the Script Store no longer updates it.</p>
               <label class="field">
                 <span class="field-label">Name</span>
                 <input id="user-script-name" type="text" autocomplete="off" spellcheck="false" />
@@ -1588,6 +1591,32 @@
                 <button id="user-script-cancel" type="button" class="ghost">Cancel</button>
               </div>
             </form>
+          </fieldset>
+        </section>
+
+        <section
+          class="card"
+          id="script-store"
+          aria-labelledby="script-store-heading"
+          data-settings-group="Advanced"
+          data-settings-name="Script Store"
+          hidden
+        >
+          <div class="card-head">
+            <h1 id="script-store-heading" tabindex="-1" data-search-keywords="userscripts user scripts community packages install update catalogue">Script Store</h1>
+            <p class="hint">Packages of JavaScript and CSS that people share in <a href="https://github.com/bee-san/hachidori-scripts" target="_blank" rel="noopener noreferrer">bee-san/hachidori-scripts</a>, where Bee reviews each one before it is listed. Install copies a package into <a href="#user-scripts">User scripts</a>, where you can switch it off or delete it; a newer version shows Update here.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
+          <fieldset class="lookup-group" id="script-store-settings">
+            <div class="setting-row">
+              <p class="field-hint" id="script-store-help">Hachidori asks GitHub for the list only when you check.</p>
+              <div class="options-actions">
+                <button type="button" class="ghost" id="script-store-check" aria-describedby="script-store-help">Check for scripts</button>
+                <output class="custom-dictionary-status" id="script-store-status" aria-live="polite"></output>
+              </div>
+            </div>
+            <ul id="script-store-list" class="script-store-list"></ul>
+            <p class="field-hint"><a href="https://github.com/bee-san/hachidori-scripts/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Share a script in the Script Store</a></p>
           </fieldset>
         </section>
 
