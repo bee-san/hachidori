@@ -564,8 +564,10 @@ async function checkOverlaySharing(hostPage) {
   try {
     const id = await extensionId(overlayBrowser);
     let page = await openSettings(overlayBrowser, id, "overlay", "sharing");
-    const initial = await page.evaluate(async () =>
-      HDReaderOptions.normaliseOptions((await chrome.storage.local.get("options")).options));
+    // The overlay's worker seeds its first preferences when it starts
+    // (seedOverlayModeOptions); a write before then has no revision to build on.
+    const seeded = await until(async () => (await stored(page, ["options"])).options, "the overlay's seeded preferences");
+    const initial = await page.evaluate(options => HDReaderOptions.normaliseOptions(options), seeded);
     await writeOptions(page, { popupWidthPx: 440, popupTheme: "sunset",
       anki: { ...initial.anki, captureScreenshot: true },
       customButtons: [{
@@ -614,6 +616,8 @@ async function checkOverlaySharing(hostPage) {
     await until(async () => (await sharingStatus(page)).sharing.client.connected, "the restarted overlay link");
     const afterRestart = (await stored(page, ["options"])).options;
     const unlinked = await message(page, "hachidori-sharing", "hd_sharing_client_unlink");
+    // Unlink restores the stored state from before the link, so an overlay
+    // that had no dictionary state stored then has none now.
     const afterUnlink = await stored(page, ["options", "dictionaryState"]);
 
     // Keep the capability UI check independent of a developer's running Anki.
@@ -667,7 +671,7 @@ async function checkOverlaySharing(hostPage) {
         && hostAfterMixed.popupWidthPx === 1150 && hostAfterMixed.popupTheme === "forest"
         && stale.ok === false && stale.conflict && offline.options.popupWidthPx === 680
         && afterRestart.popupWidthPx === 680 && unlinked.ok && afterUnlink.options.popupWidthPx === 680
-        && afterUnlink.options.popupTheme === "sunset" && afterUnlink.dictionaryState.dictionaries.length === 0
+        && afterUnlink.options.popupTheme === "sunset" && (afterUnlink.dictionaryState?.dictionaries ?? []).length === 0
         && afterUnlink.options.anki.captureScreenshot === true && screenshot.disabled && !screenshot.checked
         && afterUnlink.options.customButtons[0]?.id === "local-link"
         && afterUnlink.options.customLinks[0]?.label === "Local link"
