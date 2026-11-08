@@ -45,10 +45,33 @@ list order, top to bottom.
 - The editor saves on **Save script** or **Add script**, not as you type, so a
   half-written script never runs.
 
+## Script Store
+
+Settings → Advanced → Experimental features → Script Store adds Advanced →
+Script Store (`script-store.js`): the packages people share in
+[bee-san/hachidori-scripts](https://github.com/bee-san/hachidori-scripts),
+where Bee reviews each one before it is merged.
+
+- **Check for scripts** fetches the repository's `catalogue.json` from its
+  `main` branch, and nothing is fetched before then. The repository's
+  `tools/build-catalogue.mjs` writes that file with every package's
+  JavaScript and CSS in it, so one request gives one consistent list.
+  Hachidori refuses a list that is not in that shape and shows names and
+  descriptions as text.
+- **Install** copies a package into User scripts, switched on, with its slug
+  and version (`store: { slug, version }`). It then runs as the user's own
+  scripts do. **Update to** replaces its name and parts once the catalogue's
+  version differs, and keeps its switch and place.
+- Editing an installed package and saving a change makes it the user's own:
+  it loses its slug and version, so Update can no longer replace the change.
+- Turning the switch off hides Script Store; installed packages stay in User
+  scripts.
+
 ## Storage
 
 `userScripts` is a global option, which every language shares: an array of
-`{ id, name, enabled, javascript, css }` in run order. Backups and linked
+`{ id, name, enabled, javascript, css }` in run order, with `store` on a
+package installed from the Script Store. Backups and linked
 browsers carry it with the other options. Design → Reset Design to defaults
 leaves it alone.
 
@@ -60,6 +83,8 @@ packages.
 
 ## Tests
 
+- `test/script-store.test.mjs`: the catalogue's shape, Check for scripts,
+  Install, Installed, Update and a failed check, and the `store` field.
 - `test/custom-javascript.test.mjs`: the option, its migration and validation,
   the order of the popup's stylesheets, the registration (one source per
   switched-on package, after the bridge) and each package's own function.
