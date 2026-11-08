@@ -230,6 +230,9 @@ async function croppedJpeg(dataUrl, crop) {
     const top = Math.round(crop.top * image.height);
     const width = Math.max(1, Math.round((crop.left + crop.width) * image.width) - left);
     const height = Math.max(1, Math.round((crop.top + crop.height) * image.height) - top);
+    // A picture that fills the viewport, as a 16:9 title does full screen on a
+    // 16:9 display, is the capture as it was taken, not encoded again.
+    if (width === image.width && height === image.height) return dataUrl;
     const canvas = new OffscreenCanvas(width, height);
     canvas.getContext("2d").drawImage(image, left, top, width, height, 0, 0, width, height);
     const jpeg = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });

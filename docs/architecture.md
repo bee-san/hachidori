@@ -3435,7 +3435,7 @@ Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
 reply is the picture's name, not its upload, so the reader shows itself again as
-soon as the pixels are taken. The worker holds that one pending picture and stores
+soon as the pixels are taken (and, for a Netflix subtitle note, cropped). The worker holds that one pending picture and stores
 it through the ordinary `storeMediaFile` gateway under its own
 `hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
 generation, configuration and duplicate decisions have been made, so duplicate
@@ -3496,7 +3496,9 @@ whose shape is not the player's is drawn whole and centred in it
 out from the element's box and the video's `videoWidth` and `videoHeight`.
 The worker validates the crop, takes the viewport capture as usual and, after
 its ownership checks, cuts the crop out of it with `createImageBitmap` and an
-`OffscreenCanvas` into a JPEG at quality 0.92, for a linked browser too.
+`OffscreenCanvas` into a JPEG at quality 0.92, for a linked browser too; a
+picture that fills the viewport, such as a 16:9 title full screen on a 16:9
+display, is kept as captured rather than encoded again.
 Hiding is counted like the reader's concealment and lifted once the picture
 is taken. Netflix may rename these classes, which would leave its drawing in
 the picture; a protected video that captures as black now captures as an
