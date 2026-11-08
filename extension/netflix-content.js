@@ -449,26 +449,28 @@
         : { token: held.token, filename: held.filename };
     }
 
+    // A tab recording of the cue's line with Hachidori's overlays concealed;
+    // a GIF's replay also hides what the site draws over its video.
+    function captureTab(cue, { conceal, ...recording }) {
+      const concealed = () => conceal(() => recordTab(cue, recording));
+      return recording.gif ? hideOverVideo(concealed) : concealed();
+    }
+
     // Records the cue's line for the fields that map it: `audio` for
     // {sentence-audio}, `gif` for {gif}. Sentence audio comes from what the
     // viewer heard, played on or replayed if need be, while the line audio
     // keeps the video's sound; tab capture records a GIF, and the audio too
-    // otherwise. `conceal` hides Hachidori's overlays around tab capture only,
-    // and a GIF's replay also hides what the site draws over its video.
+    // otherwise. `conceal` hides Hachidori's overlays around tab capture only.
     // Resolves with { audio, gif } for the fields, or with why there is none.
     async function record(cue, { send, templateId, audio = true, gif = false, conceal = during => during() }) {
-      const captureTab = media => {
-        const concealed = () => conceal(() => recordTab(cue, { send, templateId, ...media }));
-        return media.gif ? hideOverVideo(concealed) : concealed();
-      };
       recordings += 1;
       try {
-        if (!audio || lineAudio?.ready() !== true) return await captureTab({ audio, gif });
+        if (!audio || lineAudio?.ready() !== true) return await captureTab(cue, { send, templateId, audio, gif, conceal });
         let clip = await heardLine(cue);
         const result = {};
         if (gif) {
           try {
-            const recorded = await captureTab({ audio: false, gif });
+            const recorded = await captureTab(cue, { send, templateId, audio: false, gif, conceal });
             result.gif = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.gif;
           } catch (error) {
             // The GIF and the sentence audio are recorded apart, so a failed
