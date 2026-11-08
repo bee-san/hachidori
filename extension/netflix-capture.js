@@ -11,9 +11,9 @@ import { sentenceAudioBase64 } from "./sentence-audio.js";
 // then cuts the line out of it by the media times the page reported and
 // encodes its sentence audio for Anki (sentence-audio.js). When a field is
 // mapped to {gif}, it also records the stream's video track and encodes a
-// looping GIF of the line. Only the sentence audio and the GIF leave the frame. The page's own line audio (netflix-audio.js)
-// records sentence audio without it where it can; this frame then records
-// only the GIF.
+// looping GIF of the line. Only the sentence audio and the GIF leave the
+// frame. The page's own line audio (netflix-audio.js) records sentence audio
+// without it where it can; this frame then records only the GIF.
 //
 // The frame, not the offscreen document, opens the stream: a tab stream ID is
 // usable only in the process of the context that asked for it, and the
