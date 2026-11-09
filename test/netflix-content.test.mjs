@@ -373,18 +373,35 @@ test("a line the viewer heard is cut from what was kept: no replay, recorder fra
   assert.equal(replays.length, 0);
   assert.equal(concealed, 0, "nothing is captured, so the reader stays visible");
 
-  // Exact zeros are silence, and nothing is sent; a linked worker holds nothing.
-  const silent = heardAudio({ heard: [{ samples: new Float32Array(480), sampleRate: 48_000 }] });
-  const quiet = netflix(t, { lineAudio: silent.lineAudio });
-  quiet.netflix.setLineAudio(true);
-  sent.length = 0;
-  assert.deepEqual(await quiet.netflix.record(cue, { send, templateId: "default" }), { audio: { unavailable: "silent" } });
-  assert.equal(sent.length, 0);
+  // A linked worker holds nothing.
   assert.deepEqual(await f.netflix.record(cue, { send: async () => ({ unavailable: "linked" }), templateId: "default" }),
     { audio: { unavailable: "linked" } });
   // The switch off stops it.
   f.netflix.setLineAudio(false);
   assert.equal(audio.calls.at(-1), "stop");
+});
+
+test("a line kept as exact zeros is recorded with tab capture, and so are the page's later lines", async t => {
+  // Edge on Windows: the video's sound does not reach Web Audio, but tab capture hears it.
+  const silent = heardAudio({ heard: [{ samples: new Float32Array(480), sampleRate: 48_000 }] });
+  const f = netflix(t, { lineAudio: silent.lineAudio });
+  const replays = answerReplays(f);
+  f.netflix.setLineAudio(true);
+  const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  const sent = [];
+  const send = async (type, fields) => {
+    sent.push([type, fields.audio]);
+    return type === "hd_netflix_capture_start" ? { sessionId: "s1", padMs: 250 }
+      : { audio: { token: "t1", filename: "a.mp3" }, gif: null };
+  };
+  assert.deepEqual(await f.netflix.record(cue, { send, templateId: "default" }), { audio: { token: "t1", filename: "a.mp3" } });
+  assert.deepEqual(sent, [["hd_netflix_capture_start", true], ["hd_netflix_capture_finish", undefined]]);
+  assert.equal(replays.length, 1);
+  sent.length = 0;
+  await f.netflix.record(cue, { send, templateId: "default" });
+  assert.deepEqual(sent, [["hd_netflix_capture_start", true], ["hd_netflix_capture_finish", undefined]]);
+  assert.equal(replays.length, 2);
+  assert.deepEqual(silent.calls, ["start", "settled", ["clip", "81000001", 750, 3750]], "the kept audio is not asked again");
 });
 
 test("a line stopped partway plays on from where it stands, and one not heard replays audibly", async t => {
