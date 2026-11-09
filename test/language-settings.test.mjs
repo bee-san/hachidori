@@ -232,6 +232,26 @@ test("Settings starts on the active profile, shows its values and names it in ev
   assert.equal(records.options.hoverEnabled, false, "a global key goes to the top level");
 });
 
+test("pasted known words belong to the edited language and block switching until saved or cleared", async t => {
+  const settings = await open(t, { hash: "#word-highlighting", stored: withProfiles({ activeProfileId: "ja" }),
+    onMessage: message => message.type === "hd_known_words_add" ? { ok: true, added: 1 } : undefined });
+  const { el, page, window } = settings;
+  el("known-words-input").value = "猫";
+  el("known-words-input").dispatchEvent(new window.Event("input", { bubbles: true }));
+  el("settings-language-select").value = "ar";
+  el("settings-language-select").dispatchEvent(new window.Event("change"));
+  await settle();
+  assert.equal(page.editedProfile().id, "ja");
+  assert.match(el("settings-language-status").textContent, /pasted known words/u);
+  el("known-words-add").click();
+  await settle();
+  assert.equal(writesOf(settings, "hd_known_words_add")[0].profileId, "ja");
+  el("settings-language-select").value = "ar";
+  el("settings-language-select").dispatchEvent(new window.Event("change"));
+  await settle();
+  assert.equal(page.editedProfile().id, "ar");
+});
+
 test("choosing another language saves pending edits for the profile they were made for, and Use for lookups activates it", async t => {
   const settings = await open(t, { hash: "#lookup", stored: withProfiles() });
   const { el, page, records, window } = settings;

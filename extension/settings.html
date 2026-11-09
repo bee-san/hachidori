@@ -786,16 +786,28 @@
           <div class="card-head">
             <h1 id="word-highlighting-heading" tabindex="-1"
               data-search-keywords="Anki status unknown learning known mature ignored ignore marks underline colour Migaku">Word highlighting</h1>
-            <p class="hint" data-language-label>Mark the Japanese words on every page by their status in Anki.</p>
+            <p class="hint" data-language-label>Mark the Japanese words on every page using Anki and your known words.</p>
           </div>
           <div class="options-feedback-slot"></div>
           <fieldset class="lookup-group">
             <legend>Highlighting</legend>
             <label class="lookup-enable">
-              <span>Highlight words by Anki status</span>
+              <span>Highlight words by status</span>
               <input type="checkbox" id="opt-word-highlight" aria-describedby="word-highlight-help" />
             </label>
             <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser, and the status comes from the Anki index Hachidori keeps for the first Template in <a href="#anki">Anki settings</a>, which needs an {expression} field: opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. Mark as known and Ignore in the popup set a word's status yourself, over its Anki status and without adding anything to Anki; in <a href="#keybinds">Keybinds</a> they are Mark word as known and Ignore word. To show or hide the marks on one page, bind Toggle word highlights.</p>
+          </fieldset>
+          <fieldset class="lookup-group">
+            <legend id="known-words-heading" data-search-keywords="paste import list vocabulary">Known words</legend>
+            <div class="setting-block">
+              <p class="field-hint" id="known-words-help" data-language-label>Paste one dictionary-form Japanese word per line. Adds to your existing known words; blank lines and duplicates are ignored. Works without Anki.</p>
+              <textarea id="known-words-input" rows="5" spellcheck="false" autocapitalize="off"
+                aria-labelledby="known-words-heading" aria-describedby="known-words-help" placeholder="One word per line"></textarea>
+              <div class="options-actions">
+                <button type="button" class="primary-button" id="known-words-add" disabled>Mark as known</button>
+                <output class="custom-dictionary-status" id="known-words-status" aria-live="polite"></output>
+              </div>
+            </div>
           </fieldset>
           <fieldset class="lookup-group">
             <legend>Statuses</legend>
@@ -813,7 +825,7 @@
               <span>Mark known words</span>
               <input type="checkbox" id="opt-word-highlight-known" aria-describedby="word-highlight-known-help" />
             </label>
-            <p class="field-hint" id="word-highlight-known-help">A mature card, reviewed at an interval of 21 days or more, or a word marked as known in the popup. A dotted line, green in most themes.</p>
+            <p class="field-hint" id="word-highlight-known-help">A mature card, reviewed at an interval of 21 days or more, or a word marked as known here or in the popup. A dotted line, green in most themes.</p>
             <label class="lookup-enable">
               <span>Mark ignored words</span>
               <input type="checkbox" id="opt-word-highlight-ignored" aria-describedby="word-highlight-ignored-help" />

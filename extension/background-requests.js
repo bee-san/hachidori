@@ -560,6 +560,14 @@ const WORKER_HANDLERS = {
     if (next !== stored) await writeLocalState({ [WORD_STATUS_OVERRIDES_KEY]: next });
     return { revision: normaliseWordStatusOverrides(next).revision };
   },
+  // The textbox uses the same serialized, language-specific record as the popup.
+  async hd_known_words_add(message) {
+    const language = message.profileId === undefined ? JAPANESE_PROFILE_ID : await requestLanguage(message);
+    const stored = (await chrome.storage.local.get(WORD_STATUS_OVERRIDES_KEY))[WORD_STATUS_OVERRIDES_KEY];
+    const { record, added } = globalThis.HDWordStatusOverrides.withKnownWords(stored, language, message.text);
+    if (record !== stored) await writeLocalState({ [WORD_STATUS_OVERRIDES_KEY]: record });
+    return { revision: normaliseWordStatusOverrides(record).revision, added };
+  },
   async hd_backup_download(message, sender) {
     if (sender.id !== chrome.runtime.id || sender.url?.split(/[?#]/u)[0] !== chrome.runtime.getURL("settings.html")) {
       throw new Error("Backup downloads are available only from Hachidori Settings.");

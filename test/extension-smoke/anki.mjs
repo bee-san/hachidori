@@ -791,6 +791,19 @@ async function wordStatusOverridesStage() {
     JSON.stringify({ mirroredOnHello, forwarded, linkedReply, mirrored: clientStorage.raw.get("wordStatusOverrides") }));
   await clientBus.sendMessage("word-overrides-client-settings", {
     target: "hachidori-sharing", type: "hd_sharing_client_unlink", requestId: "word-overrides-unlink" });
+  const beforeBatch = overrideWrites();
+  const addWords = text => bus.sendMessage("word-overrides-settings", {
+    target: "hoshidicts-worker", type: "hd_known_words_add", requestId: "batch", text }, page);
+  const [batch, concurrent] = await Promise.all([addWords(" 犬 \r\n猫\n猫\nさん\n "),
+    change({ headword: "学校", status: "known" }, "concurrent")]);
+  const repeated = await addWords("猫\n犬\nさん");
+  const malformedBatch = await addWords(null);
+  check("pasted known words commit once, compose with popup marks and skip duplicates without another write",
+    batch.ok === true && batch.added === 2 && concurrent.ok === true && repeated.ok === true && repeated.added === 0
+      && malformedBatch.ok === false && overrideWrites() === beforeBatch + 2
+      && JSON.stringify(storage.raw.get("wordStatusOverrides"))
+        === JSON.stringify({ revision: 7, known: ["犬", "猫", "さん", "学校"], ignored: [] }),
+    JSON.stringify({ batch, concurrent, repeated, malformedBatch, stored: storage.raw.get("wordStatusOverrides") }));
   restoreOffscreen();
 }
 

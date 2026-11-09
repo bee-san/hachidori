@@ -348,6 +348,33 @@ test("an override wins over a word's Anki status and re-marks the words shown wi
   assert.equal(page.sent.length, requests, "overrides need no segmentation or status request");
 });
 
+test("a manual known list highlights without Anki and adopts Anki when it becomes available", async t => {
+  const page = fixture(t, `<p id="line">猫がいる</p>`, {
+    lexicon: VERBS, available: false, options: { wordHighlightKnown: true },
+  });
+  page.start();
+  page.show(page.document.getElementById("line"));
+  await settle();
+  assert.deepEqual(page.segmented(), [], "without either source no words are classified");
+  page.highlighter.setOverrides(new Map([["猫", "known"]]));
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["いる"], "hd-word-known": ["猫"] });
+  assert.deepEqual(page.statusRequests(), [[]], "manual-only highlighting does not keep asking an unavailable index");
+  page.state.available = true;
+  page.state.statuses = { 猫: "learning", いる: "learning" };
+  page.highlighter.statusChanged(2);
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-learning": ["いる"], "hd-word-known": ["猫"] });
+  assert.deepEqual(page.segmented(), ["猫がいる"], "the cached segmentation is reused");
+  page.state.available = false;
+  page.highlighter.statusChanged(3);
+  await settle();
+  assert.deepEqual(page.marks(), { "hd-word-unknown": ["いる"], "hd-word-known": ["猫"] });
+  page.highlighter.setOverrides(new Map());
+  await settle();
+  assert.deepEqual(page.marks(), {}, "removing the last manual mark leaves no source");
+});
+
 // The popup's entry rows as the Default renderer builds them: Anki and
 // pronunciation, then the lookup's own pencil.
 function actionRows(t, count = 2) {

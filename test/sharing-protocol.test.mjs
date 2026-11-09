@@ -58,6 +58,9 @@ test("only host-owned plain-message requests forward; screenshots and blob impor
   const override = { target: "hoshidicts-worker", type: "hd_word_status_override", headword: "猫", status: "known" };
   assert.equal(forwardableRequest(override), true);
   assert.equal(mutatingForwardedRequest(override), true);
+  const knownWords = { target: "hoshidicts-worker", type: "hd_known_words_add", text: "猫\n犬" };
+  assert.equal(forwardableRequest(knownWords), true);
+  assert.equal(mutatingForwardedRequest(knownWords), true);
   assert.equal(forwardableRequest({ target: "hachidori-updates", type: "hd_updates_check" }), true);
   assert.equal(forwardableRequest({ target: "hachidori-setup", type: "hd_setup_install", sourceIds: [] }), true);
   for (const type of ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_submit", "hd_anki_browse", "hd_anki_maturity",

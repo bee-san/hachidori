@@ -33,3 +33,20 @@ test("one headword is set, moved and cleared at the next revision, and a no-op k
     assert.throws(() => withWordStatusOverride(empty, headword, status), TypeError);
   }
 });
+
+test("pasted known words append once, move ignored words and keep other languages", () => {
+  const { withKnownWords } = globalThis.HDWordStatusOverrides;
+  const stored = { revision: 4, known: ["猫"], ignored: ["犬", "さん"],
+    languages: { en: { known: ["cat"], ignored: ["dog"] } } };
+  const { record, added } = withKnownWords(stored, "ja", " 猫 \r\n犬\r\n\n学校\n学校\n ");
+  assert.equal(added, 2);
+  assert.deepEqual(record, { ...stored, revision: 5, known: ["猫", "犬", "学校"], ignored: ["さん"] });
+  assert.deepEqual(stored.ignored, ["犬", "さん"], "the original is not mutated");
+  for (const text of ["", " \r\n ", "猫\n犬\n学校"]) {
+    assert.deepEqual(withKnownWords(record, "ja", text), { record, added: 0 });
+    assert.equal(withKnownWords(record, "ja", text).record, record, "no-op skips the storage write");
+  }
+  assert.deepEqual(withKnownWords(record, "en", "dog\nice cream").record, {
+    ...record, revision: 6, languages: { en: { known: ["cat", "dog", "ice cream"], ignored: [] } },
+  });
+});
