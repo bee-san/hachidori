@@ -3722,17 +3722,19 @@ plays the line on (`replay` with `playOn`: no seek, and no seek back; it pauses
 at the clip's end, keeping the paused state the reader asked for) and the
 buffer keeps the rest. Otherwise the page replays the line through the player,
 which the viewer now hears, and the clip is cut afterwards. A line not all
-heard at 1× in the end is `unheard`. A clip of exact zeros is reported as
-silent; otherwise its MP3 (see **Sentence audio**, in base64 as extension
-messages are JSON) goes to the worker as `hd_netflix_line_audio`, which requires the switch and
+heard at 1× in the end is `unheard`. A clip of exact zeros means the video's
+sound does not reach Web Audio, as with Netflix in Edge on Windows, where
+Migaku's tab capture records it: the line is recorded with tab capture (below),
+and so is every later line of the page. Otherwise its MP3 (see **Sentence
+audio**, in base64 as extension messages are JSON) goes to the worker as `hd_netflix_line_audio`, which requires the switch and
 the top-frame watch document that asked, as `hd_netflix_capture_start` does but
 not the active tab, since nothing is captured, and holds it with the same
 `sentenceAudio` lifecycle as a recorded one. The reader stays visible: nothing
 is captured.
 
 **Recording.** For a `{gif}` field, and for sentence audio while the line audio
-is not running, the reader records the line with tab capture, after the
-screenshot. It adds a hidden recorder frame, `netflix-recorder.html`, to the
+is not running or once it has kept a line as exact zeros, the reader records
+the line with tab capture, after the screenshot. It adds a hidden recorder frame, `netflix-recorder.html`, to the
 Netflix page (outside Netflix's app root) and
 sends `hd_netflix_capture_start` with the cue. The worker requires the switch, a
 top-frame sender in the active tab at a `https://www.netflix.com/watch/` address
