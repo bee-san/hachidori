@@ -78,6 +78,18 @@ export async function checkCompactGlossaries(browser) {
     const structuredStart = () => page.evaluate(() => shadowQuery('ul[data-sc-content="sense-groups"]').getBoundingClientRect().top
       - shadowQuery(".gsm-hoshidicts-glossary-card:last-child").getBoundingClientRect().top);
     const before = await heights();
+    // Edge/WebView2 can expose Chromium without @scope. The same sanitized
+    // dictionary CSS must still apply, with nested selectors kept local.
+    await page.evaluate(styles => {
+      const supported = window.CSSScopeRule;
+      Object.defineProperty(window, "CSSScopeRule", { configurable: true, value: undefined });
+      HDGlossary.applyDictionaryStyles(document, document.querySelector("#host").shadowRoot, 2,
+        [{ dictionary: "Jitendex", styles }]);
+      Object.defineProperty(window, "CSSScopeRule", { configurable: true, value: supported });
+    }, JITENDEX_STYLES);
+    assert.deepEqual(await heights(), before, "dictionary layout is identical without @scope");
+    assert.equal(await page.evaluate(() => getComputedStyle(shadowQuery('ul[data-sc-content="sense-groups"]')).listStyleType), '"＊"');
+    await page.screenshot({ path: fileURLToPath(new URL("tmp/ci/jitendex-scope-fallback.png", import.meta.url)) });
     const start = await structuredStart();
     await page.evaluate(() => setLayout("compact"));
     const compact = await heights();

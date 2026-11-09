@@ -3902,6 +3902,33 @@ this design, and how other tools get line audio, is in
 
 ### YouTube mining (experimental)
 
+**Media formats and source information (#717–#719).** Advanced → **Video mining
+media**, visible while either site's mining switch is on, configures both sites.
+`videoAudioFormat` is MP3 (the existing default) or Ogg Opus; `videoAudioBitrate`
+is 32–128 kbit/s, default 64. Both heard-line and tab-capture audio use the same
+encoder and level normalization. Opus uses native WebCodecs and Mediabunny's Ogg
+muxer; MP3 keeps the bundled LAME encoder. MP3 is the choice for AnkiMobile.
+
+`{gif}` retains its name and screenshot fallback, and now writes the selected
+`videoImageFormat`: GIF (the existing default), animated WebP or animated AVIF.
+`videoImageQuality` (1–100, default 70) controls WebP/AVIF. Sampling stays at
+10 fps and at most 480 pixels wide. A dedicated worker encodes WebP frames
+with the browser's canvas encoder and writes their WebP animation chunks;
+AVIF uses native AV1 encoding and Mediabunny's MP4 sample tables, adding the
+AVIF primary image, image-sequence brands, picture handler and repeating edit
+list. A browser without the selected encoder reports the failure and keeps
+the screenshot. The worker terminates after each animation. Nothing is
+downloaded at runtime. The packaged Mediabunny module is pinned and checked
+against its matching source distribution by the release packager.
+
+`{miscInfo}` supplies `Video title - Channel name` from YouTube's player data,
+or Netflix's title/episode text from its player controls, with parts separated
+by ` - `. The hovered subtitle pins that text, so a later video does not change
+the note's attribution. This works even when a subtitle timeline is unavailable.
+On other pages, or when the site supplies no title, the marker uses
+`{document-title}`. Existing mappings are preserved; choose `{miscInfo}` in
+the desired Anki field to use it.
+
 Settings → Advanced → Experimental features → **YouTube mining**
 (`options.experimental.youtubeMining`, off by default, listed after the Netflix
 switches) gives notes mined from a YouTube caption what Netflix mining gives a

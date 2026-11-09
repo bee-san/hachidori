@@ -525,6 +525,8 @@ function renderOptions() {
   void renderSearchHistory();
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   element("opt-smaller-anki-cards").checked = options.smallerAnkiCards;
+  element("opt-video-audio-format").value = options.videoAudioFormat;
+  element("opt-video-image-format").value = options.videoImageFormat;
   renderThemeChoices();
   renderCustomCss();
   customButtonController?.render();
@@ -641,6 +643,12 @@ function attachOptionHandlers() {
     options.smallerAnkiCards = event.target.checked;
     writeOptions();
   });
+  for (const [id, key] of [["opt-video-audio-format", "videoAudioFormat"], ["opt-video-image-format", "videoImageFormat"]]) {
+    element(id).addEventListener("change", event => {
+      options[key] = event.target.value;
+      writeOptions();
+    });
+  }
   element("opt-personal-dictionary").addEventListener("change", (event) => {
     options.personalDictionaryEnabled = event.target.checked;
     renderPersonalDictionaryControls();

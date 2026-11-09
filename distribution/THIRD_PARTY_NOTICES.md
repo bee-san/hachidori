@@ -19,6 +19,7 @@ submodules and the pinned source distributions listed below.
 | xxHash | `xxHash-LICENSE` | Dictionary hashing |
 | kanji-processor | `kanji-processor-LICENSE` | Kanji-variant source data |
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
+| Mediabunny 1.65.2 | `mediabunny/LICENSE` | Native AV1 and Opus encoding and media containers; MPL-2.0 |
 | gifenc 1.0.3, Matt DesLauriers | `gifenc/LICENSE.md` and `vendor/gifenc-LICENSE` | Experimental Netflix mining's looping GIF encoder, under the MIT licence |
 | lamejs 1.2.7 (`@breezystack/lamejs`), Alex Zhukov's port of LAME | `lamejs/LICENSE` and `vendor/lamejs-LICENSE` | Experimental Netflix and YouTube mining's MP3 encoder for sentence audio, under the LGPL-3.0 |
 | KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |

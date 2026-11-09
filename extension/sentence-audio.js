@@ -10,7 +10,6 @@ import { encodeBase64 } from "./base64.js";
 
 // Mono MP3 at 64 kbit/s: every Anki client plays MP3, and AnkiMobile plays
 // neither Ogg nor Opus.
-const KBPS = 64;
 // The clip's mean (RMS) level is brought to TARGET_DBFS, louder or quieter, as
 // far as its loudest sample allows without passing PEAK_DBFS, so a line sounds
 // the same whatever the player's volume or the title's mix.
@@ -35,17 +34,33 @@ export function levelGain(samples) {
   return Math.min(amplitude(TARGET_DBFS) / Math.sqrt(energy / samples.length), amplitude(PEAK_DBFS) / peak);
 }
 
-export async function encodeSentenceAudio(samples, sampleRate) {
+export async function encodeSentenceAudio(samples, sampleRate, { videoAudioFormat = "mp3", videoAudioBitrate = 64 } = {}) {
   if (!(samples instanceof Float32Array)) throw new TypeError("Sentence audio must be mono Float32 samples.");
   if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0) throw new RangeError("The sentence audio's sample rate is invalid.");
   // Levelled samples stay within ±1, so none clips.
   const gain = levelGain(samples);
+  if (videoAudioFormat === "opus") {
+    const { AudioSample, AudioSampleSource, BufferTarget, OggOutputFormat, Output } = await import("./vendor/mediabunny/mediabunny.js");
+    const target = new BufferTarget();
+    const output = new Output({ target, format: new OggOutputFormat() });
+    const source = new AudioSampleSource({ codec: "opus", bitrate: videoAudioBitrate * 1000 });
+    output.addAudioTrack(source);
+    await output.start();
+    const sample = new AudioSample({ data: samples.map(value => value * gain), format: "f32-planar",
+      numberOfChannels: 1, sampleRate, timestamp: 0 });
+    try {
+      await source.add(sample);
+      await output.finalize();
+    } catch (error) { await output.cancel(); throw error; }
+    finally { sample.close(); }
+    return new Uint8Array(target.buffer);
+  }
   const pcm = new Int16Array(samples.length);
   for (let index = 0; index < samples.length; index += 1) {
     const sample = samples[index] * gain;
     pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
   }
-  const encoder = new Mp3Encoder(1, sampleRate, KBPS);
+  const encoder = new Mp3Encoder(1, sampleRate, videoAudioBitrate);
   const parts = [];
   let slice = performance.now();
   for (let start = 0; start < pcm.length; start += CHUNK) {
@@ -67,6 +82,6 @@ export async function encodeSentenceAudio(samples, sampleRate) {
 }
 
 // The line as extension messages carry it: they are JSON, so base64.
-export async function sentenceAudioBase64(samples, sampleRate) {
-  return encodeBase64(await encodeSentenceAudio(samples, sampleRate));
+export async function sentenceAudioBase64(samples, sampleRate, options) {
+  return encodeBase64(await encodeSentenceAudio(samples, sampleRate, options));
 }

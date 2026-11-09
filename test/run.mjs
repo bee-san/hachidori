@@ -122,6 +122,7 @@ try {
       await run("chrome-search-history", ["test/chrome-search-history.mjs"]);
       await run("chrome-netflix-subtitle-drag", ["test/chrome-netflix-subtitle-drag.mjs"]);
       await run("chrome-youtube", ["test/chrome-youtube.mjs"]);
+      await run("chrome-video-formats", ["test/chrome-video-formats.mjs"]);
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }

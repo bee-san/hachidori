@@ -1505,6 +1505,23 @@
               </div>
             </div>
           </fieldset>
+          <fieldset class="lookup-group" id="video-mining-settings" hidden>
+            <legend>Video mining media</legend>
+            <p class="field-hint">Shared by Netflix and YouTube. Use {sentence-audio} for the line's audio and {gif} for its animation in an Anki Template.</p>
+            <label class="field"><span class="field-label">Sentence audio format</span>
+              <select id="opt-video-audio-format"><option value="mp3">MP3 (all Anki clients)</option><option value="opus">Opus (Ogg; desktop Anki and AnkiDroid)</option></select>
+            </label>
+            <label class="field"><span class="field-label">Audio bitrate (kbit/s)</span>
+              <input id="opt-video-audio-bitrate" type="number" min="32" max="128" step="1">
+            </label>
+            <label class="field"><span class="field-label">Animated screenshot format</span>
+              <select id="opt-video-image-format"><option value="gif">GIF</option><option value="webp">WebP (smaller; includes AnkiMobile)</option><option value="avif">AVIF (requires AV1 encoding and an AVIF-capable Anki client)</option></select>
+            </label>
+            <label class="field"><span class="field-label">Animation quality (1–100)</span>
+              <input id="opt-video-image-quality" type="number" min="1" max="100" step="1" aria-describedby="video-image-quality-help">
+              <span class="field-hint" id="video-image-quality-help">Higher is clearer and larger. Applies to WebP and AVIF; GIF keeps its 256-colour palette. Encoding support depends on the browser. A failed animation keeps the screenshot and reports why.</span>
+            </label>
+          </fieldset>
           <fieldset class="lookup-group" id="experimental-settings">
             <legend>Experimental features</legend>
             <p class="section-note">All experimental features are off by default and may change or be removed in a later version. Turning one off hides it but keeps its settings for the next time you turn it on.</p>

@@ -217,7 +217,9 @@
     try {
       const data = youtubePlayer()?.getVideoData?.();
       const movieId = typeof data?.video_id === "string" && VIDEO_ID.test(data.video_id) ? data.video_id : null;
-      return { movieId, live: movieId !== null && data.isLive === true };
+      return { movieId, live: movieId !== null && data.isLive === true,
+        ...(typeof data?.title === "string" ? { title: data.title } : {}),
+        ...(typeof data?.author === "string" ? { author: data.author } : {}) };
     } catch {
       return { movieId: null, live: false };
     }
@@ -227,9 +229,11 @@
   // asks. A live stream's captions are not read: their times are the stream's.
   function report(always = false) {
     const current = playerVideo();
-    const changed = current.movieId !== reported.movieId || current.live !== reported.live;
+    const changed = current.movieId !== reported.movieId || current.live !== reported.live
+      || current.title !== reported.title || current.author !== reported.author;
     reported = current;
-    if (changed || always) post({ kind: "video", movieId: current.movieId });
+    if (changed || always) post({ kind: "video", movieId: current.movieId,
+      ...(current.title ? { title: current.title } : {}), ...(current.author ? { author: current.author } : {}) });
     if (changed && current.live) {
       publishCaption(current.movieId, "status", { kind: "status", movieId: current.movieId, subtitles: "live" });
     }

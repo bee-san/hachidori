@@ -888,8 +888,8 @@ test("a recorded Netflix line is held until the note is written and stored as it
   const SENTENCE_AUDIO = /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u;
 
   // Holding stores nothing; only an MP3 is held, not the WAV a line used to be.
-  await assert.rejects(service.sentenceAudio("bm90IG1wMw==", "default"), /no MP3 audio/u);
-  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /no MP3 audio/u);
+  await assert.rejects(service.sentenceAudio("bm90IG1wMw==", "default"), /no MP3 or Opus audio/u);
+  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /no MP3 or Opus audio/u);
   const held = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.match(held.filename, SENTENCE_AUDIO);
   assert.equal(uploads.length, 0);

@@ -335,6 +335,9 @@ jobs:
             test/tmp/ci/kanji-mining-*.png
             test/tmp/ci/netflix-subtitle-drag.png
             test/tmp/ci/youtube-popup.png
+            test/tmp/ci/video-mining-settings.png
+            test/tmp/ci/jitendex-scope-fallback.png
+            test/tmp/ci/video-formats.json
             test/tmp/theme-store/settings-*.png
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

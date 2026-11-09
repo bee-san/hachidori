@@ -16,6 +16,10 @@ const golden = JSON.parse(read("test/data/profiles-golden.json"));
 const LANGUAGES = JSON.parse(read("test/data/profile-languages.json"));
 
 const plain = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+// These shared media settings were added after the pre-profile recording.
+// Keep its original values and hashes authoritative for every older key.
+const beforeVideoFormats = value => Object.fromEntries(Object.entries(plain(value))
+  .filter(([key]) => !["videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality"].includes(key)));
 
 // A fresh reader-options.js, optionally beside a registry of fixture packs.
 // Its results are copied into this realm, except a result that is one of the
@@ -58,13 +62,13 @@ const goldenInputs = golden.entries.map(entry => ({ entry, input: entry.undefine
 test("every stored record the existing suites use projects exactly as before profiles", () => {
   const options = readerOptions();
   for (const { entry, input } of goldenInputs) {
-    const normalised = plain(options.normaliseOptions(input));
+    const normalised = beforeVideoFormats(options.normaliseOptions(input));
     assert.deepEqual(normalised, { ...golden.defaults, ...decode(entry.normalised) });
     assert.equal(sha256(normalised), entry.normalisedSha256);
-    assert.equal(sha256(plain(options.projectStoredOptions(input))), entry.storedSha256);
+    assert.equal(sha256(beforeVideoFormats(options.projectStoredOptions(input))), entry.storedSha256);
     // The Japanese profile of a single-profile record is today's projection.
-    assert.equal(sha256(plain(options.projectOptions(input, "ja"))), entry.normalisedSha256);
-    assert.equal(sha256(plain(options.projectOptions(input, "ja", { masked: false }))), entry.normalisedSha256);
+    assert.equal(sha256(beforeVideoFormats(options.projectOptions(input, "ja"))), entry.normalisedSha256);
+    assert.equal(sha256(beforeVideoFormats(options.projectOptions(input, "ja", { masked: false }))), entry.normalisedSha256);
   }
   assert.ok(golden.entries.length > 700, "the golden covers the suites' records");
 });
@@ -72,7 +76,7 @@ test("every stored record the existing suites use projects exactly as before pro
 test("the registry changes nothing for a single-profile record", () => {
   const options = readerOptions(LANGUAGES);
   for (const { entry, input } of goldenInputs) {
-    assert.equal(sha256(plain(options.projectOptions(input, "ja"))), entry.normalisedSha256);
+    assert.equal(sha256(beforeVideoFormats(options.projectOptions(input, "ja"))), entry.normalisedSha256);
   }
 });
 

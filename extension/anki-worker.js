@@ -410,10 +410,12 @@ export function createAnkiWorkerService({
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
-    if (decodedBase64Length(data) === null || !/^\/[+/]/u.test(data)) {
-      throw new Error("The recording produced no MP3 audio.");
+    const valid = decodedBase64Length(data) !== null;
+    const opus = valid && data.startsWith("T2dnUw") && atob(data.slice(0, 88)).includes("OpusHead");
+    if (!valid || (!opus && !/^\/[+/]/u.test(data))) {
+      throw new Error("The recording produced no MP3 or Opus audio.");
     }
-    const held = { token: crypto.randomUUID(), filename: `hachidori-sentence-audio-${crypto.randomUUID()}.mp3`, data };
+    const held = { token: crypto.randomUUID(), filename: `hachidori-sentence-audio-${crypto.randomUUID()}.${opus ? "opus" : "mp3"}`, data };
     pendingMedia["sentence-audio"] = held;
     return { token: held.token, filename: held.filename };
   }
@@ -428,11 +430,15 @@ export function createAnkiWorkerService({
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
-    // GIF87a/GIF89a both base64-encode to the "R0lG" prefix.
-    if (decodedBase64Length(data) === null || !data.startsWith("R0lG")) {
-      throw new Error("The recording produced no GIF image.");
+    const header = decodedBase64Length(data) === null ? "" : atob(data.slice(0, 44));
+    let format;
+    if (header.startsWith("GIF8")) format = "gif";
+    else if (header.startsWith("RIFF") && header.slice(8, 12) === "WEBP") format = "webp";
+    else if (header.slice(4, 8) === "ftyp" && ["avif", "avis"].includes(header.slice(8, 12))) format = "avif";
+    if (!format) {
+      throw new Error("The recording produced no GIF, WebP or AVIF image.");
     }
-    const held = { token: crypto.randomUUID(), filename: `hachidori-gif-${crypto.randomUUID()}.gif`, data };
+    const held = { token: crypto.randomUUID(), filename: `hachidori-gif-${crypto.randomUUID()}.${format}`, data };
     pendingMedia.gif = held;
     return { token: held.token, filename: held.filename };
   }

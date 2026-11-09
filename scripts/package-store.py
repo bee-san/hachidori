@@ -140,6 +140,8 @@ def main():
             raise ValueError("Pinned zip.js source no longer matches the shipped runtime.")
         if dependency["name"] == "gifenc" and entries["dist/gifenc.esm.js"][0] != upload["vendor/gifenc.js"][0]:
             raise ValueError("Pinned gifenc source no longer matches the shipped runtime.")
+        if dependency["name"] == "mediabunny" and entries["dist/bundles/mediabunny.min.mjs"][0] != upload["vendor/mediabunny/mediabunny.js"][0]:
+            raise ValueError("Pinned Mediabunny source no longer matches the shipped runtime.")
         if dependency["name"] == "lamejs" and entries["dist/lamejs.js"][0] != upload["vendor/lamejs.js"][0]:
             raise ValueError("Pinned lamejs source no longer matches the shipped runtime.")
 

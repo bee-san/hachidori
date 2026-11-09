@@ -2402,8 +2402,10 @@
       conceal: concealReader,
       // The site's reader records a line through its page, and frames the
       // screenshot of a note from its subtitles (netflix-content.js).
-      ...(VIDEO_SITE === null ? {} : { [VIDEO_SITE.recorder]: (cue, templateId, options) => VIDEO_SITE.api().record(cue, {
-        send: (type, fields) => sendRequest(type, fields, VIDEO_SITE.target), templateId, ...options }),
+      ...(VIDEO_SITE === null ? {} : { [VIDEO_SITE.recorder]: (cue, templateId, media) => VIDEO_SITE.api().record(cue, {
+        send: (type, fields) => sendRequest(type, fields, VIDEO_SITE.target), templateId, ...media,
+        encoding: { videoAudioFormat: options.videoAudioFormat, videoAudioBitrate: options.videoAudioBitrate,
+          videoImageFormat: options.videoImageFormat, videoImageQuality: options.videoImageQuality } }),
       videoScreenshot: capture => VIDEO_SITE.api()?.screenshot?.(capture) ?? capture(null) }),
       // A Template that names no deck opens Settings → Anki on the profile in
       // effect (docs/languages.md 6.3); an overlay's host opens Settings itself.

@@ -698,6 +698,12 @@ These run separately:
 
 ### Firefox suites
 
+`node test/chrome-video-formats.mjs` is also run after the primary Chrome E2E
+suite. It loads the production animation worker under the extension's CSP,
+independently decodes every GIF/WebP/AVIF frame and its timing and loop count,
+and decodes MP3 and Opus sentence audio to check duration and level. It writes
+`test/tmp/ci/video-formats.json` and `video-mining-settings.png`.
+
 The Firefox build (`scripts/build-firefox.py`, written to
 `test/tmp/firefox-extension` by the launcher) runs in a real Firefox through
 Puppeteer's WebDriver BiDi, installed as a temporary add-on.
