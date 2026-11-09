@@ -1438,6 +1438,15 @@ Visibility checks distinguish hidden subtrees (`display:none`) from inherited
 
 ## Frequency ranking controls
 
+Bee's Ultimate Kanji Dictionary publishes its rich character cards and character
+ranks in term banks. Ordinary `hd_lookup` replies exclude that dictionary's
+character-frequency group (#724), so word frequency tags, averages and mined
+frequency fields use word ranks. The explicit `hd_lookup_dictionary` route used
+for clicked-kanji cards retains the group. The correction uses the canonical
+dictionary title, so display aliases do not change it, and applies immediately
+to installed archives without reimporting them. Native `kanji_meta_bank` ranks
+already stay in native kanji lookups in the engine.
+
 The generated Yomitan index's optional `frequencyMode` survives package metadata,
 Settings presentation writes, reimports and reload reconciliation. Existing
 packages recover it from their committed generation's index without a new schema

@@ -330,6 +330,18 @@ function withoutPersonalDictionary(reply, message) {
   return { ...reply, results };
 }
 
+// Bee's rich kanji cards intentionally use term banks (including term-meta
+// character ranks) instead of Yomitan's flat native-kanji surface. Those
+// character ranks belong to the explicit clicked-kanji route, not word ranks
+// or their averages (#724). Canonical titles are unchanged by display aliases.
+function withoutKanjiWordFrequencies(reply) {
+  for (const { term } of reply.results) {
+    const index = term.frequencies.findIndex(group => group.dictionary === "Bee's Ultimate Kanji Dictionary");
+    if (index !== -1) term.frequencies.splice(index, 1);
+  }
+  return reply;
+}
+
 // Each glossary gets `tags`, its definitionTags as Yomitan's Translator expands
 // them from the dictionary's tag bank at 67db60d (_expandTagGroups, _createTag,
 // _mergeSimilarTags, _groupTags): a name is looked up by its part before ":",
@@ -4232,7 +4244,8 @@ const HANDLERS = {
       lookupArguments(message),
     );
     throwIfEngineFailed("hdw_lookup");
-    const reply = withDefinitionTags(withoutPersonalDictionary(termLookupReply(json, "hdw_lookup"), message));
+    const reply = withDefinitionTags(withoutPersonalDictionary(
+      withoutKanjiWordFrequencies(termLookupReply(json, "hdw_lookup")), message));
     return kanaRuby(message) ? withFurigana(reply) : reply;
   },
 
