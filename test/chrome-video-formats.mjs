@@ -61,13 +61,13 @@ try {
     }
     const { encodeSentenceAudio } = await import("./sentence-audio.js");
     const context = new AudioContext();
-    const samples = Float32Array.from({ length: 96_000 }, (_, index) => 0.1 * Math.sin(2 * Math.PI * 440 * index / 48_000));
-    for (const format of ["mp3", "opus"]) {
+    for (const [name, format, rate] of [["mp3", "mp3", 48_000], ["opus", "opus", 48_000], ["opus-44100.opus", "opus", 44_100]]) {
+      const samples = Float32Array.from({ length: 2 * rate }, (_, index) => 0.1 * Math.sin(2 * Math.PI * 440 * index / rate));
       const begin = performance.now();
-      const bytes = await encodeSentenceAudio(samples, 48_000, { videoAudioFormat: format, videoAudioBitrate: 64 });
+      const bytes = await encodeSentenceAudio(samples, rate, { videoAudioFormat: format, videoAudioBitrate: 64 });
       const decoded = await context.decodeAudioData(bytes.slice().buffer);
       const signal = decoded.getChannelData(0);
-      results[format] = { ms: performance.now() - begin, duration: decoded.duration,
+      results[name] = { ms: performance.now() - begin, duration: decoded.duration,
         rms: Math.sqrt(signal.reduce((sum, value) => sum + value * value, 0) / signal.length), bytes: Array.from(bytes) };
     }
     await context.close();

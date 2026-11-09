@@ -43,7 +43,9 @@ export async function encodeSentenceAudio(samples, sampleRate, { videoAudioForma
     const { AudioSample, AudioSampleSource, BufferTarget, OggOutputFormat, Output } = await import("./vendor/mediabunny/mediabunny.js");
     const target = new BufferTarget();
     const output = new Output({ target, format: new OggOutputFormat() });
-    const source = new AudioSampleSource({ codec: "opus", bitrate: videoAudioBitrate * 1000 });
+    // Opus accepts 48 kHz; the viewer's audio device can deliver 44.1 kHz.
+    const source = new AudioSampleSource({ codec: "opus", bitrate: videoAudioBitrate * 1000,
+      transform: { sampleRate: 48_000 } });
     output.addAudioTrack(source);
     await output.start();
     const sample = new AudioSample({ data: samples.map(value => value * gain), format: "f32-planar",
