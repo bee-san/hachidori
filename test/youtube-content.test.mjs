@@ -67,6 +67,16 @@ function youtube(t, { rows = ["えっと今日は朝ごはんを食べてから"
 
 const cueOf = result => result.cue && { startMs: result.cue.startMs, endMs: result.cue.endMs, text: result.cue.text };
 
+test("video metadata is pinned with the hovered caption, including without a timeline and across navigation", t => {
+  const f = youtube(t);
+  f.post({ kind: "video", movieId: VIDEO, title: "A <title>", author: "Channel & Co" });
+  const observation = f.youtube.observe(f.segments()[0]);
+  assert.equal(f.youtube.miningFields(observation).miscInfo, "A <title> - Channel & Co");
+  f.post({ kind: "video", movieId: NEXT, title: "Next", author: "Another channel" });
+  assert.equal(f.youtube.miningFields(observation).miscInfo, "A <title> - Channel & Co");
+  assert.equal(f.youtube.miningFields(f.youtube.observe(f.segments()[0])).miscInfo, "Next - Another channel");
+});
+
 test("YouTube's reader is its own, and asks the page which video plays", t => {
   const f = youtube(t);
   assert.equal(f.window.HDNetflix, undefined, "netflix-content.js makes Netflix's reader on Netflix only");

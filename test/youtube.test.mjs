@@ -55,7 +55,7 @@ test("the manifest exposes only YouTube's recorder page and the MP3 encoder to w
     manifest.optional_permissions])), false);
   assert.deepEqual(manifest.web_accessible_resources.filter(entry => /youtube/iu.test(JSON.stringify(entry))),
     [{ resources: ["youtube-recorder.html"], matches: ["https://www.youtube.com/*"] },
-    { resources: ["sentence-audio.js", "base64.js", "vendor/lamejs.js"],
+    { resources: ["sentence-audio.js", "base64.js", "vendor/lamejs.js", "vendor/mediabunny/mediabunny.js"],
       matches: ["https://www.netflix.com/*", "https://www.youtube.com/*"] }]);
   const page = await readFile(new URL("youtube-recorder.html", extension), "utf8");
   assert.match(page, /<script type="module" src="youtube-recorder\.js"><\/script>/u);

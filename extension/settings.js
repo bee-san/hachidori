@@ -108,6 +108,8 @@ const STATUS_POLL_MS = 1000;
 const STATUS_RETRY_MS = 5000;
 
 const NUMBER_FIELDS = [
+  { key: "videoAudioBitrate", id: "opt-video-audio-bitrate" },
+  { key: "videoImageQuality", id: "opt-video-image-quality" },
   { key: "scanLength", id: "opt-scan-length" },
   { key: "maxResults", id: "opt-max-results" },
   { key: "scanDelayMs", id: "opt-scan-delay" },
@@ -1000,6 +1002,7 @@ function renderExperimentalSettings() {
     document, features, onToggle: (id, enabled) => { void toggleExperimental(id, enabled); },
   });
   experimentalController.render(options.experimental);
+  element("video-mining-settings").hidden = !options.experimental.netflixMining && !options.experimental.youtubeMining;
   for (const feature of EXPERIMENTAL_FEATURES) {
     if (!feature.section) continue;
     const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section)

@@ -59,6 +59,17 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
 
 const cueOf = result => result.cue && { startMs: result.cue.startMs, endMs: result.cue.endMs, text: result.cue.text };
 
+test("Netflix title and episode information are pinned with the subtitle for {miscInfo}", t => {
+  const f = netflix(t);
+  const title = f.window.document.createElement("div");
+  title.dataset.uia = "video-title";
+  title.textContent = "Series - S1:E2 - Episode title";
+  f.window.document.body.append(title);
+  const observation = f.netflix.observe(f.spans()[0]);
+  title.textContent = "Next episode";
+  assert.equal(f.netflix.miningFields(observation).miscInfo, "Series - S1:E2 - Episode title");
+});
+
 test("a hovered subtitle line pins its cue and the whole cue becomes the root sentence", t => {
   const f = netflix(t);
   f.subtitle(EPISODE);

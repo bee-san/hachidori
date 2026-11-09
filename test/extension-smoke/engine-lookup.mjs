@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe } from "node:test";
 import { buildTitledZip, imagePreviewFixture, makePng } from "../make-fixture.mjs";
+import { buildAnkiFields } from "../../extension/anki-values.js";
 import {
   engineService,
   formerArchiveByteLimit,
@@ -29,6 +30,39 @@ import { check, equal, section, step } from "./harness.mjs";
 let lookup, first, fixtureTags, kanji, originalCcall, media, mediaMessage, largeMediaRemoved;
 
 describe("engine: lookups and errors", () => {
+  step("character ranks from Bee's term banks stay in clicked-kanji lookups", async () => {
+    const kanjiTitle = "Bee's Ultimate Kanji Dictionary", wordTitle = "Word ranks";
+    for (const [title, options] of [
+      [kanjiTitle, { terms: [["食", "", "", "", 0, ["rich kanji card"], 1, ""]], termMeta: [["食", "freq", 3]] }],
+      [wordTitle, { terms: [], termMeta: [["食", "freq", 200]] }],
+    ]) {
+      const imported = await request("hd_import", { blobUrl: createObjectURL(buildTitledZip(title, options)), fileName: `${title}.zip` });
+      check(`${title} frequency fixture imports`, imported.ok === true, JSON.stringify(imported));
+    }
+    try {
+      const word = await request("hd_lookup", { text: "食", maxResults: 32, scanLength: 16 });
+      check("ordinary word lookups exclude Bee's character ranks and retain real word ranks",
+        word.ok === true && word.results.length > 0 && word.results.every(({ term }) =>
+          !term.frequencies.some(group => group.dictionary === kanjiTitle)
+          && term.frequencies.some(group => group.dictionary === wordTitle && group.frequencies[0].value === 200)),
+        JSON.stringify(word));
+      const fields = await buildAnkiFields({ ...word.results[0], sentence: "食", matched: "食", matchOffset: 0,
+        popupSelectionText: "", searchQuery: "食", documentTitle: "", dictionaryAliases: {}, frequencyDictionaries: [] },
+      { Rank: { value: "{frequency-average-rank}", overwriteMode: "overwrite" } }, {});
+      equal("mined word averages use word ranks without the character rank", fields.Rank, "200");
+      const clicked = await request("hd_lookup_dictionary", { dictionary: kanjiTitle, text: "食", maxResults: 32, scanLength: 16 });
+      check("the explicit clicked-kanji route keeps the character rank beside its rich card",
+        clicked.ok === true && clicked.results.some(({ term }) =>
+          term.frequencies.some(group => group.dictionary === kanjiTitle && group.frequencies[0].value === 3)
+          && term.glossaries.some(glossary => glossary.dictionary === kanjiTitle)), JSON.stringify(clicked));
+    } finally {
+      const state = await storedDictionaryState();
+      for (const title of [kanjiTitle, wordTitle]) {
+        await request("hd_remove", { id: state.dictionaries.find(dictionary => dictionary.title === title)?.id, title });
+      }
+    }
+  });
+
   step("lookup, kanji, styles, media", async () => {
     section("lookup, kanji, styles, media");
     lookup = await request("hd_lookup", {

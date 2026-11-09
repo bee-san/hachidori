@@ -6,6 +6,18 @@ import "../extension/reader-options.js";
 const { DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, KEYBIND_TOGGLE_OPTIONS, normaliseKanjiSelection, normaliseOptions,
   projectStoredOptions, resolveKanjiDictionary, validateOptionsPatch } = globalThis.HDReaderOptions;
 
+test("video media settings round-trip through the shared options and reject unsupported formats", () => {
+  const patch = { videoAudioFormat: "opus", videoAudioBitrate: 96, videoImageFormat: "avif", videoImageQuality: 85 };
+  assert.deepEqual(validateOptionsPatch(patch), patch);
+  for (const [key, value] of Object.entries(patch)) {
+    assert.equal(projectStoredOptions(patch)[key], value);
+    assert.ok(globalThis.HDReaderOptions.GLOBAL_OPTION_KEYS.includes(key));
+  }
+  assert.equal(normaliseOptions({ videoImageFormat: "png" }).videoImageFormat, "gif");
+  assert.throws(() => validateOptionsPatch({ videoAudioFormat: "wav" }), /invalid reader option/u);
+  assert.throws(() => validateOptionsPatch({ videoImageQuality: 101 }), /invalid reader option/u);
+});
+
 function dictionary(id, title, counts = {}) {
   return { id, title, enabled: true, termCount: 0, frequencyCount: 0, pitchCount: 0, kanjiCount: 0, ...counts };
 }

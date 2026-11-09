@@ -193,7 +193,8 @@
       "resources": [
         "sentence-audio.js",
         "base64.js",
-        "vendor/lamejs.js"
+        "vendor/lamejs.js",
+        "vendor/mediabunny/mediabunny.js"
       ],
       "matches": [
         "https://www.netflix.com/*",

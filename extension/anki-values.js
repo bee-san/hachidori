@@ -286,7 +286,9 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     },
     // Yomitan's getMedia keeps a multi-line selection's breaks visible in the HTML field.
     "popup-selection-text": () => escape(request.popupSelectionText).replaceAll("\n", "<br>\n"), "search-query": () => escape(request.searchQuery),
-    "document-title": () => escape(request.documentTitle), url: pageLink, "url-plain": pageUrl, sentence: isolatedSentence,
+    "document-title": () => escape(request.documentTitle),
+    miscinfo: () => escape(request.miscInfo || request.documentTitle),
+    url: pageLink, "url-plain": pageUrl, sentence: isolatedSentence,
     "sentence-furigana": () => sentenceFurigana(false), "sentence-furigana-plain": () => sentenceFurigana(true),
     "cloze-prefix": () => parts()[0], "cloze-body": () => parts()[1], "cloze-suffix": () => parts()[2],
     frequencies: () => frequencyHtml(request, request.term.frequencies, rtlRules),

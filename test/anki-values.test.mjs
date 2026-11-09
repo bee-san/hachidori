@@ -14,6 +14,12 @@ const render = async (source, value, resources = {}) => (await buildAnkiFields(s
   definition: () => { throw new Error("Unexpected rich glossary work"); }, ...resources,
 })).Front;
 
+test("{miscInfo} escapes video metadata and falls back to the document title on other pages", async () => {
+  assert.equal(await render(request({ miscInfo: "Video <title> - A & B" }), "{miscInfo}"), "Video &lt;title&gt; - A &amp; B");
+  assert.equal(await render(request({ miscInfo: "Show - S1:E2 - Episode" }), "{MISCINFO}"), "Show - S1:E2 - Episode");
+  assert.equal(await render(request(), "{miscInfo}"), "A &amp; B");
+});
+
 test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16 sentence/cloze context", async () => {
   const value = await render(request(), "{expression}|{reading}|{furigana}|{furigana-plain}|{cloze-prefix}|{cloze-body}|{cloze-suffix}|{document-title}|{popup-selection-text}");
   assert.equal(value, "食べる|たべる|<ruby>食<rt>た</rt></ruby>べる|食[た]べる|🍵 |食べます|。|A &amp; B|&lt;selected&gt;");

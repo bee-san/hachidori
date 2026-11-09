@@ -165,7 +165,7 @@ function createVideoSiteService(site) {
     current?.port.disconnect();
   }
 
-  async function startRecording(message, sender) {
+  async function startRecording(message, sender, options) {
     if (sharingLinked) return { unavailable: "linked" };
     const cue = cueOf(message.cue);
     const crop = cropOf(message.crop);
@@ -181,7 +181,10 @@ function createVideoSiteService(site) {
     let started;
     try {
       started = await askRecorder(port, { type: "record", targetTabId: tab.id, audio: message.audio !== false,
-        gif: message.gif === true, limitMs: cue.endMs - cue.startMs + VIDEO_RECORDING_SLACK_MS, ...(crop ? { crop } : {}) },
+        gif: message.gif === true, encoding: { videoAudioFormat: options.videoAudioFormat,
+          videoAudioBitrate: options.videoAudioBitrate, videoImageFormat: options.videoImageFormat,
+          videoImageQuality: options.videoImageQuality },
+        limitMs: cue.endMs - cue.startMs + VIDEO_RECORDING_SLACK_MS, ...(crop ? { crop } : {}) },
       "started");
     } catch (error) {
       if (recording === current) stopRecording();
@@ -214,7 +217,7 @@ function createVideoSiteService(site) {
     let audio = null;
     if (clip.silent === true) audio = { unavailable: "silent" };
     else if (typeof clip.data === "string") audio = await mining.sentenceAudio(clip.data, template(message), feature);
-    return { audio, gif };
+    return { audio, gif: gif ?? (clip.imageError ? { unavailable: clip.imageError } : null) };
   }
 
   function cancelRecording(message, sender) {
@@ -263,7 +266,7 @@ function createVideoSiteService(site) {
     await sharingReady;
     const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
     if (options.experimental[site.flag] !== true) throw new Error(`${name} mining is turned off in Settings.`);
-    return handlers[message.type](message, sender);
+    return handlers[message.type](message, sender, options);
   }
 
   return { target: site.target, recorderPort: site.recorderPort, adoptRecorder, connectRecorder, handleRequest };

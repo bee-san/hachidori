@@ -176,6 +176,10 @@
     audioAutoplay: false,
     anki: DEFAULT_ANKI,
     smallerAnkiCards: false,
+    videoAudioFormat: "mp3",
+    videoAudioBitrate: 64,
+    videoImageFormat: "gif",
+    videoImageQuality: 70,
     experimental: DEFAULT_EXPERIMENTAL,
     popupWidthPx: 560,
     popupHeightPx: 420,
@@ -273,6 +277,8 @@
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {
+    videoAudioBitrate: [32, 128],
+    videoImageQuality: [1, 100],
     scanLength: [1, 64],
     maxResults: [1, 256],
     scanDelayMs: [0, 5000],
@@ -760,6 +766,8 @@
 
   // Enumerated options fall back to their default outside the listed values.
   const ENUMERATED_OPTIONS = {
+    videoAudioFormat: new Set(["mp3", "opus"]),
+    videoImageFormat: new Set(["gif", "webp", "avif"]),
     dictionaryEntryStorage: new Set(["auto", "paged", "resident"]),
     dictionaryIndexStorage: new Set(["auto", "paged", "resident"]),
     lookupMode: new Set(LOOKUP_MODES),
@@ -1056,6 +1064,7 @@
     "hoverEnabled", "lookupMode", "activationKey", "definitionLookupMode", "scanDelayMs", "definitionScanDelayMs",
     "popupHideDelayMs", "hidePopupOnCursorExit", "hidePopupOnCursorExitDelayMs", "popupNestingMaxDepth",
     "popupToolbarPosition", "customPopupCss", "userScripts", "smallerAnkiCards", "experimental",
+    "videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality",
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
     "showToolbarSearchButton", "searchClickLookup", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",

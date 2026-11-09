@@ -888,8 +888,10 @@ test("a recorded Netflix line is held until the note is written and stored as it
   const SENTENCE_AUDIO = /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u;
 
   // Holding stores nothing; only an MP3 is held, not the WAV a line used to be.
-  await assert.rejects(service.sentenceAudio("bm90IG1wMw==", "default"), /no MP3 audio/u);
-  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /no MP3 audio/u);
+  await assert.rejects(service.sentenceAudio("bm90IG1wMw==", "default"), /no MP3 or Opus audio/u);
+  await assert.rejects(service.sentenceAudio(AUDIO_DATA, "default"), /no MP3 or Opus audio/u);
+  const opus = Buffer.concat([Buffer.from("OggS"), Buffer.alloc(24), Buffer.from("OpusHead"), Buffer.alloc(32)]).toString("base64");
+  assert.match((await service.sentenceAudio(opus, "default")).filename, /\.opus$/u);
   const held = await service.sentenceAudio(SENTENCE_AUDIO_DATA, "default");
   assert.match(held.filename, SENTENCE_AUDIO);
   assert.equal(uploads.length, 0);
@@ -991,6 +993,10 @@ test("a recorded Netflix GIF is held, stored under its own name, and falls back 
 
   // Only a GIF is held; its filename is distinct from the WAV and the picture.
   await assert.rejects(service.gifImage("bm90IGdpZg==", "default"), /no GIF/u);
+  for (const [format, header] of [["webp", "RIFF0000WEBP"], ["avif", "0000ftypavis"]]) {
+    assert.match((await service.gifImage(Buffer.from(header).toString("base64"), "default")).filename,
+      new RegExp(`\\.${format}$`, "u"));
+  }
   const held = await service.gifImage(GIF_DATA, "default");
   assert.match(held.filename, GIF);
   assert.equal(uploads.length, 0);

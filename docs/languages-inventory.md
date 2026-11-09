@@ -53,6 +53,10 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `sourceHighlightEnabled` (true) | Design | None | G |
 | `showPopupAudioButton` (true) | Audio | None | P |
 | `popupColumns` (1) | Design (Default) | None | P |
+| `videoAudioFormat` (mp3) | Advanced → Video mining media | Shared by YouTube and Netflix | G; media encoding is independent of the language |
+| `videoAudioBitrate` (64) | Advanced → Video mining media | kbit/s | G; media encoding is independent of the language |
+| `videoImageFormat` (gif) | Advanced → Video mining media | Shared by YouTube and Netflix | G; media encoding is independent of the language |
+| `videoImageQuality` (70) | Advanced → Video mining media | WebP and AVIF quality | G; media encoding is independent of the language |
 | `glossaryLayoutMode` (default) | Design | `" \| "` separator neutral | P |
 | `showLookupCounts` (true) | Reading → Lookup history | Counts keyed by `[term, reading]` | P; counts per language (15) |
 | `definitionBlurCountEnabled` (false) | Reading → Definition blur | None | P |

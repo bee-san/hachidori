@@ -78,6 +78,7 @@
     // The video the page says its player plays, for a site whose address does
     // not say (YouTube, whose miniplayer plays on other pages).
     let reported = null;
+    let videoInfo = "";
     // Hover pause, which content.js turns on with the switch. `held` while
     // the pause this reader asked for, or kept through a recording, is in
     // force; `restoring` from a replay's answer until the page's seek back has
@@ -157,6 +158,12 @@
       restoring = !pending.playOn;
     }
 
+    function reportVideo(message) {
+      reported = typeof message.movieId === "string" && site.movieId.test(message.movieId) ? message.movieId : null;
+      videoInfo = reported === null ? "" : [message.title, message.author]
+        .filter(value => typeof value === "string" && value.trim()).map(value => value.trim()).join(" - ");
+    }
+
     // Everything the page posts is checked before it is used: any script on
     // the page can dispatch these events.
     function accept(detail) {
@@ -169,7 +176,7 @@
       if (!message || typeof message !== "object") return;
       // A page that says which video its player plays (YouTube).
       if (site.reportsVideo && message.kind === "video") {
-        reported = typeof message.movieId === "string" && site.movieId.test(message.movieId) ? message.movieId : null;
+        reportVideo(message);
       }
       sync();
       if (message.kind === "replay") {
@@ -226,8 +233,21 @@
       if (!subtitle || site.adShowing?.(document) === true) return null;
       if (!site.pauseOnLookup && !hovering) pauseIfPlaying();
       const container = element.closest(site.line) ?? subtitle;
+      let miscInfo = videoInfo;
+      if (!site.reportsVideo) {
+        const title = document.querySelector('[data-uia="video-title"], .video-title');
+        const parts = [];
+        if (title) {
+          const walker = document.createTreeWalker(title, SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const part = node.textContent.trim();
+            if (part) parts.push(part);
+          }
+        }
+        miscInfo = parts.join(" - ");
+      }
       return { movieId: sync(), mediaTimeMs: mediaTimeMs(), lineText: visibleText(container),
-        hoveredText: visibleText(element) };
+        hoveredText: visibleText(element), ...(miscInfo ? { miscInfo } : {}) };
     }
 
     // The language of the track whose line `element` is, where the page names
@@ -284,12 +304,13 @@
     // whole cue; nested lookups keep their own sentence and inherit only the cue.
     function miningFields(observation, sentence = null) {
       if (!observation) return {};
+      const metadata = observation.miscInfo ? { miscInfo: observation.miscInfo } : {};
       const resolved = resolve(observation);
-      if (!resolved.cue) return { [site.field]: { unavailable: resolved.reason } };
+      if (!resolved.cue) return { [site.field]: { unavailable: resolved.reason }, ...metadata };
       const { movieId, startMs, endMs, text } = resolved.cue;
       // A candidate of a language pack joins the cue's lines with its joiner.
       const whole = sentence ? subtitles.cueSentence(text, sentence.sentence, sentence.matchOffset, sentence.lineJoiner) : null;
-      return { [site.field]: { cue: { movieId, startMs, endMs } }, ...whole };
+      return { [site.field]: { cue: { movieId, startMs, endMs } }, ...whole, ...metadata };
     }
 
     // Has the page play the cue's line at 1×: from just before it, or with
@@ -442,11 +463,11 @@
     // A clip of the line for its {sentence-audio} field: held by the worker,
     // or why there is none. Its MP3 encoder (sentence-audio.js) loads with the
     // first line the page adds.
-    async function holdLine(clip, { send, templateId }) {
+    async function holdLine(clip, { send, templateId, encoding }) {
       if (clip === null) return { unavailable: "unheard" };
       if (lineAudioApi.isSilent(clip.samples)) return { unavailable: "silent" };
       const { sentenceAudioBase64 } = await import(window.chrome.runtime.getURL("sentence-audio.js"));
-      const data = await sentenceAudioBase64(clip.samples, clip.sampleRate);
+      const data = await sentenceAudioBase64(clip.samples, clip.sampleRate, encoding);
       const held = await send(site.requests.lineAudio, { data, templateId });
       return typeof held.unavailable === "string" ? { unavailable: held.unavailable }
         : { token: held.token, filename: held.filename };
@@ -465,7 +486,7 @@
     // keeps the video's sound; tab capture records a GIF, and the audio too
     // otherwise. `conceal` hides Hachidori's overlays around tab capture only.
     // Resolves with { audio, gif } for the fields, or with why there is none.
-    async function record(cue, { send, templateId, audio = true, gif = false, conceal = during => during() }) {
+    async function record(cue, { send, templateId, audio = true, gif = false, encoding, conceal = during => during() }) {
       recordings += 1;
       try {
         if (!audio || lineAudio?.ready() !== true) return await captureTab(cue, { send, templateId, audio, gif, conceal });
@@ -485,7 +506,7 @@
         }
         try {
           clip ??= await playLine(cue);
-          result.audio = await holdLine(clip, { send, templateId });
+          result.audio = await holdLine(clip, { send, templateId, encoding });
         } catch (error) {
           result.audio = { unavailable: error.code ?? error.message };
         }
