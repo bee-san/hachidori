@@ -22,6 +22,9 @@ try {
   const { protocol, host } = new URL(target.url());
   const origin = `${protocol}//${host}`;
   const page = await browser.newPage();
+  await page.exposeFunction("saveVideoFormat", (format, bytes) => {
+    writeFileSync(resolve(root, `test/tmp/ci/video-formats.${format}`), Buffer.from(bytes));
+  });
   await page.goto(`${origin}/netflix-recorder.html`);
   const report = await page.evaluate(async () => {
     const width = 160, height = 90;
@@ -39,9 +42,11 @@ try {
           worker.postMessage({ entries, width, height, options: { videoImageFormat: format, videoImageQuality: 70 } });
         });
       } finally { worker.terminate(); }
+      await globalThis.saveVideoFormat(format, Array.from(bytes));
       const ms = performance.now() - begin;
       const decoder = new ImageDecoder({ data: bytes, type: `image/${format}` });
-      await decoder.tracks.ready;
+      try { await decoder.tracks.ready; }
+      catch (error) { throw new Error(`${format}: ${error.message}`); }
       const track = decoder.tracks.selectedTrack;
       const frames = [];
       for (let index = 0; index < track.frameCount; index += 1) {

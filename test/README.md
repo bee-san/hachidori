@@ -698,7 +698,7 @@ These run separately:
 
 ### Firefox suites
 
-`node test/chrome-video-formats.mjs` is also run after the primary Chrome E2E
+`node test/chrome-video-formats.mjs` is also run before the primary Chrome E2E
 suite. It loads the production animation worker under the extension's CSP,
 independently decodes every GIF/WebP/AVIF frame and its timing and loop count,
 and decodes MP3 and Opus sentence audio to check duration and level. It writes
