@@ -13,6 +13,9 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - Hachidori's **screen recorder** is unavailable. GameSentenceMiner owns game screenshots, recordings and sentence audio instead.
 - Chrome-owned pages are unavailable, so **browser shortcut management**, the **local-file access prompt**, and **custom toolbar links** are disabled. Page/popup keybinds still work. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
+- Dictionary files use the single-thread IDBFS backend. Electron can report the
+  direct OPFS primitives as available while losing WasmFS files across an
+  overlay restart; IDBFS keeps imported dictionaries durable in that host.
 
 ## Turning it on
 

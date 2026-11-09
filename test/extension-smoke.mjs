@@ -4503,6 +4503,12 @@ async function main() {
     "offscreen.js still contains legacy-storage selection logic",
   );
   check(
+    "overlay mode uses durable IDBFS instead of Electron's lossy OPFS host",
+    offscreenSource.includes('import { OVERLAY_MODE } from "./overlay-mode.js";')
+      && /if \(OVERLAY_MODE \|\| !CAN_THREAD/u.test(offscreenSource),
+    "the overlay can still select the direct OPFS backend",
+  );
+  check(
     "the offscreen bridge places a hard bound on pending engine requests",
     /pending\.size\s*>=\s*MAX_PENDING_REQUESTS/u.test(offscreenSource)
       && /message\??\.type\s*===\s*"hd_status"/u.test(offscreenSource),

@@ -8,6 +8,7 @@
  */
 
 import { boundResponseFailure } from "./response-limits.js";
+import { OVERLAY_MODE } from "./overlay-mode.js";
 
 const TARGET = "hoshidicts-offscreen";
 const AUDIO_TARGET = "hachidori-audio";
@@ -188,7 +189,10 @@ function probeDirectOpfs() {
 }
 
 async function shouldUseThreadedEngine() {
-  if (!CAN_THREAD || typeof globalThis.Worker !== "function"
+  // Electron's extension host can pass the OPFS capability probe but lose the
+  // files behind WasmFS across an overlay restart. IDBFS is slower, but it is
+  // durable in that host and imports happen outside the lookup hot path.
+  if (OVERLAY_MODE || !CAN_THREAD || typeof globalThis.Worker !== "function"
       || typeof navigator.storage?.getDirectory !== "function") {
     return false;
   }
