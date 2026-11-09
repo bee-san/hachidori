@@ -88,7 +88,11 @@ export async function encodeAvif(entries, width, height, quality) {
         config = boxes(entry.data, 86).find(child => child.type === "av1C")?.data;
         break;
       }
-      case "hdlr": data.set(text("pict"), 16); break;
+      case "hdlr":
+        // MP4 accepts QuickTime's mhlr component type; AVIF requires zero.
+        data.fill(0, 12, 16);
+        data.set(text("pict"), 16);
+        break;
       case "stco":
         for (let offset = 16; offset < data.length; offset += 4) data.set(number(uint(data, offset) + shift), offset);
         break;
