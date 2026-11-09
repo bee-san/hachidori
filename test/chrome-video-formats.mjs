@@ -116,8 +116,12 @@ try {
   await page.evaluate(async () => chrome.storage.local.set({ options: { experimental: { youtubeMining: true } } }));
   await page.goto(`${origin}/settings.html#advanced`);
   // The installer's welcome tab can take focus while the encoders run.
-  // Puppeteer's element screenshot waits for a foreground IntersectionObserver.
   await page.bringToFront();
   await page.waitForSelector("#video-mining-settings:not([hidden])", { visible: true });
-  await (await page.$("#video-mining-settings")).screenshot({ path: resolve(root, "test/tmp/ci/video-mining-settings.png") });
+  const clip = await page.$eval("#video-mining-settings", element => {
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return { x: x + scrollX, y: y + scrollY, width, height };
+  });
+  await page.screenshot({ path: resolve(root, "test/tmp/ci/video-mining-settings.png"), clip });
 } finally { await browser.close(); }
