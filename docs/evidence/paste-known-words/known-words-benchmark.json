@@ -1,0 +1,61 @@
+{
+  "base": "11343b4f02270d44271674f53f8331018de3e03e",
+  "node": "v24.22.1",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "existingWords": 10000,
+  "pastedWords": 1000,
+  "samples": {
+    "perWordMs": [
+      1181.495794,
+      1121.0558499999997,
+      1013.004406,
+      1123.9945429999998,
+      1181.1747540000006,
+      1073.7769479999997,
+      1071.7749599999997
+    ],
+    "batchMs": [
+      3.423332999999957,
+      2.5057999999999083,
+      2.4236369999998715,
+      2.5026450000000295,
+      3.4099740000001475,
+      4.693043000000216,
+      2.3958659999998417
+    ]
+  },
+  "medians": {
+    "perWordMs": 1121.0558499999997,
+    "batchMs": 2.5057999999999083
+  },
+  "limitation": "Pure production merge functions. Per-word baseline excludes messaging and storage; this is not end-to-end latency.",
+  "repaint": {
+    "spans": 1000,
+    "repaintsPerSample": 20,
+    "samplesMs": {
+      "before": [
+        3.70363899999993,
+        2.1514623500000196,
+        1.9983116500000506,
+        2.1767431500000383,
+        2.3459343500000616,
+        1.7710073999999623,
+        1.9717317999999977
+      ],
+      "after": [
+        2.5564989999999854,
+        2.2009119000000283,
+        2.16737564999994,
+        2.0233596499999296,
+        2.427819400000044,
+        2.21167089999999,
+        2.044928350000009
+      ]
+    },
+    "mediansMs": {
+      "before": 2.1514623500000196,
+      "after": 2.2009119000000283
+    },
+    "limitation": "Production highlighter, jsdom fake layout/index. Includes the event-loop settle. Browser paint and dictionary segmentation are not timed."
+  }
+}
