@@ -67,8 +67,8 @@ try {
     }
     await context.close();
     // Same 480×270, 2-second, 10-fps clip for three samples of each encoder.
-    // GIF calls the exact encoder shipped before this change; worker startup
-    // and transfer are included for WebP/AVIF, as in the production recorder.
+    // GIF calls the exact encoder shipped before this change. These targeted
+    // timings exclude replay, worker transport, decoding and Anki requests.
     const detailed = Array.from({ length: 20 }, (_, frame) => ({ delayMs: 100,
       data: Uint8ClampedArray.from({ length: 480 * 270 * 4 }, (_, index) => {
         if (index % 4 === 3) return 255;

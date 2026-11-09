@@ -62,7 +62,7 @@ export async function encodeAvif(entries, width, height, quality) {
     for (const { data, delayMs } of entries) {
       context.putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0);
       const sample = new VideoSample(canvas, { timestamp, duration: delayMs / 1000 });
-      try { await source.add(sample); } finally { sample.close(); }
+      try { await source.add(sample); } finally { sample.close(); } // NOSONAR: Mediabunny requires ordered samples and encoder backpressure before reusing the canvas
       timestamp += delayMs / 1000;
     }
     await output.finalize();
@@ -82,19 +82,25 @@ export async function encodeAvif(entries, width, height, quality) {
         number(Math.round(timestamp * timescale)), number(0), number(1, 2), number(0, 2))));
       return box(type, ...children);
     }
-    if (type === "stsd") {
-      const entry = boxes(data, 16)[0];
-      config = boxes(entry.data, 86).find(child => child.type === "av1C")?.data;
-    } else if (type === "hdlr") data.set(text("pict"), 16);
-    else if (type === "stco") {
-      for (let offset = 16; offset < data.length; offset += 4) data.set(number(uint(data, offset) + shift), offset);
-    } else if (type === "co64") {
-      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-      for (let offset = 16; offset < data.length; offset += 8) view.setBigUint64(offset, view.getBigUint64(offset) + BigInt(shift));
-    } else if (type === "tkhd" || type === "mvhd") {
-      if (type === "mvhd") timescale = uint(data, 20);
+    switch (type) {
+      case "stsd": {
+        const entry = boxes(data, 16)[0];
+        config = boxes(entry.data, 86).find(child => child.type === "av1C")?.data;
+        break;
+      }
+      case "hdlr": data.set(text("pict"), 16); break;
+      case "stco":
+        for (let offset = 16; offset < data.length; offset += 4) data.set(number(uint(data, offset) + shift), offset);
+        break;
+      case "co64": {
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        for (let offset = 16; offset < data.length; offset += 8) view.setBigUint64(offset, view.getBigUint64(offset) + BigInt(shift));
+        break;
+      }
       // All-one duration denotes an indefinitely repeating sequence.
-      data.fill(255, type === "tkhd" ? 28 : 24, type === "tkhd" ? 32 : 28);
+      case "mvhd": timescale = uint(data, 20); data.fill(255, 24, 28); break;
+      case "tkhd": data.fill(255, 28, 32); break;
+      default: break;
     }
     return data;
   }

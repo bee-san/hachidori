@@ -158,6 +158,12 @@
       restoring = !pending.playOn;
     }
 
+    function reportVideo(message) {
+      reported = typeof message.movieId === "string" && site.movieId.test(message.movieId) ? message.movieId : null;
+      videoInfo = reported === null ? "" : [message.title, message.author]
+        .filter(value => typeof value === "string" && value.trim()).map(value => value.trim()).join(" - ");
+    }
+
     // Everything the page posts is checked before it is used: any script on
     // the page can dispatch these events.
     function accept(detail) {
@@ -170,9 +176,7 @@
       if (!message || typeof message !== "object") return;
       // A page that says which video its player plays (YouTube).
       if (site.reportsVideo && message.kind === "video") {
-        reported = typeof message.movieId === "string" && site.movieId.test(message.movieId) ? message.movieId : null;
-        videoInfo = reported === null ? "" : [message.title, message.author]
-          .filter(value => typeof value === "string" && value.trim()).map(value => value.trim()).join(" - ");
+        reportVideo(message);
       }
       sync();
       if (message.kind === "replay") {

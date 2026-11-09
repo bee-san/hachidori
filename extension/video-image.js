@@ -19,9 +19,9 @@ async function encodeWebP(entries, width, height, quality) {
   const frames = [];
   for (const { data, delayMs } of entries) {
     context.putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0);
-    const blob = await canvas.convertToBlob({ type: "image/webp", quality: quality / 100 });
+    const blob = await canvas.convertToBlob({ type: "image/webp", quality: quality / 100 }); // NOSONAR: frames share one canvas; finish this frame before drawing the next
     if (blob.type !== "image/webp") throw new Error("This browser cannot encode WebP animations.");
-    const still = new Uint8Array(await blob.arrayBuffer());
+    const still = new Uint8Array(await blob.arrayBuffer()); // NOSONAR: keep frame payloads in capture order without retaining every Blob
     const payload = [];
     for (let offset = 12; offset < still.length;) {
       const size = new DataView(still.buffer).getUint32(offset + 4, true);
