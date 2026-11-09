@@ -112,8 +112,8 @@ test("two profiles' first Templates keep one snapshot each, answered for the pro
   assert.deepEqual(state.attempts.map(attempt => attempt.sourceKey), keys);
   assert.deepEqual(state.snapshots.map(snapshot => snapshot.rows), [ROWS.Japanese, ROWS.English]);
   const japanese = firstTemplate(f.options, "ja"), english = firstTemplate(f.options, "en");
-  assert.deepEqual(await f.service.statuses(japanese, ["猫", "run"]), { revision: 2, statuses: ["known", "unknown"] });
-  assert.deepEqual(await f.service.statuses(english, ["猫", "run"]), { revision: 2, statuses: ["unknown", "learning"] });
+  assert.deepEqual(await f.service.statuses(japanese, ["猫", "run"]), { revision: 2, statuses: null },
+    "disabled highlighting has no broad snapshot");
   assert.equal(await f.service.has(japanese, "猫"), true);
   assert.equal(await f.service.has(english, "猫"), false);
   assert.deepEqual(await f.service.peek(english, "run"), { wordKey: "run", mature: false, noteIds: [21], cached: true });
@@ -128,7 +128,7 @@ test("a confirmed write in one profile moves the one row revision every snapshot
   assert.equal(f.state.rowRevision, 3);
   assert.deepEqual(f.state.snapshots[1].rows, [["run", false, [21]], ["walk", false, [40]]]);
   assert.deepEqual(f.state.snapshots[0].rows, ROWS.Japanese, "the Japanese snapshot is untouched");
-  assert.deepEqual(await f.service.statuses(japanese, ["猫"]), { revision: 3, statuses: ["known"] });
+  assert.deepEqual(await f.service.peek(japanese, "猫"), { wordKey: "猫", mature: true, noteIds: [7], cached: true });
 });
 
 test("one profile's new source invalidates by profile: the other keeps its snapshot, schedule and running pull", async () => {
@@ -177,7 +177,7 @@ test("back to one source, the record is today's single snapshot, and a profile w
   assert.deepEqual(Object.keys(state), ["version", "configurationRevision", "rowRevision", "snapshot", "attempt"]);
   assert.deepEqual(state.snapshot, japanese, "the remaining source keeps its snapshot");
   assert.equal(state.attempt.sourceKey, japanese.sourceKey);
-  assert.deepEqual(await f.service.statuses(firstTemplate(f.options, "en"), ["猫"]), { revision: 2, statuses: ["known"] });
+  assert.equal(await f.service.has(firstTemplate(f.options, "en"), "猫"), true);
   // A profile whose first Template names no note type adds no source either.
   assert.equal((await ankiIndexSources(records(template("words", "")))).size, 1);
 });
@@ -199,6 +199,32 @@ test("with one source, a record with profiles changes exactly as the single-prof
     return f.state;
   };
   assert.deepEqual(await run(withProfiles), await run(flat));
+});
+
+test("highlighting keeps each profile's all-decks source and language families separate", async () => {
+  const options = records();
+  options.profiles[0].settings.wordHighlightEnabled = true;
+  const f = fixture(options);
+  await f.service.reconcile();
+  await f.settled(() => f.state?.snapshots?.length === 3);
+  const japanese = firstTemplate(f.options, "ja"), english = firstTemplate(f.options, "en");
+  assert.deepEqual((await f.service.statuses(japanese, ["猫", "run"])).statuses, ["known", "unknown"]);
+  assert.equal((await f.service.statuses(english, ["猫", "run"])).statuses, null);
+  const sources = [...(await ankiIndexSources(f.options)).values()];
+  assert.deepEqual(sources.map(source => [source.model, source.scope]),
+    [["Japanese", "model"], ["Japanese", "all"], ["English", "model"]]);
+  assert.equal(Object.hasOwn(sources[1], "families"), false);
+  // A language without supported families must not start indexing Japanese
+  // note types when its user enables highlighting.
+  const next = f.options;
+  next.profiles[1].settings.wordHighlightEnabled = true;
+  await f.write(next);
+  await f.service.reconcile();
+  await f.settled(() => f.state?.snapshots?.length === 4);
+  assert.deepEqual((await f.service.statuses(english, ["猫", "run"])).statuses, ["unknown", "learning"]);
+  const englishSource = [...(await ankiIndexSources(f.options)).values()].find(source => source.model === "English"
+    && source.scope === "all");
+  assert.deepEqual(englishSource.families, []);
 });
 
 test("a language without note-type families keys its source with them and recognises no family note type beside its own", async () => {

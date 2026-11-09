@@ -231,8 +231,8 @@ is added.
   and the library's personal entry count read the edited profile's language;
   the content script's marks read the language of the profile in effect.
 - `ankiDuplicateIndex` keeps today's single-snapshot record while one source
-  exists, and holds one snapshot per source key once two profiles' first
-  Templates have usable sources (section 12).
+  exists, and holds one snapshot per source key when mining and highlighting
+  across the profiles need several sources (section 12).
 
 ### 4.4 `languageSelection` (installation-local)
 
@@ -1442,12 +1442,14 @@ separate change for the owner to decide.
 - **Built-in mining, word status and the duplicate index** use the first
   Template of the profile each request names (section 5.4). The duplicate
   index keeps one snapshot per source key, each refreshed and retried on its
-  own, evicted when no profile's first Template uses it; with one source it
+  own, evicted when no profile needs it; with one source it
   keeps today's record. `writeLocalState` invalidates a snapshot when the
   first-Template source of any profile changes, compared profile by profile.
   The index keeps one row revision across its snapshots and the word-status
   signal carries it; a reader re-reads every status when it changes. Word
-  status and maturity answer for the requested profile's source.
+  status uses that Template's **All of Anki** source while highlighting is
+  enabled, sharing mining's snapshot if its scope is already All of Anki.
+  Maturity blur retains the Template's selected duplicate scope.
 - **Markers.** The marker list in Settings hides markers whose capability the
   edited profile lacks (`{furigana*}` and `{sentence-furigana*}` without ruby,
   `{pitch*}` without pitch accent, `{character}`, `{onyomi}`, `{kunyomi}`,
