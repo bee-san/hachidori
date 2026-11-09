@@ -164,7 +164,9 @@ CDP isolated world, as a content script runs, then tapped the video:
 Clear Key decrypts in the renderer, as Widevine's software path does. Hardware-secure
 playback (Windows, Edge's PlayReady) is rendered outside Chrome's audio pipeline, so it
 may record as silence here, as it can through tab capture. This was not tested, nor was
-real Widevine on Netflix; both are owner checks.
+real Widevine on Netflix; both are owner checks. On 9 November 2026 the owner found Netflix
+in Edge on Windows, with graphics acceleration off, gave exact zeros here while Migaku's
+tab capture recorded the line.
 
 ## Design
 
@@ -200,7 +202,8 @@ feature gets `{sentence-audio}` rather than adding a separate one:
    tab-capture recorder still records sentence audio when the buffer is not
    running: Chrome has not let the page start audio yet (a browser shortcut is
    not a page gesture, but it does grant tab capture), or another extension or
-   the page already routes the element through Web Audio.
+   the page already routes the element through Web Audio. It also records a
+   line the buffer kept as exact zeros, and every later line of the page.
 6. Turning the switch off stops the copy and frees the buffer. The video's sound
    keeps going through the graph until the page reloads, because Chrome cannot
    disconnect an element from Web Audio.

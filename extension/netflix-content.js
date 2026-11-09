@@ -91,6 +91,11 @@
     let recordings = 0;
     // What the viewer hears, kept while content.js has the switch on.
     let lineAudio = null;
+    // Set once the line audio keeps a line as exact zeros: the video's sound
+    // does not reach Web Audio, as on Netflix in Edge on Windows, where tab
+    // capture still records it. The page's lines are recorded with tab capture
+    // from then on.
+    let copySilent = false;
     const range = document.createRange();
     let dragStyle = null;
     let subtitleOffset = { x: 0, y: 0 };
@@ -465,7 +470,6 @@
     // first line the page adds.
     async function holdLine(clip, { send, templateId, encoding }) {
       if (clip === null) return { unavailable: "unheard" };
-      if (lineAudioApi.isSilent(clip.samples)) return { unavailable: "silent" };
       const { sentenceAudioBase64 } = await import(window.chrome.runtime.getURL("sentence-audio.js"));
       const data = await sentenceAudioBase64(clip.samples, clip.sampleRate, encoding);
       const held = await send(site.requests.lineAudio, { data, templateId });
@@ -484,12 +488,15 @@
     // {sentence-audio}, `gif` for {gif}. Sentence audio comes from what the
     // viewer heard, played on or replayed if need be, while the line audio
     // keeps the video's sound; tab capture records a GIF, and the audio too
-    // otherwise. `conceal` hides Hachidori's overlays around tab capture only.
+    // otherwise or once the line audio has kept a line as exact zeros.
+    // `conceal` hides Hachidori's overlays around tab capture only.
     // Resolves with { audio, gif } for the fields, or with why there is none.
     async function record(cue, { send, templateId, audio = true, gif = false, encoding, conceal = during => during() }) {
       recordings += 1;
       try {
-        if (!audio || lineAudio?.ready() !== true) return await captureTab(cue, { send, templateId, audio, gif, conceal });
+        if (!audio || copySilent || lineAudio?.ready() !== true) {
+          return await captureTab(cue, { send, templateId, audio, gif, conceal });
+        }
         let clip = await heardLine(cue);
         const result = {};
         if (gif) {
@@ -506,7 +513,13 @@
         }
         try {
           clip ??= await playLine(cue);
-          result.audio = await holdLine(clip, { send, templateId, encoding });
+          if (clip !== null && lineAudioApi.isSilent(clip.samples)) {
+            copySilent = true;
+            const recorded = await captureTab(cue, { send, templateId, audio: true, gif: false, conceal });
+            result.audio = typeof recorded.unavailable === "string" ? { unavailable: recorded.unavailable } : recorded.audio;
+          } else {
+            result.audio = await holdLine(clip, { send, templateId, encoding });
+          }
         } catch (error) {
           result.audio = { unavailable: error.code ?? error.message };
         }
