@@ -1,0 +1,479 @@
+{
+  "node": "v24.22.1",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "runs": 7,
+  "notes": 30000,
+  "wordsPerBatch": 1000,
+  "batchesPerSample": 100,
+  "base": "d1842d10",
+  "results": [
+    {
+      "enabled": false,
+      "scope": "model",
+      "samples": {
+        "base": [
+          {
+            "refreshMs": 144.293409,
+            "statusMs": 1.16858521,
+            "writeMs": 102.62723599999998,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 103.29810999999995,
+            "statusMs": 1.7997042799999996,
+            "writeMs": 73.58325000000013,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 144.42864200000008,
+            "statusMs": 1.173179540000001,
+            "writeMs": 129.52543500000002,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 101.1160090000003,
+            "statusMs": 1.540456210000002,
+            "writeMs": 79.21157300000004,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 127.51172600000018,
+            "statusMs": 1.6743039400000044,
+            "writeMs": 73.10869400000001,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 136.04126799999995,
+            "statusMs": 1.6023158399999966,
+            "writeMs": 104.90667800000028,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 93.04337200000009,
+            "statusMs": 1.2369036099999995,
+            "writeMs": 58.6324069999996,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          }
+        ],
+        "head": [
+          {
+            "refreshMs": 117.60270000000003,
+            "statusMs": 0.1548096099999998,
+            "writeMs": 73.147337,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 106.30962699999998,
+            "statusMs": 0.4175696400000004,
+            "writeMs": 75.03820200000007,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 123.94471699999986,
+            "statusMs": 0.09552887999999939,
+            "writeMs": 113.00820399999998,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 96.47462699999983,
+            "statusMs": 0.051784110000000966,
+            "writeMs": 62.776420000000144,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 118.42332799999986,
+            "statusMs": 0.11617373000000043,
+            "writeMs": 78.7425119999998,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 93.69933300000002,
+            "statusMs": 0.15693138999999973,
+            "writeMs": 71.005717,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 98.786517,
+            "statusMs": 0.0733076200000005,
+            "writeMs": 100.2969879999996,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          }
+        ]
+      },
+      "medians": {
+        "base": {
+          "refreshMs": 127.51172600000018,
+          "statusMs": 1.540456210000002,
+          "writeMs": 79.21157300000004,
+          "refreshCalls": 1,
+          "snapshots": 1,
+          "bytes": 508137,
+          "storageWrites": 1
+        },
+        "head": {
+          "refreshMs": 106.30962699999998,
+          "statusMs": 0.11617373000000043,
+          "writeMs": 75.03820200000007,
+          "refreshCalls": 1,
+          "snapshots": 1,
+          "bytes": 508137,
+          "storageWrites": 1
+        }
+      }
+    },
+    {
+      "enabled": true,
+      "scope": "model",
+      "samples": {
+        "base": [
+          {
+            "refreshMs": 109.56539499999963,
+            "statusMs": 0.9837452599999961,
+            "writeMs": 77.18051900000046,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 106.58453099999952,
+            "statusMs": 1.0798411800000032,
+            "writeMs": 68.7745359999999,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 98.43249899999955,
+            "statusMs": 1.1832803400000012,
+            "writeMs": 93.30114099999992,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 109.69740600000023,
+            "statusMs": 1.1113576900000044,
+            "writeMs": 63.656785999999556,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 91.12199299999975,
+            "statusMs": 1.0865372400000068,
+            "writeMs": 56.47862300000088,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 100.67119600000115,
+            "statusMs": 1.0407100399999945,
+            "writeMs": 59.76267800000096,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 112.88936899999862,
+            "statusMs": 1.175916159999997,
+            "writeMs": 74.37678099999903,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 508137,
+            "storageWrites": 1
+          }
+        ],
+        "head": [
+          {
+            "refreshMs": 424.47269700000015,
+            "statusMs": 1.077554460000001,
+            "writeMs": 161.71612100000038,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 365.9744419999997,
+            "statusMs": 1.0862628499999938,
+            "writeMs": 178.4949000000006,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 426.60613899999953,
+            "statusMs": 0.9712568999999985,
+            "writeMs": 155.84090000000015,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 400.1772369999999,
+            "statusMs": 1.0418052400000033,
+            "writeMs": 177.68395799999962,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 446.98257600000034,
+            "statusMs": 1.1295592299999953,
+            "writeMs": 164.72635300000002,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 446.20305499999995,
+            "statusMs": 1.0184070699999939,
+            "writeMs": 157.69755299999997,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 411.2781469999991,
+            "statusMs": 1.1048653700000068,
+            "writeMs": 162.59970599999906,
+            "refreshCalls": 2,
+            "snapshots": 2,
+            "bytes": 1265094,
+            "storageWrites": 1
+          }
+        ]
+      },
+      "medians": {
+        "base": {
+          "refreshMs": 106.58453099999952,
+          "statusMs": 1.0865372400000068,
+          "writeMs": 68.7745359999999,
+          "refreshCalls": 1,
+          "snapshots": 1,
+          "bytes": 508137,
+          "storageWrites": 1
+        },
+        "head": {
+          "refreshMs": 424.47269700000015,
+          "statusMs": 1.077554460000001,
+          "writeMs": 162.59970599999906,
+          "refreshCalls": 2,
+          "snapshots": 2,
+          "bytes": 1265094,
+          "storageWrites": 1
+        }
+      }
+    },
+    {
+      "enabled": true,
+      "scope": "all",
+      "samples": {
+        "base": [
+          {
+            "refreshMs": 153.34575500000028,
+            "statusMs": 1.1342342800000005,
+            "writeMs": 119.43023399999947,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 147.8238999999994,
+            "statusMs": 1.0215590899999916,
+            "writeMs": 95.04520599999887,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 164.8793480000004,
+            "statusMs": 1.0084302300000128,
+            "writeMs": 92.56554399999914,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 146.91786599999978,
+            "statusMs": 0.9956287599999996,
+            "writeMs": 96.9689330000001,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 144.68508400000064,
+            "statusMs": 1.086016520000012,
+            "writeMs": 97.14637700000094,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 152.19190999999955,
+            "statusMs": 1.0857189800000016,
+            "writeMs": 94.35728399999971,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 181.1778549999999,
+            "statusMs": 1.1036401500000101,
+            "writeMs": 105.97524199999862,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          }
+        ],
+        "head": [
+          {
+            "refreshMs": 157.9200609999989,
+            "statusMs": 1.0252052800000093,
+            "writeMs": 93.8163569999997,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 138.79544700000042,
+            "statusMs": 1.0449798399999963,
+            "writeMs": 88.96455500000047,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 151.7117589999998,
+            "statusMs": 1.1176625799999966,
+            "writeMs": 97.27245000000039,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 149.62654900000052,
+            "statusMs": 1.1125706600000012,
+            "writeMs": 91.03397099999893,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 165.7387030000009,
+            "statusMs": 1.1991329000000042,
+            "writeMs": 88.55457999999999,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 228.3404219999993,
+            "statusMs": 1.2347744599999897,
+            "writeMs": 92.53128199999992,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          },
+          {
+            "refreshMs": 159.8238509999992,
+            "statusMs": 1.4998322800000097,
+            "writeMs": 92.9959859999999,
+            "refreshCalls": 1,
+            "snapshots": 1,
+            "bytes": 757027,
+            "storageWrites": 1
+          }
+        ]
+      },
+      "medians": {
+        "base": {
+          "refreshMs": 152.19190999999955,
+          "statusMs": 1.0857189800000016,
+          "writeMs": 96.9689330000001,
+          "refreshCalls": 1,
+          "snapshots": 1,
+          "bytes": 757027,
+          "storageWrites": 1
+        },
+        "head": {
+          "refreshMs": 157.9200609999989,
+          "statusMs": 1.1176625799999966,
+          "writeMs": 92.53128199999992,
+          "refreshCalls": 1,
+          "snapshots": 1,
+          "bytes": 757027,
+          "storageWrites": 1
+        }
+      }
+    }
+  ]
+}
