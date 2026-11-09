@@ -111,10 +111,13 @@ try {
       assert.ok(result.rms > 0.08 && result.rms < 0.12, `${format} preserves the levelled sound`);
     }
   }
-  await page.evaluate(async () => chrome.storage.local.set({ options: { experimental: { youtubeMining: true } } }));
-  await page.goto(`${origin}/settings.html#advanced`);
-  await page.waitForSelector("#video-mining-settings:not([hidden])");
-  await (await page.$("#video-mining-settings")).screenshot({ path: resolve(root, "test/tmp/ci/video-mining-settings.png") });
   writeFileSync(resolve(root, "test/tmp/ci/video-formats.json"), JSON.stringify(report, null, 2));
   console.log("PASS video formats", JSON.stringify(report));
+  await page.evaluate(async () => chrome.storage.local.set({ options: { experimental: { youtubeMining: true } } }));
+  await page.goto(`${origin}/settings.html#advanced`);
+  // The installer's welcome tab can take focus while the encoders run.
+  // Puppeteer's element screenshot waits for a foreground IntersectionObserver.
+  await page.bringToFront();
+  await page.waitForSelector("#video-mining-settings:not([hidden])", { visible: true });
+  await (await page.$("#video-mining-settings")).screenshot({ path: resolve(root, "test/tmp/ci/video-mining-settings.png") });
 } finally { await browser.close(); }
