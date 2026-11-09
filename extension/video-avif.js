@@ -48,6 +48,14 @@ function primaryImage(sample, config, width, height) {
     properties, box("idat", sample));
 }
 
+function indefiniteHeader(type, data, durationOffset) {
+  // Use the 64-bit indefinite duration. Older Chromium AVIF decoders treat
+  // the 32-bit all-one value as a finite duration rather than as indefinite.
+  return full(type, 1, uint(data, 8) & 0xffffff,
+    number(uint(data, 12), 8), number(uint(data, 16), 8), data.subarray(20, durationOffset),
+    new Uint8Array(8).fill(255), data.subarray(durationOffset + 4));
+}
+
 export async function encodeAvif(entries, width, height, quality) {
   const target = new BufferTarget();
   let first = null;
@@ -102,8 +110,8 @@ export async function encodeAvif(entries, width, height, quality) {
         break;
       }
       // All-one duration denotes an indefinitely repeating sequence.
-      case "mvhd": timescale = uint(data, 20); data.fill(255, 24, 28); break;
-      case "tkhd": data.fill(255, 28, 32); break;
+      case "mvhd": timescale = uint(data, 20); return indefiniteHeader(type, data, 24);
+      case "tkhd": return indefiniteHeader(type, data, 28);
       default: break;
     }
     return data;
