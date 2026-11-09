@@ -212,6 +212,7 @@ const server = createServer(async (request, response) => {
       }
       if (action === "deckNames") return ["Default"];
       if (action === "modelNames") return ["Basic"];
+      if (action === "modelNamesAndIds") return { Basic: 1 };
       if (action === "modelFieldNames") return ["Front", "Back"];
       if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
       throw new Error(`Unexpected Anki action ${action}`);
