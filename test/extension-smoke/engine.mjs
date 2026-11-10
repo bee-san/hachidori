@@ -201,20 +201,20 @@ async function checkReaderOptionsTransport(pageChrome, storage) {
     const explicit = reader.projectStoredOptions({ modifier: "alt", lookupMode: "hover", activationKey: "K" });
     const legacyPatch = reader.validateOptionsPatch({ modifier: "shift" });
     const invalidActivation = [
-      { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "not a key" },
-      { activationKey: "mouse2" }, { activationKey: "Mouse3" }, { activationKey: "mousemiddle" },
+      { hoverEnabled: 1 }, { lookupMode: "always" }, { activationKey: "" },
+      { activationKey: 1 }, { activationKey: "mousemiddle" },
       { popupHideDelayMs: -1 }, { popupHideDelayMs: 5001 },
       { hidePopupOnCursorExit: 1 }, { hidePopupOnCursorExitDelayMs: -1 }, { hidePopupOnCursorExitDelayMs: 5001 },
     ].every((patch) => {
       try { reader.validateOptionsPatch(patch); return false; } catch { return true; }
     });
     // Yomitan's bit-index names are not Hachidori's: `mouse2` does not become a button.
-    const buttons = ["MouseMiddle", "MouseBack", "MouseForward"];
+    const buttons = ["MouseRight", "MouseMiddle", "MouseBack", "MouseForward"];
     const buttonActivation = buttons.every(key => reader.normaliseOptions({ activationKey: key }).activationKey === key
         && reader.validateOptionsPatch({ activationKey: key }).activationKey === key)
-      && ["mouse2", "Mouse3", "Middle"].every(key => reader.normaliseOptions({ activationKey: key }).activationKey === "Shift")
+      && ["mouse2", "Mouse3", "Middle"].every(key => !reader.ACTIVATION_BUTTONS.has(reader.normaliseOptions({ activationKey: key })))
       && JSON.stringify(buttons.map(reader.activationLabel))
-        === JSON.stringify(["the middle mouse button", "the Back mouse button", "the Forward mouse button"])
+        === JSON.stringify(["the right mouse button", "the middle mouse button", "the Back mouse button", "the Forward mouse button"])
       && reader.activationLabel("Shift") === "Shift";
     check("reader activation options migrate legacy modes without competing policies and validate new fields",
       plain.hoverEnabled === true && plain.lookupMode === "hover" && plain.activationKey === "Shift"

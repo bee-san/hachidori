@@ -6,6 +6,13 @@ import "../extension/reader-options.js";
 const { DEFAULT_OPTIONS, DEFINITION_LOOKUP_MODES, KEYBIND_TOGGLE_OPTIONS, normaliseKanjiSelection, normaliseOptions,
   projectStoredOptions, resolveKanjiDictionary, validateOptionsPatch } = globalThis.HDReaderOptions;
 
+test("activation accepts keyboard keys beyond the preset list and the right mouse button", () => {
+  for (const activationKey of ["CapsLock", "Pause", "é", "変換", "MouseRight"]) {
+    assert.equal(normaliseOptions({ activationKey }).activationKey, activationKey);
+    assert.deepEqual(validateOptionsPatch({ activationKey }), { activationKey });
+  }
+});
+
 test("video media settings round-trip through the shared options and reject unsupported formats", () => {
   const patch = { videoAudioFormat: "opus", videoAudioBitrate: 96, videoImageFormat: "avif", videoImageQuality: 85 };
   assert.deepEqual(validateOptionsPatch(patch), patch);
