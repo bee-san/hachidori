@@ -66,8 +66,8 @@ const MARKER_DESCRIPTIONS = {
   "pitch-accent-graphs-jj": "Japanese pitch accent SVG graphs with kana labels (Jidoujisho style)",
   audio: "Selected pronunciation audio",
   screenshot: "Screenshot of the source page",
-  "sentence-audio": "Netflix or YouTube subtitle line's audio",
-  gif: "Netflix or YouTube subtitle line's animation in the selected format, otherwise the page screenshot",
+  "sentence-audio": "Netflix, YouTube or Crunchyroll subtitle line's audio",
+  gif: "Netflix, YouTube or Crunchyroll subtitle line's animation in the selected format, otherwise the page screenshot",
 };
 const DYNAMIC_MARKER_OPTIONS = [
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],

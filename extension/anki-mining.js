@@ -28,7 +28,7 @@ function nativeDecision(prepared, checked) {
 // A mining request from a Netflix or YouTube subtitle line, with or without
 // its cue, while that site's switch (Settings → Advanced → Experimental
 // features → Netflix mining, Anki → Video mining → YouTube mining) is on.
-const VIDEO_REQUESTS = [["netflix", "netflixMining"], ["youtube", "youtubeMining"]];
+const VIDEO_REQUESTS = [["netflix", "netflixMining"], ["youtube", "youtubeMining"], ["crunchyroll", "crunchyrollMining"]];
 const videoRequest = (config, request) => VIDEO_REQUESTS.some(([field, flag]) => config[flag] === true
   && request?.[field] !== null && typeof request?.[field] === "object");
 

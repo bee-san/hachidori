@@ -79,6 +79,9 @@ Two runtime rules keep one source for both browsers:
   the sentence and, for `{screenshot}`, the video's frame, but no line audio or
   GIF, with a warning that says why. Hovering a caption pauses the video as in
   Chrome.
+- **Crunchyroll mining (experimental).** The same as Netflix: notes from a
+  user script's subtitles get the line as the sentence and the page
+  screenshot, but no line audio or GIF, with a warning that says why.
 - **Local files.** Firefox's switch is **Access local files on your computer**
   in `about:addons` → Hachidori → **Permissions and data**, off by default.
   Extensions cannot open that page, so **Read saved pages too** says where it

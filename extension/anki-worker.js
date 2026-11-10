@@ -306,6 +306,7 @@ export function createAnkiWorkerService({
         // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
         youtubeMining: options.youtubeMining === true,
+        crunchyrollMining: options.experimental.crunchyrollMining === true,
         // And for the profile's language, which decides how the note is written.
         ...(profile === null ? {} : { profile }),
       };

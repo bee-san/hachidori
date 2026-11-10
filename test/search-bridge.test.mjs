@@ -13,9 +13,9 @@ const EXTENSION = new URL("../extension/", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", EXTENSION), "utf8"));
 const contentScripts = manifest.content_scripts[0].js.map(file => readFileSync(new URL(file, EXTENSION), "utf8"));
 const literals = new Set(contentScripts.flatMap(source => [...source.matchAll(/["'](hd_[a-z_]+)["']/gu)].map(match => match[1])));
-// What the content scripts receive rather than send, and Netflix's and YouTube's own requests.
+// What the content scripts receive rather than send, and the video sites' own requests.
 const RECEIVED = ["hd_anki_document", "hd_anki_word_status_changed", "hd_audio_playing", "hd_reader_command"];
-const VIDEO_SITES = ["hd_netflix_load", "hd_youtube_load"];
+const VIDEO_SITES = ["hd_netflix_load", "hd_youtube_load", "hd_crunchyroll_load"];
 // An overlay's page-world user scripts: an overlay has no search page, whose
 // sandboxed frame runs them itself.
 const OVERLAY_ONLY = ["hd_user_scripts_run"];

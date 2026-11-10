@@ -26,6 +26,7 @@ import {
 } from "./background-sharing.js";
 import { netflixMining } from "./background-netflix.js";
 import { youtubeMining } from "./background-youtube.js";
+import { crunchyrollMining } from "./background-crunchyroll.js";
 import { extensionApi as chrome } from "./browser-api.js";
 import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
@@ -49,6 +50,7 @@ import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyLanguageScripts } from "./language-scripts.js";
 import { applyNetflixFlag } from "./netflix.js";
 import { applyYouTubeFlag } from "./youtube.js";
+import { applyCrunchyrollFlag } from "./crunchyroll.js";
 import { openSearchPage } from "./search-window.js";
 import { BUILD_VERSION } from "./build-version.js";
 
@@ -204,6 +206,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
   void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).youtubeMining);
+  void applyCrunchyrollFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.crunchyrollMining);
   void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(changes[OPTIONS_KEY].newValue));
   const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
@@ -240,7 +243,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // recorder frame connects on its own port, which the site's service accepts
 // only from this extension's recorder page for that site while its switch is
 // on, and its reader's requests go to its own target.
-const VIDEO_SITES = [netflixMining, youtubeMining];
+const VIDEO_SITES = [netflixMining, youtubeMining, crunchyrollMining];
 
 chrome.runtime.onConnect.addListener(port => {
   VIDEO_SITES.find(site => site.recorderPort === port.name)?.connectRecorder(port);
@@ -663,6 +666,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   void applyGoogleDocsFlag(chrome, options.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
   void applyYouTubeFlag(chrome, options.youtubeMining);
+  void applyCrunchyrollFlag(chrome, options.experimental.crunchyrollMining);
   void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY]));
 });
 // Firefox grants userScripts only when Settings asks for it, so the saved code

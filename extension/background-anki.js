@@ -307,10 +307,11 @@ async function linkedPreflight(message, request) {
   }
   if (reply.ok !== true) return { state: "error", canAdd: false, error: reply.error || `${single.type} failed` };
   const entry = Object.fromEntries(Object.entries(reply).filter(([key]) => !["type", "requestId", "ok"].includes(key)));
-  // Netflix and YouTube media stay with the reading browser's own Anki
-  // connection, so a linked request from either is told it gets none.
-  if (request?.netflix !== null && typeof request?.netflix === "object") return { ...entry, netflixLinked: true };
-  return request?.youtube !== null && typeof request?.youtube === "object" ? { ...entry, youtubeLinked: true } : entry;
+  // Netflix, YouTube and Crunchyroll media stay with the reading browser's own
+  // Anki connection, so a linked request from any of them is told it gets none.
+  const site = ["netflix", "youtube", "crunchyroll"]
+    .find(field => request?.[field] !== null && typeof request?.[field] === "object");
+  return site === undefined ? entry : { ...entry, [`${site}Linked`]: true };
 }
 
 async function linkedPreflightBatch(message) {

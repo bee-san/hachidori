@@ -80,9 +80,9 @@ service and duplicate index; `background-anki.js` the Anki routes
 (`handleAnkiRequest`), screenshots and word status; `background-backup.js`
 backups, `relayEngineRequest` and the alarm handler; `background-updates.js`
 managed updates (`handleUpdatesRequest`); `background-sharing.js` the sharing
-host and client; `background-video.js` the capture and line audio Netflix and
-YouTube mining share, with `background-netflix.js` and `background-youtube.js`
-naming each site.
+host and client; `background-video.js` the capture and line audio Netflix,
+YouTube and Crunchyroll mining share, with `background-netflix.js`,
+`background-youtube.js` and `background-crunchyroll.js` naming each site.
 
 ## Primary engine path
 
@@ -3916,7 +3916,7 @@ this design, and how other tools get line audio, is in
 ### YouTube mining
 
 **Media formats and source information (#717–#719).** Anki → **Video mining**
-configures the media of both sites.
+configures the media of every site.
 `videoAudioFormat` is MP3 (the existing default) or Ogg Opus; `videoAudioBitrate`
 is 32–128 kbit/s, default 64. Both heard-line and tab-capture audio use the same
 encoder and level normalization. Opus uses native WebCodecs and Mediabunny's Ogg
@@ -4077,6 +4077,86 @@ interfaces and may change without notice; when they do, notes keep their text
 and screenshot and say why they have no line audio or GIF. Nothing of YouTube
 is stored: timelines live in the page's memory and only the MP3, GIF and JPEG
 reach Anki.
+
+### Crunchyroll mining (experimental)
+
+Settings → Advanced → Experimental features → **Crunchyroll mining**
+(`options.experimental.crunchyrollMining`, off by default, listed after Netflix
+mining) gives notes mined from a Crunchyroll subtitle what Netflix mining gives a
+Netflix subtitle: the whole line as the sentence, its own audio for
+`{sentence-audio}`, a looping animation of it for `{gif}` (in the format Anki →
+Video mining selects, AVIF included), and the video paused while a subtitle is
+hovered. It gates only its own site, and every part fails closed as Netflix's
+does. `{screenshot}` is the ordinary viewport picture.
+
+**Subtitles from a user script.** Crunchyroll rarely offers Japanese
+subtitles, so a user script supplies them: the Script Store's **Jimaku
+Player**, which loads Japanese subtitles from jimaku.cc and shows them over
+the video ([user scripts](user-scripts.md)). Hachidori reads nothing of
+Crunchyroll's and requests nothing. A user script that feeds Crunchyroll
+mining keeps this contract with the reader:
+
+- It marks the element that holds its subtitles with `data-hachidori-subtitles`
+  and each line's box inside it with `data-hachidori-subtitle-line`, and
+  anything else it draws over the video (Jimaku Player's button and panel)
+  with `data-hachidori-over-video`.
+- It posts its subtitle file on `document` as a `hachidori-crunchyroll-page`
+  `CustomEvent` whose `detail` is the JSON string `{ kind: "subtitle", movieId,
+  trackId, closedCaptions: false, format: "webvtt", text }`: `movieId` the
+  `/watch/<id>` of the episode the file is for, and `text` WebVTT in the
+  video's own time, with any sync offset of the script's already applied.
+  Posting the same `trackId` again replaces that track, so the script posts
+  again whenever its timing changes.
+- When the reader has no timeline for the episode a lookup is in, it asks once
+  with a `hachidori-crunchyroll-command` event whose `detail` is
+  `{ "type": "resend", "movieId": … }`, and the script posts its file again
+  for that episode. This is how a reader that arrived after the script posted
+  (a page open before the switch went on) gets the timing without a reload.
+
+DOM events cross between the user-script world and the content scripts'
+world, and their `detail` is a JSON string for the same reason as Netflix's
+page events; the reader checks every post's shape, since any script on the page
+can dispatch the same events.
+
+**Scripts.** While the flag is on, `crunchyroll.js` registers two scripts for
+`https://www.crunchyroll.com/*` at `document_start`, top frame only, through
+`site-scripts.js`: `netflix-page.js` in the page's main world, and the
+video-site layer (`netflix-subtitles.js`, `netflix-audio.js`,
+`netflix-content.js`) with `crunchyroll-content.js`, which describes
+Crunchyroll to `createVideoSite` and makes `HDCrunchyroll`. On
+`www.crunchyroll.com` the page script reads no subtitles and leaves the page's
+JSON alone; it replays, plays on, pauses and resumes the player's `<video>`
+(inside `.bitmovinplayer-container`) through the element's own `currentTime`,
+`play()`, `pause()` and `playbackRate`, which Crunchyroll's player follows. A
+page open when the switch went on asks once with `hd_crunchyroll_load`, as
+Netflix's does. `background-crunchyroll.js` is Crunchyroll's instance of the
+worker service in `background-video.js`, for watch addresses with or without a
+language (`/watch/<id>/…`, `/de/watch/<id>/…`), with the recorder frame on
+`hachidori-crunchyroll-recorder`. The manifest needs no new permission:
+`crunchyroll-recorder.html` and the MP3 encoder are web-accessible to
+`https://www.crunchyroll.com/*` only.
+
+**The line and its media.** A subtitle is text inside
+`[data-hachidori-subtitles]`, and its line the `[data-hachidori-subtitle-line]`
+it is in. The observation, cue matching, whole-cue sentence and request field
+work as for Netflix, with `crunchyroll: { cue: { movieId, startMs, endMs } }`
+or `crunchyroll: { unavailable: reason }` (`no-timeline`, `failed`,
+`no-match`, `ambiguous`). Line audio, replays and tab recording are Netflix's.
+A `{gif}` of the line is of the video alone: while the line replays the reader
+hides the user script's subtitles and drawing and everything the player draws
+beside its `<video>` (each child of `.bitmovinplayer-container` that is not the
+video and does not hold it, which covers its controls, title and own
+subtitles), and the recorder crops each frame to the video's picture.
+Crunchyroll's video is protected (Widevine), so the graphics-acceleration
+caveat of Netflix mining applies to the line audio and the animation.
+Hachidori's default popup keybinds use Alt, which Jimaku Player's
+single-letter keys ignore.
+
+Crunchyroll's player markup is Crunchyroll's private interface and may change
+without notice; the user script's contract is Hachidori's. The older player
+that Crunchyroll framed from `static.crunchyroll.com` is not supported. Nothing
+of Crunchyroll is stored: the timeline lives in the page's memory and only the
+line's audio and animation reach Anki.
 
 ## Managed custom dictionary
 
@@ -4426,11 +4506,13 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_updates_install` | Recheck and install the requested available managed packages |
 | `hd_sharing_status`, `hd_sharing_host_enable`, `hd_sharing_host_disable` | Report the sharing state (connection, dictionaries, the network listener and its addresses, linked browsers), or start and stop this install's connection to Anki's relay with a port and the network preference |
 | `hd_sharing_client_probe`, `hd_sharing_client_link`, `hd_sharing_client_unlink` | Ask what shares itself at an address (empty: this computer), link this install to it (turning its own hosting off, keeping its own state aside and mirroring the host's), or unlink and restore |
-| `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix or YouTube line) whose token a reader abandoned; answered locally when linked |
+| `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix, YouTube or Crunchyroll line) whose token a reader abandoned; answered locally when linked |
 | `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held MP3 and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 | `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
 | `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining)) |
 | `hd_youtube_load` | YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
+| `hd_crunchyroll_capture_start`, `hd_crunchyroll_capture_finish`, `hd_crunchyroll_capture_cancel`, `hd_crunchyroll_line_audio` | Experimental Crunchyroll mining: as the Netflix requests, from the asking top-frame Crunchyroll watch document, with the GIF cropped to the video; the recorder frame connects on `hachidori-crunchyroll-recorder` ([Crunchyroll mining](#crunchyroll-mining-experimental)) |
+| `hd_crunchyroll_load` | Experimental Crunchyroll mining, switch on: add the Crunchyroll scripts to the asking top-frame `www.crunchyroll.com` document, which was open before the switch went on |
 
 ## Build outputs
 

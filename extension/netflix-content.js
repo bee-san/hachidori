@@ -44,6 +44,8 @@
     formats: new Set(["webvtt", "ttml"]),
     // Netflix reaches /watch/<id> by navigating inside one document.
     watched: location => WATCH_PATH.exec(location.pathname)?.[1] ?? null,
+    // The title and episode the player shows, for a note's miscInfo.
+    title: '[data-uia="video-title"], .video-title',
     video: document => document.querySelector(".watch-video video") ?? document.querySelector("video"),
     // The subtitle layer, and a subtitle box in it.
     subtitle: ".player-timedtext",
@@ -239,8 +241,8 @@
       if (!site.pauseOnLookup && !hovering) pauseIfPlaying();
       const container = element.closest(site.line) ?? subtitle;
       let miscInfo = videoInfo;
-      if (!site.reportsVideo) {
-        const title = document.querySelector('[data-uia="video-title"], .video-title');
+      if (site.title) {
+        const title = document.querySelector(site.title);
         const parts = [];
         if (title) {
           const walker = document.createTreeWalker(title, SHOW_TEXT);

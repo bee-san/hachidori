@@ -338,6 +338,7 @@ jobs:
             test/tmp/ci/kanji-mining-*.png
             test/tmp/ci/netflix-subtitle-drag.png
             test/tmp/ci/youtube-popup.png
+            test/tmp/ci/crunchyroll-popup.png
             test/tmp/ci/video-mining-settings.png
             test/tmp/ci/jitendex-scope-fallback.png
             test/tmp/ci/video-formats.json

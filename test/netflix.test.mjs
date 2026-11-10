@@ -77,7 +77,7 @@ test("the manifest asks for tab capture, exposes only the recorder page and the 
   const netflixResources = manifest.web_accessible_resources.filter(entry => /netflix/iu.test(JSON.stringify(entry)));
   assert.deepEqual(netflixResources, [{ resources: ["netflix-recorder.html"], matches: ["https://www.netflix.com/*"] },
     { resources: ["sentence-audio.js", "base64.js", "vendor/lamejs.js", "vendor/mediabunny/mediabunny.js"],
-      matches: ["https://www.netflix.com/*", "https://www.youtube.com/*"] }]);
+      matches: ["https://www.netflix.com/*", "https://www.youtube.com/*", "https://www.crunchyroll.com/*"] }]);
   const page = await readFile(new URL("netflix-recorder.html", extension), "utf8");
   assert.match(page, /<script type="module" src="netflix-recorder\.js"><\/script>/u);
 });

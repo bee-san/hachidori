@@ -768,6 +768,12 @@
       load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false,
       lines: "#movie_player .ytp-caption-window-container .caption-window",
       controlBar: "#movie_player .ytp-chrome-bottom" },
+    // Advanced → Experimental features → Crunchyroll mining, for the subtitles a
+    // user script shows and posts (crunchyroll-content.js).
+    "www.crunchyroll.com": { enabled: options => options.experimental.crunchyrollMining === true,
+      api: () => globalThis.HDCrunchyroll, target: "hachidori-crunchyroll",
+      load: "hd_crunchyroll_load", recorder: "recordCrunchyrollLine", subtitleLanguage: false,
+      lines: "[data-hachidori-subtitles] [data-hachidori-subtitle-line]", controlBar: null },
   };
   const VIDEO_SITE = Object.hasOwn(VIDEO_SITES, location.hostname) ? VIDEO_SITES[location.hostname] : null;
   const NETFLIX_HOST = location.hostname === "www.netflix.com";

@@ -18,19 +18,19 @@ const chrome = readonly(["chrome"]);
 // The namespace each classic script publishes on the global object for the
 // scripts loaded after it.
 const published = readonly([
-  "HDAnki", "HDAudio", "HDContent", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
+  "HDAnki", "HDAudio", "HDContent", "HDCrunchyroll", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
   "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVideoSite", "HDVisualNovel",
   "HDWordHighlights", "HDWordStatusOverrides", "HDYouTube",
 ]);
 
 // Classic scripts sharing their world's global object: the manifest's content
-// scripts, the ones netflix.js and youtube.js register beside them while
-// Netflix or YouTube mining is on, and the classic <script> files of
-// extension pages.
+// scripts, the ones netflix.js, youtube.js and crunchyroll.js register beside
+// them while Netflix, YouTube or Crunchyroll mining is on, and the classic
+// <script> files of extension pages.
 const CLASSIC = [
   ...manifest.content_scripts.flatMap(({ js }) => js), "netflix-subtitles.js", "netflix-audio.js", "netflix-content.js",
-  "youtube-content.js", "design-preview.js", "language-text.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
+  "youtube-content.js", "crunchyroll-content.js", "design-preview.js", "language-text.js", "search-bridge.js", "settings-theme.js", "visual-novel.js",
 ];
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in
@@ -46,7 +46,7 @@ const SERVICE_WORKER = [
   "custom-javascript.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
   "site-scripts.js", "youtube.js", "background-anki.js", "background-backup.js", "background-core.js",
   "background-netflix.js", "background-requests.js", "background-sharing.js", "background-updates.js",
-  "background-video.js", "background-youtube.js",
+  "background-video.js", "background-youtube.js", "crunchyroll.js", "background-crunchyroll.js",
 ];
 // Dedicated module workers and the modules only they load.
 const WORKERS = [
