@@ -48,7 +48,7 @@ import {
 // HACHIDORI_BACKUP_RELEASE_ZIP uses a local copy of that ZIP, with the
 // release's SHA256SUMS file beside it, instead of the download.
 const [RELEASE_VERSION, RELEASE_COMMIT, RELEASE_SHA256] = (process.env.HACHIDORI_BACKUP_RELEASE
-  || "0.4.0 b6e2328f8d63 7bb3d895ddc1e46390274f80c6a05c946312d976ecc4d9b697a17c99317f497d").split(/\s+/u);
+  || "0.5.0 bf1a78f8298b 8a4d683bfcbbec5370023a674275f8f4c66c4b4f35d2cdd2e3b51940296aa75c").split(/\s+/u);
 const RELEASE_ASSET = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-chrome.zip`;
 const RELEASE_SUMS = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-SHA256SUMS.txt`;
 
@@ -85,6 +85,9 @@ const ANKI_PATH = "/anki-connect";
 const ANKI_API_KEY = "round-trip-key";
 const ANKI_DECK = "Hachidori round trip";
 const CUSTOM_CSS = ".gsm-hoshidicts-popup { outline-color: rgb(12, 34, 56); }";
+// The released build's Design → Custom JavaScript, which Advanced → User
+// scripts restores as one package (docs/user-scripts.md, Storage).
+const CUSTOM_JAVASCRIPT = "globalThis.hachidoriRoundTrip = true;";
 const ARCHIVES = [
   ["hachidori-fixture.zip", buildFixtureZip()],
   ["round-trip-frequency.zip", buildTitledZip(FREQUENCY_TITLE, {
@@ -604,6 +607,7 @@ async function releasedLeg() {
       customButtons: [{ id: "round-trip-search", type: "link", label: "Round-trip search", url: "https://search.example.test/?q=%s" },
         { id: "round-trip-sentence", type: "anki", label: "Sentence card", templateId: "sentence" }],
       customPopupCss: CUSTOM_CSS,
+      customPopupJavascript: CUSTOM_JAVASCRIPT,
     };
     await writeOptions(settings, written);
     // A later pinned release has Smaller Anki cards as an Anki setting, not a switch.
@@ -688,7 +692,8 @@ async function releasedLeg() {
 // existing mining choice when the experiment becomes an Anki option"); a
 // setting the backup lacks keeps its default (docs/backup-format.md); a
 // keybind list without a search page row reads with the search page's
-// default rows after its own (docs/search-history.md).
+// default rows after its own (docs/search-history.md); Custom JavaScript
+// restores as the one user script "Custom JavaScript" (docs/user-scripts.md).
 function compareOptions(source, restored) {
   const unexplained = [];
   const rules = [];
@@ -708,8 +713,19 @@ function compareOptions(source, restored) {
     } else unexplained.push(`experimental.${id}`);
   }
   const promoted = new Set();
+  const migrated = new Set();
+  if (Object.hasOwn(source.view, "customPopupJavascript") && !Object.hasOwn(restored.view, "customPopupJavascript")
+      && !Object.hasOwn(source.view, "userScripts")) {
+    const code = source.view.customPopupJavascript;
+    const expected = code.trim() === "" ? []
+      : [{ id: "custom-javascript", name: "Custom JavaScript", enabled: true, javascript: code, css: "" }];
+    if (isDeepStrictEqual(restored.view.userScripts, expected)) {
+      rules.push(`customPopupJavascript: restores as ${expected.length} user script${expected.length === 1 ? "" : "s"}`);
+      ["customPopupJavascript", "userScripts"].forEach(key => migrated.add(key));
+    } else unexplained.push("customPopupJavascript: not restored as the Custom JavaScript user script");
+  }
   for (const key of new Set([...Object.keys(source.view), ...Object.keys(restored.view)])) {
-    if (key === "experimental") continue;
+    if (key === "experimental" || migrated.has(key)) continue;
     if (Object.hasOwn(source.view, key) && Object.hasOwn(restored.view, key)) {
       if (isDeepStrictEqual(source.view[key], restored.view[key])) continue;
       if (key === "keybinds" && gainsSearchRows(source.view.keybinds, restored)) {
@@ -728,10 +744,12 @@ function compareOptions(source, restored) {
   }
   // The stored record holds the same values, plus only the promoted settings.
   for (const [key, value] of Object.entries(sourceRecord)) {
-    if (key !== "experimental" && !isDeepStrictEqual(restoredRecord[key], value)) unexplained.push(`stored ${key}`);
+    if (key !== "experimental" && !migrated.has(key) && !isDeepStrictEqual(restoredRecord[key], value)) {
+      unexplained.push(`stored ${key}`);
+    }
   }
   for (const key of Object.keys(restoredRecord)) {
-    if (!Object.hasOwn(sourceRecord, key) && !promoted.has(key)) unexplained.push(`stored ${key} added`);
+    if (!Object.hasOwn(sourceRecord, key) && !promoted.has(key) && !migrated.has(key)) unexplained.push(`stored ${key} added`);
   }
   return { unexplained, rules };
 }
