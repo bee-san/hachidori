@@ -4,8 +4,8 @@
 // worker start about 2 ms later (Chrome 152).
 import {
   DEFAULT_OPTIONS, normaliseOptions, validateOptionsPatch, OFFSCREEN_DOCUMENT, TARGET, UPDATE_TARGET, AUDIO_TARGET,
-  SETUP_TARGET, PAGE_ZOOM_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY,
-  CLIPBOARD_TARGET, searchPageSender,
+  SETUP_TARGET, PAGE_ZOOM_TARGET, PAGE_USER_SCRIPTS_TARGET, BACKUP_LIFECYCLE_PORT, WORKER_TARGET, DICTIONARY_STATE_KEY,
+  OPTIONS_KEY, CLIPBOARD_TARGET, searchPageSender,
   ankiSettingsSender, writeLocalState, ensureOffscreen, relay, readDictionaryStorage, optionsRevision, readerPageSender,
   serialiseStorage, workerReply, failureReply, requestProfileId, updateLookupProfiles,
 } from "./background-core.js";
@@ -39,12 +39,12 @@ import "./external-links.js";
 import "./dictionary-group-state.js";
 import "./word-status-overrides.js";
 import { sameJsonValue } from "./json-value.js";
-import { OVERLAY_MODE } from "./overlay-mode.js";
+import { HOST_CAPABILITIES, OVERLAY_MODE } from "./overlay-mode.js";
 import {
   FIRST_INSTALL_OPTIONS, OVERLAY_MODE_OPTIONS, SETUP_STATE_KEY, STARTUP_PAGE, initialSetupState, overlayAnkiOptions,
   withOverlayLookupDefault,
 } from "./setup-state.js";
-import { applyCustomJavaScript } from "./custom-javascript.js";
+import { applyCustomJavaScript, runPageUserScripts } from "./custom-javascript.js";
 import { applyGoogleDocsFlag } from "./google-docs.js";
 import { applyLanguageScripts } from "./language-scripts.js";
 import { applyNetflixFlag } from "./netflix.js";
@@ -304,6 +304,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   chrome.tabs.getZoom(tabId).then((zoomFactor) => sendResponse(workerReply(message, { zoomFactor })),
     (error) => sendResponse(failureReply(message, error)));
+  return true;
+});
+
+// An overlay's reader asks for its page's user scripts as it starts there.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target !== PAGE_USER_SCRIPTS_TARGET) return false;
+  const tabId = sender.tab?.id;
+  if (!HOST_CAPABILITIES.pageWorldUserScripts || sender.id !== chrome.runtime.id
+    || message.type !== "hd_user_scripts_run" || !Number.isInteger(tabId)) {
+    sendResponse(failureReply(message, new Error("Unknown user scripts request.")));
+    return false;
+  }
+  chrome.storage.local.get(OPTIONS_KEY)
+    .then(stored => runPageUserScripts(chrome, { tabId, documentIds: [sender.documentId] },
+      normaliseOptions(stored[OPTIONS_KEY]).userScripts))
+    .then(result => sendResponse(workerReply(message, result)), (error) => sendResponse(failureReply(message, error)));
   return true;
 });
 

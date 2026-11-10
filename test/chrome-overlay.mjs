@@ -553,8 +553,10 @@ try {
       }],
       customLinks: [{ label: "Remote link", url: "https://example.test/?w=%w&r=%r&s=%s" }],
       // Chrome's Allow User Scripts is off here, as Electron has no such API.
-      userScripts: [{ id: "page-world", name: "Page world", enabled: true, css: "",
-        javascript: "window.userScriptRuns = (window.userScriptRuns ?? 0) + 1;" }],
+      // A package that throws does not stop the next.
+      userScripts: [{ id: "throws", name: "Throws", enabled: true, css: "", javascript: "throw new Error('package fails');" },
+        { id: "page-world", name: "Page world", enabled: true, css: "",
+          javascript: "window.userScriptRuns = (window.userScriptRuns ?? 0) + 1;" }],
       revision: options.revision + 1,
     } });
   });

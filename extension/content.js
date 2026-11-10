@@ -24,6 +24,7 @@
 
   const TARGET = "hoshidicts-offscreen";
   const PAGE_ZOOM_TARGET = "hachidori-page-zoom";
+  const PAGE_USER_SCRIPTS_TARGET = "hachidori-page-user-scripts";
   const WORKER_TARGET = "hoshidicts-worker";
   const READER_TARGET = "hachidori-reader";
   // The worker's word-status change signal for reading tabs (#520).
@@ -614,6 +615,11 @@
       hostCapabilities = { ...hostCapabilities, ...advertised };
       if (!Object.hasOwn(advertised, "linkButtons") && Object.hasOwn(advertised, "customLinks")) {
         hostCapabilities.linkButtons = advertised.customLinks;
+      }
+      // Without a user-script world, the worker runs this page's user scripts in it.
+      if (hostCapabilities.pageWorldUserScripts) {
+        sendRequest("hd_user_scripts_run", {}, PAGE_USER_SCRIPTS_TARGET)
+          .catch(error => console.warn("hachidori: could not run user scripts on this page:", error));
       }
       const next = applyHostCapabilities(options);
       const customButtonsChanged = JSON.stringify(next.customButtons) !== JSON.stringify(options.customButtons);
@@ -2339,10 +2345,11 @@
   // switch is off, a frame, an extension page) the reader attaches the root
   // itself. The search page's frame runs the user scripts in the reader's own
   // world instead (#644), and nothing but the extension reaches its pages, so
-  // there the root is open.
+  // there the root is open. So it is in an overlay host, which runs them in
+  // the page's own world and has no chrome.dom to take a root back from it.
   function attachPopupRoot() {
     if (globalThis.HDReaderOptions.javaScriptUserScripts(options.userScripts).length > 0) {
-      if (SEARCH_FRAME) return host.attachShadow({ mode: "open" });
+      if (SEARCH_FRAME || hostCapabilities.pageWorldUserScripts) return host.attachShadow({ mode: "open" });
       host.dispatchEvent(new CustomEvent(POPUP_ROOT_EVENT));
       const root = globalThis.chrome.dom?.openOrClosedShadowRoot(host) ?? host.openOrClosedShadowRoot;
       if (root) return root;
