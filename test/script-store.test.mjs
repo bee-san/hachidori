@@ -121,6 +121,13 @@ test("View code shows each part read-only and stays open across redraws; a check
   assert.equal(region().hidden, false);
   toggle().click();
   assert.deepEqual([toggle().textContent, region().hidden, region().children.length], ["View code", true, 0]);
+  // View, Hide and View again before the code editor has loaded: one copy.
+  toggle().click();
+  toggle().click();
+  toggle().click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(region().querySelectorAll("pre").length, 1);
+  toggle().click();
   // Your scripts' Update applies the checked version without moving focus here.
   page.store.updateScript("old");
   assert.deepEqual(page.stored()[0], { id: "old", name: "Name texthooker", enabled: true, javascript: "window.a = 1;", css: "",

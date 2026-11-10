@@ -88,10 +88,13 @@ export function createScriptStore({
     return button;
   }
 
-  // The package's JavaScript and CSS, read-only, each named and sized.
+  // The package's JavaScript and CSS, read-only, each named and sized. A Hide
+  // or another View while the code editor loads leaves one copy, or none.
   async function showCode(region, entry) {
     try {
       const { createCodeView } = await loadCodeEditor();
+      if (!shown.has(entry.slug)) return;
+      region.replaceChildren();
       for (const [key, label] of [["javascript", "JavaScript"], ["css", "CSS"]]) {
         if (!entry[key].trim()) continue;
         const heading = document.createElement("p");
