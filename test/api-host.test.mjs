@@ -155,7 +155,7 @@ test("anki fields render each term through the mining renderer with the requeste
   const { answer, calls } = host({ lookups: { "食べたかった": [tabetakatta, { ...tabetakatta, term: { ...tabetakatta.term, expression: "食う" } }] },
     media: { "img/eat.png": "data:image/png;base64,iVBORw0KGgo=" }, audio: { filename: "hachidori_abc.mp3", data: "AAEC" } });
   const reply = await answer({ type: "hd_api_anki_fields", text: "食べたかった", entryType: "term", markers: ["Expression", "glossary", "audio", "bogus"], maxEntries: 1, includeMedia: true });
-  assert.deepEqual(reply.fields, [{ expression: "expression:食べる", glossary: '食べる<img src="hachidori_eat.png">', audio: "[sound:hachidori_abc.mp3]", bogus: "" }]);
+  assert.deepEqual(reply.fields, [{ Expression: "Expression:食べる", glossary: '食べる<img src="hachidori_eat.png">', audio: "[sound:hachidori_abc.mp3]", bogus: "" }]);
   assert.deepEqual(reply.dictionaryMedia, [{ dictionary: "Fixture", path: "img/eat.png", mediaType: "image/png", content: "iVBORw0KGgo=", ankiFilename: "hachidori_eat.png" }]);
   assert.deepEqual(reply.audioMedia, [{ term: "食べる", reading: "たべる", mediaType: "audio/mpeg", content: "AAEC", ankiFilename: "hachidori_abc.mp3" }]);
   const lookup = calls.find(call => call.type === "hd_lookup");
@@ -164,7 +164,7 @@ test("anki fields render each term through the mining renderer with the requeste
   assert.deepEqual(audio.sources, [{ id: "jpod", type: "jpod101", enabled: true }]);
   assert.equal(audio.recordSpeech, false);
   const render = calls.find(call => call.type === "hd_anki_fields");
-  assert.deepEqual(render.templates, { expression: { value: "{expression}", overwriteMode: "coalesce" }, glossary: { value: "{glossary}", overwriteMode: "coalesce" },
+  assert.deepEqual(render.templates, { Expression: { value: "{Expression}", overwriteMode: "coalesce" }, glossary: { value: "{glossary}", overwriteMode: "coalesce" },
     audio: { value: "{audio}", overwriteMode: "coalesce" }, bogus: { value: "{bogus}", overwriteMode: "coalesce" } });
   assert.equal(render.request.generation, 7);
   assert.equal(render.request.sentence, "食べたかった");
