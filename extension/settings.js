@@ -273,8 +273,15 @@ function configureFirefoxUi() {
 // Chrome runs a script's JavaScript once Allow User Scripts is on (Developer
 // mode before Chrome 138); until then the API's methods throw, as
 // custom-javascript.js finds when it registers. The notice shows only while
-// they do, checked again whenever the page comes back from Chrome's own pages.
+// they do, checked again whenever the page comes back from Chrome's own pages,
+// such as Hachidori's details page, which its button opens: extensions may
+// open Chrome's pages but not turn the switch on.
 function configureChromeUserScripts() {
+  element("custom-javascript-allow").textContent = "Open Hachidori's details";
+  element("custom-javascript-allow-row").hidden = false;
+  element("custom-javascript-allow").addEventListener("click", () => {
+    void chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  });
   const render = async () => {
     let allowed;
     try {
@@ -817,8 +824,11 @@ function showSettingsSection(focus = false) {
     scriptStoreController?.render();
   };
   if (activeSection === "user-scripts") {
-    userScriptController ??= createUserScriptSettings({ document, readScripts, saveScripts });
-    scriptStoreController ??= createScriptStore({ document, fetch: (...args) => window.fetch(...args), readScripts, saveScripts });
+    userScriptController ??= createUserScriptSettings({ document, readScripts, saveScripts,
+      readUpdates: () => scriptStoreController?.updates() ?? new Map(),
+      applyUpdate: script => scriptStoreController?.updateScript(script.id) });
+    scriptStoreController ??= createScriptStore({ document, fetch: (...args) => window.fetch(...args), readScripts, saveScripts,
+      onCatalogue: () => userScriptController.render() });
     userScriptController.render();
     scriptStoreController.render();
   }

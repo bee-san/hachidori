@@ -2,8 +2,10 @@
 
 // The code editor of Settings → Advanced → User scripts (docs/user-scripts.md):
 // CodeMirror, from the build in vendor/codemirror (scripts/codemirror), in
-// place of a <textarea>. user-script-settings.js imports this module when its
-// editor first opens, so Settings loads CodeMirror only then.
+// place of a <textarea>, and the read-only view of a Script Store package's
+// code. user-script-settings.js and script-store.js import this module when
+// the editor first opens or a package's code is first shown, so Settings
+// loads CodeMirror only then.
 import {
   EditorState, EditorView, HighlightStyle, bracketMatching, cssLanguage, defaultKeymap, ensureSyntaxTree,
   forEachDiagnostic, highlightSpecialChars, history, historyKeymap, indentOnInput, indentWithTab, javascriptLanguage,
@@ -129,6 +131,44 @@ function fitColours(editor) {
   probe.remove();
 }
 
+// What the editor and the read-only view share: line numbers, highlighting in
+// the palette's colours, bracket matching and search.
+function shared(language) {
+  return [
+    lineNumbers(),
+    highlightSpecialChars(),
+    bracketMatching(),
+    search(),
+    syntaxHighlighting(highlighting),
+    LANGUAGES[language].extension,
+    EditorState.tabSize.of(2),
+    EditorState.phrases.of(PHRASES),
+    theme,
+    EditorView.editorAttributes.of({ class: "code-editor", "data-language": language }),
+  ];
+}
+
+// Fits the code's colours to the palette now and whenever Settings changes it
+// by this attribute (settings-dom.js).
+function followPalette(view) {
+  fitColours(view.dom);
+  new view.dom.ownerDocument.defaultView.MutationObserver(() => fitColours(view.dom))
+    .observe(view.dom.ownerDocument.documentElement, { attributes: true, attributeFilter: ["data-hoshidicts-theme"] });
+}
+
+// A read-only view of `text` in `language`, named `label`, at the end of
+// `parent`: it can be focused, selected, copied and searched, not changed.
+export function createCodeView(parent, { language, text, label }) {
+  const view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions: [
+    ...shared(language),
+    EditorState.readOnly.of(true),
+    keymap.of([...defaultKeymap, ...searchKeymap]),
+    EditorView.contentAttributes.of({ "aria-label": label, "aria-readonly": "true" }),
+  ] }) });
+  followPalette(view);
+  return view;
+}
+
 // Replaces `textarea` with a CodeMirror editor of its text, in `language`
 // ("javascript" or "css"), and returns the editor's `value` and `focus()` as a
 // textarea has them, and `problems`, the lines with a syntax error. Setting
@@ -139,23 +179,14 @@ export function createCodeEditor(textarea, { language, onChange }) {
   const document = textarea.ownerDocument;
   const { labels } = textarea;
   const extensions = [
-    lineNumbers(),
-    highlightSpecialChars(),
+    ...shared(language),
     history(),
     indentOnInput(),
-    bracketMatching(),
-    search(),
     linter(syntaxErrors, { delay: 500 }),
     lintGutter(),
-    syntaxHighlighting(highlighting),
-    LANGUAGES[language].extension,
-    EditorState.tabSize.of(2),
-    EditorState.phrases.of(PHRASES),
     // Tab indents; Escape and then Tab moves on, as CodeMirror documents.
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...lintKeymap, indentWithTab]),
     placeholder(textarea.placeholder),
-    theme,
-    EditorView.editorAttributes.of({ class: "code-editor", "data-language": language }),
     EditorView.contentAttributes.of({
       "aria-label": labels[0]?.textContent.trim() ?? language,
       "aria-describedby": textarea.getAttribute("aria-describedby") ?? "",
@@ -171,10 +202,7 @@ export function createCodeEditor(textarea, { language, onChange }) {
   const view = new EditorView({ state: create(textarea.value) });
   textarea.after(view.dom);
   textarea.hidden = true;
-  fitColours(view.dom);
-  // Settings changes its palette by this attribute (settings-dom.js).
-  new document.defaultView.MutationObserver(() => fitColours(view.dom))
-    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-hoshidicts-theme"] });
+  followPalette(view);
   // The label names the hidden textarea, so a click on it focuses the editor.
   for (const label of labels) label.addEventListener("click", () => view.focus());
   if (focused) view.focus();

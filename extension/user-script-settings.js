@@ -8,7 +8,8 @@
 // (code-editor.js), which the editor's first opening loads, takes their place
 // with their text. A package installed from the Script Store under the list
 // (script-store.js) keeps its slug and version until an edit makes it the
-// user's own.
+// user's own; once the Script Store's check finds another version of it, its
+// row offers Update too.
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
 const BLANK = Object.freeze({ name: "", javascript: "", css: "" });
@@ -49,6 +50,10 @@ export function createUserScriptSettings({
   saveScripts,
   createId = () => document.defaultView.crypto.randomUUID(),
   loadCodeEditor = () => import("./code-editor.js"),
+  // The Script Store's last check: the versions it would update packages to,
+  // by package id, and the way to apply one.
+  readUpdates = () => new Map(),
+  applyUpdate = () => {},
 }) {
   const list = document.getElementById("user-script-list");
   const empty = document.getElementById("user-script-empty");
@@ -148,7 +153,7 @@ export function createUserScriptSettings({
     return box;
   }
 
-  function createRow(script, index, count) {
+  function createRow(script, index, count, update) {
     const row = document.createElement("li");
     row.className = script.enabled ? "user-script-row" : "user-script-row is-off";
     row.dataset.id = script.id;
@@ -176,6 +181,22 @@ export function createUserScriptSettings({
     text.append(label, summary);
     const actions = document.createElement("div");
     actions.className = "user-script-actions";
+    // An update is the one thing in the list waiting on the user.
+    if (update) {
+      const install = document.createElement("button");
+      install.type = "button";
+      install.className = "primary-button";
+      install.dataset.action = "update";
+      install.textContent = `Update to ${update.version}`;
+      install.setAttribute("aria-label", `Update ${script.name} to ${update.version}`);
+      install.addEventListener("click", () => {
+        applyUpdate(script);
+        status.className = "custom-dictionary-status is-ready";
+        status.textContent = `Updated ${update.name} to version ${update.version}.`;
+        focusRow(script.id, "edit");
+      });
+      actions.append(install);
+    }
     // One script has nothing to move past.
     if (count > 1) {
       const up = button("", `Move up: ${script.name}`, () => move(index, -1), { action: "up", icon: "arrow-up" });
@@ -199,10 +220,11 @@ export function createUserScriptSettings({
   function render() {
     const scripts = readScripts();
     if (confirming !== null && !scripts.some(script => script.id === confirming)) confirming = null;
-    const key = JSON.stringify([scripts, confirming, editing?.id ?? null]);
+    const updates = readUpdates();
+    const key = JSON.stringify([scripts, confirming, editing?.id ?? null, [...updates].map(([id, { version }]) => [id, version])]);
     if (key === rendered) return;
     rendered = key;
-    list.replaceChildren(...scripts.map((script, index) => createRow(script, index, scripts.length)));
+    list.replaceChildren(...scripts.map((script, index) => createRow(script, index, scripts.length, updates.get(script.id))));
     empty.hidden = scripts.length > 0;
   }
 

@@ -168,6 +168,7 @@ const PLANNED = [
   "Settings rejects malformed and oversized option frames before commit and still autosaves without reload",
   "Design lazily renders local sample terms, kanji and images over a visual novel scene through the production popup",
   "Design live edits preserve popup cards and Notes while sample appends cannot mutate dictionaries",
+  "User scripts' notice opens Hachidori's details page while Chrome does not run user scripts",
   "User scripts edits each part in a labelled, described code editor, a new script starting from the popup example",
   "the User scripts code editor indents with Tab, moves on with Esc then Tab, searches, lists syntax errors and saves what it shows",
   "User scripts code keeps 4.5:1 in five colours in every palette",
