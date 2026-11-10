@@ -75,6 +75,24 @@ they do not establish byte-for-byte reproduction of those binaries. Record
 `emcc --version`, `cmake --version`, build commands and test results whenever
 publishing newly built Wasm files.
 
+## CodeMirror
+
+`extension/vendor/codemirror/codemirror.js`, the code editor of Settings →
+Advanced → User scripts, is CodeMirror 6 bundled with esbuild from the npm
+releases that `scripts/codemirror/package-lock.json` pins.
+`scripts/codemirror/codemirror.mjs` names the parts it exports, and
+`LICENSE` beside the bundle carries the licence of every package in it. With
+Node.js 22 and access to the npm registry:
+
+```sh
+npm ci --prefix scripts/codemirror
+node scripts/codemirror/build.mjs
+```
+
+The same lockfile gives the same bytes. `node scripts/codemirror/build.mjs --check`
+rebuilds the files in memory and fails when the committed ones differ, as CI
+does on every pull request.
+
 ## Produce a release pair from a Git checkout
 
 Commit the intended release changes and initialize recursive submodules. With

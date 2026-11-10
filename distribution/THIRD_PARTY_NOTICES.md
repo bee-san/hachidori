@@ -24,6 +24,7 @@ submodules and the pinned source distributions listed below.
 | lamejs 1.2.7 (`@breezystack/lamejs`), Alex Zhukov's port of LAME | `lamejs/LICENSE` and `vendor/lamejs-LICENSE` | Experimental Netflix and YouTube mining's MP3 encoder for sentence audio, under the LGPL-3.0 |
 | KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |
 | jitendex-data kanwa, Stephen Kraus (Jitendex) | `kanwa-NOTICE` and `vendor/kanwa/source.json` | Character and compound readings that split headword furigana where KANJIDIC2's cannot, under CC BY-SA 4.0 |
+| CodeMirror 6 (`@codemirror/*`, `@lezer/*`, style-mod, w3c-keyname, crelt, find-cluster-break), Marijn Haverbeke and others | `vendor/codemirror/LICENSE` | The code editor of Advanced → User scripts, under the MIT licence |
 | Subadub, Russel Simmons, at [`a03b1b94`](https://github.com/rsimmons/subadub/tree/a03b1b94e59328c11e31485c6016626fcfeb2790) | `subadub-LICENSE` and the header of `netflix-page.js` | Experimental Netflix mining's subtitle-profile and track-list hooks, under the MIT licence |
 | Emscripten | `emscripten-LICENSE` | Generated JavaScript runtime, including its Node.js-derived path code |
 | musl | `musl-COPYRIGHT` | C runtime, including its upstream attribution list |
@@ -45,6 +46,11 @@ So is the lamejs npm package, whose `dist/lamejs.js` is byte-checked against
 the shipped `vendor/lamejs.js`; that package holds only the built file, so the
 source of the commit it was published from is recorded beside it as
 `lamejs-source`.
+
+`vendor/codemirror/codemirror.js` is CodeMirror bundled by
+`scripts/codemirror/build.mjs` from the npm releases that
+`scripts/codemirror/package-lock.json` pins; CI rebuilds it and checks that
+the shipped file is unchanged ([source-build.md](../docs/source-build.md#codemirror)).
 
 User-selected dictionaries, media, and external audio services are separate
 from this distribution. Their licenses and terms are supplied by their owners.

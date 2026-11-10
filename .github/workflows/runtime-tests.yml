@@ -27,6 +27,9 @@ jobs:
           cache-dependency-path: test/tooling/package-lock.json
       - run: npm ci --prefix test/tooling
       - run: npm --prefix test/tooling run lint
+      # extension/vendor/codemirror is exactly the pinned build (docs/source-build.md).
+      - run: npm ci --prefix scripts/codemirror
+      - run: node scripts/codemirror/build.mjs --check
       # addons-linter, the validator addons.mozilla.org runs, on the Firefox build.
       - run: node test/run.mjs firefox-lint
 
