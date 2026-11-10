@@ -4,4 +4,4 @@
 // (scripts/check-release.mjs). The service worker compares it with the
 // manifest it was started for to notice that it is running a previous
 // release's cached scripts (background.js).
-export const BUILD_VERSION = "0.5.0";
+export const BUILD_VERSION = "0.5.1";
