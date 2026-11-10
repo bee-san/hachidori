@@ -63,7 +63,7 @@ export const FORWARDED_REQUESTS = {
   ]),
   "hoshidicts-worker": new Set([
     "hd_state_read", "hd_state_cas", "hd_custom_read", "hd_custom_cas", "hd_options_write",
-    "hd_lookup_stats_read", "hd_lookup_stats_record", "hd_word_status_override", LANGUAGE_PROFILES_OPT_IN,
+    "hd_lookup_stats_read", "hd_lookup_stats_record", "hd_word_status_override", "hd_known_words_add", LANGUAGE_PROFILES_OPT_IN,
   ]),
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),
@@ -77,7 +77,7 @@ const MUTATING_FORWARDED_REQUESTS = {
     "hd_profile_add", "hd_profile_remove",
   ]),
   "hoshidicts-worker": new Set([
-    "hd_state_cas", "hd_custom_cas", "hd_options_write", "hd_lookup_stats_record", "hd_word_status_override",
+    "hd_state_cas", "hd_custom_cas", "hd_options_write", "hd_lookup_stats_record", "hd_word_status_override", "hd_known_words_add",
   ]),
   "hachidori-updates": new Set(["hd_updates_schedule", "hd_updates_check", "hd_updates_install"]),
   "hachidori-setup": new Set(["hd_setup_install"]),

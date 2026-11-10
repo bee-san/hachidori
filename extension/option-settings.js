@@ -240,6 +240,35 @@ function renderWordHighlightControls() {
   if (style !== document.activeElement) style.value = options.wordHighlightStyle;
 }
 
+async function addKnownWords() {
+  const input = element("known-words-input");
+  const button = element("known-words-add");
+  if (input.disabled || !input.value.trim()) return;
+  const fields = profileFields();
+  const language = languageName();
+  input.disabled = button.disabled = true;
+  setSectionStatus("known-words-status", "Marking words as known…", "working");
+  try {
+    const reply = await send("hd_known_words_add", { text: input.value, ...fields }, WORKER_TARGET);
+    if (!reply.ok) throw new Error(reply.error || "the words could not be saved");
+    // A profile removed elsewhere discards its draft; keep its late reply out
+    // of the language the page now shows.
+    if (language !== languageName()) return;
+    input.value = "";
+    const noun = reply.added === 1 ? "word" : "words";
+    const message = reply.added === 0 ? "All pasted words are already known."
+      : `${numberFormat.format(reply.added)} ${noun} marked as known.`;
+    setSectionStatus("known-words-status", message, "ready", true);
+  } catch (error) {
+    if (language === languageName()) {
+      setSectionStatus("known-words-status", `Could not save known words: ${describeErrorOrJson(error)}`, "error", false, error);
+    }
+  } finally {
+    input.disabled = false;
+    button.disabled = !input.value.trim();
+  }
+}
+
 function renderMetadataControls() {
   for (const field of METADATA_FIELDS) {
     element(field.id).checked = field.inverted ? !options[field.key] : options[field.key];
@@ -578,6 +607,11 @@ function attachOptionHandlers() {
     });
   }
   attachDefinitionBlurHandlers();
+  element("known-words-input").addEventListener("input", event => {
+    element("known-words-add").disabled = !event.target.value.trim();
+    setSectionStatus("known-words-status", "");
+  });
+  element("known-words-add").addEventListener("click", () => { void addKnownWords(); });
   element("opt-source-highlight").addEventListener("change", (event) => {
     options.sourceHighlightEnabled = event.target.checked;
     writeOptions();

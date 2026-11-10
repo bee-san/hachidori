@@ -1954,9 +1954,10 @@ arrives. Each batch carries the hover's frequency options and its
 not split out at all.
 
 Status comes from `hd_anki_word_status`. Its first request carries no
-headwords: an index with no rows for the first Template (`statuses: null`)
-leaves the page unsegmented and unmarked until the worker's change signal.
-Otherwise the headwords of the spans shown are asked in one batch:
+headwords. Without an index (`statuses: null`), a nonempty manual known/ignored
+list supplies statuses and other dictionary words count as unknown. With
+neither source, the page stays unsegmented and unmarked. An available index
+supplies the headwords of the spans shown in one batch:
 
 - A headword marked as known or ignored (below) takes that status instead of
   its card's.
@@ -2024,10 +2025,20 @@ asking the index again. The record is in backups and shared like the other
 user data (below): a linked browser's change goes to its host, which owns the
 record, and comes back through the mirror.
 
+Settings → Word highlighting → **Known words** accepts one dictionary-form
+word per line. **Mark as known** sends `hd_known_words_add { text, profileId? }`
+through the same storage queue. `withKnownWords` trims each line, skips blanks
+and duplicates, appends new known words and removes those words from ignored,
+preserving the other marks and languages. The whole batch is one revision and
+one write; an already-known batch writes nothing. The reply's `added` count
+drives the confirmation. Failed submissions keep their text for retry, and a
+pasted draft must be saved or cleared before changing the edited language.
+This uses the existing backup and sharing record, with no new storage format.
+
 `word-highlights.js` adds the two toggle buttons (`aria-pressed`) to each
 entry's action row after its Anki and pronunciation buttons, and moves them
-with the shown result in the pinned header, while Highlight words by Anki
-status is on. Only Default's stylesheet styles them; with another renderer the
+with the shown result in the pinned header, while Highlight words by status
+is on. Only Default's stylesheet styles them; with another renderer the
 keybinds act alone. The keybinds are browser shortcuts too, like the other
 popup actions, and either acts only on an open popup's current entry.
 A failed write names its error in the button's label until it is pressed

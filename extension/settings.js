@@ -235,6 +235,7 @@ const SECTION_STATUSES = {
   "options-status": { section: "lookup", label: "Reading" },
   "lookup-counts-reset-status": { section: "lookup", label: "Lookup history" },
   "search-history-status": { section: "advanced", label: "Search history" },
+  "known-words-status": { section: "word-highlighting", label: "Known words" },
   "dict-group-error": { section: "dictionary-groups", label: "Groups" },
   "backup-status": { section: "backup", label: "Backup" },
   "sharing-status": { section: "sharing", label: "Sharing" },
@@ -583,6 +584,9 @@ function discardProfileDrafts() {
   discardPendingOptions();
   element("opt-anki-template-name").value = "";
   customButtonController?.reset();
+  element("known-words-input").value = "";
+  element("known-words-add").disabled = true;
+  setSectionStatus("known-words-status", "");
 }
 
 // Shows the edited profile everywhere this page shows one.
@@ -614,7 +618,7 @@ function readStoredRecords(keys) {
 }
 
 // Settings shows chooses the edited profile (section 5.3). Pending option
-// edits are saved first, for the profile they were made for; the three
+// edits are saved first, for the profile they were made for; the
 // editors with explicit saves are saved or discarded by the user first.
 // Resolves with the message to show when the page stays where it is; `action`
 // names what the user is doing, for that message.
@@ -624,6 +628,7 @@ async function chooseEditedProfile(id, action = "choosing another language") {
     customDictionaryDirty() && "the personal dictionary",
     ankiController?.dirty() && "the Template name",
     customButtonController?.dirty() && "the custom button",
+    element("known-words-input").value.trim() && "the pasted known words",
   ].filter(Boolean);
   if (drafts.length > 0) {
     return `Save or discard your changes to ${listOf(drafts)} before ${action}.`;
