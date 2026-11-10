@@ -186,7 +186,7 @@ is sent to your configured AnkiConnect server with the note. When linked, it is
 captured in this browser, transferred to the host only for that submission, and
 sent by the host to its configured AnkiConnect server.
 
-## Netflix sentence audio and GIF (experimental)
+## Netflix sentence audio, GIF and preview image (experimental)
 
 Settings → Advanced → Experimental features → **Netflix mining** is off by
 default. While it is on, Hachidori reads the Japanese subtitle files that
@@ -205,9 +205,11 @@ that tab until it is cut to the line and encoded. The line is sent as an MP3 for
 `{sentence-audio}` and a short looping GIF for `{gif}` to your configured
 AnkiConnect server with the note. Audio that no field maps is discarded, and
 turning the switch off frees the kept audio and keeps no more. Where no GIF can
-be made, a `{gif}` field gets the ordinary page screenshot instead. Still
-pictures are otherwise taken only by the ordinary page screenshot above. A
-browser linked to another Hachidori does not record Netflix lines, and neither
+be made, a `{gif}` field gets the ordinary page screenshot instead. With the
+switch on, `{screenshot}` on a watch page is Netflix's own seek-preview image of
+that moment, read from Netflix's player in that page instead of a picture of
+the visible page; it goes to Anki with the note like any screenshot. A browser
+linked to another Hachidori does not record Netflix lines, and neither
 does Firefox, which lets extensions neither record a tab nor read the sound.
 
 ## YouTube sentence audio, GIF and video frame

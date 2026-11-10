@@ -2,11 +2,9 @@
 // index's role.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { extensionApi as chrome } from "./browser-api.js";
-import { encodeBase64 } from "./base64.js";
 import { describeErrorOrJson } from "./error-text.js";
 import { captureNetflixPreview } from "./netflix-preview.js";
 import { captureYouTubeFrame } from "./youtube-frame.js";
-import { cropOf } from "./background-video.js";
 import { YOUTUBE_PAGE_URL } from "./background-youtube.js";
 import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
@@ -203,11 +201,11 @@ async function captureYouTubeFrameInDocument(tab, sender) {
 }
 
 // Where {screenshot} comes from in a top-frame reading page: Netflix's preview
-// with Netflix preview screenshots on, YouTube's video frame for a note from a
+// on a watch page with Netflix mining on, YouTube's video frame for a note from a
 // caption (`videoFrame`) with YouTube mining on, otherwise (null) the viewport.
 function screenshotSource(tab, sender, options, readerPage, videoFrame) {
   if (readerPage || (sender.frameId ?? 0) !== 0) return null;
-  if (options.experimental.netflixPreviewScreenshots === true
+  if (options.experimental.netflixMining === true
       && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url)) return "netflix-preview";
   return videoFrame && options.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
 }
@@ -220,32 +218,9 @@ async function captureFrom(tab, sender, source) {
   return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
 }
 
-// The part of a viewport picture that `crop` names, in fractions of the
-// viewport (netflix-content.js), which the capture holds at the screen's pixel
-// ratio: a Netflix subtitle note's screenshot keeps only the video's picture.
-async function croppedJpeg(dataUrl, crop) {
-  const image = await createImageBitmap(await (await fetch(dataUrl)).blob());
-  try {
-    const left = Math.round(crop.left * image.width);
-    const top = Math.round(crop.top * image.height);
-    const width = Math.max(1, Math.round((crop.left + crop.width) * image.width) - left);
-    const height = Math.max(1, Math.round((crop.top + crop.height) * image.height) - top);
-    // A picture that fills the viewport, as a 16:9 title does full screen on a
-    // 16:9 display, is the capture as it was taken, not encoded again.
-    if (width === image.width && height === image.height) return dataUrl;
-    const canvas = new OffscreenCanvas(width, height);
-    canvas.getContext("2d").drawImage(image, left, top, width, height, 0, 0, width, height);
-    const jpeg = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
-    return `data:image/jpeg;base64,${encodeBase64(new Uint8Array(await jpeg.arrayBuffer()))}`;
-  } finally {
-    image.close();
-  }
-}
-
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
-// A `crop` keeps that part of the viewport's picture.
-async function captureSenderViewport(sender, options, videoFrame = false, crop = null) {
+async function captureSenderViewport(sender, options, videoFrame = false) {
   const readerPage = readerPageSender(sender);
   if (typeof sender.tab?.id !== "number" && !readerPage) {
     throw new Error("Only a reading tab can be captured.");
@@ -270,7 +245,7 @@ async function captureSenderViewport(sender, options, videoFrame = false, crop =
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
     }
-    return crop !== null && source === null ? croppedJpeg(captured, crop) : captured;
+    return captured;
   }
 }
 
@@ -427,8 +402,8 @@ function answerAnkiRequest(message, sender, linkedClient = false) {
     // Only the screenshot needs to know which page asked, and it is given the
     // capture rather than the sender, so nothing else can capture a tab.
     if (message.type === "hd_anki_screenshot") {
-      return service.screenshot(options => captureSenderViewport(sender, options, message.videoFrame === true,
-        cropOf(message.crop)), message.templateId);
+      return service.screenshot(options => captureSenderViewport(sender, options, message.videoFrame === true),
+        message.templateId);
     }
     if (linkedClient && message.type === "hd_anki_status") {
       const status = singleProfileStatus(message, await service.status(message.templateId));

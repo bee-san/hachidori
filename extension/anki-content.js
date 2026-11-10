@@ -306,10 +306,6 @@
     // YouTube mining: the same for a YouTube caption's cue, which
     // the same reader records (netflix-content.js).
     recordYouTubeLine = async () => { throw new Error("this page cannot replay YouTube lines."); },
-    // Experimental Netflix mining: takes a Netflix subtitle note's screenshot
-    // through `capture(crop)` with what Netflix draws over its video hidden,
-    // `crop` being where the video's picture is (netflix-content.js).
-    videoScreenshot = capture => capture(null),
     // Opens Settings → Anki for the profile the popup's controls act in, or
     // null where the page cannot open Settings.
     openSettings = null,
@@ -521,11 +517,9 @@
       if (owns()) setStatus(record, "Taking the screenshot…");
       try {
         // A note from a YouTube caption asks for the video's frame (YouTube
-        // mining), and one from a Netflix subtitle for the video's picture
-        // alone (Netflix mining).
-        const capture = crop => conceal(() => send("hd_anki_screenshot", { templateId: record.templateId,
-          ...(request.youtube ? { videoFrame: true } : {}), ...(crop ? { crop } : {}) }));
-        const taken = await (request.netflix ? videoScreenshot(capture) : capture(null));
+        // mining); Netflix mining's are Netflix's preview (background-anki.js).
+        const taken = await conceal(() => send("hd_anki_screenshot", { templateId: record.templateId,
+          ...(request.youtube ? { videoFrame: true } : {}) }));
         if (typeof taken?.filename !== "string" || !taken.filename) throw new Error("no screenshot was taken");
         record.screenshot = { token: taken.token, filename: taken.filename };
         return { ...request, screenshot: record.screenshot };

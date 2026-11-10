@@ -151,7 +151,8 @@ if (new URLSearchParams(location.search).has("graph")) {
   graph.createMediaElementSource(video).connect(graph.destination);
 }
 const native = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
-const evidence = window.__fixture = { seeks: [], calls: [], background: [], directWrites: 0, profiles: null, frames: 0 };
+const evidence = window.__fixture = { seeks: [], calls: [], background: [], directWrites: 0, profiles: null, frames: 0,
+  previews: [] };
 // Every recorder frame the extension adds, which tab capture needs and the line audio does not.
 new MutationObserver(records => {
   for (const record of records) for (const node of record.addedNodes) if (node.nodeName === "IFRAME") evidence.frames++;
@@ -167,6 +168,17 @@ const player = {
   getCurrentTime() { return video.currentTime * 1000; },
   getMovieId: () => 81000001,
   getElement: () => video,
+  // Netflix's seek preview: a 160 × 120 green JPEG, which Netflix mining
+  // takes for {screenshot}.
+  async getTrickPlayFrame(ms) {
+    evidence.previews.push(ms);
+    const preview = Object.assign(document.createElement("canvas"), { width: 160, height: 120 });
+    const context = preview.getContext("2d");
+    context.fillStyle = "rgb(0, 200, 80)";
+    context.fillRect(0, 0, preview.width, preview.height);
+    const blob = await new Promise(done => preview.toBlob(done, "image/jpeg", 0.92));
+    return { image: await blob.arrayBuffer() };
+  },
 };
 const nextEpisode = {
   seek(ms) { evidence.background.push(["seek", ms]); },
@@ -855,10 +867,10 @@ try {
   const second = await decodeGif(onlyGif);
   assert.ok(second.frames > 1 && second.distinct > 1, `the {gif}-only GIF decodes into distinct frames: ${JSON.stringify(second)}`);
 
-  // A subtitle note's screenshot is of the video alone: the picture the player
-  // pillarboxes, without the page beside it, Netflix's subtitles, controls or
-  // paused-title overlay (which would have taken two seconds to fade), or the
-  // popup. Decoded in an extension page from what Anki received.
+  // A subtitle note's screenshot is Netflix's seek preview, not the page: not
+  // the red beside the pillarboxed picture, Netflix's subtitles, controls or
+  // paused-title overlay, or the popup. Decoded in an extension page from what
+  // Anki received.
   await mapBack("{screenshot}", true);
   await leaveLine();
   await tab.goto(PICTURE);
@@ -872,7 +884,7 @@ try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const context = canvas.getContext("2d");
     context.drawImage(bitmap, 0, 0);
-    // Inside its edges, where the crop's whole pixels meet the picture's.
+    // Inside its edges, away from the JPEG's edge blocks.
     const edge = 3, width = bitmap.width - 2 * edge, height = bitmap.height - 2 * edge;
     const pixels = context.getImageData(edge, edge, width, height).data;
     let green = 0;
@@ -881,11 +893,11 @@ try {
     }
     return { width: bitmap.width, height: bitmap.height, green: green / (width * height) };
   }, media.get(shot));
-  console.log(`screenshot ${picture.width}×${picture.height}, ${(picture.green * 100).toFixed(2)}% the video's green`);
-  // The 1200 × 700 player shows the 160 × 120 picture 933⅓ px wide in its middle.
-  assert.ok(Math.abs(picture.width - 700 * 4 / 3) <= 2 && picture.height === 700,
-    `the screenshot is the video's picture: ${JSON.stringify(picture)}`);
-  assert.ok(picture.green > 0.995, `nothing covers the video's picture: ${JSON.stringify(picture)}`);
+  const previews = await tab.evaluate(() => window.__fixture.previews);
+  console.log(`screenshot ${picture.width}×${picture.height}, ${(picture.green * 100).toFixed(2)}% the preview's green`);
+  assert.ok(picture.width === 160 && picture.height === 120 && previews.length === 1,
+    `the screenshot is the player's seek preview: ${JSON.stringify({ picture, previews })}`);
+  assert.ok(picture.green > 0.995, `nothing covers the preview: ${JSON.stringify(picture)}`);
   await leaveLine();
   await tab.goto(WATCH);
   await tab.waitForFunction(() => window.__fixture?.ready === true);
@@ -905,7 +917,7 @@ try {
   console.log(`Netflix mining fixture: ${notes.length} notes; a page open before the switch went on got the scripts, `
     + "paused and resumed, and said to reload; without a capture grant, line audio heard, replayed and played on, "
     + "tab capture asking for the toolbar button; after the click, a line recorded from the tab, a GIF and its line "
-    + "audio from one replay, a {gif}-only note, a screenshot of the video alone; each MP3 the cue's seconds' tones; "
+    + "audio from one replay, a {gif}-only note, a screenshot from the seek preview; each MP3 the cue's seconds' tones; "
     + "playback restored, hover pause and resume through the watch session only, no play while recording — passed");
 } finally {
   await browser?.close();

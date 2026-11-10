@@ -170,10 +170,14 @@ stores it as `rank-based` when its values are ranks (#684).
   of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
   or the page screenshot where there is none, and for `{sentence-audio}` while
   the video's sound does not yet go through Hachidori. A subtitle note's
-  `{screenshot}` and `{gif}` are of the video alone: `netflix-content.js`
-  hides what Netflix draws over its video while they are taken and sends where
-  the video's picture is, which `background-anki.js` cuts out of the
-  screenshot and the recorder frame out of each GIF frame.
+  `{gif}` is of the video alone: `netflix-content.js` hides what Netflix draws
+  over its video while the line replays and sends where the video's picture
+  is, which the recorder frame cuts out of each GIF frame. `{screenshot}` on a
+  watch page is the player's timeline JPEG, which `background-anki.js` reads
+  on demand with `netflix-preview.js` in the page's main world: lower
+  resolution and approximate timing, but no screen capture. Missing previews
+  leave a warning on the saved note. See the
+  [capture research](../docs/netflix-screenshot-research.md).
 - **YouTube mining.** The same features on `www.youtube.com` behind their own
   switch, Anki → Video mining → YouTube mining (on by default), on the same
   code: `netflix-content.js` is the
@@ -188,12 +192,6 @@ stores it as `rank-based` when its values are ranks (#684).
   `youtube-recorder.html` (`youtube-recorder.js`) the recorder frame, which
   crops a `{gif}` to the video. `youtube-frame.js` is what the worker runs in
   the page for a caption note's `{screenshot}`: the video's own frame.
-- **Netflix preview screenshots.** A separate experimental switch uses
-  `netflix-preview.js` on demand in the watch page's main world to obtain the
-  player's timeline JPEG for `{screenshot}`. It avoids screen capture but has
-  lower resolution and approximate timing. It needs no recording or subtitle
-  integration; missing previews leave a warning on the saved note. See the
-  [capture research](../docs/netflix-screenshot-research.md).
 - **Word highlighting.** While Reading → Word highlighting is on,
   `word-highlights.js`, a content script beside `content.js`, marks a page's
   Japanese words by their Anki status: it segments the text near the viewport

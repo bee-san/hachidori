@@ -22,9 +22,9 @@ function template(message) {
   return message.profileId === undefined ? message.templateId : profileTemplateKey(message.profileId, message.templateId);
 }
 
-// The part of the tab a GIF or a Netflix screenshot keeps, as fractions of its
-// width and height (the video's picture), with the tab's aspect ratio, when
-// the reader sent one that fits in the tab.
+// The part of the tab a GIF keeps, as fractions of its width and height (the
+// video's picture), with the tab's aspect ratio, when the reader sent one that
+// fits in the tab.
 function cropOf(value) {
   if (value === null || typeof value !== "object") return null;
   const { left, top, width, height, aspect } = value;
@@ -272,4 +272,4 @@ function createVideoSiteService(site) {
   return { target: site.target, recorderPort: site.recorderPort, adoptRecorder, connectRecorder, handleRequest };
 }
 
-export { createVideoSiteService, cropOf };
+export { createVideoSiteService };

@@ -49,7 +49,6 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
     resolve: observation => plain(api.resolve(observation)),
     miningFields: (...args) => plain(api.miningFields(...args)),
     record: async (...args) => plain(await api.record(...args)),
-    screenshot: async capture => plain(await api.screenshot(capture)),
     setHoverPause: enabled => api.setHoverPause(enabled),
     setLineAudio: enabled => api.setLineAudio(enabled),
   };
@@ -254,7 +253,7 @@ test("recording starts the capture, has the page replay the cue, then finishes o
   assert.deepEqual(sent[0], ["hd_netflix_capture_start", { cue, audio: false, gif: true }]);
 });
 
-test("a picture of a Netflix line is of the video alone: Netflix's drawing hidden, cropped to the picture", async t => {
+test("a GIF of a Netflix line is of the video alone: Netflix's drawing hidden, cropped to the picture", async t => {
   const f = netflix(t);
   // The player fills jsdom's 1024 × 768 window, so Netflix letterboxes a
   // 16:9 video in it and pillarboxes a square one.
@@ -264,59 +263,46 @@ test("a picture of a Netflix line is of the video alone: Netflix's drawing hidde
   let fit = "contain";
   f.window.getComputedStyle = () => ({ objectFit: fit });
   const hidden = () => [...f.window.document.querySelectorAll("style")].map(style => style.textContent).join("\n");
-  const taken = [];
-  const capture = async crop => {
-    taken.push({ crop: JSON.parse(JSON.stringify(crop)), hidden: hidden() });
-    return { token: "shot", filename: "hachidori-screenshot-a.jpg" };
-  };
-  const aspect = 1024 / 768;
-  size(1920, 1080);
-  assert.deepEqual(await f.netflix.screenshot(capture), { token: "shot", filename: "hachidori-screenshot-a.jpg" });
-  assert.deepEqual(taken[0].crop, { left: 0, top: 0.125, width: 1, height: 0.75, aspect });
-  // Its subtitles, controls and overlays go at once, not by their own fade,
-  // and come back once the picture is taken.
-  assert.ok(taken[0].hidden.startsWith(".player-timedtext, .watch-video--bottom-controls-container, "), taken[0].hidden);
-  assert.ok(taken[0].hidden.endsWith(".evidence-overlay { opacity: 0 !important; transition: none !important; }"));
-  assert.equal(hidden(), "");
-  size(1080, 1080);
-  await f.netflix.screenshot(capture);
-  assert.deepEqual(taken[1].crop, { left: 0.125, top: 0, width: 0.75, height: 1, aspect });
-  // A picture that fills its box, or a video with no picture yet, is its box.
-  fit = "fill";
-  await f.netflix.screenshot(capture);
-  size(0, 0);
-  fit = "contain";
-  await f.netflix.screenshot(capture);
-  assert.deepEqual(taken.slice(2).map(({ crop }) => crop), [{ left: 0, top: 0, width: 1, height: 1, aspect },
-    { left: 0, top: 0, width: 1, height: 1, aspect }]);
-
-  // Hiding is counted: one picture finishing cannot show it while another is taken.
-  let finishFirst;
-  const first = f.netflix.screenshot(() => new Promise(done => { finishFirst = done; }));
-  await f.netflix.screenshot(async () => assert.notEqual(hidden(), ""));
-  assert.notEqual(hidden(), "", "the first picture is still being taken");
-  finishFirst({});
-  await first;
-  assert.equal(hidden(), "");
-
-  // A GIF's replay is of the video alone and cropped to it; a tab recording of
-  // the sound alone hides nothing and crops nothing.
-  size(1920, 1080);
   f.window.document.addEventListener(COMMAND_EVENT, event => {
     const command = JSON.parse(event.detail);
     if (command.type === "replay") setTimeout(() => f.post({ kind: "replay", id: command.id, ok: true, anchors: [[5000, 950]] }), 0);
   });
   const sent = [];
+  let hiddenWhileRecording = "";
   const send = async (type, fields) => {
     sent.push([type, JSON.parse(JSON.stringify(fields)), hidden() !== ""]);
+    if (type === "hd_netflix_capture_start") hiddenWhileRecording = hidden();
     return type === "hd_netflix_capture_start" ? { sessionId: "s1", padMs: 250 } : { audio: null, gif: null };
   };
   const cue = { movieId: "81000001", startMs: 1000, endMs: 3500 };
+  const gifCrop = async () => {
+    sent.length = 0;
+    await f.netflix.record(cue, { send, templateId: "default", audio: false, gif: true });
+    return sent[0][1].crop;
+  };
+  const aspect = 1024 / 768;
+  // A GIF's replay is of the video alone and cropped to it.
+  size(1920, 1080);
   await f.netflix.record(cue, { send, templateId: "default", audio: false, gif: true });
   assert.deepEqual(sent.map(([type, fields, wasHidden]) => [type, fields.crop, wasHidden]), [
     ["hd_netflix_capture_start", { left: 0, top: 0.125, width: 1, height: 0.75, aspect }, true],
     ["hd_netflix_capture_finish", undefined, true]]);
+  // Its subtitles, controls and overlays go at once, not by their own fade,
+  // and come back once the line is recorded.
+  assert.ok(hiddenWhileRecording.startsWith(".player-timedtext, .watch-video--bottom-controls-container, "),
+    hiddenWhileRecording);
+  assert.ok(hiddenWhileRecording.endsWith(".evidence-overlay { opacity: 0 !important; transition: none !important; }"));
   assert.equal(hidden(), "");
+  size(1080, 1080);
+  assert.deepEqual(await gifCrop(), { left: 0.125, top: 0, width: 0.75, height: 1, aspect });
+  // A picture that fills its box, or a video with no picture yet, is its box.
+  fit = "fill";
+  assert.deepEqual(await gifCrop(), { left: 0, top: 0, width: 1, height: 1, aspect });
+  size(0, 0);
+  fit = "contain";
+  assert.deepEqual(await gifCrop(), { left: 0, top: 0, width: 1, height: 1, aspect });
+  // A tab recording of the sound alone hides nothing and crops nothing.
+  size(1920, 1080);
   sent.length = 0;
   await f.netflix.record(cue, { send, templateId: "default" });
   assert.deepEqual(sent.map(([type, fields, wasHidden]) => [type, fields.crop, wasHidden]), [

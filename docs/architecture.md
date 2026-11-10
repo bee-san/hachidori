@@ -3517,46 +3517,24 @@ frame.
 With **YouTube mining** on, `{screenshot}` for a note from a YouTube caption is
 the video's own frame rather than the viewport ([YouTube mining](#youtube-mining)).
 
-With **Netflix mining** on, `{screenshot}` for a note from a Netflix subtitle
-(a request with a `netflix` field) is the video's picture alone. The reader
-asks Netflix's reader (`HDNetflix.screenshot`) to take it: that hides what
-Netflix draws over the video, its subtitles, controls, skip and next-episode
-buttons and paused-title overlay, with one stylesheet of Netflix's own class
-names that sets `opacity: 0` and `transition: none`, so they are gone before
-the reader's two-frame wait rather than fading out during it. It then sends
-`hd_anki_screenshot` with a `crop`: where the `<video>`'s picture is, as
-fractions of the viewport. Netflix's `<video>` fills its player, so a picture
-whose shape is not the player's is drawn whole and centred in it
-(`object-fit: contain`) with bars beside it; the crop is that picture, worked
-out from the element's box and the video's `videoWidth` and `videoHeight`.
-The worker validates the crop, takes the viewport capture as usual and, after
-its ownership checks, cuts the crop out of it with `createImageBitmap` and an
-`OffscreenCanvas` into a JPEG at quality 0.92, for a linked browser too; a
-picture that fills the viewport, such as a 16:9 title full screen on a 16:9
-display, is kept as captured rather than encoded again.
-Hiding is counted like the reader's concealment and lifted once the picture
-is taken. Netflix may rename these classes, which would leave its drawing in
-the picture; a protected video that captures as black now captures as an
-all-black picture. Notes from other pages, YouTube's, and Netflix preview
-screenshots, which have no page UI to begin with, are unchanged.
-
-**Netflix preview screenshots** is a separate experimental switch, off by
-default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
-preview JPEG for `{screenshot}`. These images are lower resolution and can show
-a nearby moment rather than the exact video frame; they contain no page UI or
-subtitle overlay. This is the preview-image approach used by Language Reactor,
-not protected-video readback. See the [capture investigation](netflix-screenshot-research.md)
-for the inspected implementations and their limitations.
+With **Netflix mining** on, `{screenshot}` on a top-frame Netflix watch page is
+Netflix's own timeline preview JPEG instead of the viewport. These images are
+lower resolution and can show a nearby moment rather than the exact video
+frame; they contain no page UI or subtitle overlay, and protected playback
+does not turn them black. This is the preview-image approach used by Language
+Reactor, not protected-video readback. See the
+[capture investigation](netflix-screenshot-research.md) for the inspected
+implementations and their limitations.
 
 The worker invokes `netflix-preview.js` in the exact requesting document's main
-world only when a screenshot is requested with this switch on. It uses the
+world only when a screenshot is requested with the switch on. It uses the
 current watch player's `getTrickPlayFrame` and feeds the JPEG into the same
 pending screenshot, upload and cleanup lifecycle. Existing active-tab,
 document, route and window checks still apply. A missing player or preview is
 a screenshot warning on the otherwise successful note. It does not silently
 substitute a potentially black viewport capture. Other pages and the switch-off
-path retain their ordinary screenshots. It needs neither the Netflix mining
-switch nor a subtitle timeline, recording grant, replay or additional permission.
+path retain their ordinary screenshots. It needs no subtitle timeline,
+recording grant, replay or additional permission.
 
 Migaku takes its card screenshot with `tabs.captureVisibleTab`. Its Chrome Web Store
 package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
@@ -3593,7 +3571,8 @@ whether the picture includes protected video:
 Settings → Advanced → Experimental features → **Netflix mining**
 (`options.experimental.netflixMining`, off by default) gives notes mined from a
 Netflix subtitle the line's own audio, a looping GIF of it, and the whole line
-as the sentence, and pauses the video while a subtitle line is hovered. It is
+as the sentence, gives every note from a watch page Netflix's preview image for
+`{screenshot}` (above), and pauses the video while a subtitle line is hovered. It is
 Netflix only, and every part fails closed: a note that cannot get its line is
 added with its other fields and a warning.
 
