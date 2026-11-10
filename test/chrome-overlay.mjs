@@ -511,6 +511,8 @@ try {
     // The search page opens from Chrome's shortcuts and toolbar menu (#610).
     searchPageHidden: document.getElementById("search-page-settings").hidden,
   }));
+  // Electron has no Allow User Scripts switch to ask for.
+  const userScriptNoticeHidden = await settings.evaluate(() => document.getElementById("user-script-permission").hidden);
   const guardedRequests = await settings.evaluate(() => chrome.runtime.sendMessage({
     target: "hoshidicts-worker", type: "hd_open_external", requestId: "overlay-ui-link",
     url: "https://example.test/", active: true,
@@ -529,6 +531,7 @@ try {
   assert.match(ankiSettings.screenshotHelp, /unavailable in this overlay/u);
   assert.deepEqual(readingSettings, { readingEnabled: true, activationKey: "", keepOpenHidden: true,
     localFilePromptHidden: true, localFilePromptEmpty: true, searchPageHidden: true }, "a seeded overlay shows No key");
+  assert.equal(userScriptNoticeHidden, true, "an overlay shows no Allow User Scripts notice");
   assert.ok(guardedRequests.ok === false && guardedRequests.error.includes("only from lookup popups"),
   JSON.stringify(guardedRequests));
   // Setup never opens in an overlay: the host has no tab to show it in.
@@ -549,6 +552,11 @@ try {
         id: "remote-link", type: "link", label: "Remote link", url: "https://example.test/?w=%w&r=%r&s=%s",
       }],
       customLinks: [{ label: "Remote link", url: "https://example.test/?w=%w&r=%r&s=%s" }],
+      // Chrome's Allow User Scripts is off here, as Electron has no such API.
+      // A package that throws does not stop the next.
+      userScripts: [{ id: "throws", name: "Throws", enabled: true, css: "", javascript: "throw new Error('package fails');" },
+        { id: "page-world", name: "Page world", enabled: true, css: "",
+          javascript: "window.userScriptRuns = (window.userScriptRuns ?? 0) + 1;" }],
       revision: options.revision + 1,
     } });
   });
@@ -621,6 +629,10 @@ try {
   await tab.mouse.move(...middle(boxes[0]));
   const ankiPopup = await popup.waitForVisible(10_000);
   assert.ok(ankiPopup?.plain.includes("食べる"), `overlay Anki hover reads the boxed word: ${JSON.stringify(ankiPopup)}`);
+  // The user script ran once, in the page's own world, which reaches the popup.
+  assert.deepEqual(await tab.evaluate(() => ({ runs: window.userScriptRuns,
+    popup: document.querySelector("hachidori-host").shadowRoot?.textContent.includes("食べる") ?? false })),
+  { runs: 1, popup: true }, "an overlay runs user scripts in the page's world");
   const automaticPopupThemes = [ankiPopup.theme];
   await tab.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
   const automaticThemeDeadline = Date.now() + 5000;

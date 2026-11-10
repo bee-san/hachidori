@@ -140,6 +140,7 @@
     "hd_upload_identity",
     "hd_upload_import",
     "hd_upload_reset",
+    "hd_user_scripts_run",
     "hd_word_status_override",
     "hd_youtube_capture_cancel",
     "hd_youtube_capture_finish",

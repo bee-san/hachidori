@@ -258,7 +258,9 @@ stores it as `rank-based` when its values are ranks (#684).
   attaches the popup's closed root when the reader asks and returns it to the
   packages through `host.shadowRoot` ([architecture](../docs/architecture.md)).
   The search page runs the same code in its sandboxed frame, where the reader
-  gives the popup an open root. Their CSS joins Custom CSS in the popup.
+  gives the popup an open root, and an overlay host runs it in each page's own
+  world (`runPageUserScripts`), where the root is open too. Their CSS joins
+  Custom CSS in the popup.
   `script-store.js` is the Script Store under the user's scripts in the same
   section: it reads `bee-san/hachidori-scripts`' catalogue when asked and
   installs and updates packages in the list above it.

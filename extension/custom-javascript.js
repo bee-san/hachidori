@@ -44,3 +44,25 @@ export function applyCustomJavaScript(browser, scripts) {
   application = application.catch(() => {}).then(() => apply(browser, scripts));
   return application;
 }
+
+// An overlay host has no USER_SCRIPT world (HOST_CAPABILITIES.pageWorldUserScripts),
+// so each page's reader asks for the same sources when it starts. They run in
+// that document's own world without the bridge, where the reader leaves the
+// popup's root open to them (content.js).
+export async function runPageUserScripts(browser, target, scripts) {
+  const sources = globalThis.HDReaderOptions.javaScriptUserScripts(scripts).map(script => userScriptSource(script));
+  if (sources.length > 0) await browser.scripting.executeScript({ target, world: "MAIN", func: runSources, args: [sources] });
+  return { ran: sources.length };
+}
+
+// Serialised into the page by executeScript, so it uses nothing from here. A
+// package that throws is reported as the page's own errors are, and the next runs.
+function runSources(sources) {
+  for (const source of sources) {
+    try {
+      (0, eval)(source); // NOSONAR: the user's own user script, as a user-script world runs it.
+    } catch (error) {
+      reportError(error);
+    }
+  }
+}

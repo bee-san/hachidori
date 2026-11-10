@@ -11,8 +11,11 @@ list order, top to bottom.
   Hachidori's details page (Developer mode before Chrome 138), or Firefox's
   optional `userScripts` permission, which the section's **Allow user scripts**
   button asks for. The search page runs it too, in its sandboxed frame
-  ([Search page](architecture.md#search-page); Firefox 154 or later). A
-  package's JavaScript runs from a page's next load.
+  ([Search page](architecture.md#search-page); Firefox 154 or later). An
+  overlay such as GameSentenceMiner has no user-script API and needs no
+  switch: it runs the JavaScript in each page's own world
+  ([overlay mode](overlay-mode.md)). A package's JavaScript runs from a page's
+  next load.
 - **CSS** styles the popup as Design → Custom CSS does: in the popup's shadow
   root, after Hachidori's own styles and the dictionaries'. Packages' CSS comes
   in list order and Custom CSS comes last, so a Design rule still wins over a
@@ -24,7 +27,7 @@ list order, top to bottom.
 
 - The popup is `document.querySelector("hachidori-host").shadowRoot`, a closed
   root that `custom-javascript-bridge.js` returns to user scripts alone
-  ([architecture](architecture.md)). `hachidori-popup-shown` and
+  ([architecture](architecture.md)). In an overlay the root is open. `hachidori-popup-shown` and
   `hachidori-popup-hidden` fire on `window`.
 - On the search page, `globalThis.HDSearchHistory` is the search history
   ([search history](search-history.md#for-user-scripts-hdsearchhistory)).
@@ -33,7 +36,9 @@ list order, top to bottom.
   two packages can both declare `const popup`. It is a classic script, so there
   is no top-level `await`. A package that throws does not stop the next one;
   the console names it `hachidori-user-script/<name>.js`.
-- The user-script world has no extension APIs.
+- The user-script world has no extension APIs. In an overlay the packages
+  share the page's own world and its globals; in GameSentenceMiner's overlay
+  window, that includes Node.
 
 ## Settings
 
@@ -43,7 +48,7 @@ scripts**, with the **Script Store** below them.
 - A notice above the list says how to let the browser run the packages'
   JavaScript, and shows only until it can: on Chrome while Allow User Scripts
   is off, checked when Settings opens and whenever it comes back into view, and
-  on Firefox until the optional permission is granted.
+  on Firefox until the optional permission is granted. An overlay shows none.
 - **Add script** opens the editor under the list: a name, the JavaScript and
   the CSS, each with **Load .js file** or **Load .css file** to replace it from
   a file. The warning about pasting JavaScript you do not understand is beside

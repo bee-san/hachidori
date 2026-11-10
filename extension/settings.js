@@ -304,6 +304,8 @@ function configureBrowserUi() {
   // which an overlay host does not have.
   if (!HOST_CAPABILITIES.browserShortcuts) element("search-page-settings").hidden = true;
   if (isFirefox(chrome)) configureFirefoxUi();
+  // An overlay runs them in the page's own world, which needs no switch.
+  else if (HOST_CAPABILITIES.pageWorldUserScripts) element("user-script-permission").hidden = true;
   else if (HOST_CAPABILITIES.customJavaScript) configureChromeUserScripts();
 }
 
