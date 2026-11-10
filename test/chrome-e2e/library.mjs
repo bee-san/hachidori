@@ -171,9 +171,9 @@ describe("Settings library", () => {
     );
   });
 
-  step("the Google Docs flag", async () => {
+  step("the Google Docs setting", async () => {
     themeLayouts = [];
-    await showSettingsSection(page, "advanced");
+    await showSettingsSection(page, "lookup");
     // The Google Docs switch registers a MAIN-world script for docs.google.com
     // from the service worker; the extension page can read the registry itself.
     const docsScripts = () => page.evaluate(() =>
@@ -187,15 +187,16 @@ describe("Settings library", () => {
       }
       return scripts;
     };
-    const docsBefore = await docsScripts();
-    await page.click("#opt-experimental-googleDocs");
-    const docsOn = await docsRegistered(true);
-    await page.click("#opt-experimental-googleDocs");
+    // On by default, so the worker registered it at start-up.
+    const docsBefore = await docsRegistered(true);
+    await page.click("#opt-google-docs");
     const docsOff = await docsRegistered(false);
+    await page.click("#opt-google-docs");
+    const docsOn = await docsRegistered(true);
     const [docsScript] = docsOn;
     check(
-      "the Google Docs flag registers its document_start MAIN-world script only while on",
-      docsBefore.length === 0 && docsOn.length === 1 && docsOff.length === 0
+      "the Google Docs setting registers its document_start MAIN-world script only while on, as it is by default",
+      docsBefore.length === 1 && docsOn.length === 1 && docsOff.length === 0
         && docsScript.matches.join() === "*://docs.google.com/*" && docsScript.runAt === "document_start"
         && docsScript.world === "MAIN" && docsScript.allFrames === true
         && docsScript.js.length === 1 && docsScript.js[0].endsWith("google-docs-flag.js"),
@@ -218,7 +219,7 @@ describe("Settings library", () => {
               audio: "audio-source-add", anki: "anki-refresh", keybinds: "keybind-add",
               "custom-dictionary": "custom-dictionary-source",
               "add-dictionaries": "import-file", updates: "update-schedule", "dictionary-groups": "dict-group-name-new", backup: "backup-export",
-              advanced: "opt-experimental-googleDocs",
+              advanced: "opt-experimental-netflixMining",
             };
             const controls = [...panel.querySelectorAll("input, select, button, textarea, summary")]
               .filter((control) => control.checkVisibility());

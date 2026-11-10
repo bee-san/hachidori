@@ -155,7 +155,7 @@ const PLANNED = [
   "Settings recovers Anki setup after onboarding and preserves a verified saved mapping",
   "a browser restart keeps completed setup closed and the edited first-install preference",
   "Settings puts the library first and supports keyboard navigation at 320px",
-  "the Google Docs flag registers its document_start MAIN-world script only while on",
+  "the Google Docs setting registers its document_start MAIN-world script only while on, as it is by default",
   LIBRARY_NAVIGATION_CHECK,
   LIBRARY_TAB_GEOMETRY_CHECK,
   SETTINGS_NAVIGATION_CHECK,

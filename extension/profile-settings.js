@@ -26,7 +26,7 @@ const SHARED_GROUPS = [
   "#user-scripts", "#video-mining-settings",
 ];
 const SHARED_CONTROLS = ["opt-popup-width", "opt-popup-height", "opt-popup-scale", "opt-popup-toolbar",
-  "opt-source-highlight", "opt-custom-popup-css", "opt-popup-nesting-depth",
+  "opt-source-highlight", "opt-google-docs", "opt-custom-popup-css", "opt-popup-nesting-depth",
   "opt-smaller-anki-cards", "opt-anki-url"];
 
 function countLabel(count, singular, plural) {

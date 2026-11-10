@@ -146,7 +146,8 @@ stores it as `rank-based` when its values are ranks (#684).
   [hachidori-anki](https://github.com/bee-san/hachidori-anki), which owns the
   Python relay, its tests, and packaging.
 - **Google Docs.** `google-docs.js` registers `google-docs-flag.js` from the
-  service worker while the experimental flag is on: a `document_start`
+  service worker while Reading → Scanning → Look up words in Google Docs is on
+  (the default): a `document_start`
   main-world script on `docs.google.com` that asks Docs to draw its SVG
   annotation layer, which `content.js` then scans through an SVG `<text>`
   imposter.

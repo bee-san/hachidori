@@ -170,6 +170,16 @@ test("turning Word highlighting off keeps its Reading tab and saved presentation
   assert.equal(window.readOptions().wordHighlightStyle, "color");
 });
 
+test("Google Docs is a Reading option, on by default, that uses the existing options save", t => {
+  const { window, el } = fixture(t);
+  const input = el("opt-google-docs");
+  assert.equal(input.closest("section").id, "lookup");
+  assert.equal(input.checked, true);
+  assert.equal(el("opt-experimental-googleDocs"), null);
+  input.click();
+  assert.deepEqual(plain(window.readPending()), { googleDocs: false });
+});
+
 test("Smaller Anki cards is an Anki option that uses the existing options save", t => {
   const { window, el } = fixture(t);
   const input = el("opt-smaller-anki-cards");

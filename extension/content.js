@@ -733,9 +733,9 @@
     return profile ? { profile, sentenceRules: profile.text.sentenceRules, lineJoiner: profile.text.lineJoiner } : {};
   }
 
-  // Google Docs paints text to <canvas>. While Settings → Advanced →
-  // Experimental features → Google Docs is on, background.js has Docs draw its
-  // SVG annotation layer as well (google-docs-flag.js): one <rect aria-label>
+  // Google Docs paints text to <canvas>. While Settings → Reading → Scanning →
+  // Look up words in Google Docs is on, background.js has Docs draw its SVG
+  // annotation layer as well (google-docs-flag.js): one <rect aria-label>
   // per run of text, with the run's position, transform and font, but still no
   // text node. The reader lays an invisible SVG <text> imposter over the hovered
   // rect and scans that, as Yomitan's google-docs-util does.
@@ -747,7 +747,7 @@
   let docsImposter = null;
 
   function docsEnabled() {
-    return GOOGLE_DOCS_HOST && options.experimental.googleDocs === true;
+    return GOOGLE_DOCS_HOST && options.googleDocs === true;
   }
 
   // Experimental Features → Netflix mining and YouTube mining: background.js

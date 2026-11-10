@@ -216,7 +216,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `fluent-icons`, `settings-fluent-icons` | The vendored Fluent subset, its provenance and use by controls. |
 | `frequency-presentation` | Yomitan-style frequency values and tags, abbreviations, averages and live controls. |
 | `furigana` | Headword furigana split by KANJIDIC readings: the one split that reads where the kana leave several (#459), and each run of kanji read one kanji at a time where one split reads (#605), with Jitendex kanwa's readings and compounds where KANJIDIC's read none (#641). |
-| `google-docs` | The Google Docs flag and its main-world script. |
+| `google-docs` | The Google Docs setting and its main-world script. |
 | `issue-template` | The issue template and its validator, with mocked GitHub calls; it never closes real issues. The Issue template workflow also runs it on relevant pull requests and pushes to `main`; that workflow's issue-event job enforces the template on opened, edited and reopened issues. |
 | `kanji-click-settings`, `kanji-group-mining`, `reader-options` | The clicked-kanji chooser and groups, `kanjiEntryResult` against the engine's `LookupResult`, and reader option normalisation. |
 | `keybind-settings` | Yomitan's default keybinds, capture, Alt+wheel rows, the search page's scope and default rows (and a list saved before it gaining them when read), Reset by the row's scope, and Chrome's browser shortcuts list. |
@@ -399,7 +399,7 @@ Its steps run in this order, in one profile:
 | `settings.mjs` | First-run Anki detection of an existing Kiku setup, Settings autosave, save feedback and option transport, Design, Audio, Anki Settings and glossary export, dictionary CSS isolation. |
 | `recommended.mjs` | Recommended dictionaries on desktop and narrow pages, the offscreen engine (wasm under the CSP, pthreads, one offscreen document), the Settings installer across a reload, a failure and Retry. |
 | `import.mjs` | The `.zip` input, import into OPFS and storage, batch import and re-import, the dictionary row. |
-| `library.mjs` | Settings navigation and keyboard access, the Google Docs flag, popup themes and the first frame, positions, bulk updates, reordering, aliases, groups, kanji choices. |
+| `library.mjs` | Settings navigation and keyboard access, the Google Docs setting, popup themes and the first frame, positions, bulk updates, reordering, aliases, groups, kanji choices. |
 | `custom-dictionary.mjs` | Settings saves a personal source through the real importer. |
 | `reader.mjs` | The reading tab: popup resizing, hit testing, multiline placement, zoom, glyph boxes, wheels, the first inflected-verb popup, and Dark Reader isolation in a tab of its own. |
 | `counts.mjs` | Lookup counts, definition blur, Anki maturity blur, word highlighting. |

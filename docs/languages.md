@@ -113,7 +113,7 @@ The user interface stays in English.
 | Language | Personal dictionary source and its package; lookup counts; words marked known or ignored | They are facts about words of a language, shared by every profile of it. |
 | Package | Title, files, revision, update source and schedule, display name, favourite, source and target language | A dictionary is one thing however many profiles use it. |
 | Installation | Active profile; automatic switching | Each browser, and GameSentenceMiner's overlay, reads its own language. |
-| Global | Enable lookups; lookup mode, activation key and delays; hide-on-exit; nesting depth; keybinds; popup width, height, scale and toolbar position; source highlight; Custom CSS and JavaScript; AnkiConnect address and key; smaller Anki cards; experimental flags; memory and storage modes; automatic backups; the update schedule; sharing; search button | They describe the reader's hands, screen and machine, not a language. |
+| Global | Enable lookups; Google Docs; lookup mode, activation key and delays; hide-on-exit; nesting depth; keybinds; popup width, height, scale and toolbar position; source highlight; Custom CSS and JavaScript; AnkiConnect address and key; smaller Anki cards; experimental flags; memory and storage modes; automatic backups; the update schedule; sharing; search button | They describe the reader's hands, screen and machine, not a language. |
 
 Appendix A lists every option key with its scope and reason.
 
@@ -870,7 +870,7 @@ the Japanese pack carries `word-highlights.js:39-40` exactly. The
   language but a typed track's with none, and the page's `lang` is YouTube's
   interface language. No match leaves the active profile, which is Japanese by
   default.
-- **Google Docs (experimental)**: the imposter text gains the hovered run's
+- **Google Docs**: the imposter text gains the hovered run's
   direction, which it lacks today.
 - **Text fields**: the imposter already copies the field's computed style,
   direction included. Its clipping assumes a field scrolls to the right, so in

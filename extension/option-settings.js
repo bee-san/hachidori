@@ -542,6 +542,7 @@ function renderOptions() {
   }
   element("opt-hover-enabled").checked = options.hoverEnabled;
   element("opt-japanese-only").checked = options.onlyScanJapaneseText;
+  element("opt-google-docs").checked = options.googleDocs;
   renderPersonalDictionaryControls();
   element("opt-no-result-notice").checked = options.showNoResultNotice;
   element("opt-metadata-only-results").checked = options.showMetadataOnlyResults;
@@ -665,6 +666,10 @@ function attachOptionHandlers() {
   });
   element("opt-japanese-only").addEventListener("change", (event) => {
     options.onlyScanJapaneseText = event.target.checked;
+    writeOptions();
+  });
+  element("opt-google-docs").addEventListener("change", (event) => {
+    options.googleDocs = event.target.checked;
     writeOptions();
   });
   for (const { key, id } of WORD_HIGHLIGHT_SWITCHES) {

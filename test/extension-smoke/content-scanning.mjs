@@ -982,11 +982,8 @@ function buildDocsTile(document, runs) {
 }
 
 async function googleDocsCase() {
-  const { DEFAULT_OPTIONS } = globalThis.HDReaderOptions;
-  const on = { ...DEFAULT_OPTIONS.experimental, googleDocs: true };
-  const off = { ...DEFAULT_OPTIONS.experimental };
   const harness = await createHarness(undefined, {
-    url: "https://docs.google.com/document/d/example/edit",
+    url: "https://docs.google.com/document/d/example/edit", options: { googleDocs: false },
   });
   const { ownerDocument: document } = harness.popup;
   const window = document.defaultView;
@@ -1013,13 +1010,13 @@ async function googleDocsCase() {
   document.caretRangeFromPoint = () => null;
   const imposters = () => [...group.querySelectorAll("text")];
   const scan = (x, y) => harness.driver.resolveCandidate(x, y);
-  const flag = (experimental) => harness.emitOptions({ lookupMode: "hover", scanLength: 9, experimental });
+  const setting = googleDocs => harness.emitOptions({ lookupMode: "hover", scanLength: 9, googleDocs });
 
-  // Default: the flag is off, so Docs behaves as before and nothing is injected.
+  // With the setting off, Docs behaves as before and nothing is injected.
   const flagOff = scan(185, 30);
   const nothingInjected = probeStyle() === undefined && imposters().length === 0 && probed === 0;
 
-  flag(on);
+  setting(true);
   const candidate = scan(185, 30); // Over 散, the ninth character.
   const first = candidate?.scanEntries?.[0];
   const imposter = imposters()[0];
@@ -1047,13 +1044,13 @@ async function googleDocsCase() {
   const request = harness.take("hd_lookup");
   const lookedUp = request?.request.text === "散歩する。";
 
-  flag(off);
+  setting(false);
   const flagOffAgain = scan(185, 30);
   const released = imposters().length === 0 && probeStyle() === undefined;
   harness.close();
 
-  // The same tile on another host is canvas as before, flag or no flag.
-  const elsewhere = await createHarness(undefined, { options: { experimental: on } });
+  // The same tile on another host is canvas as before, setting or no setting.
+  const elsewhere = await createHarness(undefined, { options: { googleDocs: true } });
   const elsewhereDocument = elsewhere.popup.ownerDocument;
   const built = buildDocsTile(elsewhereDocument, [run]);
   elsewhereDocument.elementFromPoint = () => built.rects[0];
@@ -1063,11 +1060,11 @@ async function googleDocsCase() {
   elsewhere.close();
 
   return {
-    "Google Docs annotation rects scan through an SVG imposter while the flag is on":
+    "Google Docs annotation rects scan through an SVG imposter while the setting is on":
       resolved && shared && replaced && nothingElse && lookedUp
       || { candidate: candidate && { query: candidate.query, sentence: candidate.sentence, matchOffset: candidate.matchOffset },
         resolved, shared, replaced, nothingElse, lookedUp, probed },
-    "the Docs path is inert while its flag is off and on other hosts":
+    "the Docs path is inert while its setting is off and on other hosts":
       flagOff === null && nothingInjected && flagOffAgain === null && released && otherHost
       || { flagOff, nothingInjected, flagOffAgain, released, otherHost },
   };

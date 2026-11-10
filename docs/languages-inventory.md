@@ -22,6 +22,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `maxResults` (32) | Reading → Results | None | P |
 | `hoverEnabled` (true) | Reading → Enable lookups; toolbar "Japanese lookups"; Alt+Delete | Labels name Japanese | G; label names the language (7.4) |
 | `onlyScanJapaneseText` (true) | Reading → "Japanese text only" `#opt-japanese-only` | `JAPANESE_CHARACTER_PATTERN` (content-scan.js:22) | P; predicate = pack `text.pattern`; label per language |
+| `googleDocs` (true) | Reading → Scanning → Look up words in Google Docs | None | G; the imposter takes the run's direction |
 | `personalDictionaryEnabled` (true) | Dictionaries → Personal dictionary | Personal package is Japanese by invariant | P; personal dictionary per language (15) |
 | `showNoResultNotice` (true) | Dictionaries → Personal dictionary | None | P |
 | `lookupMode` (activationSticky) | Reading → Activation | None | G |

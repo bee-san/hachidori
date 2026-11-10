@@ -1241,10 +1241,11 @@ Scans shorter than eight code points never extend, so a clicked-kanji lookup
 stays one character.
 
 Google Docs paints its pages to `<canvas>`, so no caret API finds text there.
-While the experimental **Google Docs** flag (`options.experimental.googleDocs`)
-is on, the service worker registers `google-docs-flag.js` through
-`chrome.scripting` as a `document_start`, main-world content script on
-`*://docs.google.com/*` (and unregisters it when the flag goes off). The script
+While Settings → Reading → Scanning → **Look up words in Google Docs**
+(`options.googleDocs`, on by default) is on, the service worker registers
+`google-docs-flag.js` through `chrome.scripting` as a `document_start`,
+main-world content script on `*://docs.google.com/*` (and unregisters it when
+the switch goes off). The script
 sets `window._docs_annotate_canvas_by_ext` to the allow-listed ID Yomitan uses,
 which makes Docs also draw an SVG annotation layer: one
 `.kix-canvas-tile-content svg>g>rect` per run of text, carrying the run in
@@ -1257,11 +1258,11 @@ glyph offset from the imposter's client rects, and hands the imposter's text
 node to the ordinary scan and sentence pipeline with the imposter as the sole
 source. One imposter is kept per hovered rect so repeated moves share the
 pending lookup and the popup stays anchored; hovering another rect replaces it,
-and turning the flag off or tearing the reader down removes it and the probe
+and turning the switch off or tearing the reader down removes it and the probe
 stylesheet. The sentence is therefore the hovered run, the highlight is drawn
-on the invisible imposter, and Google may change the mechanism without notice,
-which is why the feature is experimental. With the flag off, or on any other
-host, nothing is injected and scanning is unchanged.
+on the invisible imposter, and Google may change the mechanism without notice.
+With the switch off, or on any other host, nothing is injected and scanning is
+unchanged.
 
 Pointer scanning first requires the caret's complete Unicode character rectangle
 to contain the pointer, with two CSS pixels of tolerance. The hit-tested page
@@ -3603,7 +3604,7 @@ the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`,
 `netflix-audio.js` and `netflix-content.js` beside the manifest's content
 scripts. The worker
 applies the flag at startup and on every options change, serialised like the
-Google Docs flag; turning it off unregisters both. Chrome adds a registered
+Google Docs switch; turning it off unregisters both. Chrome adds a registered
 script only to pages that load after it is registered, so a Netflix page that
 was open when the switch went on has the reader without `netflix-content.js`
 (#548). The reader of such a page, in its top frame, asks the worker once with
