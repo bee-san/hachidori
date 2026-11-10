@@ -1592,6 +1592,7 @@
                 <span class="field-label">Name</span>
                 <input id="user-script-name" type="text" autocomplete="off" spellcheck="false" />
               </label>
+              <p class="field-hint" id="user-script-keys">In the JavaScript and CSS boxes, Tab indents. To leave a box with the keyboard, press Esc and then Tab. <a href="https://github.com/bee-san/hachidori/blob/main/docs/user-scripts.md" target="_blank" rel="noopener noreferrer">What a script can use</a></p>
               <div class="user-script-part">
                 <div class="user-script-part-head">
                   <label class="field-label" for="user-script-javascript">JavaScript</label>
@@ -1599,9 +1600,10 @@
                 </div>
                 <p class="field-hint user-script-warning" id="custom-javascript-warning">Do not paste Javascript here you do not understand, it is a security risk.</p>
                 <textarea id="user-script-javascript" rows="10" spellcheck="false" autocapitalize="off"
-                  aria-describedby="custom-javascript-warning user-script-javascript-count"
+                  aria-describedby="custom-javascript-warning user-script-keys user-script-javascript-count user-script-javascript-problems"
                   placeholder="window.addEventListener(&quot;hachidori-popup-shown&quot;, () =&gt; {&#10;  const popup = document.querySelector(&quot;hachidori-host&quot;).shadowRoot;&#10;});"></textarea>
                 <span id="user-script-javascript-count" class="field-hint">0 characters</span>
+                <span id="user-script-javascript-problems" class="field-hint user-script-problems"></span>
               </div>
               <div class="user-script-part">
                 <div class="user-script-part-head">
@@ -1609,8 +1611,9 @@
                   <label class="file-button ghost"><span>Load .css file</span><input id="user-script-css-file" type="file" accept=".css,text/css"></label>
                 </div>
                 <textarea id="user-script-css" rows="6" spellcheck="false" autocapitalize="off"
-                  aria-describedby="user-script-css-count" placeholder=".gloss-image {&#10;  border-radius: 8px;&#10;}"></textarea>
+                  aria-describedby="user-script-keys user-script-css-count user-script-css-problems" placeholder=".gloss-image {&#10;  border-radius: 8px;&#10;}"></textarea>
                 <span id="user-script-css-count" class="field-hint">0 characters</span>
+                <span id="user-script-css-problems" class="field-hint user-script-problems"></span>
               </div>
               <output id="user-script-error" class="custom-dictionary-status is-error" aria-live="polite"></output>
               <div class="options-actions">

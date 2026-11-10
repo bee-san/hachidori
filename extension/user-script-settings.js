@@ -4,11 +4,24 @@
 // JavaScript and CSS, in the order they run. A row switches its package on or
 // off, moves it, opens it in the editor below the list, or deletes it once the
 // row's confirmation is accepted. The editor saves explicitly, so half-typed
-// code never runs. A package installed from the Script Store under the list
+// code never runs. Its JavaScript and CSS are textareas until the code editor
+// (code-editor.js), which the editor's first opening loads, takes their place
+// with their text. A package installed from the Script Store under the list
 // (script-store.js) keeps its slug and version until an edit makes it the
 // user's own.
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+const BLANK = Object.freeze({ name: "", javascript: "", css: "" });
+
+// The JavaScript Add script starts from. Saved unchanged it counts as none, so
+// a script of CSS alone still needs no permission.
+export const STARTER_JAVASCRIPT = `// Runs in every page and frame from its next load, and on the search page.
+// What a script can use: https://github.com/bee-san/hachidori/blob/main/docs/user-scripts.md
+window.addEventListener("hachidori-popup-shown", () => {
+  // The popup, drawn afresh for each lookup.
+  const popup = document.querySelector("hachidori-host").shadowRoot;
+});
+`;
 
 // "1.2 KB" for the package's two parts together.
 export function packageSize(script) {
@@ -35,6 +48,7 @@ export function createUserScriptSettings({
   readScripts,
   saveScripts,
   createId = () => document.defaultView.crypto.randomUUID(),
+  loadCodeEditor = () => import("./code-editor.js"),
 }) {
   const list = document.getElementById("user-script-list");
   const empty = document.getElementById("user-script-empty");
@@ -50,14 +64,17 @@ export function createUserScriptSettings({
     key,
     editor: document.getElementById(`user-script-${key}`),
     count: document.getElementById(`user-script-${key}-count`),
+    problems: document.getElementById(`user-script-${key}-problems`),
     file: document.getElementById(`user-script-${key}-file`),
   }));
   const numberFormat = new Intl.NumberFormat();
+  const listFormat = new Intl.ListFormat("en-GB");
   // The package the editor shows: `id` null for a new one, `start` its fields
   // when it opened, so Cancel and leaving the page know about unsaved edits.
   let editing = null;
   let confirming = null;
   let rendered = null;
+  let codeEditors = null;
 
   const fields = () => ({ name: name.value, javascript: parts[0].editor.value, css: parts[1].editor.value });
   const dirty = () => editing !== null && JSON.stringify(fields()) !== JSON.stringify(editing.start);
@@ -189,8 +206,22 @@ export function createUserScriptSettings({
     empty.hidden = scripts.length > 0;
   }
 
+  // The lines the code editor finds a syntax error on, under the part's count.
+  function problemText(key, lines) {
+    if (lines.length === 0) return "";
+    const where = lines.length === 1 ? `Syntax error on line ${lines[0]}.`
+      : lines.length <= 3 ? `Syntax errors on lines ${listFormat.format(lines.map(String))}.`
+        : `Syntax errors on ${lines.length} lines, from line ${lines[0]}.`;
+    return key === "javascript"
+      ? `${where} The JavaScript does not run until ${lines.length === 1 ? "it is" : "they are"} fixed.`
+      : `${where} Browsers skip what they cannot read.`;
+  }
+
   function renderCounts() {
-    for (const part of parts) part.count.textContent = `${numberFormat.format(part.editor.value.length)} characters`;
+    for (const part of parts) {
+      part.count.textContent = `${numberFormat.format(part.editor.value.length)} characters`;
+      part.problems.textContent = problemText(part.key, part.editor.problems ?? []);
+    }
   }
 
   function fill(values) {
@@ -200,10 +231,21 @@ export function createUserScriptSettings({
     renderCounts();
   }
 
-  // `script` is the package to edit, or the fields of a new one.
-  function openForm(script, isNew = false) {
+  // Each part's code editor takes over from its textarea, with what the
+  // textarea holds by then. Until it loads, or if it cannot, the textareas edit.
+  function loadCodeEditors() {
+    codeEditors ??= loadCodeEditor().then(({ createCodeEditor }) => {
+      for (const part of parts) part.editor = createCodeEditor(part.editor, { language: part.key, onChange: renderCounts });
+    }).catch((cause) => {
+      error.textContent = `The code editor could not load, so the plain text boxes stay: ${cause?.message ?? cause}`;
+    });
+  }
+
+  // `script` is the package to edit, or the fields of a new one; `start` is
+  // what counts as unchanged.
+  function openForm(script, isNew = false, start = isNew ? BLANK : script) {
     const values = { name: script.name, javascript: script.javascript, css: script.css };
-    editing = { id: isNew ? null : script.id, start: isNew ? { name: "", javascript: "", css: "" } : values };
+    editing = { id: isNew ? null : script.id, start: { name: start.name, javascript: start.javascript, css: start.css } };
     confirming = null;
     fill(values);
     heading.textContent = isNew ? "New script" : `Edit “${script.name}”`;
@@ -214,6 +256,7 @@ export function createUserScriptSettings({
     form.hidden = false;
     render();
     name.focus();
+    loadCodeEditors();
   }
 
   function closeForm() {
@@ -232,6 +275,7 @@ export function createUserScriptSettings({
 
   function save() {
     const values = fields();
+    if (values.javascript === STARTER_JAVASCRIPT) values.javascript = "";
     const label = values.name.trim();
     if (!label) return fail("Enter a name for the script.", name);
     if (CONTROL_CHARACTERS.test(label)) return fail("Enter a name without tabs or other control characters.", name);
@@ -272,7 +316,10 @@ export function createUserScriptSettings({
     }
   }
 
-  add.addEventListener("click", () => openForm({ name: "", javascript: "", css: "" }, true));
+  add.addEventListener("click", () => {
+    const starter = { ...BLANK, javascript: STARTER_JAVASCRIPT };
+    openForm(starter, true, starter);
+  });
   document.getElementById("user-script-import").addEventListener("change", (event) => {
     const files = [...event.target.files];
     event.target.value = "";

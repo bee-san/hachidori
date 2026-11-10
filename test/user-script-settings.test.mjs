@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Advanced → User scripts' list and editor (user-script-settings.js) on the
-// section's markup from settings.html.
+// section's markup from settings.html. The code editor that replaces the
+// textareas is loaded only where a test passes one; real Chrome runs the real
+// one (test/chrome-e2e/settings.mjs).
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { createUserScriptSettings, nameFromFile, packageSize } from "../extension/user-script-settings.js";
+import { STARTER_JAVASCRIPT, createUserScriptSettings, nameFromFile, packageSize } from "../extension/user-script-settings.js";
 
 const require = createRequire(new URL("./tooling/package.json", import.meta.url));
 const { JSDOM } = require("jsdom");
@@ -13,7 +15,7 @@ const html = await readFile(new URL("../extension/settings.html", import.meta.ur
 const section = html.slice(html.indexOf("<section", html.indexOf('id="user-scripts"') - 80), html.indexOf("</section>",
   html.indexOf('id="user-scripts"')) + "</section>".length);
 
-function open(scripts = []) {
+function open(scripts = [], { loadCodeEditor = () => new Promise(() => {}) } = {}) {
   const { window } = new JSDOM(`<!doctype html><body><main>${section}</main></body>`);
   const { document } = window;
   document.getElementById("user-scripts").hidden = false;
@@ -21,7 +23,7 @@ function open(scripts = []) {
   let stored = scripts;
   let next = 0;
   const controller = createUserScriptSettings({ document, readScripts: () => stored,
-    saveScripts: value => { stored = value; saves.push(value); }, createId: () => `id-${next += 1}` });
+    saveScripts: value => { stored = value; saves.push(value); }, createId: () => `id-${next += 1}`, loadCodeEditor });
   controller.render();
   const el = id => document.getElementById(id);
   const row = index => el("user-script-list").children[index];
@@ -40,12 +42,15 @@ test("a new script needs a name and JavaScript or CSS, and saves switched on at 
   assert.equal(page.el("user-script-form").hidden, false);
   assert.equal(page.el("user-script-form-heading").textContent, "New script");
   assert.equal(page.document.activeElement, page.el("user-script-name"));
+  assert.equal(page.controller.dirty(), false, "the starter is not an edit");
   page.submit();
   assert.equal(page.el("user-script-error").textContent, "Enter a name for the script.");
   page.type("user-script-name", "Bold\theadwords");
   page.submit();
   assert.equal(page.el("user-script-error").textContent, "Enter a name without tabs or other control characters.");
   page.type("user-script-name", " Bold headwords ");
+  // The starter, unchanged, is no JavaScript.
+  assert.equal(page.el("user-script-javascript").value, STARTER_JAVASCRIPT);
   page.submit();
   assert.equal(page.el("user-script-error").textContent, "Add JavaScript, CSS or both.");
   assert.equal(page.document.activeElement, page.el("user-script-javascript"));
@@ -77,6 +82,64 @@ test("Edit replaces a package's parts in place and keeps its switch; Cancel keep
   page.submit();
   assert.deepEqual(page.stored()[0], script("first", { enabled: false, javascript: "window.b = 2;" }));
   assert.equal(page.stored().length, 2);
+});
+
+// A stand-in for code-editor.js's editor: its text, the lines it finds a
+// syntax error on, and a way to type into it.
+function fakeCodeEditors() {
+  const editors = [];
+  const createCodeEditor = (textarea, { language, onChange }) => {
+    const editor = { language, value: textarea.value, problems: [], focus() { editors.focused = editor; },
+      edit(value, problems = []) { editor.value = value; editor.problems = problems; onChange(); } };
+    textarea.hidden = true;
+    editors.push(editor);
+    return editor;
+  };
+  return { editors, createCodeEditor };
+}
+
+test("the code editor takes over from the textareas with their text, once, and the form reads and fills it", async () => {
+  const { editors, createCodeEditor } = fakeCodeEditors();
+  let loads = 0;
+  let release;
+  const loaded = new Promise((resolve) => { release = resolve; });
+  const page = open([script("first")], { loadCodeEditor: () => { loads += 1; return loaded.then(() => ({ createCodeEditor })); } });
+  page.action(0, "edit").click();
+  // Typed before the editor has loaded: the textarea's text carries over.
+  page.type("user-script-css", "p {}");
+  release();
+  await loaded;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(editors.map(({ language, value }) => [language, value]), [["javascript", "window.a = 1;"], ["css", "p {}"]]);
+  assert.equal(page.el("user-script-javascript").hidden, true);
+  editors[0].edit("window.b = (;", [1]);
+  assert.equal(page.el("user-script-javascript-count").textContent, "13 characters");
+  assert.equal(page.el("user-script-javascript-problems").textContent,
+    "Syntax error on line 1. The JavaScript does not run until it is fixed.");
+  editors[1].edit("p {} q {", [2, 3, 5, 8]);
+  assert.equal(page.el("user-script-css-problems").textContent, "Syntax errors on 4 lines, from line 2. Browsers skip what they cannot read.");
+  editors[0].edit("window.b = 2;");
+  assert.equal(page.el("user-script-javascript-problems").textContent, "");
+  page.submit();
+  assert.deepEqual(page.stored()[0], script("first", { javascript: "window.b = 2;", css: "p {} q {" }));
+  // The next opening fills the code editors and loads nothing more.
+  page.el("user-script-add").click();
+  assert.deepEqual(editors.map(({ value }) => value), [STARTER_JAVASCRIPT, ""]);
+  assert.equal(loads, 1);
+  page.type("user-script-name", "Empty");
+  page.submit();
+  assert.equal(editors.focused, editors[0], "Add JavaScript, CSS or both focuses the JavaScript editor");
+});
+
+test("the textareas stay, with a note, when the code editor cannot load", async () => {
+  const page = open([], { loadCodeEditor: () => Promise.reject(new Error("missing")) });
+  page.el("user-script-add").click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(page.el("user-script-error").textContent, "The code editor could not load, so the plain text boxes stay: missing");
+  page.type("user-script-name", "Bold");
+  page.type("user-script-css", "b {}");
+  page.submit();
+  assert.deepEqual(page.stored(), [{ id: "id-1", enabled: true, name: "Bold", javascript: "", css: "b {}" }]);
 });
 
 test("the switch, the arrows and Delete save at once and keep focus on the row", () => {
