@@ -64,6 +64,11 @@
     "hd_backup_restore",
     // The search page's clipboard monitor (#639), relayed to the offscreen document.
     "hd_clipboard_read",
+    "hd_crunchyroll_capture_cancel",
+    "hd_crunchyroll_capture_finish",
+    "hd_crunchyroll_capture_start",
+    "hd_crunchyroll_line_audio",
+    "hd_crunchyroll_load",
     "hd_custom_append",
     "hd_custom_cas",
     "hd_custom_read",
