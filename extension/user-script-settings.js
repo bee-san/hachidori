@@ -209,12 +209,11 @@ export function createUserScriptSettings({
   // The lines the code editor finds a syntax error on, under the part's count.
   function problemText(key, lines) {
     if (lines.length === 0) return "";
-    const where = lines.length === 1 ? `Syntax error on line ${lines[0]}.`
-      : lines.length <= 3 ? `Syntax errors on lines ${listFormat.format(lines.map(String))}.`
-        : `Syntax errors on ${lines.length} lines, from line ${lines[0]}.`;
-    return key === "javascript"
-      ? `${where} The JavaScript does not run until ${lines.length === 1 ? "it is" : "they are"} fixed.`
-      : `${where} Browsers skip what they cannot read.`;
+    let where = `Syntax errors on ${lines.length} lines, from line ${lines[0]}.`;
+    if (lines.length === 1) where = `Syntax error on line ${lines[0]}.`;
+    else if (lines.length <= 3) where = `Syntax errors on lines ${listFormat.format(lines.map(String))}.`;
+    if (key === "css") return `${where} Browsers skip what they cannot read.`;
+    return `${where} The JavaScript does not run until ${lines.length === 1 ? "it is" : "they are"} fixed.`;
   }
 
   function renderCounts() {
