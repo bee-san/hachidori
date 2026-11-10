@@ -4334,6 +4334,19 @@ queue. Get debug info asks each live context for its log, which writes what it
 still holds, then reads the ring, so the report has earlier sessions as well as
 entries a context could not save.
 
+The JSON report's `storage.local` inventories every stored key, while
+`configuration` projects every language profile through `reader-options.js`
+to include current defaults, migrations, capability masking and effective pack
+settings alongside the saved values. It records the active language and each
+profile's theme, Custom CSS and userscripts, including disabled packages and
+Script Store versions. `themes` includes the bundled catalogue, source revision,
+palettes and variants; the extension section includes the complete registered
+script descriptors and source, so registration can be compared with the saved
+packages. Configuration and storage share one snapshot. Each probe fails
+independently. Credentials in records and embedded code assignments are
+redacted; personal dictionaries and known/ignored words are summarized in every
+language, and lookup rows, Anki-index rows and backup payloads remain omitted.
+
 The engine holds each loaded dictionary's selected resident files in WebAssembly linear memory once, however many kinds it loads as (Emscripten emulates `mmap` by copying), and that memory never shrinks. Direct OPFS workers default to paged entries (`blobs.bin`) through the existing shared page cache; `options.dictionaryEntryStorage` selects `auto` (OPFS paged, IDBFS resident), `paged`, or `resident` independently of import threading and low-memory recycling; changing the policy restarts the idle worker. Existing stored options adopt `auto` without reimporting dictionaries; media (`media.bin`) is read from the file when `hd_media` asks for it. On direct OPFS an import's high-water mark belongs to the terminated `import-worker.js` instance and is returned to the browser; the engine's heap grows only by the new generation's resident files. On IDBFS the import runs inside the engine, so its high-water mark stays for the life of the engine worker. `hd_memory` reports the heap and each loaded package's resident bytes; Settings → Advanced → Memory shows them, and its **Low memory mode** switch (`options.lowMemoryMode`) makes `offscreen.js` recycle the engine worker once idle after a dictionary change and start it with a two-thread pool that imports single-threaded and loads every package paged: small metadata stays resident, hashes follow the aggregate residency policy, and `blobs.bin` is read through the shared page cache (`engine-recycler.js`, `engine-worker-runtime.js`, `hd_engine_config`, `hdw_add_dict`'s `paged` argument). Any worker loads a package paged when it does not fit in the heap mapped. `options.dictionaryIndexStorage` independently selects resident, paged or automatic hashes on threaded OPFS. Automatic uses one 65 MiB resident budget in normal mode while `options.useLessRamByDefault` is on (off by default), and 32 MiB in Low memory mode. Turning the new switch off retains all hashes in normal mode; explicit resident or paged hash choices override it. The plan is selected before loading or validating packages; paged hashes and entries share the existing 32 MiB cache. Changing either preference uses the same idle recycler without changing entry storage or import threading. IDBFS retains resident hashes. [memory.md](memory.md) explains the model, the readout, the mode's costs and the two failure regimes.
 
 The offscreen document deliberately has no direct `chrome.storage` access. It asks the service worker to read or compare-and-set dictionary metadata. Those writes are serialized so a settings-page edit cannot be silently overwritten by a stale engine write. Dictionary-state commits prune removed package IDs from global groups and invalid selectors in the same storage transaction, and every Settings option write is revalidated there so a stale page cannot restore them.

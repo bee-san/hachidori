@@ -934,7 +934,7 @@ async function downloadDebugInfo() {
     const report = await collectDebugInfo({ chrome, window, send,
       targets: { worker: WORKER_TARGET, sharing: SHARING_TARGET, anki: ANKI_TARGET }, context: {
         overlayMode: OVERLAY_MODE, hostCapabilities: HOST_CAPABILITIES, miningCapabilities: MINING_CAPABILITIES,
-        linkedTo: sharingLinkedAddress, activeSection, lastEngineStatus, effectiveOptions: options,
+        linkedTo: sharingLinkedAddress, activeSection, editedProfile, languageSelection, lastEngineStatus, effectiveOptions: options,
         busy: { importing, installingRecommended, updating, removing, committing, customLoading, customSaving,
           backingUp, pendingDictionaryCommits, savingOptions: savingOptions !== null },
         statuses: Object.fromEntries(Object.keys(SECTION_STATUSES).map(id => [id, element(id).textContent])),
