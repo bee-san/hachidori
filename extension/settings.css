@@ -2547,6 +2547,19 @@ textarea {
   line-height: 1.6;
   tab-size: 2;
 }
+/* The code editor (code-editor.js) that replaces each textarea: at least as
+   tall as its textarea's rows, growing with the code to most of the window,
+   scrolling inside after that, and resizable. */
+.user-script-part .code-editor {
+  min-height: calc(10 * 1.6em + 22px);
+  max-height: 75vh;
+  overflow: hidden;
+  resize: vertical;
+}
+.user-script-part .code-editor[data-language="css"] { min-height: calc(6 * 1.6em + 22px); }
+.user-script-part .code-editor .cm-scroller { min-height: 0; }
+.user-script-problems { color: var(--error); }
+.user-script-problems:empty { display: none; }
 /* A file chooser drawn as a ghost button, for choices beside a primary one. */
 .file-button.ghost {
   border-color: var(--border-strong);

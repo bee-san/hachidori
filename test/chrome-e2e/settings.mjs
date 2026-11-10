@@ -1,5 +1,5 @@
 /*
- * Settings: Anki detection, autosave, transport, Design, audio, Anki and dictionary CSS.
+ * Settings: Anki detection, autosave, transport, Design, audio, Anki, dictionary CSS and the User scripts editor.
  *
  * Part of the real-Chrome suite (test/chrome-e2e.mjs); see test/README.md.
  *
@@ -8,6 +8,9 @@
 
 // The scenario's previous file: its steps run before the ones here.
 import "./first-run.mjs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe } from "node:test";
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "../../extension/custom-dictionary.js";
 import { AnkiConnectError, answerAnkiConnect } from "../anki-connect-fake.mjs";
@@ -1730,6 +1733,134 @@ async function checkDesignPreview(page) {
   }
 }
 
+// Advanced → User scripts' code editor (code-editor.js) in place of the
+// textareas: its labels, the example a new script starts from, Tab, Esc then
+// Tab, search, syntax errors, Load .js file and Save, and code that keeps 4.5:1
+// in five colours in every palette. The saved script and the palette are put
+// back afterwards.
+async function checkUserScriptEditor(page) {
+  const original = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
+  const writeOptions = patch => page.evaluate(async (patch) => {
+    const { options } = await chrome.storage.local.get("options");
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
+      baseRevision: options.revision, options: patch });
+    if (!reply.ok) throw new Error(reply.error);
+  }, patch);
+  const directory = await mkdtemp(join(tmpdir(), "hachidori-user-script-"));
+  const editor = language => `.user-script-part .cm-editor[data-language="${language}"]`;
+  const problems = language => page.$eval(`#user-script-${language}-problems`, node => node.textContent);
+  const shortcut = async (key) => {
+    await page.keyboard.down("Control");
+    await page.keyboard.press(key);
+    await page.keyboard.up("Control");
+  };
+  try {
+    await page.bringToFront();
+    await showSettingsSection(page, "user-scripts");
+    await page.click("#user-script-add");
+    await page.waitForSelector(`${editor("css")} .cm-content`);
+    const mounted = await page.evaluate(() => ["javascript", "css"].map((language) => {
+      const content = document.querySelector(`.user-script-part .cm-editor[data-language="${language}"] .cm-content`);
+      const placeholder = content.querySelector(".cm-placeholder");
+      return { hidden: document.getElementById(`user-script-${language}`).hidden, label: content.getAttribute("aria-label"),
+        described: content.getAttribute("aria-describedby").split(" "), placeholder: placeholder?.textContent ?? null,
+        text: placeholder ? "" : content.textContent };
+    }));
+    check("User scripts edits each part in a labelled, described code editor, a new script starting from the popup example",
+      mounted.every(({ hidden, described }) => hidden && described.includes("user-script-keys"))
+        && mounted.map(({ label }) => label).join() === "JavaScript,CSS"
+        && mounted[0].described.includes("custom-javascript-warning") && mounted[0].described.includes("user-script-javascript-problems")
+        && mounted[0].text.includes("window.addEventListener(\"hachidori-popup-shown\"") && mounted[1].text === ""
+        && mounted[1].placeholder.startsWith(".gloss-image {"),
+      JSON.stringify(mounted));
+
+    await page.type("#user-script-name", "Editor check");
+    await page.click(`${editor("css")} .cm-content`);
+    await page.keyboard.type(".gsm-hoshidicts-expression { font-weight: 800;");
+    await page.waitForFunction(() => document.getElementById("user-script-css-problems").textContent !== "", { timeout: 5_000 });
+    const unclosed = await problems("css");
+    await page.keyboard.type(" }");
+    await page.waitForFunction(() => document.getElementById("user-script-css-problems").textContent === "", { timeout: 5_000 });
+    // Tab indents the line and keeps focus; Esc then Tab moves on.
+    await page.click(`${editor("javascript")} .cm-content`);
+    await shortcut("Home");
+    await page.keyboard.press("Tab");
+    const indented = await page.evaluate(selector => ({
+      focused: document.activeElement.matches(`${selector} .cm-content`),
+      first: document.querySelector(`${selector} .cm-line`).textContent,
+    }), editor("javascript"));
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Tab");
+    const movedOn = await page.evaluate(() => document.activeElement.id);
+    await page.click(`${editor("javascript")} .cm-content`);
+    await shortcut("f");
+    await page.waitForSelector(`${editor("javascript")} .cm-search`);
+    await page.keyboard.type("popup");
+    await page.waitForSelector(`${editor("javascript")} .cm-searchMatch`);
+    const searched = await page.$eval(`${editor("javascript")} .cm-search`, panel => [...panel.querySelectorAll("button")]
+      .map(button => button.textContent).filter(Boolean).join());
+    await page.keyboard.press("Escape");
+    const sample = join(directory, "editor-check.js");
+    await writeFile(sample, "// Greets once.\nconst greeting = \"hello\";\nif (greeting.length > 3) console.log(greeting, true);\n");
+    await (await page.$("#user-script-javascript-file")).uploadFile(sample);
+    await page.waitForFunction(selector => document.querySelector(selector).textContent.includes("Greets once"), {},
+      `${editor("javascript")} .cm-content`);
+    await page.click("#user-script-submit");
+    await page.waitForFunction(() => document.getElementById("user-script-form").hidden);
+    const saved = await page.waitForFunction(async () => (await chrome.storage.local.get("options")).options.userScripts
+      .find(script => script.name === "Editor check") ?? false, { polling: 100, timeout: 5_000 }).then(handle => handle.jsonValue());
+    check("the User scripts code editor indents with Tab, moves on with Esc then Tab, searches, lists syntax errors and saves what it shows",
+      unclosed === "Syntax error on line 1. Browsers skip what they cannot read." && indented.focused && indented.first.startsWith("  // Runs")
+        && movedOn === "user-script-css-file" && searched.startsWith("Next,Previous,Select all") && saved.javascript.startsWith("// Greets once.")
+        && saved.css === ".gsm-hoshidicts-expression { font-weight: 800; }",
+      JSON.stringify({ unclosed, indented, movedOn, searched, saved }));
+
+    // Every palette: the code's colours on the editor's background, and how
+    // many different ones the JavaScript has.
+    await page.$eval(`#user-script-list li[data-id="${saved.id}"] [data-action="edit"]`, button => button.click());
+    await page.waitForFunction(selector => document.querySelector(selector).textContent.includes("Greets once"), {},
+      `${editor("javascript")} .cm-content`);
+    const palettes = await page.evaluate(() => HDReaderOptions.POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id))
+      .filter(id => id !== "auto"));
+    const faint = [];
+    const flat = [];
+    for (const theme of palettes) {
+      await writeOptions({ popupTheme: theme });
+      await page.waitForFunction(value => document.documentElement.dataset.hoshidictsTheme === value, { polling: 100, timeout: 10_000 }, theme);
+      const measured = await page.evaluate(() => {
+        const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+        const luminance = (colour) => {
+          canvas.clearRect(0, 0, 1, 1);
+          canvas.fillStyle = colour;
+          canvas.fillRect(0, 0, 1, 1);
+          const channels = [...canvas.getImageData(0, 0, 1, 1).data].slice(0, 3)
+            .map(value => (value / 255 <= 0.04045 ? value / 255 / 12.92 : ((value / 255 + 0.055) / 1.055) ** 2.4));
+          return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+        };
+        const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        let lowest = Infinity;
+        for (const box of document.querySelectorAll(".user-script-part .cm-editor")) {
+          const background = luminance(getComputedStyle(box).backgroundColor);
+          for (const node of box.querySelectorAll(".cm-content, .cm-content span, .cm-lineNumbers .cm-gutterElement")) {
+            lowest = Math.min(lowest, contrast(luminance(getComputedStyle(node).color), background));
+          }
+        }
+        const colours = new Set([...document.querySelectorAll('.user-script-part .cm-editor[data-language="javascript"] .cm-content :is(span, .cm-line)')]
+          .map(node => getComputedStyle(node).color));
+        return { lowest: Math.round(lowest * 100) / 100, colours: colours.size };
+      });
+      if (measured.lowest < 4.5) faint.push([theme, measured.lowest]);
+      if (measured.colours < 5) flat.push([theme, measured.colours]);
+    }
+    check("User scripts code keeps 4.5:1 in five colours in every palette",
+      faint.length === 0 && flat.length === 0 && palettes.length > 40, JSON.stringify({ faint, flat, palettes: palettes.length }));
+    await page.click("#user-script-cancel");
+  } finally {
+    await writeOptions({ popupTheme: original.popupTheme, userScripts: original.userScripts ?? [] });
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 // Values that more than one step uses; the step that creates each one assigns it.
 let ankiSession;
 
@@ -1764,6 +1895,10 @@ describe("Settings", () => {
 
   step("dictionary CSS", async () => {
     await checkDictionaryStyles(page);
+  });
+
+  step("the User scripts editor", async () => {
+    await checkUserScriptEditor(page);
   });
 });
 

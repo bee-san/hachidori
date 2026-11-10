@@ -120,6 +120,7 @@ const E2E_PLANNED = [
   "the Design preview renders its sample popup",
   "Keybinds list Yomitan's default keybinds",
   "browser shortcuts list Firefox's commands and open Firefox's shortcut manager",
+  "Firefox edits a user script in the code editor, its code coloured and readable",
   "A user script's JavaScript runs on pages once Firefox grants user scripts",
   "A user script reaches the popup through host.shadowRoot while the page sees no root",
   "A user script runs in a chat frame and reaches its closed popup while the page sees no root",
