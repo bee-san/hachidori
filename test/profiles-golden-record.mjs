@@ -28,7 +28,11 @@
 // and gained `googleDocs` and `youtubeMining` at their defaults, in
 // DEFAULT_OPTIONS order, after reader-options.js was checked to give exactly
 // that for every record (and the old stored hash once `experimental` is put
-// back), as its `recordedFrom` says.
+// back), as its `recordedFrom` says. When Crunchyroll mining joined
+// Experimental features, each recorded result likewise gained
+// `crunchyrollMining: false` after `netflixMining` in `experimental`, after
+// reader-options.js was checked to give exactly that for every record (and
+// the old stored hash once the flag is taken out).
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one

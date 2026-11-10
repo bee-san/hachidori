@@ -35,6 +35,7 @@ import {
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
 import { NETFLIX_SCRIPTS } from "../../extension/netflix.js";
 import { YOUTUBE_SCRIPTS } from "../../extension/youtube.js";
+import { CRUNCHYROLL_SCRIPTS } from "../../extension/crunchyroll.js";
 import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
@@ -705,7 +706,7 @@ function loadClassicScript(file, sandbox) {
 
 const BACKGROUND_MODULES = ["background-core.js", "background-requests.js", "background-anki.js",
   "background-backup.js", "background-updates.js", "background-sharing.js", "background-video.js", "background-netflix.js",
-  "background-youtube.js", "background.js"];
+  "background-youtube.js", "background-crunchyroll.js", "background.js"];
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview,
@@ -792,8 +793,10 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     applyLanguageScripts: sandbox.applyLanguageScripts ?? (() => Promise.resolve()),
     applyNetflixFlag: sandbox.applyNetflixFlag ?? (() => Promise.resolve()),
     applyYouTubeFlag: sandbox.applyYouTubeFlag ?? (() => Promise.resolve()),
+    applyCrunchyrollFlag: sandbox.applyCrunchyrollFlag ?? (() => Promise.resolve()),
     NETFLIX_SCRIPTS,
     YOUTUBE_SCRIPTS,
+    CRUNCHYROLL_SCRIPTS,
     // The worker's scripts belong to the version its fake manifest names.
     BUILD_VERSION: "0.0.0-smoke",
   });
