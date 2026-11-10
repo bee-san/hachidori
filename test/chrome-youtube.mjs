@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Experimental YouTube mining in a real Chrome, without YouTube: a fixture page
+// YouTube mining in a real Chrome, without YouTube: a fixture page
 // served at https://www.youtube.com/watch?v=Ab3dEf6hI9k by request
 // interception, with a fake YouTube player (#movie_player's methods) over a
 // <video> whose sound is a different tone each second, a caption track the
@@ -9,7 +9,7 @@
 // contacted: request interception serves the fixture, and the browser
 // resolves no host but 127.0.0.1, so not even a preconnect leaves.
 //
-// With Settings → Advanced → Experimental features → YouTube mining on:
+// With Settings → Anki → Video mining → YouTube mining on:
 // - the player's caption file reaches the reader, and hovering the playing
 //   caption pauses the video through the player and leaving resumes it;
 // - a note from the caption gets the whole line as its sentence and, with no
@@ -323,8 +323,7 @@ try {
       delete next.back;
     }
     if (next.youtube !== undefined) {
-      // The complete record, as Settings writes it.
-      next.experimental = { ...HDReaderOptions.DEFAULT_OPTIONS.experimental, ...options.experimental, youtubeMining: next.youtube };
+      next.youtubeMining = next.youtube;
       delete next.youtube;
     }
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",

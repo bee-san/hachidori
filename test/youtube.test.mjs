@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental YouTube mining without YouTube: its switch, the scripts it
+// YouTube mining without YouTube: its switch, the scripts it
 // registers, what the manifest exposes to YouTube, the video frame the worker
 // reads for {screenshot}, and the GIF cropped to the video.
 import assert from "node:assert/strict";
@@ -15,17 +15,14 @@ import { readGif } from "./gif-structure.mjs";
 const extension = new URL("../extension/", import.meta.url);
 const IDS = ["hachidori-youtube-page", "hachidori-youtube-content"];
 
-test("YouTube mining is an experimental flag beside Netflix's that starts off", () => {
-  const { DEFAULT_OPTIONS, EXPERIMENTAL_FEATURES, normaliseOptions } = globalThis.HDReaderOptions;
-  const ids = EXPERIMENTAL_FEATURES.map(entry => entry.id);
-  assert.equal(ids.indexOf("youtubeMining"), ids.indexOf("netflixPreviewScreenshots") + 1, "it follows the Netflix switches");
-  const feature = EXPERIMENTAL_FEATURES.find(entry => entry.id === "youtubeMining");
-  assert.equal(feature.label, "YouTube mining");
-  assert.match(feature.description, /\{sentence-audio\}.*\{gif\}.*\{screenshot\}/u);
-  assert.match(feature.description, /not on Shorts, embedded videos or live streams/u);
-  assert.equal(feature.section, undefined, "the flag has no Settings section of its own");
-  assert.equal(DEFAULT_OPTIONS.experimental.youtubeMining, false);
-  assert.equal(normaliseOptions({}).experimental.youtubeMining, false);
+test("YouTube mining is a global option that starts on, not an experimental flag", () => {
+  const { DEFAULT_OPTIONS, EXPERIMENTAL_FEATURES, GLOBAL_OPTION_KEYS, normaliseOptions } = globalThis.HDReaderOptions;
+  assert.equal(EXPERIMENTAL_FEATURES.some(entry => entry.id === "youtubeMining"), false);
+  assert.equal(DEFAULT_OPTIONS.youtubeMining, true);
+  assert.ok(GLOBAL_OPTION_KEYS.includes("youtubeMining"));
+  // A record saved while it was a flag reads the new default.
+  assert.equal(normaliseOptions({ experimental: { youtubeMining: false } }).youtubeMining, true);
+  assert.equal(normaliseOptions({ youtubeMining: false }).youtubeMining, false);
 });
 
 test("the flag registers the page script and the reader's scripts for www.youtube.com's top frame only", async () => {

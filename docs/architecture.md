@@ -1241,10 +1241,11 @@ Scans shorter than eight code points never extend, so a clicked-kanji lookup
 stays one character.
 
 Google Docs paints its pages to `<canvas>`, so no caret API finds text there.
-While the experimental **Google Docs** flag (`options.experimental.googleDocs`)
-is on, the service worker registers `google-docs-flag.js` through
-`chrome.scripting` as a `document_start`, main-world content script on
-`*://docs.google.com/*` (and unregisters it when the flag goes off). The script
+While Settings → Reading → Scanning → **Look up words in Google Docs**
+(`options.googleDocs`, on by default) is on, the service worker registers
+`google-docs-flag.js` through `chrome.scripting` as a `document_start`,
+main-world content script on `*://docs.google.com/*` (and unregisters it when
+the switch goes off). The script
 sets `window._docs_annotate_canvas_by_ext` to the allow-listed ID Yomitan uses,
 which makes Docs also draw an SVG annotation layer: one
 `.kix-canvas-tile-content svg>g>rect` per run of text, carrying the run in
@@ -1257,11 +1258,11 @@ glyph offset from the imposter's client rects, and hands the imposter's text
 node to the ordinary scan and sentence pipeline with the imposter as the sole
 source. One imposter is kept per hovered rect so repeated moves share the
 pending lookup and the popup stays anchored; hovering another rect replaces it,
-and turning the flag off or tearing the reader down removes it and the probe
+and turning the switch off or tearing the reader down removes it and the probe
 stylesheet. The sentence is therefore the hovered run, the highlight is drawn
-on the invisible imposter, and Google may change the mechanism without notice,
-which is why the feature is experimental. With the flag off, or on any other
-host, nothing is injected and scanning is unchanged.
+on the invisible imposter, and Google may change the mechanism without notice.
+With the switch off, or on any other host, nothing is injected and scanning is
+unchanged.
 
 Pointer scanning first requires the caret's complete Unicode character rectangle
 to contain the pointer, with two CSS pixels of tolerance. The hit-tested page
@@ -3514,48 +3515,26 @@ and Hachidori does not guess DRM from black pixels: a video can show a black
 frame.
 
 With **YouTube mining** on, `{screenshot}` for a note from a YouTube caption is
-the video's own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
+the video's own frame rather than the viewport ([YouTube mining](#youtube-mining)).
 
-With **Netflix mining** on, `{screenshot}` for a note from a Netflix subtitle
-(a request with a `netflix` field) is the video's picture alone. The reader
-asks Netflix's reader (`HDNetflix.screenshot`) to take it: that hides what
-Netflix draws over the video, its subtitles, controls, skip and next-episode
-buttons and paused-title overlay, with one stylesheet of Netflix's own class
-names that sets `opacity: 0` and `transition: none`, so they are gone before
-the reader's two-frame wait rather than fading out during it. It then sends
-`hd_anki_screenshot` with a `crop`: where the `<video>`'s picture is, as
-fractions of the viewport. Netflix's `<video>` fills its player, so a picture
-whose shape is not the player's is drawn whole and centred in it
-(`object-fit: contain`) with bars beside it; the crop is that picture, worked
-out from the element's box and the video's `videoWidth` and `videoHeight`.
-The worker validates the crop, takes the viewport capture as usual and, after
-its ownership checks, cuts the crop out of it with `createImageBitmap` and an
-`OffscreenCanvas` into a JPEG at quality 0.92, for a linked browser too; a
-picture that fills the viewport, such as a 16:9 title full screen on a 16:9
-display, is kept as captured rather than encoded again.
-Hiding is counted like the reader's concealment and lifted once the picture
-is taken. Netflix may rename these classes, which would leave its drawing in
-the picture; a protected video that captures as black now captures as an
-all-black picture. Notes from other pages, YouTube's, and Netflix preview
-screenshots, which have no page UI to begin with, are unchanged.
-
-**Netflix preview screenshots** is a separate experimental switch, off by
-default. On a top-frame Netflix watch page it substitutes Netflix's own timeline
-preview JPEG for `{screenshot}`. These images are lower resolution and can show
-a nearby moment rather than the exact video frame; they contain no page UI or
-subtitle overlay. This is the preview-image approach used by Language Reactor,
-not protected-video readback. See the [capture investigation](netflix-screenshot-research.md)
-for the inspected implementations and their limitations.
+With **Netflix mining** on, `{screenshot}` on a top-frame Netflix watch page is
+Netflix's own timeline preview JPEG instead of the viewport. These images are
+lower resolution and can show a nearby moment rather than the exact video
+frame; they contain no page UI or subtitle overlay, and protected playback
+does not turn them black. This is the preview-image approach used by Language
+Reactor, not protected-video readback. See the
+[capture investigation](netflix-screenshot-research.md) for the inspected
+implementations and their limitations.
 
 The worker invokes `netflix-preview.js` in the exact requesting document's main
-world only when a screenshot is requested with this switch on. It uses the
+world only when a screenshot is requested with the switch on. It uses the
 current watch player's `getTrickPlayFrame` and feeds the JPEG into the same
 pending screenshot, upload and cleanup lifecycle. Existing active-tab,
 document, route and window checks still apply. A missing player or preview is
 a screenshot warning on the otherwise successful note. It does not silently
 substitute a potentially black viewport capture. Other pages and the switch-off
-path retain their ordinary screenshots. It needs neither the Netflix mining
-switch nor a subtitle timeline, recording grant, replay or additional permission.
+path retain their ordinary screenshots. It needs no subtitle timeline,
+recording grant, replay or additional permission.
 
 Migaku takes its card screenshot with `tabs.captureVisibleTab`. Its Chrome Web Store
 package (version 1.30.15.0, inspected for #507) calls `tabs.captureVisibleTab`
@@ -3592,7 +3571,8 @@ whether the picture includes protected video:
 Settings → Advanced → Experimental features → **Netflix mining**
 (`options.experimental.netflixMining`, off by default) gives notes mined from a
 Netflix subtitle the line's own audio, a looping GIF of it, and the whole line
-as the sentence, and pauses the video while a subtitle line is hovered. It is
+as the sentence, gives every note from a watch page Netflix's preview image for
+`{screenshot}` (above), and pauses the video while a subtitle line is hovered. It is
 Netflix only, and every part fails closed: a note that cannot get its line is
 added with its other fields and a warning.
 
@@ -3603,7 +3583,7 @@ the page's main world, before Netflix's own bundle, and `netflix-subtitles.js`,
 `netflix-audio.js` and `netflix-content.js` beside the manifest's content
 scripts. The worker
 applies the flag at startup and on every options change, serialised like the
-Google Docs flag; turning it off unregisters both. Chrome adds a registered
+Google Docs switch; turning it off unregisters both. Chrome adds a registered
 script only to pages that load after it is registered, so a Netflix page that
 was open when the switch went on has the reader without `netflix-content.js`
 (#548). The reader of such a page, in its top frame, asks the worker once with
@@ -3933,10 +3913,10 @@ graph until the page reloads, even with the switch off. The research behind
 this design, and how other tools get line audio, is in
 [netflix-audio-research.md](netflix-audio-research.md).
 
-### YouTube mining (experimental)
+### YouTube mining
 
-**Media formats and source information (#717–#719).** Advanced → **Video mining
-media**, visible while either site's mining switch is on, configures both sites.
+**Media formats and source information (#717–#719).** Anki → **Video mining**
+configures the media of both sites.
 `videoAudioFormat` is MP3 (the existing default) or Ogg Opus; `videoAudioBitrate`
 is 32–128 kbit/s, default 64. Both heard-line and tab-capture audio use the same
 encoder and level normalization. Opus uses native WebCodecs and Mediabunny's Ogg
@@ -3962,13 +3942,13 @@ On other pages, or when the site supplies no title, the marker uses
 `{document-title}`. Existing mappings are preserved; choose `{miscInfo}` in
 the desired Anki field to use it.
 
-Settings → Advanced → Experimental features → **YouTube mining**
-(`options.experimental.youtubeMining`, off by default, listed after the Netflix
-switches) gives notes mined from a YouTube caption what Netflix mining gives a
-Netflix subtitle: the whole line as the sentence, its own audio for
+Settings → Anki → Video mining → **YouTube mining** (`options.youtubeMining`,
+a global option, on by default) gives notes mined from a YouTube caption what
+Netflix mining gives a Netflix subtitle: the whole line as the sentence, its own audio for
 `{sentence-audio}`, a looping GIF of it for `{gif}`, and the video paused while
 a caption is hovered. A caption's `{screenshot}` is the frame the video shows. It is a
-separate switch from Netflix mining, and each switch gates only its own site.
+separate switch from Netflix mining, which is still experimental, and each
+switch gates only its own site.
 Every part fails closed as Netflix's does: a note without its line is added
 with its other fields and a warning.
 
@@ -4449,8 +4429,8 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix or YouTube line) whose token a reader abandoned; answered locally when linked |
 | `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held MP3 and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 | `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
-| `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | Experimental YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining-experimental)) |
-| `hd_youtube_load` | Experimental YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
+| `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining)) |
+| `hd_youtube_load` | YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
 
 ## Build outputs
 

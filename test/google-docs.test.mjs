@@ -8,12 +8,14 @@ import { GOOGLE_DOCS_SCRIPT, applyGoogleDocsFlag } from "../extension/google-doc
 const extension = new URL("../extension/", import.meta.url);
 const SCRIPT_ID = "hachidori-google-docs";
 
-test("Google Docs is an experimental flag that starts off", () => {
-  const { DEFAULT_OPTIONS, EXPERIMENTAL_FEATURES } = globalThis.HDReaderOptions;
-  const feature = EXPERIMENTAL_FEATURES.find(entry => entry.id === "googleDocs");
-  assert.equal(feature?.label, "Google Docs");
-  assert.equal(feature.section, undefined, "the flag has no Settings section of its own");
-  assert.equal(DEFAULT_OPTIONS.experimental.googleDocs, false);
+test("Google Docs is a global option that starts on, not an experimental flag", () => {
+  const { DEFAULT_OPTIONS, EXPERIMENTAL_FEATURES, GLOBAL_OPTION_KEYS, normaliseOptions } = globalThis.HDReaderOptions;
+  assert.equal(EXPERIMENTAL_FEATURES.some(entry => entry.id === "googleDocs"), false);
+  assert.equal(DEFAULT_OPTIONS.googleDocs, true);
+  assert.ok(GLOBAL_OPTION_KEYS.includes("googleDocs"));
+  // A record saved while it was a flag reads the new default.
+  assert.equal(normaliseOptions({ experimental: { googleDocs: false } }).googleDocs, true);
+  assert.equal(normaliseOptions({ googleDocs: false }).googleDocs, false);
 });
 
 test("the flag script sets exactly the allow-listed Docs value in the page's main world", async () => {

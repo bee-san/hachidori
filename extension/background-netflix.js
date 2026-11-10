@@ -12,7 +12,7 @@ const NETFLIX_WATCH_URL = /^https:\/\/www\.netflix\.com\/watch\/\d+/u;
 
 const netflixMining = createVideoSiteService({
   name: "Netflix",
-  flag: "netflixMining",
+  enabled: options => options.experimental.netflixMining === true,
   target: NETFLIX_TARGET,
   recorderPort: NETFLIX_RECORDER_PORT,
   recorderPage: "netflix-recorder.html",

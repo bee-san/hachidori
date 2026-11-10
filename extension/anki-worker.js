@@ -20,7 +20,7 @@ async function releaseCapturedMedia({ writeResources, invoke }) {
 const SENTENCE_FURIGANA_MARKERS = new Set(["sentence-furigana", "sentence-furigana-plain"]);
 // The switch a recorded line's media need: Netflix mining's unless the YouTube
 // service (background-video.js) names YouTube mining's.
-const NETFLIX_MINING = { flag: "netflixMining", label: "Netflix mining" };
+const NETFLIX_MINING = { enabled: options => options.experimental.netflixMining === true, label: "Netflix mining" };
 
 // Media the reader captures for one mining action. Each kind is held under its
 // own token until the note is written, then stored inside the queued write.
@@ -302,10 +302,10 @@ export function createAnkiWorkerService({
         // Compact popup and Anki between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
         compactGlossaries: options.glossaryLayoutMode === "compact-popup-anki",
-        // Likewise for the experimental Netflix and YouTube mining switches,
+        // Likewise for the Netflix and YouTube mining switches,
         // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
-        youtubeMining: options.experimental.youtubeMining === true,
+        youtubeMining: options.youtubeMining === true,
         // And for the profile's language, which decides how the note is written.
         ...(profile === null ? {} : { profile }),
       };
@@ -398,7 +398,7 @@ export function createAnkiWorkerService({
     return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
   }
 
-  // Experimental Netflix and YouTube mining: the MP3 of the subtitle line the
+  // Netflix and YouTube mining: the MP3 of the subtitle line the
   // reader just cut or had recorded (sentence-audio.js). Like the screenshot it
   // is held here and stored only inside the note's write. `feature` is the
   // site's switch. In base64 an MP3 frame's sync, eleven set bits, is a "/"
@@ -406,7 +406,7 @@ export function createAnkiWorkerService({
   async function sentenceAudio(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
+    if (!feature.enabled(options)) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }
@@ -420,13 +420,13 @@ export function createAnkiWorkerService({
     return { token: held.token, filename: held.filename };
   }
 
-  // Experimental Netflix and YouTube mining: the animated GIF of the subtitle
+  // Netflix and YouTube mining: the animated GIF of the subtitle
   // line the reader just had replayed and recorded. Held here and stored only
   // inside the note's write, exactly like the screenshot and the sentence audio.
   async function gifImage(data, key, feature = NETFLIX_MINING) {
     const { profileId, templateId } = profileTemplateTarget(key);
     const options = await readOptions(profileId);
-    if (options.experimental[feature.flag] !== true) throw new Error(`${feature.label} is turned off in Settings.`);
+    if (!feature.enabled(options)) throw new Error(`${feature.label} is turned off in Settings.`);
     if (globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId) === null) {
       throw new Error("The selected Anki Template is no longer available.");
     }

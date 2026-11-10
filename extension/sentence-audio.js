@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Experimental Netflix and YouTube mining: a subtitle line's {sentence-audio}
+// Netflix and YouTube mining: a subtitle line's {sentence-audio}
 // as a mono MP3 at a steady level. The reader cuts the line from what the
 // viewer heard (netflix-audio.js) and the recorder frame from a tab recording
 // (netflix-capture.js); both encode it here. The reader loads this module by

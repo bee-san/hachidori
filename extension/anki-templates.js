@@ -66,8 +66,8 @@ const MARKER_DESCRIPTIONS = {
   "pitch-accent-graphs-jj": "Japanese pitch accent SVG graphs with kana labels (Jidoujisho style)",
   audio: "Selected pronunciation audio",
   screenshot: "Screenshot of the source page",
-  "sentence-audio": "Netflix or YouTube subtitle line's audio (experimental)",
-  gif: "Netflix or YouTube subtitle line's animation in the selected format, otherwise the page screenshot (experimental)",
+  "sentence-audio": "Netflix or YouTube subtitle line's audio",
+  gif: "Netflix or YouTube subtitle line's animation in the selected format, otherwise the page screenshot",
 };
 const DYNAMIC_MARKER_OPTIONS = [
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],
@@ -91,17 +91,11 @@ export const ANKI_MARKER_REQUIREMENTS = Object.freeze({
     .map(marker => [marker, "pitchAccent"])),
   ...Object.fromEntries(["character", "onyomi", "kunyomi", "stroke-count"].map(marker => [marker, "characterView"])),
 });
-// Markers of experimental features, by the flags that list them in Settings:
-// a marker is listed while any of its flags is on. They stay valid with the
-// flags off, so a saved template still renders.
-const VIDEO_MINING_FLAGS = Object.freeze(["netflixMining", "youtubeMining"]);
-const EXPERIMENTAL_MARKERS = new Map([["sentence-audio", VIDEO_MINING_FLAGS], ["gif", VIDEO_MINING_FLAGS]]);
 export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   ...CORE_MARKERS.map(marker => Object.freeze({
     marker,
     value: `{${marker}}`,
     description: MARKER_DESCRIPTIONS[marker],
-    ...(EXPERIMENTAL_MARKERS.has(marker) ? { experimental: EXPERIMENTAL_MARKERS.get(marker) } : {}),
   })),
   ...[...MARKER_ALIASES].map(([marker, canonical]) => Object.freeze({
     marker,

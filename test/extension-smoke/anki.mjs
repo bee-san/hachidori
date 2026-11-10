@@ -446,16 +446,16 @@ async function ankiScreenshotStage() {
   const netflixReader = { ...reader, url: tab.url, tab: { id: tab.id, url: tab.url } };
   const beforeDefault = captures.length;
   const defaultNetflix = await ask(netflixReader);
-  check("Netflix screenshots keep the viewport capture until preview screenshots are enabled",
+  check("Netflix screenshots keep the viewport capture until Netflix mining is on",
     defaultNetflix.ok === true && captures.length === beforeDefault + 1 && injections.length === 0,
     JSON.stringify({ defaultNetflix, captures: captures.length, injections: injections.length }));
 
   await storage.api().local.set({ options: { revision: 4, anki: screenshotOptions,
-    experimental: { netflixPreviewScreenshots: true } } });
+    experimental: { netflixMining: true } } });
   const beforePreview = captures.length;
   const previewTaken = await ask(netflixReader);
   const injected = injections[0];
-  check("enabled Netflix previews target the exact top-frame document in MAIN world without viewport capture",
+  check("Netflix mining's previews target the exact top-frame document in MAIN world without viewport capture",
     previewTaken.ok === true && captures.length === beforePreview && injections.length === 1
       && injected.func === captureNetflixPreview && injected.world === "MAIN"
       && injected.target.tabId === tab.id && injected.target.documentIds.join() === reader.documentId

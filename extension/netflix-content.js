@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Experimental Netflix and YouTube mining, the reader's side: the video-site
-// layer both sites share. netflix.js registers this classic script after
+// Netflix and YouTube mining, the reader's side: the video-site layer both
+// sites share. netflix.js registers this classic script after
 // netflix-subtitles.js and netflix-audio.js in the content scripts' world on
 // https://www.netflix.com/* (top frame, document_start) while Settings →
 // Advanced → Experimental features → Netflix mining is on, and youtube.js
@@ -55,11 +55,11 @@
     // of the player's text, so any lookup pauses the video.
     drag: true,
     pauseOnLookup: true,
-    // A picture of the line, its screenshot or its GIF, is of the video alone:
-    // what Netflix draws over the video is hidden while it is taken, and it is
-    // cropped to the picture. These are Netflix's own class names for its
-    // subtitles, controls, skip and next-episode buttons and paused-title
-    // overlay; Netflix may change them.
+    // A GIF of the line is of the video alone: what Netflix draws over the
+    // video is hidden while the line replays, and it is cropped to the
+    // picture. These are Netflix's own class names for its subtitles,
+    // controls, skip and next-episode buttons and paused-title overlay;
+    // Netflix may change them.
     overVideo: [".player-timedtext", ".watch-video--bottom-controls-container", ".watch-video--back-container",
       ".watch-video--flag-container", ".watch-video--skip-content", ".SeamlessControls--container",
       ".evidence-overlay"].join(", "),
@@ -379,11 +379,10 @@
       return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top, aspect: width / height } : null;
     }
 
-    // While a picture of the video is taken, a screenshot or a GIF's replay,
-    // what the site draws over the video (`overVideo`) is hidden, at once
-    // rather than by its own fade, so it has gone before the capture. Counted
-    // like the reader's own concealment, so one picture cannot show it again
-    // while another is being taken.
+    // While a GIF's line replays, what the site draws over the video
+    // (`overVideo`) is hidden, at once rather than by its own fade, so it has
+    // gone before the capture. Counted like the reader's own concealment, so
+    // one recording cannot show it again while another is being taken.
     async function hideOverVideo(during) {
       if (!site.overVideo) return during();
       if (overVideoHidden === 0) {
@@ -401,13 +400,6 @@
           overVideoStyle = null;
         }
       }
-    }
-
-    // A screenshot for a note from the site's subtitles: `capture` asks the
-    // worker for it, cropped to where the video's picture is, while what the
-    // site draws over the video is hidden.
-    function screenshot(capture) {
-      return hideOverVideo(() => capture(videoCrop()));
     }
 
     // Records the cue's line with tab capture: a recorder frame opens the tab's
@@ -714,7 +706,7 @@
     // case it said so before this reader listened.
     if (site.reportsVideo) command({ type: "state" });
 
-    return { observe, resolve, miningFields, record, screenshot, setHoverPause, setLineAudio, setSubtitleDragging,
+    return { observe, resolve, miningFields, record, setHoverPause, setLineAudio, setSubtitleDragging,
       setSubtitleLanguage, captionLanguage };
   }
 

@@ -551,6 +551,11 @@
               <span data-language-label>Japanese text only</span>
               <input type="checkbox" id="opt-japanese-only" />
             </label>
+            <label class="lookup-enable">
+              <span>Look up words in Google Docs</span>
+              <input type="checkbox" id="opt-google-docs" aria-describedby="google-docs-help" />
+            </label>
+            <p class="field-hint" id="google-docs-help">Asks Google Docs to expose its text to Hachidori, which Google may change or remove without notice. The sentence is the hovered run of text. Reload an open document after changing this.</p>
             <div class="fields">
               <label class="field">
                 <span class="field-label">Scan length</span>
@@ -1237,6 +1242,28 @@
             </label>
             <p id="smaller-anki-cards-help" class="field-hint">Remove dictionary styling and keep the text, line breaks, lists, tables, furigana and images. Links become plain text. Applies to every Template when adding or updating notes.</p>
           </fieldset>
+          <fieldset class="lookup-group" id="video-mining-settings">
+            <legend data-search-keywords="youtube netflix captions subtitles sentence audio gif">Video mining</legend>
+            <label class="lookup-enable">
+              <span>YouTube mining</span>
+              <input type="checkbox" id="opt-youtube-mining" aria-describedby="youtube-mining-help" />
+            </label>
+            <p class="field-hint" id="youtube-mining-help">Add the YouTube caption line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, use the whole line as the sentence, and take {screenshot} from the video itself. Hovering a caption pauses the video until the pointer leaves the caption and the popup. Reads the caption track YouTube's player shows, typed or auto-generated, which YouTube may change without notice. The video's sound plays through Hachidori, which keeps the last 30 seconds in memory to cut the line from; a line you have not heard all of plays on or replays once. Reload YouTube after changing this. Works on watch pages, not on Shorts, embedded videos or live streams.</p>
+            <p class="field-hint">The media settings below are shared by YouTube mining and Netflix mining (Advanced → Experimental features).</p>
+            <label class="field"><span class="field-label">Sentence audio format</span>
+              <select id="opt-video-audio-format"><option value="mp3">MP3 (all Anki clients)</option><option value="opus">Opus (Ogg; desktop Anki and AnkiDroid)</option></select>
+            </label>
+            <label class="field"><span class="field-label">Audio bitrate (kbit/s)</span>
+              <input id="opt-video-audio-bitrate" type="number" min="32" max="128" step="1">
+            </label>
+            <label class="field"><span class="field-label">Animated screenshot format</span>
+              <select id="opt-video-image-format"><option value="gif">GIF</option><option value="webp">WebP (smaller; includes AnkiMobile)</option><option value="avif">AVIF (requires AV1 encoding and an AVIF-capable Anki client)</option></select>
+            </label>
+            <label class="field"><span class="field-label">Animation quality (1–100)</span>
+              <input id="opt-video-image-quality" type="number" min="1" max="100" step="1" aria-describedby="video-image-quality-help">
+              <span class="field-hint" id="video-image-quality-help">Higher is clearer and larger. Applies to WebP and AVIF; GIF keeps its 256-colour palette. Encoding support depends on the browser. A failed animation keeps the screenshot and reports why.</span>
+            </label>
+          </fieldset>
           <fieldset class="lookup-group anki-panel anki-card anki-template-manager" id="anki-template-manager">
             <legend>Templates</legend>
             <p class="field-hint">The first Template powers the built-in Anki button.</p>
@@ -1516,23 +1543,6 @@
                 <output class="custom-dictionary-status" id="search-history-status" aria-live="polite"></output>
               </div>
             </div>
-          </fieldset>
-          <fieldset class="lookup-group" id="video-mining-settings" hidden>
-            <legend>Video mining media</legend>
-            <p class="field-hint">Shared by Netflix and YouTube. Use {sentence-audio} for the line's audio and {gif} for its animation in an Anki Template.</p>
-            <label class="field"><span class="field-label">Sentence audio format</span>
-              <select id="opt-video-audio-format"><option value="mp3">MP3 (all Anki clients)</option><option value="opus">Opus (Ogg; desktop Anki and AnkiDroid)</option></select>
-            </label>
-            <label class="field"><span class="field-label">Audio bitrate (kbit/s)</span>
-              <input id="opt-video-audio-bitrate" type="number" min="32" max="128" step="1">
-            </label>
-            <label class="field"><span class="field-label">Animated screenshot format</span>
-              <select id="opt-video-image-format"><option value="gif">GIF</option><option value="webp">WebP (smaller; includes AnkiMobile)</option><option value="avif">AVIF (requires AV1 encoding and an AVIF-capable Anki client)</option></select>
-            </label>
-            <label class="field"><span class="field-label">Animation quality (1–100)</span>
-              <input id="opt-video-image-quality" type="number" min="1" max="100" step="1" aria-describedby="video-image-quality-help">
-              <span class="field-hint" id="video-image-quality-help">Higher is clearer and larger. Applies to WebP and AVIF; GIF keeps its 256-colour palette. Encoding support depends on the browser. A failed animation keeps the screenshot and reports why.</span>
-            </label>
           </fieldset>
           <fieldset class="lookup-group" id="experimental-settings">
             <legend>Experimental features</legend>

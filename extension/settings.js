@@ -882,7 +882,6 @@ function updateAnkiSettings() {
   if (activeSection !== "anki" || optionsRevision < 0) return;
   ankiController ??= createAnkiTemplateSettingsController({ document, readAnki: () => options.anki,
     capabilities: MINING_CAPABILITIES,
-    readExperimental: () => options.experimental,
     // The edited profile's language decides which markers, note-type
     // families and field-name suggestions Anki offers (docs/languages.md 12).
     readProfile: () => editedProfile,
@@ -1009,7 +1008,6 @@ function renderExperimentalSettings() {
     document, features, onToggle: (id, enabled) => { void toggleExperimental(id, enabled); },
   });
   experimentalController.render(options.experimental);
-  element("video-mining-settings").hidden = !options.experimental.netflixMining && !options.experimental.youtubeMining;
   for (const feature of EXPERIMENTAL_FEATURES) {
     if (!feature.section) continue;
     const hidden = !options.experimental[feature.id] || !sectionAvailable(feature.section)
