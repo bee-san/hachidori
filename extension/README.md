@@ -252,7 +252,9 @@ stores it as `rank-based` when its values are ranks (#684).
   came from where.
 - **User scripts.** `user-script-settings.js` is Settings → Advanced → User
   scripts, the user's packages of JavaScript and CSS
-  ([user scripts](../docs/user-scripts.md)). `custom-javascript.js` registers
+  ([user scripts](../docs/user-scripts.md)); its editor's first opening loads
+  `code-editor.js`, the CodeMirror editor that takes the place of its
+  textareas. `custom-javascript.js` registers
   each switched-on package's JavaScript as a user script, with
   `custom-javascript-bridge.js` ahead of it in the same world: the bridge
   attaches the popup's closed root when the reader asks and returns it to the
@@ -280,6 +282,9 @@ stores it as `rank-based` when its values are ranks (#684).
   and YouTube mining GIF encoder), its source and checksum in `scripts/store-sources.json`,
   and `vendor/lamejs.js` the pinned lamejs runtime (their MP3 encoder for
   sentence audio), recorded there with the source it was built from.
+  `vendor/codemirror/codemirror.js` is CodeMirror, which
+  `scripts/codemirror/build.mjs` bundles from the npm releases its lockfile
+  pins (the User scripts editor), with their licences in `LICENSE` beside it.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
   in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is

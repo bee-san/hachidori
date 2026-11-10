@@ -54,6 +54,24 @@ scripts**, with the **Script Store** below them.
   a file. The warning about pasting JavaScript you do not understand is beside
   the JavaScript. **Import files** opens a `.js` file, a `.css` file or one of
   each as a new package named after the file.
+- The JavaScript and CSS are edited in a code editor (`code-editor.js`, with
+  CodeMirror from `vendor/codemirror/`), which the editor's first opening
+  loads: line numbers, highlighting, bracket matching, undo and search
+  (Ctrl+F, or ⌘F on a Mac). Tab indents; Esc and then Tab moves on from the
+  keyboard, as the hint above the boxes says. A box grows with its code to
+  three quarters of the window and scrolls after that, and its corner resizes
+  it. Until the code editor loads, or if it cannot, plain text boxes edit the
+  same text.
+- Code takes the palette's own colours, each mixed with the text colour only
+  as far as a 4.5:1 contrast on the box's background needs; Windows contrast
+  themes use their own colours.
+- A new script's JavaScript starts from a short example that waits for
+  `hachidori-popup-shown` and finds the popup's root, with a link to this page.
+  Saved unchanged, it counts as no JavaScript, so a script of CSS alone still
+  needs no permission.
+- While you type, the editor marks the lines its parser cannot read and lists
+  them under the box. It is a hint: **Save script** still saves, and
+  JavaScript with a syntax error does not run until it is fixed.
 - A row's switch turns its package on or off, the arrows move it (once there
   are two packages), **Edit** opens it in the editor and **Delete** asks once
   before removing it.
@@ -108,6 +126,13 @@ packages.
   switched-on package, after the bridge) and each package's own function.
 - `test/extension-smoke/content-popup.mjs` and `design.mjs`: the popup root a
   package's JavaScript gets, and one adopted sheet per stylesheet.
+- `test/user-script-settings.test.mjs`: the editor, with a stand-in for the
+  code editor: nothing loaded before the editor opens, the textareas' text
+  carried over, counts and syntax errors under each box, the example a new
+  script starts from, and the textareas kept when the code editor cannot load.
+- `test/chrome-e2e/settings.mjs`: the code editor in Chrome: its labels and
+  descriptions, the example, Tab, Esc then Tab, search, syntax errors, Load .js
+  file and Save, and code that keeps 4.5:1 in five colours in every palette.
 - `test/chrome-e2e/search.mjs`, `test/chrome-dark-reader.mjs` and the Firefox
   suite's `settings.mjs` and `search.mjs`: packages in real browsers, on pages
-  and on the search page.
+  and on the search page; Firefox's types its script into the code editor.
