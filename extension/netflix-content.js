@@ -56,9 +56,10 @@
     drag: true,
     pauseOnLookup: true,
     // A GIF of the line is of the video alone: what Netflix draws over the
-    // video is hidden while the line replays, and it is cropped to the picture. These are Netflix's own class names for its
-    // subtitles, controls, skip and next-episode buttons and paused-title
-    // overlay; Netflix may change them.
+    // video is hidden while the line replays, and it is cropped to the
+    // picture. These are Netflix's own class names for its subtitles,
+    // controls, skip and next-episode buttons and paused-title overlay;
+    // Netflix may change them.
     overVideo: [".player-timedtext", ".watch-video--bottom-controls-container", ".watch-video--back-container",
       ".watch-video--flag-container", ".watch-video--skip-content", ".SeamlessControls--container",
       ".evidence-overlay"].join(", "),
