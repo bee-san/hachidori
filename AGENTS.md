@@ -114,6 +114,12 @@ Run the narrowest existing checks that exercise the change:
 
 Do not claim a check that was not run. Report each command and its exact outcome in the pull request.
 
+## Debug report coverage
+
+- When adding or changing a feature, setting, theme, userscript capability, language/profile, storage record or integration, update Settings → Advanced → Troubleshooting → Get debug info (`extension/debug-info.js`) with the configuration and runtime state needed to diagnose it. Keep stored and effective settings, defaults, selected themes, custom CSS, userscripts and their registration, language packs and per-profile settings covered; use the production registries and option projections so new entries appear automatically.
+- Extend the focused debug-report contracts for any new shape or diagnostic probe. Keep probes independent so an unavailable API or service leaves an error in its own field and the rest of the report still downloads.
+- Redact credentials and summarize reader-authored content in every language. Include useful counts and revisions, never personal dictionary text, known/ignored word lists, lookup/search history rows, Anki notes or backup payloads. Update the troubleshooting description when the export's contents change.
+
 ## Performance
 
 - Benchmark changes that may affect runtime speed using representative inputs and the relevant production path. Compare before and after under the same conditions; use the existing [benchmark harness](benchmark/README.md) where it fits. Documentation-only changes do not need benchmarks.
