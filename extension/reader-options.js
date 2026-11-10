@@ -356,6 +356,7 @@
   // `mouse2` is the middle button; the stored names are descriptive instead.
   // `name` is the Settings choice and `label` reads in a sentence.
   const ACTIVATION_BUTTONS = new Map([
+    ["MouseRight", { button: 2, flag: 2, name: "Right mouse button", label: "the right mouse button" }],
     ["MouseMiddle", { button: 1, flag: 4, name: "Middle mouse button", label: "the middle mouse button" }],
     ["MouseBack", { button: 3, flag: 8, name: "Back mouse button (mouse 4)", label: "the Back mouse button" }],
     ["MouseForward", { button: 4, flag: 16, name: "Forward mouse button (mouse 5)", label: "the Forward mouse button" }],
@@ -670,7 +671,7 @@
 
   function normaliseActivationKey(value, fallback = DEFAULT_OPTIONS.activationKey) {
     if (value === " ") return "Space";
-    return typeof value === "string" ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? fallback : fallback;
+    return typeof value === "string" && value ? ACTIVATION_NAMES.get(value.toLowerCase()) ?? value : fallback;
   }
 
   // The activation input as it reads in "Hold … to scan": a key by its name.

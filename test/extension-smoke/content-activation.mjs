@@ -88,6 +88,16 @@ async function activationCase() {
   result["configured printable activation keys release by physical code and ignore repeats"] =
     oneTimer && printable !== null && harness.driver.snapshot().popupHidden;
 
+  harness.emitOptions({ ...settings, activationKey: "CapsLock" });
+  key("keydown", "CapsLock", "CapsLock");
+  fire(0);
+  const unlisted = harness.take("hd_lookup");
+  key("keyup", "CapsLock", "CapsLock");
+  if (unlisted) harness.reply(unlisted, { dictionaryCount: 1, results: [harness.term("CapsLock")] });
+  await harness.settle();
+  result["unlisted keyboard keys activate scanning and release pending lookups"] =
+    unlisted !== null && harness.driver.snapshot().popupHidden;
+
   harness.emitOptions({ ...settings, activationKey: "Escape" });
   key("keydown", "Escape", "Escape");
   key("keydown", "Escape", "Escape", { repeat: true });
@@ -914,6 +924,17 @@ async function activationButtonCase() {
         || { gated, atBubble, first: first !== null, opened, moved: moved !== null,
           releasePrevented: released.defaultPrevented, keptAtRelease, hidTimer, closed, published };
     }
+
+    reset({ lookupMode: "activation", activationKey: "MouseRight" });
+    press(2, 2);
+    const menu = mouse("contextmenu", { button: 2, buttons: 2 });
+    fire(0);
+    const rightLookup = await answer("食べる");
+    release(2);
+    const rightClick = mouse("auxclick", { button: 2 });
+    const ordinaryMenu = mouse("contextmenu", { button: 2 });
+    result["right-button activation scans a word and cancels only its own context menu"] =
+      rightLookup !== null && menu.defaultPrevented && rightClick.defaultPrevented && !ordinaryMenu.defaultPrevented;
 
     reset({ lookupMode: "activation", activationKey: "MouseMiddle" });
     harness.driver.setScanCandidate(null);

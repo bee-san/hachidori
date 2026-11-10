@@ -44,6 +44,7 @@ test("the picker lists No key, then the mouse buttons above the keys", t => {
   const groups = [...select.querySelectorAll("optgroup")];
   assert.deepEqual(groups.map(group => group.label), ["Mouse buttons", "Keys"]);
   assert.deepEqual([...groups[0].children].map(option => [option.value, option.textContent]), [
+    ["MouseRight", "Right mouse button"],
     ["MouseMiddle", "Middle mouse button"],
     ["MouseBack", "Back mouse button (mouse 4)"],
     ["MouseForward", "Forward mouse button (mouse 5)"],
@@ -76,7 +77,7 @@ test("Press to set records the next supported button and keeps its native action
   assert.deepEqual(f.reports, []);
 });
 
-test("Press to set records listed keys and reports every other input without saving it", t => {
+test("Press to set records any keyboard key and the right button while primary clicks cancel", t => {
   const f = fixture(t);
   f.recorder.click();
   assert.equal(f.key("k"), true);
@@ -88,15 +89,15 @@ test("Press to set records listed keys and reports every other input without sav
   assert.equal(f.key("CapsLock"), true);
   f.recorder.click();
   assert.equal(f.mouse("mousedown", 2), true);
-  assert.equal(f.mouse("contextmenu", 2), true, "the refused press opens no menu");
+  assert.equal(f.mouse("contextmenu", 2), true, "the recorded press opens no menu");
+  assert.deepEqual(f.chosen, ["K", "Space", "CapsLock", "MouseRight"]);
+  assert.ok([...f.el("opt-activation-key").options].some(option => option.value === "CapsLock"));
   f.recorder.click();
   assert.equal(f.mouse("mousedown", 0), false, "a click elsewhere cancels and keeps its own action");
   f.recorder.click();
   f.recorder.click();
   assert.equal(f.armed(), false, "a second click on the recorder cancels it");
   assert.deepEqual(f.reports, [
-    "CapsLock cannot be used to scan.",
-    "The right mouse button cannot be used to scan.",
     "The left mouse button cannot be used to scan.",
     "The left mouse button cannot be used to scan.",
   ]);
@@ -107,7 +108,7 @@ test("Press to set records listed keys and reports every other input without sav
   assert.equal(f.key("Escape"), true);
   assert.equal(f.armed(), false);
   assert.equal(f.key("k"), false, "an unarmed key press is left alone");
-  assert.deepEqual(f.chosen, ["K", "Space"]);
-  assert.equal(f.reports.length, 4);
-  assert.equal(f.el("opt-activation-key").value, "Space");
+  assert.deepEqual(f.chosen, ["K", "Space", "CapsLock", "MouseRight"]);
+  assert.equal(f.reports.length, 2);
+  assert.equal(f.el("opt-activation-key").value, "MouseRight");
 });

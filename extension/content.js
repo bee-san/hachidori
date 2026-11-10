@@ -1568,6 +1568,7 @@
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
     document.removeEventListener("auxclick", onAuxClick, true);
+    document.removeEventListener("contextmenu", onAuxClick, true);
     document.removeEventListener("selectionchange", onSelectionChange);
     document.removeEventListener("fullscreenchange", onFullscreenChange);
     document.removeEventListener("focusin", onPageFocusIn, true);
@@ -4587,11 +4588,11 @@
     finishSelectionDrag({ dismissClick: true });
   }
 
-  // A middle click on a word the scan press looked up opens no new tab.
+  // A scan click on a word opens no new tab or context menu.
   function onAuxClick(event) {
     if (scanPress?.button !== event.button) return;
     if (scanPress.cancelClick) event.preventDefault();
-    scanPress = null;
+    if (event.type !== "contextmenu") scanPress = null;
   }
 
   function onPageFocusIn() {
@@ -5343,6 +5344,7 @@
     document.addEventListener("mousedown", onMouseDown, { capture: true });
     document.addEventListener("mouseup", onMouseUp, { capture: true });
     document.addEventListener("auxclick", onAuxClick, { capture: true });
+    document.addEventListener("contextmenu", onAuxClick, { capture: true });
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("focusin", onPageFocusIn, observe);
