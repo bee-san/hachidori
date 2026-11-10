@@ -326,6 +326,7 @@ const PLANNED = [
   "Alt+wheel over the popup moves one entry per step without scrolling the pane or the page",
   "hovering an inflected verb shows a popup",
   "the reader opens a popup for Japanese text inside a same-origin iframe",
+  "user scripts run in a chat frame and customize its closed popup without exposing it to the page",
   "the popup paints above a fullscreen player and returns to body on exit",
   "the popup stays in place while a chat feed or the page scrolls and after its source is removed",
   "switching to another tab and back keeps the popup, its Note draft and keyboard focus until Escape",

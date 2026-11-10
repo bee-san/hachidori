@@ -15,7 +15,7 @@ import { describe } from "node:test";
 import { check, step } from "./harness.mjs";
 import { tab } from "./reader.mjs";
 import {
-  browser, clickInPopup, dismissPopup, downloadedFiles, downloadsDirectory, evaluateJson, GECKO_ID, hoverForPopup, inPopup, openPage,
+  browser, characterPoint, clickInPopup, dismissPopup, downloadedFiles, downloadsDirectory, evaluateJson, GECKO_ID, hoverForPopup, inPopup, openPage,
   page, readPopup, readStorage, reloadPage, serverUrl, showSettingsSection, sleep, tabUrls, waitFor, writeOptions,
   activate,
 } from "./session.mjs";
@@ -178,6 +178,39 @@ describe("settings", () => {
     check("A user script reaches the popup through host.shadowRoot while the page sees no root",
       reached?.marker === "closed" && reached.mode === "closed" && reached.exposed === false,
       JSON.stringify({ shown: Boolean(shown), reached }));
+    await reader.evaluate(src => {
+      const frame = document.createElement("iframe");
+      frame.id = "script-frame";
+      frame.src = src;
+      frame.style.cssText = "width: 760px; height: 420px; border: 0";
+      document.body.prepend(frame);
+    }, `${serverUrl}/frame`);
+    const frame = await (await reader.$("#script-frame")).contentFrame();
+    await frame.waitForSelector("#frame-verb");
+    const frameRan = await waitFor(() => frame.evaluate(() => document.documentElement.dataset.hachidoriUserScript === "ran"));
+    const offset = await reader.evaluate(() => {
+      const rect = document.getElementById("script-frame").getBoundingClientRect();
+      return { x: rect.left, y: rect.top };
+    });
+    const framePoint = await characterPoint(frame, "#frame-verb", 0);
+    let frameShown = null;
+    await reader.keyboard.down("Shift");
+    try {
+      for (let attempt = 0; attempt < 30 && frameShown === null; attempt += 1) {
+        await reader.mouse.move(offset.x + framePoint.x + (attempt % 2), offset.y + framePoint.y);
+        await sleep(150);
+        frameShown = await readPopup(frame);
+      }
+    } finally {
+      await reader.keyboard.up("Shift");
+    }
+    const frameReached = frameShown && await waitFor(() => inPopup(frame, `root => ({ mode: root.mode,
+      exposed: root.host.shadowRoot !== null,
+      marker: root.querySelector(".gsm-hoshidicts-popup")?.dataset.customScript ?? null })`)
+      .then(state => state?.marker ? state : null));
+    check("A user script runs in a chat frame and reaches its closed popup while the page sees no root",
+      frameRan === true && frameReached?.marker === "closed" && frameReached.mode === "closed" && frameReached.exposed === false,
+      JSON.stringify({ frameRan, shown: Boolean(frameShown), reached: frameReached }));
     await reader.close();
     await writeOptions(page, { userScripts: [] });
     await reloadPage(page);

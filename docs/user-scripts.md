@@ -5,7 +5,8 @@ and CSS (`userScripts` in the stored options). Each package has a name, a
 switch, its JavaScript and its CSS; either part may be empty. Packages run in
 list order, top to bottom.
 
-- **JavaScript** runs as a user script in the top frame of every page once the
+- **JavaScript** runs as a user script in every matching page and frame, including
+  YouTube live chat, once the
   browser lets Hachidori run user scripts: Chrome's **Allow User Scripts** on
   Hachidori's details page (Developer mode before Chrome 138), or Firefox's
   optional `userScripts` permission, which the section's **Allow user scripts**

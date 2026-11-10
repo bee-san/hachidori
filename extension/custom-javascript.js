@@ -31,6 +31,8 @@ async function apply(browser, scripts) {
   await api.register([{
     id: SCRIPT_ID,
     matches: ["<all_urls>"],
+    // The reader also lives in frames, including YouTube's live chat (#729).
+    allFrames: true,
     js: [{ file: "custom-javascript-bridge.js" }, ...sources],
     runAt: "document_idle",
     world: "USER_SCRIPT",
