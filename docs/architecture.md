@@ -1763,9 +1763,13 @@ revision counters. Each word row is exactly `[wordKey, maturityFlag,
 sortedNoteIds]`; rows never retain note fields, note-type names, deck names or
 card data. The index is derived state and is excluded from backups.
 
-`hd_anki_word_status` answers a page's batch of headwords from the same rows,
-held in the worker's memory and keyed only by the first Anki Template's
-source, without reading storage or contacting Anki: each headword resolves to
+`hd_anki_word_status` answers a page's batch of headwords from rows held in
+the worker's memory, using the first Anki Template's source with **All of Anki**
+scope regardless of its mining duplicate scope. Enabling word highlighting
+adds that source to the existing index refresh lifecycle; it shares a snapshot
+if mining already uses All of Anki, and disabling highlighting removes a source
+that mining no longer needs. No second scheduler or storage key is involved.
+Status batches never read storage or contact Anki: each headword resolves to
 `known` (a mature row), `learning` (an immature row) or `unknown` (no row), and
 the reply carries those rows' `rowRevision`. A source with no cached snapshot
 — a different Template source, or no Anki configuration — answers
@@ -1774,7 +1778,10 @@ rather than a page of unknown words. The worker sends
 `hd_anki_word_status_changed` to every reading tab (`hachidori-anki-content`)
 so content scripts re-read status for the headwords already shown rather than
 resegmenting. After a row change (an add, a click-time repair or the 30-minute
-refresh) it carries the new `rowRevision`. It carries `revision: null` when
+refresh) it carries the new `rowRevision`. Confirmed writes update both applicable
+snapshots in one storage write; live duplicate repairs affect only their own scope,
+and external changes reach highlighting on its next refresh.
+It carries `revision: null` when
 the evidence itself changes: for another Template source (whose rows arrive
 with its first pull), when a linked browser's link completes its hello (on
 connecting and reconnecting), and on unlinking. Revisions on either side of a

@@ -591,7 +591,7 @@ async function ankiWordStatusStage() {
     refreshes.push(rows => sendResponse({ type: "hd_anki_index_refresh_result", requestId: message.requestId, ok: true, rows }));
     return true;
   });
-  await storage.api().local.set({ options: { anki: { model: "Basic", fields: { expression: "Front" } }, revision: 1 } });
+  await storage.api().local.set({ options: { anki: { model: "Basic", fields: { expression: "Front" }, duplicateScope: "all" }, revision: 1 } });
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, Promise, Error, WebSocket: FakeSharingSocket,
     fetch: async (url) => {
       ankiConnect.push(String(url));
@@ -645,7 +645,7 @@ async function ankiWordStatusStage() {
   const storedOptions = storage.raw.get("options");
   const sourceWrite = await bus.sendMessage("word-status-settings", { target: "hoshidicts-worker", type: "hd_options_write",
     requestId: "word-status-source", baseRevision: storedOptions.revision, options: { anki: {
-      ...globalThis.HDReaderOptions.normaliseOptions(storedOptions).anki, duplicateScope: "all" } } });
+      ...globalThis.HDReaderOptions.normaliseOptions(storedOptions).anki, model: "Another note type" } } });
   await settle(() => broadcasts.length >= beforeSource + 2 && refreshes.length === 2);
   const sourceChanged = broadcasts.slice(beforeSource).map(entry => entry.message.revision);
   const unavailable = await ask({ headwords: ["食べる"] }, "source-word-status");

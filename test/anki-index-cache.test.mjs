@@ -6,6 +6,7 @@ import {
   ANKI_INDEX_ALARM,
   ANKI_INDEX_REFRESH_MS,
   ankiIndexConfigurationChange,
+  ankiIndexSources,
   createAnkiDuplicateIndex,
 } from "../extension/anki-index-cache.js";
 
@@ -16,11 +17,11 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-function fixture(saved) {
+function fixture(saved, patch = {}) {
   let options = globalThis.HDReaderOptions.normaliseOptions({ anki: {
     model: "Japanese",
     fields: { expression: "Expression" },
-  } });
+  }, ...patch });
   let state = copy(saved), clock = 1_800_000, rows = [["猫", true, [9, 7]]];
   let held = null, failure = null, writeFailure = false, storageTail = Promise.resolve(), writing = false, reads = 0;
   const refreshes = [], lookups = [], batches = [], alarms = new Map();
@@ -30,7 +31,7 @@ function fixture(saved) {
       refreshes.push(source);
       if (held) { const pending = held; held = null; await pending.promise; }
       if (failure) throw failure;
-      return copy(rows);
+      return copy(typeof rows === "function" ? rows(source) : rows);
     },
     async lookupLive(source, expression, invoke) {
       lookups.push({ source, expression, invoke });
@@ -80,7 +81,7 @@ function fixture(saved) {
     get options() { return copy(options); },
     get state() { return copy(state); },
     get reads() { return reads; },
-    setRows(value) { rows = copy(value); },
+    setRows(value) { rows = typeof value === "function" ? value : copy(value); },
     fail(value = new Error("Anki closed")) { failure = value; },
     failWrites(value = true) { writeFailure = value; },
     hold() { return held = deferred(); },
@@ -233,7 +234,7 @@ test("confirmed adds and overwrites update the row immediately without changing 
 });
 
 test("word status answers a batch from the cached rows at their row revision, without Anki", async () => {
-  const f = fixture();
+  const f = fixture(undefined, { anki: { model: "Japanese", fields: { expression: "Expression" }, duplicateScope: "all" } });
   assert.deepEqual(await f.service.statuses(f.options.anki, ["猫"]), { revision: 0, statuses: null },
     "an index that never loaded is unavailable, not a page of unknown words");
   await f.service.reconcile();
@@ -247,7 +248,7 @@ test("word status answers a batch from the cached rows at their row revision, wi
   const asked = f.lookups.length;
   assert.deepEqual(await f.service.statuses(f.options.anki, ["犬"]), { revision: 3, statuses: ["known"] });
   assert.equal(f.state.rowRevision, 3);
-  await f.change({ anki: { ...f.options.anki, duplicateScope: "all" } }, false);
+  await f.change({ anki: { ...f.options.anki, model: "Another note type" } }, false);
   assert.deepEqual(await f.service.statuses(f.options.anki, ["猫"]), { revision: 3, statuses: null },
     "the previous source's rows are not this source's evidence");
   assert.deepEqual(await f.service.statuses({ ...f.options.anki, model: "" }, ["猫"]), { revision: 3, statuses: null });
@@ -256,7 +257,7 @@ test("word status answers a batch from the cached rows at their row revision, wi
 });
 
 test("word status answers from the rows held in memory without reading the stored index", async () => {
-  const f = fixture();
+  const f = fixture(undefined, { anki: { model: "Japanese", fields: { expression: "Expression" }, duplicateScope: "all" } });
   await f.service.reconcile();
   // A finished pull schedules its own follow-up check, which reads the state.
   await f.service.reconcile();
@@ -265,6 +266,42 @@ test("word status answers from the rows held in memory without reading the store
     assert.deepEqual(await f.service.statuses(f.options.anki, ["猫", "犬"]), { revision: 1, statuses: ["known", "unknown"] });
   }
   assert.equal(f.reads, reads, "a status batch must not read and normalise the whole stored index");
+});
+
+test("highlighting indexes all decks independently of mining scope and reuses the existing refresh lifecycle", async () => {
+  const f = fixture();
+  f.setRows(source => source.scope === "all"
+    ? [["可愛い", true, [10]], ["犬", false, [20]], ["猫", false, [7]]]
+    : [["猫", false, [7]]]);
+  await f.service.reconcile();
+  assert.deepEqual(f.refreshes.map(source => source.scope), ["model"], "disabled highlighting adds no source");
+  const hold = f.hold();
+  const enabling = f.change({ wordHighlightEnabled: true });
+  const deadline = Date.now() + 2000;
+  while (f.refreshes.length < 2 && Date.now() < deadline) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.refreshes.length, 2, "enabling highlighting starts its all-decks refresh");
+  assert.equal((await f.service.statuses(f.options.anki, ["可愛い"])).statuses, null,
+    "the narrower mining snapshot cannot label words unknown while the full index loads");
+  hold.resolve();
+  await enabling;
+  assert.deepEqual(f.refreshes.map(source => source.scope), ["model", "all"]);
+  assert.deepEqual((await f.service.statuses(f.options.anki, ["可愛い", "犬", "鳥"])).statuses,
+    ["known", "learning", "unknown"]);
+  assert.equal((await f.service.peek(f.options.anki, "可愛い")).cached, false, "duplicate scope stays narrow");
+  const revision = f.state.rowRevision;
+  await f.service.recordWrite(f.options.anki, "鳥", 30);
+  assert.equal(f.state.rowRevision, revision + 1, "one revision publishes both updates atomically");
+  assert.deepEqual((await f.service.statuses(f.options.anki, ["鳥"])).statuses, ["learning"]);
+  assert.deepEqual((await f.service.peek(f.options.anki, "鳥")).noteIds, [30]);
+  assert.equal(f.lookups.length, 0, "status batches and confirmed writes make no live requests");
+  await f.change({ anki: { ...f.options.anki, duplicateScope: "all" } });
+  assert.equal((await ankiIndexSources(f.options)).size, 1, "All of Anki mining shares the same snapshot");
+  assert.equal(f.refreshes.length, 2, "an existing broad snapshot is reused");
+  await f.change({ anki: { ...f.options.anki, duplicateScope: "model" } });
+  while (f.state.snapshots?.length !== 2) await new Promise(resolve => setImmediate(resolve));
+  await f.change({ wordHighlightEnabled: false });
+  assert.equal((await ankiIndexSources(f.options)).size, 1);
+  assert.equal(f.state.snapshot.sourceKey, f.refreshes[0].key, "disabling evicts the extra snapshot");
 });
 
 test("the complete index refreshes every 30 minutes and retries if a post-write update races its pull", async () => {
