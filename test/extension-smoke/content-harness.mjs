@@ -145,6 +145,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
       setLookupStats(element, payload, pending = false) { record.lookupStatistics = payload; element.hidden = !payload && !pending; },
       setToolbarPosition(value) { callbacks.popup.dataset.toolbarPosition = value; },
     };
+    record.scrollElement = view.scrollElement;
     popupRecords.set(callbacks.popup, record);
     return view;
   }
@@ -476,6 +477,7 @@ async function createHarness(kanjiClickDictionary = { title: "Generic", kind: "t
     pending,
     popup,
     popupEvents,
+    scrollElement: (depth = 0) => popupRecord(depth).scrollElement,
     get rootRequests() { return rootRequests; },
     window,
     render: (depth = 0) => popupRecord(depth)?.renders.at(-1),

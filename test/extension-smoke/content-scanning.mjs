@@ -1553,9 +1553,9 @@ async function popupWheelCase() {
     const window = harness.popup.ownerDocument.defaultView;
     let pageWheels = 0;
     window.document.body.addEventListener("wheel", () => { pageWheels += 1; });
-    const wheel = () => {
-      const event = new window.WheelEvent("wheel", { deltaY: 40, bubbles: true, cancelable: true, composed: true });
-      harness.popup.dispatchEvent(event);
+    const wheel = (target = harness.popup, init = {}) => {
+      const event = new window.WheelEvent("wheel", { deltaY: 40, bubbles: true, cancelable: true, composed: true, ...init });
+      target.dispatchEvent(event);
       return event.defaultPrevented;
     };
     const unscrollableHeld = wheel();
@@ -1564,9 +1564,24 @@ async function popupWheelCase() {
     const scrollableNative = !wheel();
     Object.defineProperty(harness.popup, "scrollTop", { value: 400 });
     const edgeHeld = wheel();
+    const header = window.document.createElement("header");
+    harness.popup.append(header);
+    const scroll = harness.scrollElement();
+    Object.defineProperty(scroll, "clientHeight", { value: 100 });
+    scroll.scrollTop = 0;
+    const headerHeld = wheel(header) && scroll.scrollTop === 40;
+    const lines = wheel(header, { deltaY: 2, deltaMode: 1 }) && scroll.scrollTop === 72;
+    const pages = wheel(header, { deltaY: 1, deltaMode: 2 }) && scroll.scrollTop === 172;
+    const zoom = !wheel(header, { ctrlKey: true }) && scroll.scrollTop === 172;
+    const nested = window.document.createElement("div");
+    nested.style.overflowY = "auto";
+    Object.defineProperties(nested, { scrollHeight: { value: 500 }, clientHeight: { value: 100 } });
+    header.append(nested);
+    const native = !wheel(nested) && scroll.scrollTop === 172;
     return {
       "popup wheel never reaches the page and cannot chain past a pane with no room left":
-        pageWheels === 0 && unscrollableHeld && scrollableNative && edgeHeld,
+        pageWheels === 0 && unscrollableHeld && scrollableNative && edgeHeld
+          && headerHeld && lines && pages && zoom && native,
     };
   } finally {
     harness.close();

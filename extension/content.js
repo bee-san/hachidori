@@ -2497,7 +2497,7 @@
       if (child) positionPopup(child);
     }, { capture: true, passive: true });
     popup.addEventListener("wheel", (event) => onPopupWheelKeybind(event, level), { capture: true, passive: false });
-    popup.addEventListener("wheel", onPopupWheel, { passive: false });
+    popup.addEventListener("wheel", (event) => onPopupWheel(event, level), { passive: false });
     popup.addEventListener("mouseenter", () => onPopupEnter(level));
     popup.addEventListener("mouseleave", (event) => onPopupLeave(event, level));
     // Yomitan dismisses a nested popup when its parent is pressed. A primary
@@ -3276,7 +3276,7 @@
   // The popup's wheel belongs to the popup. Readers such as ttu turn pages from
   // wheel events on their body, and a pane that cannot scroll further (or has
   // nothing to scroll) would otherwise chain the gesture into the page.
-  function onPopupWheel(event) {
+  function onPopupWheel(event, level) {
     event.stopPropagation();
     if (event.defaultPrevented || event.ctrlKey) return;
     const popup = event.currentTarget;
@@ -3284,6 +3284,12 @@
       if (canScrollBy(node, event.deltaX, event.deltaY)) return;
     }
     event.preventDefault();
+    // The pinned header is outside the definition pane's scroll ancestors.
+    const scroll = level.view.scrollElement;
+    let unit = 1;
+    if (event.deltaMode === 1) unit = 16;
+    else if (event.deltaMode === 2) unit = scroll.clientHeight;
+    scroll.scrollTop += event.deltaY * unit;
   }
 
   function canScrollBy(element, deltaX, deltaY) {
