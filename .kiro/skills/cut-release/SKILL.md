@@ -198,7 +198,7 @@ All four jobs must succeed. On a failure, read
   `CHROME_WEBSTORE_SERVICE_ACCOUNT_JSON`); see
   `docs/chrome-web-store.md#publish-step-by-step`.
 - The addons.mozilla.org step fails on auth (HTTP 401): check the secrets
-  `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`.
+  `FIREFOX_STORE_JWT_ISSUER` and `FIREFOX_STORE_JWT_SECRET`.
 - The addons.mozilla.org step fails with "Validation failed" or "Submission
   failed": the log has AMO's reasons. If an earlier run already submitted this
   version, there is nothing to fix; any other rejection needs a new version.

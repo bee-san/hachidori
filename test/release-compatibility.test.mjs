@@ -118,8 +118,8 @@ test("bare-tag and manual release runs verify and publish the checksummed packag
     workflow,
     /firefox-add-ons:[\s\S]*if: github\.event_name == 'push' \|\| inputs\.publish[\s\S]*needs: \[package, publish\]/u,
   );
-  assert.match(workflow, /WEB_EXT_API_KEY: \$\{\{ secrets\.AMO_JWT_ISSUER \}\}/u);
-  assert.match(workflow, /WEB_EXT_API_SECRET: \$\{\{ secrets\.AMO_JWT_SECRET \}\}/u);
+  assert.match(workflow, /WEB_EXT_API_KEY: \$\{\{ secrets\.FIREFOX_STORE_JWT_ISSUER \}\}/u);
+  assert.match(workflow, /WEB_EXT_API_SECRET: \$\{\{ secrets\.FIREFOX_STORE_JWT_SECRET \}\}/u);
   assert.match(
     workflow,
     /\*-firefox\.zip[\s\S]*web-ext\.js sign[\s\S]*--channel listed[\s\S]*--upload-source-code "\$release"\/\*-source\.zip/u,
