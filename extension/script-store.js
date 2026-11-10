@@ -229,7 +229,8 @@ export function createScriptStore({
       onCatalogue();
       const count = catalogue.length === 1 ? "1 script is in the Script Store." : `${catalogue.length} scripts are in the Script Store.`;
       const names = [...updates().values()].map(entry => entry.name);
-      const offer = names.length === 0 ? "" : ` ${names.length === 1 ? "An update is" : "Updates are"} ready for ${listFormat.format(names)}.`;
+      let offer = "";
+      if (names.length > 0) offer = ` ${names.length === 1 ? "An update is" : "Updates are"} ready for ${listFormat.format(names)}.`;
       setStatus(`${count}${offer}`, "ready");
     } catch (error) {
       setStatus(`Could not check the Script Store: ${error.message}. Check your connection, then try again.`, "error");
