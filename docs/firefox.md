@@ -112,8 +112,8 @@ attaches the source ZIP, which Mozilla's reviewers build from
 created the version; Mozilla then reviews it, and the listing updates on
 approval. It needs an AMO API key from
 [Manage API Keys](https://addons.mozilla.org/en-US/developers/addon/api/key/),
-stored as the repository secrets `AMO_JWT_ISSUER` (the JWT issuer) and
-`AMO_JWT_SECRET` (the JWT secret). AMO accepts each version number once, even
+stored as the repository secrets `FIREFOX_STORE_JWT_ISSUER` (the JWT issuer) and
+`FIREFOX_STORE_JWT_SECRET` (the JWT secret). AMO accepts each version number once, even
 after a rejection, so a failed submission is retried by re-running that job
 (`gh run rerun <run-id> --failed`) or with a new version.
 

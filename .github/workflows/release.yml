@@ -211,8 +211,8 @@ jobs:
           path: ${{ runner.temp }}/hachidori-release/
       - name: Upload package and source and submit them for review
         env:
-          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
-          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          WEB_EXT_API_KEY: ${{ secrets.FIREFOX_STORE_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.FIREFOX_STORE_JWT_SECRET }}
         run: |
           release="$RUNNER_TEMP/hachidori-release"
           unpacked="$RUNNER_TEMP/hachidori-firefox"
