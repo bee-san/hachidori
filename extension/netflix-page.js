@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Experimental Netflix and YouTube mining, the page's side. netflix.js registers
-// this script in the main world of https://www.netflix.com/* at document_start
+// Netflix and YouTube mining, the page's side. netflix.js registers this
+// script in the main world of https://www.netflix.com/* at document_start
 // while Settings → Advanced → Experimental features → Netflix mining is on, so
 // the JSON hooks are in place before Netflix's own bundle runs, and youtube.js
 // registers it in the main world of https://www.youtube.com/* while YouTube

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental YouTube mining's caption timelines: YouTube's json3 files as
+// YouTube mining's caption timelines: YouTube's json3 files as
 // cues (extension/netflix-subtitles.js), from fixtures in test/data/youtube/
 // written for these tests in the shape of the files YouTube's player loads.
 import assert from "node:assert/strict";

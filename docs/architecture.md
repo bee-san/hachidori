@@ -3515,7 +3515,7 @@ and Hachidori does not guess DRM from black pixels: a video can show a black
 frame.
 
 With **YouTube mining** on, `{screenshot}` for a note from a YouTube caption is
-the video's own frame rather than the viewport ([YouTube mining](#youtube-mining-experimental)).
+the video's own frame rather than the viewport ([YouTube mining](#youtube-mining)).
 
 With **Netflix mining** on, `{screenshot}` for a note from a Netflix subtitle
 (a request with a `netflix` field) is the video's picture alone. The reader
@@ -3934,10 +3934,10 @@ graph until the page reloads, even with the switch off. The research behind
 this design, and how other tools get line audio, is in
 [netflix-audio-research.md](netflix-audio-research.md).
 
-### YouTube mining (experimental)
+### YouTube mining
 
-**Media formats and source information (#717–#719).** Advanced → **Video mining
-media**, visible while either site's mining switch is on, configures both sites.
+**Media formats and source information (#717–#719).** Anki → **Video mining**
+configures the media of both sites.
 `videoAudioFormat` is MP3 (the existing default) or Ogg Opus; `videoAudioBitrate`
 is 32–128 kbit/s, default 64. Both heard-line and tab-capture audio use the same
 encoder and level normalization. Opus uses native WebCodecs and Mediabunny's Ogg
@@ -3963,13 +3963,13 @@ On other pages, or when the site supplies no title, the marker uses
 `{document-title}`. Existing mappings are preserved; choose `{miscInfo}` in
 the desired Anki field to use it.
 
-Settings → Advanced → Experimental features → **YouTube mining**
-(`options.experimental.youtubeMining`, off by default, listed after the Netflix
-switches) gives notes mined from a YouTube caption what Netflix mining gives a
-Netflix subtitle: the whole line as the sentence, its own audio for
+Settings → Anki → Video mining → **YouTube mining** (`options.youtubeMining`,
+a global option, on by default) gives notes mined from a YouTube caption what
+Netflix mining gives a Netflix subtitle: the whole line as the sentence, its own audio for
 `{sentence-audio}`, a looping GIF of it for `{gif}`, and the video paused while
 a caption is hovered. A caption's `{screenshot}` is the frame the video shows. It is a
-separate switch from Netflix mining, and each switch gates only its own site.
+separate switch from Netflix mining, which is still experimental, and each
+switch gates only its own site.
 Every part fails closed as Netflix's does: a note without its line is added
 with its other fields and a warning.
 
@@ -4450,8 +4450,8 @@ and in-flight dictionary commits when leaving Settings.
 | `hd_anki_screenshot_discard` | Release the held capture (a screenshot, or a recorded Netflix or YouTube line) whose token a reader abandoned; answered locally when linked |
 | `hd_netflix_capture_start`, `hd_netflix_capture_finish`, `hd_netflix_capture_cancel` | Experimental Netflix mining: from the asking Netflix player document only, start a tab recording of its cue in the tab's recorder frame, finish it into a held MP3 and GIF for the note's mapped fields, or cancel it; the worker drives the frame over its `hachidori-netflix-recorder` port ([Netflix mining](#netflix-mining-experimental)) |
 | `hd_netflix_load` | Experimental Netflix mining, switch on: add the Netflix scripts to the asking top-frame `www.netflix.com` document, which was open before the switch went on and so has the reader without them |
-| `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | Experimental YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining-experimental)) |
-| `hd_youtube_load` | Experimental YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
+| `hd_youtube_capture_start`, `hd_youtube_capture_finish`, `hd_youtube_capture_cancel`, `hd_youtube_line_audio` | YouTube mining: as the Netflix requests, from the asking top-frame `www.youtube.com` document, with the GIF cropped to the video; the recorder frame connects on `hachidori-youtube-recorder` ([YouTube mining](#youtube-mining)) |
+| `hd_youtube_load` | YouTube mining, switch on: add the YouTube scripts to the asking top-frame `www.youtube.com` document, which was open before the switch went on |
 
 ## Build outputs
 

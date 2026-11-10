@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Experimental Netflix and YouTube mining, the reader's side: the video-site
-// layer both sites share. netflix.js registers this classic script after
+// Netflix and YouTube mining, the reader's side: the video-site layer both
+// sites share. netflix.js registers this classic script after
 // netflix-subtitles.js and netflix-audio.js in the content scripts' world on
 // https://www.netflix.com/* (top frame, document_start) while Settings →
 // Advanced → Experimental features → Netflix mining is on, and youtube.js

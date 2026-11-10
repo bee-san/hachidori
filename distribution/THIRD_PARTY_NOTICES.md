@@ -21,7 +21,7 @@ submodules and the pinned source distributions listed below.
 | zip.js 2.11.2 | `zipjs/LICENSE` and `vendor/zip-LICENSE` | Backup ZIP processing |
 | Mediabunny 1.65.2 | `mediabunny/LICENSE` | Native AV1 and Opus encoding and media containers; MPL-2.0 |
 | gifenc 1.0.3, Matt DesLauriers | `gifenc/LICENSE.md` and `vendor/gifenc-LICENSE` | Experimental Netflix mining's looping GIF encoder, under the MIT licence |
-| lamejs 1.2.7 (`@breezystack/lamejs`), Alex Zhukov's port of LAME | `lamejs/LICENSE` and `vendor/lamejs-LICENSE` | Experimental Netflix and YouTube mining's MP3 encoder for sentence audio, under the LGPL-3.0 |
+| lamejs 1.2.7 (`@breezystack/lamejs`), Alex Zhukov's port of LAME | `lamejs/LICENSE` and `vendor/lamejs-LICENSE` | Netflix and YouTube mining's MP3 encoder for sentence audio, under the LGPL-3.0 |
 | KANJIDIC2, Electronic Dictionary Research and Development Group | `kanjidic-NOTICE` and `vendor/kanjidic/source.json` | Kanji readings that split headword furigana, under CC BY-SA 4.0 |
 | jitendex-data kanwa, Stephen Kraus (Jitendex) | `kanwa-NOTICE` and `vendor/kanwa/source.json` | Character and compound readings that split headword furigana where KANJIDIC2's cannot, under CC BY-SA 4.0 |
 | Subadub, Russel Simmons, at [`a03b1b94`](https://github.com/rsimmons/subadub/tree/a03b1b94e59328c11e31485c6016626fcfeb2790) | `subadub-LICENSE` and the header of `netflix-page.js` | Experimental Netflix mining's subtitle-profile and track-list hooks, under the MIT licence |

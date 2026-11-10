@@ -180,6 +180,18 @@ test("Google Docs is a Reading option, on by default, that uses the existing opt
   assert.deepEqual(plain(window.readPending()), { googleDocs: false });
 });
 
+test("YouTube mining is an Anki option, on by default, beside the video mining media it shares", t => {
+  const { window, el } = fixture(t);
+  const input = el("opt-youtube-mining");
+  assert.equal(input.closest("section").id, "anki");
+  assert.equal(input.closest("fieldset"), el("opt-video-audio-format").closest("fieldset"));
+  assert.equal(el("video-mining-settings").hidden, false);
+  assert.equal(input.checked, true);
+  assert.equal(el("opt-experimental-youtubeMining"), null);
+  input.click();
+  assert.deepEqual(plain(window.readPending()), { youtubeMining: false });
+});
+
 test("Smaller Anki cards is an Anki option that uses the existing options save", t => {
   const { window, el } = fixture(t);
   const input = el("opt-smaller-anki-cards");

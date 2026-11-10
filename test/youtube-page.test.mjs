@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental YouTube mining, the page's side: the video-site page script
+// YouTube mining, the page's side: the video-site page script
 // (extension/netflix-page.js) on www.youtube.com, in a main world with only
 // what it touches there: XMLHttpRequest, the page's JSON, location, the
 // document's events and YouTube's player element.

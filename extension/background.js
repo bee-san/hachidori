@@ -203,7 +203,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   void applyCustomJavaScript(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).userScripts);
   void applyGoogleDocsFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).googleDocs);
   void applyNetflixFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.netflixMining);
-  void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).experimental.youtubeMining);
+  void applyYouTubeFlag(chrome, normaliseOptions(changes[OPTIONS_KEY].newValue).youtubeMining);
   void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(changes[OPTIONS_KEY].newValue));
   const { lowMemoryMode, dictionaryEntryStorage, dictionaryIndexStorage, useLessRamByDefault } = normaliseOptions(changes[OPTIONS_KEY].newValue);
   const previous = normaliseOptions(changes[OPTIONS_KEY].oldValue);
@@ -662,7 +662,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
   void applyCustomJavaScript(chrome, options.userScripts);
   void applyGoogleDocsFlag(chrome, options.googleDocs);
   void applyNetflixFlag(chrome, options.experimental.netflixMining);
-  void applyYouTubeFlag(chrome, options.experimental.youtubeMining);
+  void applyYouTubeFlag(chrome, options.youtubeMining);
   void applyLanguageScripts(chrome, globalThis.HDReaderOptions.hasProfiles(stored[OPTIONS_KEY]));
 });
 // Firefox grants userScripts only when Settings asks for it, so the saved code

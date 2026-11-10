@@ -19,7 +19,7 @@ function showAnkiSection(window) {
   window.document.getElementById("anki").hidden = false;
 }
 
-function fixture(t, capabilities, readOwnerKey = () => "", readExperimental = undefined) {
+function fixture(t, capabilities, readOwnerKey = () => "") {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
   showAnkiSection(window);
@@ -29,7 +29,6 @@ function fixture(t, capabilities, readOwnerKey = () => "", readExperimental = un
   const controller = createAnkiSettingsController({ document: window.document, readConfig: () => config,
     capabilities,
     readOwnerKey,
-    ...(readExperimental ? { readExperimental } : {}),
     editConfig(value) { config = value; edits.push(value); },
     send(type, fields) { return new Promise(resolve => sent.push({ type, ...fields, resolve })); } });
   const el = id => window.document.getElementById(id);
@@ -851,9 +850,8 @@ test("Template CRUD preserves mappings, uses stable IDs and blocks deletion whil
   assert.equal(f.el("opt-anki-template-name").selectionStart, 0);
 });
 
-test("an experimental feature's marker is suggested only while its flag is on and stays a valid mapping", async t => {
-  const experimental = { netflixMining: false };
-  const f = fixture(t, undefined, undefined, () => experimental);
+test("the video mining markers are suggested like any other and are a valid mapping", async t => {
+  const f = fixture(t);
   f.adopt({ model: "A", fieldTemplates: {
     Front: { value: "{expression}", overwriteMode: "coalesce" },
     Back: { value: "{sentence-audio}", overwriteMode: "coalesce" },
@@ -872,11 +870,7 @@ test("an experimental feature's marker is suggested only while its flag is on an
     owner.querySelector('[role="combobox"]').dispatchEvent(new f.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     return { visible, gifVisible };
   };
-  assert.ok(marker, "the option exists so a saved mapping keeps its description");
-  assert.ok(gifMarker, "the gif option exists so a saved mapping keeps its description");
-  assert.deepEqual(listed(), { visible: false, gifVisible: false }, "the Netflix markers are not offered while Netflix mining is off");
+  assert.deepEqual(listed(), { visible: true, gifVisible: true });
   assert.deepEqual([...owner.querySelectorAll(".anki-template-error")].map(error => error.textContent), [""],
-    "a saved {sentence-audio} mapping is still valid");
-  experimental.netflixMining = true;
-  assert.deepEqual(listed(), { visible: true, gifVisible: true }, "turning the flag on offers both again");
+    "a saved {sentence-audio} mapping is valid");
 });

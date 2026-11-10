@@ -113,7 +113,7 @@ The user interface stays in English.
 | Language | Personal dictionary source and its package; lookup counts; words marked known or ignored | They are facts about words of a language, shared by every profile of it. |
 | Package | Title, files, revision, update source and schedule, display name, favourite, source and target language | A dictionary is one thing however many profiles use it. |
 | Installation | Active profile; automatic switching | Each browser, and GameSentenceMiner's overlay, reads its own language. |
-| Global | Enable lookups; Google Docs; lookup mode, activation key and delays; hide-on-exit; nesting depth; keybinds; popup width, height, scale and toolbar position; source highlight; Custom CSS and JavaScript; AnkiConnect address and key; smaller Anki cards; experimental flags; memory and storage modes; automatic backups; the update schedule; sharing; search button | They describe the reader's hands, screen and machine, not a language. |
+| Global | Enable lookups; Google Docs; lookup mode, activation key and delays; hide-on-exit; nesting depth; keybinds; popup width, height, scale and toolbar position; source highlight; Custom CSS and JavaScript; AnkiConnect address and key; smaller Anki cards; YouTube mining; experimental flags; memory and storage modes; automatic backups; the update schedule; sharing; search button | They describe the reader's hands, screen and machine, not a language. |
 
 Appendix A lists every option key with its scope and reason.
 
@@ -861,7 +861,7 @@ the Japanese pack carries `word-highlights.js:39-40` exactly. The
 - **Netflix (experimental)**: the subtitle track filter takes the pack's
   `bcp47` primary subtag instead of `ja`, and lines are joined with the pack's
   `lineJoiner`.
-- **YouTube (experimental)**: there is no track filter. The reader keeps the
+- **YouTube**: there is no track filter. The reader keeps the
   track YouTube's player shows, in whatever language the viewer chose (typed,
   auto-generated or translated), and lines are joined with the pack's
   `lineJoiner`. With automatic switching on (8.1, rule 2), a lookup in a

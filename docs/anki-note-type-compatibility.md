@@ -43,7 +43,7 @@ Hachidori intentionally differs from a plain publisher mapping in three places:
 Unsupported card flags, translations, hints, notes and other package fields are
 explicitly blank. `SentenceAudio` / `sentenceAudio` also stay blank in saved
 presets; screenshot capture fills a mapped picture field without changing
-the saved template. With the experimental Netflix or YouTube mining switch on, a note
+the saved template. With the Netflix or YouTube mining switch on, a note
 mined from a Netflix subtitle or a YouTube caption fills a blank `SentenceAudio` / `sentenceAudio`
 with `{sentence-audio}` in that request's copy of the templates only. Existing
 customized mappings are never migrated. Corrected

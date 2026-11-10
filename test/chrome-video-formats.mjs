@@ -113,11 +113,10 @@ try {
   }
   writeFileSync(resolve(root, "test/tmp/ci/video-formats.json"), JSON.stringify(report, null, 2));
   console.log("PASS video formats", JSON.stringify(report));
-  await page.evaluate(async () => chrome.storage.local.set({ options: { experimental: { youtubeMining: true } } }));
-  await page.goto(`${origin}/settings.html#advanced`);
+  await page.goto(`${origin}/settings.html#anki`);
   // The installer's welcome tab can take focus while the encoders run.
   await page.bringToFront();
-  await page.waitForSelector("#video-mining-settings:not([hidden])", { visible: true });
+  await page.waitForSelector("#video-mining-settings", { visible: true });
   const clip = await page.$eval("#video-mining-settings", element => {
     element.scrollIntoView({ block: "center", behavior: "instant" });
     const { x, y, width, height } = element.getBoundingClientRect();

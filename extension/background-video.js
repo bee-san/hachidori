@@ -1,4 +1,4 @@
-// Experimental Netflix and YouTube mining in the service worker: a site's
+// Netflix and YouTube mining in the service worker: a site's
 // recorder frame's port, line recordings, and the MP3 the player page cuts from
 // what the viewer heard. background-netflix.js and background-youtube.js give
 // each site its names.
@@ -62,15 +62,15 @@ function askRecorder(port, message, reply) {
 // and GIF reach Anki. `load` adds the site's scripts to a page that was open
 // before the switch went on.
 //
-// `site` names the site and its switch (`name`, `flag`), its requests' target,
-// its recorder port and page, the pages it plays on (`origin`, `playerUrl`,
-// and `playing`, what the tab no longer does when it left them), its video
-// IDs (`movieId`), its registered `scripts`, and `requests`, the message type
-// of each operation.
+// `site` names the site (`name`), whether its switch is on in a normalised
+// options record (`enabled`), its requests' target, its recorder port and
+// page, the pages it plays on (`origin`, `playerUrl`, and `playing`, what the
+// tab no longer does when it left them), its video IDs (`movieId`), its
+// registered `scripts`, and `requests`, the message type of each operation.
 function createVideoSiteService(site) {
   const { name } = site;
   // The switch the Anki worker checks before it holds the site's media.
-  const feature = { flag: site.flag, label: `${name} mining` };
+  const feature = { enabled: site.enabled, label: `${name} mining` };
   // Recorder frames that connected, by tab, until a recording claims them.
   const recorders = new Map();
   const recorderWaiters = new Map();
@@ -136,7 +136,7 @@ function createVideoSiteService(site) {
     port.onDisconnect.addListener(() => { open = false; });
     chrome.storage.local.get(OPTIONS_KEY).then(stored => {
       if (!open) return;
-      if (normaliseOptions(stored[OPTIONS_KEY]).experimental[site.flag] === true) adoptRecorder(tabId, port);
+      if (site.enabled(normaliseOptions(stored[OPTIONS_KEY]))) adoptRecorder(tabId, port);
       else port.disconnect();
     }, () => port.disconnect());
   }
@@ -265,7 +265,7 @@ function createVideoSiteService(site) {
     if (!Object.hasOwn(handlers, message.type)) throw new Error(`Unknown ${name} request.`);
     await sharingReady;
     const options = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
-    if (options.experimental[site.flag] !== true) throw new Error(`${name} mining is turned off in Settings.`);
+    if (!site.enabled(options)) throw new Error(`${name} mining is turned off in Settings.`);
     return handlers[message.type](message, sender, options);
   }
 

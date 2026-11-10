@@ -46,6 +46,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `audioAutoplay` (false) | Audio | None | P |
 | `anki` (url, apiKey, templates) | Anki | Template fields include reading/pitch; presets are Japanese note types | url, apiKey G; templates P (12) |
 | `smallerAnkiCards` (false) | Anki | Help mentions furigana | G |
+| `youtubeMining` (true) | Anki → Video mining → YouTube mining | None | G; captions take their track's language (8.5) |
 | `experimental` (flags) | Advanced → Experimental | Netflix flag text says Japanese subtitles | G; Netflix uses pack `bcp47` (8.5); `multipleLanguages` reveals Advanced → Languages and, off, makes lookups Japanese (16.3) |
 | `popupWidthPx` (560) | Design | None | G (geometry) |
 | `popupHeightPx` (420) | Design | None | G |
@@ -54,10 +55,10 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `sourceHighlightEnabled` (true) | Design | None | G |
 | `showPopupAudioButton` (true) | Audio | None | P |
 | `popupColumns` (1) | Design (Default) | None | P |
-| `videoAudioFormat` (mp3) | Advanced → Video mining media | Shared by YouTube and Netflix | G; media encoding is independent of the language |
-| `videoAudioBitrate` (64) | Advanced → Video mining media | kbit/s | G; media encoding is independent of the language |
-| `videoImageFormat` (gif) | Advanced → Video mining media | Shared by YouTube and Netflix | G; media encoding is independent of the language |
-| `videoImageQuality` (70) | Advanced → Video mining media | WebP and AVIF quality | G; media encoding is independent of the language |
+| `videoAudioFormat` (mp3) | Anki → Video mining | Shared by YouTube and Netflix | G; media encoding is independent of the language |
+| `videoAudioBitrate` (64) | Anki → Video mining | kbit/s | G; media encoding is independent of the language |
+| `videoImageFormat` (gif) | Anki → Video mining | Shared by YouTube and Netflix | G; media encoding is independent of the language |
+| `videoImageQuality` (70) | Anki → Video mining | WebP and AVIF quality | G; media encoding is independent of the language |
 | `glossaryLayoutMode` (default) | Design | `" \| "` separator neutral | P |
 | `showLookupCounts` (true) | Reading → Lookup history | Counts keyed by `[term, reading]` | P; counts per language (15) |
 | `definitionBlurCountEnabled` (false) | Reading → Definition blur | None | P |

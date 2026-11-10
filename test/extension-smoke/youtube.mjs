@@ -1,5 +1,5 @@
 /*
- * Experimental YouTube mining: the recorder port, the line audio request, the
+ * YouTube mining: the recorder port, the line audio request, the
  * YouTube scripts for a page open before the switch went on, and the video
  * frame {screenshot} takes on YouTube.
  *
@@ -15,7 +15,10 @@ import { check, test } from "./harness.mjs";
 import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
 
 const WATCH = "https://www.youtube.com/watch?v=Ab3dEf6hI9k";
-const flags = (on, extra = {}) => ({ ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, youtubeMining: on, ...extra });
+// The option fields that turn YouTube mining, and with `netflix` Netflix
+// mining's experimental switch, on or off.
+const mining = (on, netflix = false) => ({ youtubeMining: on,
+  experimental: { ...globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, netflixMining: netflix } });
 
 // Only the extension's own YouTube recorder page, framed in a YouTube tab,
 // keeps its port, and only while YouTube mining is on: Netflix's switch and
@@ -35,11 +38,11 @@ async function youtubeRecorderPortStage() {
   };
   const recorder = { id: chrome.runtime.id, url: chrome.runtime.getURL("youtube-recorder.html"), frameId: 3, tab };
   const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
-  await chrome.storage.local.set({ options: { revision: 1, experimental: flags(false, { netflixMining: true }) } });
+  await chrome.storage.local.set({ options: { revision: 1, ...mining(false, true) } });
   const netflixOnly = connect(recorder);
   await settle();
   const refusedWithNetflixOnly = netflixOnly.disconnected;
-  await chrome.storage.local.set({ options: { revision: 2, experimental: flags(true) } });
+  await chrome.storage.local.set({ options: { revision: 2, ...mining(true) } });
   // Each refused port is read before a later port for the same tab, which
   // would replace one that was kept, connects.
   const refused = {};
@@ -74,7 +77,7 @@ async function youtubeCropStage() {
     async sendMessage() { return { present: true }; },
   };
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
-  await storage.api().local.set({ options: { revision: 1, experimental: flags(true) } });
+  await storage.api().local.set({ options: { revision: 1, ...mining(true) } });
   const recorded = [];
   // The recorder frame: it answers each record request as the real one does.
   const connectRecorder = () => {
@@ -130,7 +133,7 @@ async function youtubeLineAudioStage() {
   };
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
   const anki = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
-  await storage.api().local.set({ options: { revision: 1, anki, experimental: flags(true) } });
+  await storage.api().local.set({ options: { revision: 1, anki, ...mining(true) } });
   const mp3 = Buffer.from([0xff, 0xfb, 0x50, 0xc4, 0, 0, 0, 0]).toString("base64");
   const ask = (sender, type = "hd_youtube_line_audio", target = "hachidori-youtube") => bus.sendMessage("reader",
     { target, type, requestId: "youtube-line-audio", data: mp3, templateId: "default" }, sender);
@@ -147,7 +150,7 @@ async function youtubeLineAudioStage() {
   documentId = "replacement-document";
   const reloaded = await ask(reader);
   documentId = reader.documentId;
-  await storage.api().local.set({ options: { revision: 2, anki, experimental: flags(false, { netflixMining: true }) } });
+  await storage.api().local.set({ options: { revision: 2, anki, ...mining(false, true) } });
   const off = await ask(reader);
   check("the YouTube line audio is held only for a YouTube page's own top-frame document, with YouTube mining on",
     held?.ok === true && /^hachidori-sentence-audio-[0-9a-f-]{36}\.mp3$/u.test(held.filename ?? "")
@@ -170,7 +173,7 @@ async function youtubeLoadStage() {
   const injected = [];
   chrome.scripting = { executeScript: async injection => { injected.push(JSON.parse(JSON.stringify(injection))); return [{}]; } };
   loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, crypto, Error, Promise });
-  await storage.api().local.set({ options: { revision: 1, experimental: flags(true) } });
+  await storage.api().local.set({ options: { revision: 1, ...mining(true) } });
   const ask = sender => bus.sendMessage("reader", { target: "hachidori-youtube", type: "hd_youtube_load",
     requestId: "youtube-load" }, sender);
   const reader = { id: chrome.runtime.id, url: WATCH, frameId: 0, documentId: "youtube-document", tab: { id: 7, url: WATCH } };
@@ -178,7 +181,7 @@ async function youtubeLoadStage() {
   const scripts = injected.splice(0);
   const refused = [await ask({ ...reader, frameId: 2 }), await ask({ ...reader, url: "https://www.youtube-nocookie.com/embed/x" }),
     await ask({ ...reader, url: "https://www.netflix.com/browse" })];
-  await storage.api().local.set({ options: { revision: 2, experimental: flags(false) } });
+  await storage.api().local.set({ options: { revision: 2, ...mining(false) } });
   const off = await ask(reader);
   const target = { tabId: 7, documentIds: ["youtube-document"] };
   check("a YouTube page open before the switch went on gets the YouTube scripts in its own document, with the switch on",
@@ -221,10 +224,10 @@ async function youtubeFrameStage() {
   const ask = (sender, videoFrame = true) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
     requestId: "youtube-frame", ...(videoFrame ? { videoFrame: true } : {}) }, sender);
   const reader = { id: chrome.runtime.id, url: WATCH, frameId: 0, documentId, tab: { id: tab.id, url: WATCH } };
-  await storage.api().local.set({ options: { revision: 1, anki, experimental: flags(false) } });
+  await storage.api().local.set({ options: { revision: 1, anki, ...mining(false) } });
   const switchedOff = await ask(reader);
   const offInjections = injections.length;
-  await storage.api().local.set({ options: { revision: 2, anki, experimental: flags(true) } });
+  await storage.api().local.set({ options: { revision: 2, anki, ...mining(true) } });
   const capturesBefore = captures.length;
   const frame = await ask(reader);
   const afterFrame = captures.length;
@@ -265,10 +268,10 @@ async function youtubeFrameStage() {
 // only Netflix mining on, or elsewhere, it never asks.
 async function youtubeLoadCase() {
   const loads = harness => harness.sent.filter(request => request.type === "hd_youtube_load").map(request => request.target);
-  const harness = await createHarness(undefined, { url: WATCH, options: { experimental: flags(false, { netflixMining: true }) } });
+  const harness = await createHarness(undefined, { url: WATCH, options: mining(false, true) });
   const window = harness.popup.ownerDocument.defaultView;
   const netflixOnly = loads(harness).length + harness.sent.filter(request => request.type === "hd_netflix_load").length;
-  harness.emitOptions({ experimental: flags(true) });
+  harness.emitOptions(mining(true));
   const asked = loads(harness);
   const calls = [];
   window.HDYouTube = { setHoverPause: value => calls.push(["hover", value]), setLineAudio: value => calls.push(["audio", value]),
@@ -277,7 +280,7 @@ async function youtubeLoadCase() {
   harness.reply(harness.take("hd_youtube_load"), { loaded: true });
   await harness.settle();
   const followed = JSON.stringify(calls) === JSON.stringify([["hover", true], ["audio", true], ["drag", true]]);
-  harness.emitOptions({ experimental: flags(false) });
+  harness.emitOptions(mining(false));
   const off = JSON.stringify(calls.slice(3)) === JSON.stringify([["hover", false], ["audio", false], ["drag", false]]);
   harness.close();
   return {
@@ -337,7 +340,7 @@ function coveredCaption(window, { label = null, menu = false } = {}) {
 // YouTube mining is on; off, YouTube is as before.
 async function youtubeCoveredCaptionCase() {
   const scan = async (on, fixture = {}) => {
-    const harness = await createHarness(undefined, { url: WATCH, options: { experimental: flags(on) } });
+    const harness = await createHarness(undefined, { url: WATCH, options: mining(on) });
     harness.window.HDYouTube = youtubeReader();
     const caption = coveredCaption(harness.window, fixture);
     const at = (x, y) => harness.driver.resolveCandidate(x, y);
@@ -369,7 +372,7 @@ async function youtubeCoveredCaptionCase() {
 async function youtubeCaptionProfileCase() {
   const profiles = [{ id: "ja", language: "ja", settings: {}, packSettings: {} },
     { id: "en", language: "en", settings: {}, packSettings: {} }];
-  const harness = await createHarness(undefined, { url: WATCH, options: { experimental: flags(true), profiles } });
+  const harness = await createHarness(undefined, { url: WATCH, options: { ...mining(true), profiles } });
   const { window } = harness;
   window.document.documentElement.lang = "en";
   harness.emitChanges({ languageSelection: { newValue: { revision: 1, activeProfileId: "ja", autoSwitch: true } } });

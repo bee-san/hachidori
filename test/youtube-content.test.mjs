@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Experimental YouTube mining, the reader's side: the video-site layer
+// YouTube mining, the reader's side: the video-site layer
 // (extension/netflix-content.js) with YouTube's description
 // (extension/youtube-content.js), on a jsdom page with YouTube's player and
 // caption markup (synthetic) and the json3 fixtures of test/data/youtube/.

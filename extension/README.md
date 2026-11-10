@@ -175,7 +175,8 @@ stores it as `rank-based` when its values are ranks (#684).
   the video's picture is, which `background-anki.js` cuts out of the
   screenshot and the recorder frame out of each GIF frame.
 - **YouTube mining.** The same features on `www.youtube.com` behind their own
-  experimental switch, on the same code: `netflix-content.js` is the
+  switch, Anki → Video mining → YouTube mining (on by default), on the same
+  code: `netflix-content.js` is the
   video-site reader both sites use (`createVideoSite`), and
   `youtube-content.js` describes YouTube's player and captions to it.
   `youtube.js` registers `netflix-page.js`, the page script both sites share
@@ -277,8 +278,8 @@ stores it as `rank-based` when its values are ranks (#684).
   `vendor/languages/` is the language packs of `third_party/hoshidicts` with
   `registry.js` and `registry-reader.js`, written by
   `scripts/sync-languages.mjs` after each submodule bump.
-  `vendor/gifenc.js` is the pinned gifenc runtime (the experimental Netflix
-  and YouTube mining GIF encoder), its source and checksum in `scripts/store-sources.json`,
+  `vendor/gifenc.js` is the pinned gifenc runtime (the Netflix and YouTube
+  mining GIF encoder), its source and checksum in `scripts/store-sources.json`,
   and `vendor/lamejs.js` the pinned lamejs runtime (their MP3 encoder for
   sentence audio), recorded there with the source it was built from.
   `vendor/yomitan/structured-content-style.js` is Yomitan's

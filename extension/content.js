@@ -750,18 +750,21 @@
     return GOOGLE_DOCS_HOST && options.googleDocs === true;
   }
 
-  // Experimental Features → Netflix mining and YouTube mining: background.js
-  // registers each site's reader (netflix-content.js, youtube-content.js) on
-  // the site while its flag is on; the switch also gates a page that loaded it
-  // before the switch went off. `api` is the site's reader, `recorder` the Anki
+  // Advanced → Experimental features → Netflix mining and Anki → Video mining →
+  // YouTube mining: background.js registers each site's reader
+  // (netflix-content.js, youtube-content.js) on the site while its switch
+  // (`enabled`) is on; the switch also gates a page that loaded it before the
+  // switch went off. `api` is the site's reader, `recorder` the Anki
   // controller's option that records its lines (anki-content.js), `lines` its
   // subtitle boxes (as its reader's description names them), and on Netflix
   // the subtitle tracks are the reading language's (8.5).
   const VIDEO_SITES = {
-    "www.netflix.com": { flag: "netflixMining", api: () => globalThis.HDNetflix, target: "hachidori-netflix",
+    "www.netflix.com": { enabled: options => options.experimental.netflixMining === true,
+      api: () => globalThis.HDNetflix, target: "hachidori-netflix",
       load: "hd_netflix_load", recorder: "recordNetflixLine", subtitleLanguage: true,
       lines: ".player-timedtext .player-timedtext-text-container", controlBar: null },
-    "www.youtube.com": { flag: "youtubeMining", api: () => globalThis.HDYouTube, target: "hachidori-youtube",
+    "www.youtube.com": { enabled: options => options.youtubeMining === true,
+      api: () => globalThis.HDYouTube, target: "hachidori-youtube",
       load: "hd_youtube_load", recorder: "recordYouTubeLine", subtitleLanguage: false,
       lines: "#movie_player .ytp-caption-window-container .caption-window",
       controlBar: "#movie_player .ytp-chrome-bottom" },
@@ -769,7 +772,7 @@
   const VIDEO_SITE = Object.hasOwn(VIDEO_SITES, location.hostname) ? VIDEO_SITES[location.hostname] : null;
   const NETFLIX_HOST = location.hostname === "www.netflix.com";
   function videoMiningEnabled() {
-    return VIDEO_SITE !== null && options.experimental[VIDEO_SITE.flag] === true
+    return VIDEO_SITE !== null && VIDEO_SITE.enabled(options)
       && typeof VIDEO_SITE.api()?.miningFields === "function";
   }
 
@@ -807,7 +810,7 @@
   let videoSiteLoad = null;
   function loadVideoSite() {
     if (videoSiteLoad !== null || disposed || VIDEO_SITE === null || window !== window.top
-        || options.experimental[VIDEO_SITE.flag] !== true) return;
+        || !VIDEO_SITE.enabled(options)) return;
     videoSiteLoad = sendRequest(VIDEO_SITE.load, {}, VIDEO_SITE.target)
       .then(syncVideoSite, () => { videoSiteLoad = null; });
   }

@@ -33,8 +33,6 @@
       description: "Add the Netflix subtitle line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, and use the whole line as the sentence. Hovering a subtitle pauses the video until the pointer leaves the subtitle and the popup. Reads Netflix's subtitle files (adapted from Subadub), which Netflix may change without notice. The video's sound plays through Hachidori, which keeps the last 30 seconds in memory to cut the line from; a line you have not heard all of plays on or replays once. Reload Netflix after turning this on. Protected video can make the audio silent or the GIF black." },
     { id: "netflixPreviewScreenshots", label: "Netflix preview screenshots",
       description: "Use Netflix's timeline preview image for {screenshot} when the video comes out black. Preview images have lower resolution and show a nearby moment, not necessarily the exact frame. Does not record or replay the video. Other pages keep normal screenshots. Netflix may change or remove these previews." },
-    { id: "youtubeMining", label: "YouTube mining",
-      description: "Add the YouTube caption line's audio to Anki notes with {sentence-audio} and a looping GIF of it with {gif}, use the whole line as the sentence, and take {screenshot} from the video itself. Hovering a caption pauses the video until the pointer leaves the caption and the popup. Reads the caption track YouTube's player shows, typed or auto-generated, which YouTube may change without notice. The video's sound plays through Hachidori, which keeps the last 30 seconds in memory to cut the line from; a line you have not heard all of plays on or replays once. Reload YouTube after turning this on. Works on watch pages, not on Shorts, embedded videos or live streams." },
     // docs/languages.md 16.3. Off, lookups use the Japanese profile and nothing
     // switches language; the profiles and this browser's choice are kept.
     { id: "multipleLanguages", label: "Multiple languages", section: "languages",
@@ -176,6 +174,8 @@
     audioAutoplay: false,
     anki: DEFAULT_ANKI,
     smallerAnkiCards: false,
+    // Anki → Video mining: YouTube caption lines' audio, GIF and video frame.
+    youtubeMining: true,
     videoAudioFormat: "mp3",
     videoAudioBitrate: 64,
     videoImageFormat: "gif",
@@ -272,9 +272,10 @@
   // Word highlighting's switches stay with its Reading Settings section;
   // a page shows or hides its marks with Toggle word highlights instead. The
   // toolbar's Search button and the search history are not reader behaviours,
-  // and Google Docs takes effect only as a Docs page loads.
+  // and Google Docs and YouTube mining register scripts on their sites.
   const UNTOGGLED_OPTIONS = new Set(["lowMemoryMode", "useLessRamByDefault", "smallerAnkiCards", "wordHighlightEnabled", "wordHighlightUnknown",
-    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored", "showToolbarSearchButton", "searchHistoryEnabled", "googleDocs"]);
+    "wordHighlightLearning", "wordHighlightKnown", "wordHighlightIgnored", "showToolbarSearchButton", "searchHistoryEnabled", "googleDocs",
+    "youtubeMining"]);
   const KEYBIND_TOGGLE_OPTIONS = Object.keys(DEFAULT_OPTIONS)
     .filter(key => typeof DEFAULT_OPTIONS[key] === "boolean" && !UNTOGGLED_OPTIONS.has(key));
   const NUMBER_RANGES = {
@@ -1065,7 +1066,7 @@
   const GLOBAL_OPTION_KEYS = Object.freeze([
     "hoverEnabled", "googleDocs", "lookupMode", "activationKey", "definitionLookupMode", "scanDelayMs", "definitionScanDelayMs",
     "popupHideDelayMs", "hidePopupOnCursorExit", "hidePopupOnCursorExitDelayMs", "popupNestingMaxDepth",
-    "popupToolbarPosition", "customPopupCss", "userScripts", "smallerAnkiCards", "experimental",
+    "popupToolbarPosition", "customPopupCss", "userScripts", "smallerAnkiCards", "youtubeMining", "experimental",
     "videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality",
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",

@@ -303,7 +303,7 @@
     // (netflix-content.js). Its options { audio, gif } name the media wanted;
     // `conceal` is passed on for the tab capture a GIF needs.
     recordNetflixLine = async () => { throw new Error("this page cannot replay Netflix lines."); },
-    // Experimental YouTube mining: the same for a YouTube caption's cue, which
+    // YouTube mining: the same for a YouTube caption's cue, which
     // the same reader records (netflix-content.js).
     recordYouTubeLine = async () => { throw new Error("this page cannot replay YouTube lines."); },
     // Experimental Netflix mining: takes a Netflix subtitle note's screenshot
@@ -535,7 +535,7 @@
       }
     }
     const recorders = { recordNetflixLine, recordYouTubeLine };
-    // Experimental Netflix and YouTube mining: the hovered subtitle line's
+    // Netflix and YouTube mining: the hovered subtitle line's
     // audio and, when a {gif} field needs it, a looping GIF. The page records
     // the line, with the reader concealed while it captures the tab. Like the
     // screenshot, media that cannot be recorded is a warning on an otherwise

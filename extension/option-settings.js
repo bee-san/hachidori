@@ -555,6 +555,7 @@ function renderOptions() {
   void renderSearchHistory();
   element("opt-audio-autoplay").checked = options.audioAutoplay;
   element("opt-smaller-anki-cards").checked = options.smallerAnkiCards;
+  element("opt-youtube-mining").checked = options.youtubeMining;
   element("opt-video-audio-format").value = options.videoAudioFormat;
   element("opt-video-image-format").value = options.videoImageFormat;
   renderThemeChoices();
@@ -680,6 +681,10 @@ function attachOptionHandlers() {
   }
   element("opt-smaller-anki-cards").addEventListener("change", (event) => {
     options.smallerAnkiCards = event.target.checked;
+    writeOptions();
+  });
+  element("opt-youtube-mining").addEventListener("change", (event) => {
+    options.youtubeMining = event.target.checked;
     writeOptions();
   });
   for (const [id, key] of [["opt-video-audio-format", "videoAudioFormat"], ["opt-video-image-format", "videoImageFormat"]]) {

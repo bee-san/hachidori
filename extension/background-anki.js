@@ -209,7 +209,7 @@ function screenshotSource(tab, sender, options, readerPage, videoFrame) {
   if (readerPage || (sender.frameId ?? 0) !== 0) return null;
   if (options.experimental.netflixPreviewScreenshots === true
       && /^https:\/\/www\.netflix\.com\/watch\/\d+(?:[?#]|$)/u.test(tab.url)) return "netflix-preview";
-  return videoFrame && options.experimental.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
+  return videoFrame && options.youtubeMining === true && YOUTUBE_PAGE_URL.test(tab.url) ? "youtube-frame" : null;
 }
 
 // One picture from `source`: a YouTube player that shows no frame leaves the
