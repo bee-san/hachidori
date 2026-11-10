@@ -130,18 +130,46 @@ describe("settings", () => {
       text: document.getElementById("custom-javascript-permission").textContent }));
     // The script is saved before Firefox grants user scripts, so it runs only
     // once background.js applies it on the grant. It also marks the popup with
-    // the mode of the root its host.shadowRoot returns.
-    await page.evaluate(code => {
+    // the mode of the root its host.shadowRoot returns. It is typed into the
+    // code editor in place of the example a new script starts from.
+    await page.evaluate(() => {
       document.getElementById("user-script-add").click();
       document.getElementById("user-script-name").value = "Firefox check";
-      document.getElementById("user-script-javascript").value = code;
-      document.getElementById("user-script-submit").click();
-    }, ["document.documentElement.dataset.hachidoriUserScript = 'ran';",
+    });
+    const javascript = '.user-script-part .cm-editor[data-language="javascript"] .cm-content';
+    await waitFor(() => page.evaluate(selector => document.querySelector(selector) !== null || false, javascript));
+    await page.click(javascript);
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.type(["document.documentElement.dataset.hachidoriUserScript = 'ran';",
       "setInterval(() => {",
-      "  const root = document.querySelector('hachidori-host')?.shadowRoot;",
-      "  const popup = root?.querySelector('.gsm-hoshidicts-popup');",
-      "  if (popup) popup.dataset.customScript = root.mode;",
+      "const root = document.querySelector('hachidori-host')?.shadowRoot;",
+      "const popup = root?.querySelector('.gsm-hoshidicts-popup');",
+      "if (popup) popup.dataset.customScript = root.mode;",
       "}, 50);"].join("\n"));
+    // The code's colours, fitted to the palette (code-editor.js): the string
+    // differs from the plain text and both keep 4.5:1 on the editor.
+    const editor = await page.evaluate((selector) => {
+      const content = document.querySelector(selector);
+      const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const luminance = (colour) => {
+        canvas.clearRect(0, 0, 1, 1);
+        canvas.fillStyle = colour;
+        canvas.fillRect(0, 0, 1, 1);
+        const channels = [...canvas.getImageData(0, 0, 1, 1).data].slice(0, 3)
+          .map(value => (value / 255 <= 0.04045 ? value / 255 / 12.92 : ((value / 255 + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+      };
+      const background = luminance(getComputedStyle(content.closest(".cm-editor")).backgroundColor);
+      const contrast = colour => Math.round((Math.max(luminance(colour), background) + 0.05)
+        / (Math.min(luminance(colour), background) + 0.05) * 100) / 100;
+      const text = getComputedStyle(content).color;
+      const string = [...content.querySelectorAll("span")].find(span => span.textContent === "'ran'");
+      return { text, string: string && getComputedStyle(string).color, textContrast: contrast(text),
+        stringContrast: string ? contrast(getComputedStyle(string).color) : 0 };
+    }, javascript);
+    await page.evaluate(() => document.getElementById("user-script-submit").click());
     await waitFor(async () => (await readStorage(page, ["options"])).options?.userScripts
       ?.some(script => script.javascript.includes("hachidoriUserScript")) || false);
     const early = await openPage(`${serverUrl}/?user-script-before`);
@@ -165,6 +193,9 @@ describe("settings", () => {
     const reader = await openPage(`${serverUrl}/?user-script`);
     const ran = await waitFor(() => reader.evaluate(() => document.documentElement.dataset.hachidoriUserScript === "ran" || false),
       { timeout: 10_000 });
+    check("Firefox edits a user script in the code editor, its code coloured and readable",
+      editor.string !== undefined && editor.string !== editor.text && editor.textContrast >= 4.5 && editor.stringContrast >= 4.5,
+      JSON.stringify(editor));
     check("A user script's JavaScript runs on pages once Firefox grants user scripts",
       before.allowHidden === false && before.text.startsWith("Firefox asks") && ranBefore === null && granted === true && ran === true,
       JSON.stringify({ before, ranBefore, granted, registered, ran }));

@@ -104,6 +104,7 @@ test("the code editor takes over from the textareas with their text, once, and t
   let release;
   const loaded = new Promise((resolve) => { release = resolve; });
   const page = open([script("first")], { loadCodeEditor: () => { loads += 1; return loaded.then(() => ({ createCodeEditor })); } });
+  assert.equal(loads, 0, "Settings loads no code editor before the editor opens");
   page.action(0, "edit").click();
   // Typed before the editor has loaded: the textarea's text carries over.
   page.type("user-script-css", "p {}");
