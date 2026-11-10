@@ -567,7 +567,7 @@ These run separately:
   downloads are answered 503.
 - **`chrome-overlay.mjs`** runs overlay mode (GameSentenceMiner): capability
   Settings, glyph selection, host events, Anki readiness, links after hovers and
-  drags.
+  drags, and user scripts in the page's own world.
 - **`chrome-sharing.mjs`** launches two real Chromes and the pinned Hachidori
   Relay (unpacked from the downloaded add-on with Python's `zipfile`, on
   `HACHIDORI_SHARING_PORT`, default 18771), links them, looks up, writes options

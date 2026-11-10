@@ -12,6 +12,13 @@ in-game overlay. The overlay floats over a game and passes clicks through, so:
 - The **mining screenshot** is unavailable. Settings shows it disabled and explains that screenshot fields stay empty. Electron has no `chrome.tabs.captureVisibleTab`, and the see-through overlay page would not show the game anyway.
 - Chrome-owned pages are unavailable, so **browser shortcut management** and the **local-file access prompt** are disabled. Page/popup keybinds still work. **Custom toolbar links** remain editable and the reader asks the host to open their validated HTTP(S) URLs in the system browser. **Backup export and restore** work: export uses the host's save dialog when Chrome's downloads API is absent.
 - The **first-run setup page** is skipped. An embedded host has no tab to show it in.
+- **User scripts** run without Chrome's Allow User Scripts switch. Electron has
+  no `userScripts` API and no `chrome.dom`, so each page's reader asks the
+  service worker as it starts, and the worker runs the switched-on packages'
+  JavaScript in that document's own world (`chrome.scripting.executeScript`
+  with `world: "MAIN"`). The popup's root is open to them. In
+  GameSentenceMiner's overlay window, that world has Node, so a package can do
+  what GameSentenceMiner itself can.
 
 ## Turning it on
 
@@ -78,6 +85,7 @@ turn an Electron-only control back on remotely.
 | Audio | Downloadable pronunciation and browser-speech playback work; overlays do not record browser speech. |
 | Keybinds | Page and popup keybinds remain editable. Chrome's browser-shortcut list and manager are disabled. |
 | Design | Appearance, layout, custom CSS and Custom buttons work. Link buttons ask the embedding host to open the URL in the system browser; Anki buttons use their selected Template. The Settings live preview cannot launch links. |
+| User scripts | Packages' JavaScript and CSS work. Settings shows no Allow User Scripts notice. |
 | Backup & restore | Export and restore work. Without Chrome's downloads API, export requests a ZIP save through the host's download handler. Cancelling that save does not change your library. |
 | Reading | Reading controls work. The Chrome extension-details prompt for local-file access is omitted because the embedding host owns that permission, and so is the Search page group: the search page opens from Chrome's shortcuts and toolbar menu, which an overlay does not have. |
 

@@ -16,7 +16,11 @@ world and returns it to those scripts alone, and the reader reads it back with
 `chrome.dom.openOrClosedShadowRoot` (Chrome) or `openOrClosedShadowRoot`
 (Firefox). Where user scripts do not run (Chrome's Allow User Scripts switch
 is off, Firefox has not granted them, in frames and on extension pages) the
-reader attaches the closed root itself. The host waits for the reader's first
+reader attaches the closed root itself. An [overlay](overlay-mode.md) host has
+neither the user-script API nor `chrome.dom`: each page's reader asks the
+worker as it starts, the worker runs the scripts in that document's own world
+without the bridge, and the reader attaches an open root while a switched-on
+user script has JavaScript. The host waits for the reader's first
 read of the stored options, so a lookup that starts before them still gets the
 right root. A script added or changed runs from the reading page's next load.
 If a lookup builds the popup before the page's user scripts have run, the
