@@ -104,14 +104,14 @@ test("the Script Store is part of Advanced → User scripts, with no switch or t
     javascript: "1;", css: "" }] }) });
   el("script-store-check").click();
   for (let turn = 0; turn < 5; turn += 1) await new Promise(resolve => setTimeout(resolve, 0));
-  el("script-store-list").querySelector("button").click();
+  el("script-store-list").querySelector('[data-action="install"]').click();
   const names = () => [...el("user-script-list").querySelectorAll(".user-script-name")].map(node => node.textContent);
   assert.deepEqual(names(), ["Texthooker"]);
   assert.equal(el("user-script-empty").hidden, true);
   el("user-script-list").querySelector('[data-action="delete"]').click();
   el("user-script-list").querySelector('[data-action="confirm"]').click();
   assert.deepEqual(names(), []);
-  assert.equal(el("script-store-list").querySelector("button").textContent, "Install");
+  assert.equal(el("script-store-list").querySelector('[data-action="install"]').textContent, "Install");
 });
 
 test("the import picker takes Yomitan ZIPs and MDX dictionaries without a switch", t => {

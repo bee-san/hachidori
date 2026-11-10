@@ -15,7 +15,7 @@ const html = await readFile(new URL("../extension/settings.html", import.meta.ur
 const section = html.slice(html.indexOf("<section", html.indexOf('id="user-scripts"') - 80), html.indexOf("</section>",
   html.indexOf('id="user-scripts"')) + "</section>".length);
 
-function open(scripts = [], { loadCodeEditor = () => new Promise(() => {}) } = {}) {
+function open(scripts = [], { loadCodeEditor = () => new Promise(() => {}), ...options } = {}) {
   const { window } = new JSDOM(`<!doctype html><body><main>${section}</main></body>`);
   const { document } = window;
   document.getElementById("user-scripts").hidden = false;
@@ -23,7 +23,7 @@ function open(scripts = [], { loadCodeEditor = () => new Promise(() => {}) } = {
   let stored = scripts;
   let next = 0;
   const controller = createUserScriptSettings({ document, readScripts: () => stored,
-    saveScripts: value => { stored = value; saves.push(value); }, createId: () => `id-${next += 1}`, loadCodeEditor });
+    saveScripts: value => { stored = value; saves.push(value); }, createId: () => `id-${next += 1}`, loadCodeEditor, ...options });
   controller.render();
   const el = id => document.getElementById(id);
   const row = index => el("user-script-list").children[index];
@@ -141,6 +141,23 @@ test("the textareas stay, with a note, when the code editor cannot load", async 
   page.type("user-script-css", "b {}");
   page.submit();
   assert.deepEqual(page.stored(), [{ id: "id-1", enabled: true, name: "Bold", javascript: "", css: "b {}" }]);
+});
+
+test("a row offers the Script Store's update once a check finds one, and keeps focus on the row", () => {
+  const updates = new Map([["first", { name: "Name first", version: "2.0.0" }]]);
+  const applied = [];
+  const page = open([script("first", { store: { slug: "first", version: "1.0.0" } }), script("second")],
+    { readUpdates: () => updates, applyUpdate: (value) => { applied.push(value.id); updates.delete(value.id); } });
+  const update = page.action(0, "update");
+  assert.deepEqual([update.textContent, update.getAttribute("aria-label"), update.className],
+    ["Update to 2.0.0", "Update first to 2.0.0", "primary-button"]);
+  assert.equal(page.action(1, "update"), null);
+  update.click();
+  assert.deepEqual(applied, ["first"]);
+  assert.equal(page.el("user-script-status").textContent, "Updated Name first to version 2.0.0.");
+  assert.equal(page.document.activeElement, page.action(0, "edit"));
+  page.controller.render();
+  assert.equal(page.action(0, "update"), null);
 });
 
 test("the switch, the arrows and Delete save at once and keep focus on the row", () => {

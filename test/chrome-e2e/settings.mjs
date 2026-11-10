@@ -21,6 +21,7 @@ import {
   browser,
   cycleVisualNovelScene,
   editSettingsControls,
+  extensionId,
   interceptFetches,
   makeAudioWav,
   page,
@@ -1733,11 +1734,12 @@ async function checkDesignPreview(page) {
   }
 }
 
-// Advanced → User scripts' code editor (code-editor.js) in place of the
-// textareas: its labels, the example a new script starts from, Tab, Esc then
-// Tab, search, syntax errors, Load .js file and Save, and code that keeps 4.5:1
-// in five colours in every palette. The saved script and the palette are put
-// back afterwards.
+// Advanced → User scripts: the notice's way to Hachidori's details page while
+// Chrome does not run user scripts, then the code editor (code-editor.js) in
+// place of the textareas: its labels, the example a new script starts from,
+// Tab, Esc then Tab, search, syntax errors, Load .js file and Save, and code
+// that keeps 4.5:1 in five colours in every palette. The saved script and the
+// palette are put back afterwards.
 async function checkUserScriptEditor(page) {
   const original = await page.evaluate(async () => (await chrome.storage.local.get("options")).options);
   const writeOptions = patch => page.evaluate(async (patch) => {
@@ -1757,6 +1759,18 @@ async function checkUserScriptEditor(page) {
   try {
     await page.bringToFront();
     await showSettingsSection(page, "user-scripts");
+    const notice = await page.evaluate(() => ({ shown: !document.getElementById("user-script-permission").hidden,
+      button: document.getElementById("custom-javascript-allow").textContent }));
+    const opening = browser.waitForTarget(target => target.url().startsWith("chrome://extensions"), { timeout: 10_000 })
+      .catch(() => null);
+    await page.click("#custom-javascript-allow");
+    const details = await opening;
+    const detailsUrl = details?.url() ?? null;
+    await (await details?.page())?.close();
+    await page.bringToFront();
+    check("User scripts' notice opens Hachidori's details page while Chrome does not run user scripts",
+      notice.shown && notice.button === "Open Hachidori's details" && detailsUrl === `chrome://extensions/?id=${extensionId}`,
+      JSON.stringify({ notice, detailsUrl }));
     await page.click("#user-script-add");
     await page.waitForSelector(`${editor("css")} .cm-content`);
     const mounted = await page.evaluate(() => ["javascript", "css"].map((language) => {

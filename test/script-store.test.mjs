@@ -31,7 +31,7 @@ test("the catalogue reads as the repository's tools write it, and anything else 
   assert.throws(() => parseCatalogue({ schema: 1, scripts: [entry("a"), entry("a")] }), /cannot read/u);
 });
 
-function open({ scripts = [], respond }) {
+function open({ scripts = [], respond, ...options }) {
   const { window } = new JSDOM(`<!doctype html><body><main>${section}</main></body>`);
   const { document } = window;
   document.getElementById("user-scripts").hidden = false;
@@ -40,7 +40,7 @@ function open({ scripts = [], respond }) {
   let next = 0;
   const store = createScriptStore({ document, readScripts: () => stored, saveScripts: (value) => { stored = value; },
     createId: () => `id-${next += 1}`,
-    fetch: async (url, init) => { requests.push([url, init]); return respond(); } });
+    fetch: async (url, init) => { requests.push([url, init]); return respond(); }, ...options });
   store.render();
   const el = id => document.getElementById(id);
   const check = async () => {
@@ -64,20 +64,20 @@ test("Check for scripts asks GitHub once per press, then Install, Installed and 
   assert.equal(page.el("script-store-status").textContent, "2 scripts are in the Script Store.");
   assert.equal(page.row("texthooker").querySelector(".script-store-name").textContent, "Name texthooker");
   assert.match(page.row("compact-popup").querySelector(".script-store-details").textContent,
-    /^CSS · version 1\.0\.0 · someone · MIT · Source$/u);
+    /^By someone · version 1\.0\.0 · MIT · CSS, 4 B · Source$/u);
   assert.equal(page.row("texthooker").querySelector("a").href,
     "https://github.com/bee-san/hachidori-scripts/tree/main/scripts/texthooker");
-  page.row("texthooker").querySelector("button").click();
+  page.row("texthooker").querySelector('[data-action="install"]').click();
   assert.deepEqual(page.stored()[1], { id: "id-1", name: "Name texthooker", enabled: true, javascript: "window.a = 1;", css: "",
     store: { slug: "texthooker", version: "1.0.0" } });
   assert.equal(page.row("texthooker").querySelector(".script-store-installed").textContent, "Installed");
   assert.equal(page.el("script-store-status").textContent, "Installed Name texthooker. It runs on the pages you open or reload.");
-  assert.equal(page.document.activeElement, page.row("texthooker").querySelector("a"));
+  assert.equal(page.document.activeElement, page.row("texthooker").querySelector('[data-action="code"]'));
   // A newer version replaces the package's parts and keeps its switch and place.
   page.stored()[1] = { ...page.stored()[1], enabled: false };
   catalogue = { schema: 1, scripts: [entry("texthooker", { version: "1.1.0", javascript: "window.b = 2;", css: "q {}" })] };
   await page.check();
-  const update = page.row("texthooker").querySelector("button");
+  const update = page.row("texthooker").querySelector('[data-action="update"]');
   assert.equal(update.textContent, "Update to 1.1.0");
   assert.equal(update.className, "primary-button", "an update is the list's one filled button");
   update.click();
@@ -88,7 +88,52 @@ test("Check for scripts asks GitHub once per press, then Install, Installed and 
   // Deleting it in Your scripts offers Install again.
   page.stored().splice(1, 1);
   page.store.render();
-  assert.equal(page.row("texthooker").querySelector("button").textContent, "Install");
+  assert.equal(page.row("texthooker").querySelector('[data-action="install"]').textContent, "Install");
+});
+
+test("View code shows each part read-only and stays open across redraws; a check offers its updates to Your scripts", async () => {
+  const views = [];
+  const loadCodeEditor = async () => ({ createCodeView: (parent, options) => {
+    views.push(options);
+    parent.append(Object.assign(parent.ownerDocument.createElement("pre"), { textContent: options.text }));
+  } });
+  let checks = 0;
+  const page = open({ scripts: [{ id: "old", name: "Old", enabled: true, javascript: "1;", css: "",
+    store: { slug: "texthooker", version: "0.9.0" } }], loadCodeEditor, onCatalogue: () => { checks += 1; },
+  respond: () => reply({ schema: 1, scripts: [entry("texthooker"), entry("compact-popup", { javascript: "", css: "q {}" })] }) });
+  await page.check();
+  assert.equal(checks, 1);
+  assert.equal(page.el("script-store-status").textContent, "2 scripts are in the Script Store. An update is ready for Name texthooker.");
+  assert.deepEqual([...page.store.updates()].map(([id, { version }]) => [id, version]), [["old", "1.0.0"]]);
+  const toggle = () => page.row("compact-popup").querySelector('[data-action="code"]');
+  const region = () => page.row("compact-popup").querySelector(".script-store-code");
+  assert.deepEqual([toggle().textContent, toggle().getAttribute("aria-expanded"), region().hidden], ["View code", "false", true]);
+  assert.equal(toggle().getAttribute("aria-controls"), region().id);
+  toggle().click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual([toggle().textContent, toggle().getAttribute("aria-expanded"), region().hidden], ["Hide code", "true", false]);
+  assert.deepEqual(views, [{ language: "css", text: "q {}", label: "CSS of Name compact-popup" }]);
+  assert.equal(region().querySelector(".field-label").textContent, "CSS · 4 B");
+  // Installing redraws the list; the code stays shown.
+  page.row("compact-popup").querySelector('[data-action="install"]').click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(views.length, 2);
+  assert.equal(region().hidden, false);
+  toggle().click();
+  assert.deepEqual([toggle().textContent, region().hidden, region().children.length], ["View code", true, 0]);
+  // View, Hide and View again before the code editor has loaded: one copy.
+  toggle().click();
+  toggle().click();
+  toggle().click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(region().querySelectorAll("pre").length, 1);
+  toggle().click();
+  // Your scripts' Update applies the checked version without moving focus here.
+  page.store.updateScript("old");
+  assert.deepEqual(page.stored()[0], { id: "old", name: "Name texthooker", enabled: true, javascript: "window.a = 1;", css: "",
+    store: { slug: "texthooker", version: "1.0.0" } });
+  assert.equal(page.document.activeElement, page.document.body);
+  assert.equal(page.store.updates().size, 0);
 });
 
 test("a failed check says why and keeps the button usable", async () => {

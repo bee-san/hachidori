@@ -2600,10 +2600,15 @@ textarea {
   color: var(--ok);
   font-weight: var(--weight-medium);
 }
+.script-store-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+/* View code: the package's JavaScript and CSS under its row, read-only. */
+.script-store-code { grid-column: 1 / -1; display: grid; gap: 6px; }
+.script-store-code .code-editor { max-height: 50vh; }
+.script-store-code .code-editor .cm-scroller { min-height: 0; }
 @container (max-width: 560px) {
   .script-store-row { grid-template-columns: minmax(0, 1fr); }
-  /* Install, Update and Installed keep their own width under the text. */
-  .script-store-row > :last-child { justify-self: start; }
+  /* View code, Install, Update and Installed keep their own width under the text. */
+  .script-store-actions { justify-content: flex-start; }
 }
 
 .keybind-list {

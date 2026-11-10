@@ -54,6 +54,10 @@ scripts**, with the **Script Store** below them.
   JavaScript, and shows only until it can: on Chrome while Allow User Scripts
   is off, checked when Settings opens and whenever it comes back into view, and
   on Firefox until the optional permission is granted. An overlay shows none.
+  On Chrome its **Open Hachidori's details** opens `chrome://extensions/?id=…`,
+  where the switch is (Developer mode on Chrome 137 and earlier): an extension
+  may open that page but cannot turn the switch on. On Firefox its **Allow user
+  scripts** asks for the permission.
 - **Add script** opens the editor under the list: a name, the JavaScript and
   the CSS, each with **Load .js file** or **Load .css file** to replace it from
   a file. The warning about pasting JavaScript you do not understand is beside
@@ -79,7 +83,9 @@ scripts**, with the **Script Store** below them.
   JavaScript with a syntax error does not run until it is fixed.
 - A row's switch turns its package on or off, the arrows move it (once there
   are two packages), **Edit** opens it in the editor and **Delete** asks once
-  before removing it.
+  before removing it. Once **Check for scripts** finds another version of an
+  installed package, its row also has **Update to**, which does what the
+  Script Store's does without moving focus there.
 - The editor saves on **Save script** or **Add script**, not as you type, so a
   half-written script never runs.
 
@@ -95,7 +101,13 @@ where Bee reviews each one before it is merged.
   `tools/build-catalogue.mjs` writes that file with every package's
   JavaScript and CSS in it, so one request gives one consistent list.
   Hachidori refuses a list that is not in that shape and shows names and
-  descriptions as text.
+  descriptions as text. Each package shows its author, version, licence,
+  parts and size, and links to its folder in the repository. The status after
+  a check names the installed packages it found an update for.
+- **View code** shows a package's JavaScript and CSS under its row, read-only
+  in the code editor (`code-editor.js`, loaded the first time), so it can be
+  read, searched and copied before it is installed. The code comes from the
+  catalogue already fetched; nothing more is.
 - **Install** copies a package into Your scripts, switched on, with its slug
   and version (`store: { slug, version }`). It then runs as the user's own
   scripts do. **Update to** replaces its name and parts once the catalogue's
@@ -122,7 +134,8 @@ packages.
 ## Tests
 
 - `test/script-store.test.mjs`: the catalogue's shape, Check for scripts,
-  Install, Installed, Update and a failed check, and the `store` field.
+  Install, Installed, Update and a failed check, the `store` field, View code
+  with a stand-in code view, and the updates a check offers to Your scripts.
 - `test/advanced-settings.test.mjs`: the Script Store's place in User scripts,
   with no switch, tab or section of its own, and a package installed from it
   showing in Your scripts at once.
@@ -131,11 +144,12 @@ packages.
   switched-on package, after the bridge) and each package's own function.
 - `test/extension-smoke/content-popup.mjs` and `design.mjs`: the popup root a
   package's JavaScript gets, and one adopted sheet per stylesheet.
-- `test/user-script-settings.test.mjs`: the editor, with a stand-in for the
-  code editor: nothing loaded before the editor opens, the textareas' text
+- `test/user-script-settings.test.mjs`: a row's Update to, and the editor,
+  with a stand-in for the code editor: nothing loaded before the editor opens, the textareas' text
   carried over, counts and syntax errors under each box, the example a new
   script starts from, and the textareas kept when the code editor cannot load.
-- `test/chrome-e2e/settings.mjs`: the code editor in Chrome: its labels and
+- `test/chrome-e2e/settings.mjs`: the notice's way to Hachidori's details
+  page, and the code editor in Chrome: its labels and
   descriptions, the example, Tab, Esc then Tab, search, syntax errors, Load .js
   file and Save, and code that keeps 4.5:1 in five colours in every palette.
 - `test/chrome-e2e/search.mjs`, `test/chrome-dark-reader.mjs` and the Firefox

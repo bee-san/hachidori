@@ -21,7 +21,7 @@ test("Advanced → User scripts holds the one warning, and Design points to it",
   assert.match(section, new RegExp(`id="custom-javascript-warning">${warning.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}</p>`, "u"));
   assert.match(section, /id="user-script-javascript"/u);
   assert.match(section, /id="user-script-css"/u);
-  assert.match(section, /once Allow User Scripts is on for Hachidori on its Extensions page/u);
+  assert.match(section, /once Allow User Scripts is on in Hachidori's details/u);
   assert.equal(html.includes("opt-custom-popup-javascript"), false);
   const design = html.slice(html.indexOf('id="design"'), html.indexOf('id="audio"'));
   assert.match(design, /id="custom-javascript-moved">Custom JavaScript is in <a href="#user-scripts">/u);
