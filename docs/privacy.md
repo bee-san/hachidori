@@ -228,6 +228,21 @@ Anki with the note like any screenshot. Nothing of it leaves the page otherwise.
 browser does not record YouTube lines, and Firefox records no line audio or
 GIF.
 
+## Crunchyroll sentence audio and GIF (experimental)
+
+Settings → Advanced → Experimental features → **Crunchyroll mining** is off by
+default. Crunchyroll's Japanese subtitles come from a user script you install,
+such as the Script Store's Jimaku Player, which fetches them from jimaku.cc
+with your own jimaku.cc API key ([user scripts](user-scripts.md)). While the
+switch is on, Hachidori keeps the subtitle timing that script hands it in the
+page's memory and requests nothing from Crunchyroll. The video's sound is kept
+and cut as for Netflix above: the last 30 seconds heard at normal speed, in
+the page's memory, and a line goes to your configured AnkiConnect server only
+when you add a note that maps `{sentence-audio}`. A `{gif}` field gets a short
+looping animation of the line, recorded from the tab as for Netflix and cut to
+the video. Nothing of it leaves the page otherwise. A linked browser
+does not record Crunchyroll lines, and Firefox records no line audio or GIF.
+
 ## Backups, retention and deletion
 
 Data saved in the extension remains until you remove it, replace it by restoring

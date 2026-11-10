@@ -31,6 +31,11 @@ list order, top to bottom.
   `hachidori-popup-hidden` fire on `window`.
 - On the search page, `globalThis.HDSearchHistory` is the search history
   ([search history](search-history.md#for-user-scripts-hdsearchhistory)).
+- On Crunchyroll, a package that shows subtitles can hand Hachidori their
+  timing, so that with Experimental features → **Crunchyroll mining** on, a
+  note from a line gets its audio, its animation and the whole line as the
+  sentence. The Script Store's Jimaku Player does; the attributes and events
+  are in [Crunchyroll mining](architecture.md#crunchyroll-mining-experimental).
 - Each package runs inside a function of its own (`custom-javascript.js`), so
   `return` ends it early, as in `if (!globalThis.HDSearchHistory) return;`, and
   two packages can both declare `const popup`. It is a classic script, so there
