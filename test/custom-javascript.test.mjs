@@ -75,7 +75,7 @@ test("switched-on JavaScript registers after the popup bridge, one source per pa
   assert.deepEqual(calls, [
     ["get", { ids: ["hachidori-custom-javascript"] }],
     ["unregister", { ids: ["hachidori-custom-javascript"] }],
-    ["register", [{ id: "hachidori-custom-javascript", matches: ["<all_urls>"],
+    ["register", [{ id: "hachidori-custom-javascript", matches: ["<all_urls>"], allFrames: true,
       js: [{ file: "custom-javascript-bridge.js" }, { code: userScriptSource(first) }, { code: userScriptSource(second) }],
       runAt: "document_idle", world: "USER_SCRIPT" }]],
   ]);

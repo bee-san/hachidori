@@ -629,6 +629,32 @@ describe("search page", () => {
       await writeOptions({ userScripts: userScripts(`${script}\n`) });
       for (let attempt = 0; attempt < 10 && !onPage; attempt += 1) onPage = await read();
       allowed = await searched();
+      // YouTube's live chat has its own reader and popup inside an iframe (#729).
+      const tab = await browser.newPage();
+      try {
+        await tab.goto(pageUrl, { waitUntil: "load" });
+        await tab.evaluate(src => {
+          const frame = document.createElement("iframe");
+          frame.id = "script-frame";
+          frame.src = src;
+          frame.style.cssText = "width: 760px; height: 420px";
+          document.body.prepend(frame);
+        }, new URL("frame", pageUrl).href);
+        const frame = await (await tab.$("#script-frame")).contentFrame();
+        await frame.waitForSelector("#frame-verb");
+        await frame.waitForFunction(() => document.documentElement.dataset.customScript === "ran");
+        const box = await (await frame.$("#frame-verb")).boundingBox();
+        await tab.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+        const reached = await popupRoot(tab, frame.url()).waitFor(root => {
+          const popup = root.querySelector(".gsm-hoshidicts-popup");
+          return popup && !popup.hidden && popup.dataset.customScript === "reached"
+            ? { mode: root.mode, exposed: root.host.shadowRoot !== null } : null;
+        });
+        check("user scripts run in a chat frame and customize its closed popup without exposing it to the page",
+          reached.mode === "closed" && reached.exposed === false, JSON.stringify(reached));
+      } finally {
+        await tab.close();
+      }
     } finally {
       await writeOptions({ userScripts: originalOptions.userScripts ?? [] });
       await allowUserScripts(false);

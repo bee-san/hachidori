@@ -122,6 +122,7 @@ const E2E_PLANNED = [
   "browser shortcuts list Firefox's commands and open Firefox's shortcut manager",
   "A user script's JavaScript runs on pages once Firefox grants user scripts",
   "A user script reaches the popup through host.shadowRoot while the page sees no root",
+  "A user script runs in a chat frame and reaches its closed popup while the page sees no root",
   "Get debug info reports Firefox and its IndexedDB engine",
   // search page
   "the popup window opens one search page and brings it forward instead of opening another",
