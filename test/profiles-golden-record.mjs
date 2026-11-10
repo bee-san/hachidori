@@ -22,6 +22,13 @@
 // #673's third Compact glossaries value, and Advanced → User scripts'
 // `userScripts` in place of `customPopupJavascript`, which migrates into it,
 // with each package's Script Store source).
+// When Google Docs and YouTube mining became global options, on by default,
+// and Netflix preview screenshots folded into Netflix mining, the golden was
+// not re-recorded: each recorded result lost those three experimental flags
+// and gained `googleDocs` and `youtubeMining` at their defaults, in
+// DEFAULT_OPTIONS order, after reader-options.js was checked to give exactly
+// that for every record (and the old stored hash once `experimental` is put
+// back), as its `recordedFrom` says.
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one
