@@ -88,9 +88,7 @@ const theme = EditorView.theme({
 });
 
 // What the parser could not read, one diagnostic for each line it is on, as
-// the code is typed. Hachidori runs a script whatever this finds, so it only
-// marks the lines; it finds no error in valid code that the parser knows, and
-// it knows today's JavaScript and CSS.
+// the code is typed. It only marks the lines: Save still saves.
 function syntaxErrors({ state }) {
   const tree = ensureSyntaxTree(state, state.doc.length, 100);
   const lines = new Map();
@@ -104,7 +102,7 @@ function syntaxErrors({ state }) {
 }
 
 // Sets the --code-* colours on `editor` for the palette it shows now.
-export function fitColours(editor) {
+function fitColours(editor) {
   const document = editor.ownerDocument;
   const probe = document.createElement("span");
   const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
