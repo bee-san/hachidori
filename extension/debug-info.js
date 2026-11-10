@@ -64,9 +64,10 @@ function summariseCustomDictionary(value) {
   const { text, languages, ...rest } = value ?? {};
   if (languages) rest.languages = Object.fromEntries(Object.entries(languages)
     .map(([code, document]) => [code, summariseCustomDictionary(document)]));
-  return typeof text === "string"
-    ? { ...rest, text: { omitted: true, characters: text.length, lines: text === "" ? 0 : text.split(/\r?\n/u).length } }
-    : languages ? rest : value;
+  if (typeof text === "string") {
+    return { ...rest, text: { omitted: true, characters: text.length, lines: text === "" ? 0 : text.split(/\r?\n/u).length } };
+  }
+  return languages ? rest : value;
 }
 
 // One snapshot, or one per source key once profiles name several (languages.md 12).
