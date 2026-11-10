@@ -255,8 +255,9 @@ async function addKnownWords() {
     // of the language the page now shows.
     if (language !== languageName()) return;
     input.value = "";
+    const noun = reply.added === 1 ? "word" : "words";
     const message = reply.added === 0 ? "All pasted words are already known."
-      : `${numberFormat.format(reply.added)} ${reply.added === 1 ? "word" : "words"} marked as known.`;
+      : `${numberFormat.format(reply.added)} ${noun} marked as known.`;
     setSectionStatus("known-words-status", message, "ready", true);
   } catch (error) {
     if (language === languageName()) {
