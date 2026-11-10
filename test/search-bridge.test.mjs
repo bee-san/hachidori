@@ -16,12 +16,16 @@ const literals = new Set(contentScripts.flatMap(source => [...source.matchAll(/[
 // What the content scripts receive rather than send, and Netflix's and YouTube's own requests.
 const RECEIVED = ["hd_anki_document", "hd_anki_word_status_changed", "hd_audio_playing", "hd_reader_command"];
 const VIDEO_SITES = ["hd_netflix_load", "hd_youtube_load"];
+// An overlay's page-world user scripts: an overlay has no search page, whose
+// sandboxed frame runs them itself.
+const OVERLAY_ONLY = ["hd_user_scripts_run"];
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
 test("the search page forwards every request the reader sends, and the events and keys it reads", () => {
   const forwarded = [...READER_REQUESTS.values()].flatMap(types => [...types]).sort();
-  assert.deepEqual(forwarded, [...literals].filter(type => !RECEIVED.includes(type) && !VIDEO_SITES.includes(type)).sort());
+  assert.deepEqual(forwarded, [...literals].filter(type => !RECEIVED.includes(type) && !VIDEO_SITES.includes(type)
+    && !OVERLAY_ONLY.includes(type)).sort());
   for (const target of READER_EVENTS) {
     assert.ok(contentScripts.some(source => source.includes(`"${target}"`)), `${target} names no reader listener`);
   }
