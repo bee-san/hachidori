@@ -13,10 +13,11 @@ import { lookupAnkiIndex, lookupAnkiIndexMany } from "./anki-index.js";
 import { ANKI_INDEX_KEY, createAnkiDuplicateIndex } from "./anki-index-cache.js";
 import { assertBackupSnapshot, assertRestoredProfileRecords, backupRevisions } from "./backup-state.js";
 import { AUTOMATIC_BACKUPS_KEY, automaticBackupStore, validAutomaticBackups } from "./backup-automatic.js";
+import { createMcpHost } from "./mcp-host.js";
 import { API_REQUESTS } from "./api-host.js";
 import { SHARING_LOCAL_STATE_KEY } from "./sharing-client.js";
 import {
-  LINKED_ANKI_CAPABILITY, LINKED_IMPORT_TARGET, allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest,
+  MCP_TARGET, LINKED_ANKI_CAPABILITY, LINKED_IMPORT_TARGET, allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest,
   allowLinkedAnkiSetupRequest, allowLinkedImportRequest, forwardableRequest,
 } from "./sharing-protocol.js";
 import {
@@ -1263,6 +1264,19 @@ function assertOwnStateWrite(sender) {
   }
 }
 
+let mcpHost;
+function getMcpHost() {
+  mcpHost ??= createMcpHost({
+    read: () => chrome.storage.local.get([OPTIONS_KEY, DICTIONARY_STATE_KEY, LANGUAGE_SELECTION_KEY]),
+    writeOptions: message => WORKER_HANDLERS.hd_options_write(message),
+    writeSelection: message => WORKER_HANDLERS.hd_language_selection_write(message),
+    userScripts: () => chrome.userScripts.getScripts(),
+    themes: async () => (await fetch(chrome.runtime.getURL("vendor/themes/index.json"))).json(),
+    version: chrome.runtime.getManifest().version,
+  });
+  return mcpHost;
+}
+
 async function dispatchSharedRequest(message, clientId, capabilities = []) {
   const sender = {
     id: chrome.runtime.id,
@@ -1276,6 +1290,9 @@ async function dispatchSharedRequest(message, clientId, capabilities = []) {
   };
   try {
     switch (message.target) {
+      case MCP_TARGET:
+        ordinary();
+        return workerReply(message, await serialiseStorage(() => getMcpHost()(message)));
       case TARGET:
         if (API_REQUESTS.has(message.type)) return await getApiHost()(message);
         ordinary();

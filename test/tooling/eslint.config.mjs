@@ -42,7 +42,7 @@ const INJECTED = ["netflix-preview.js", "youtube-frame.js"];
 // The MV3 service worker module and the modules only it loads.
 const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
-  "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
+  "mcp-host.js", "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
   "custom-javascript.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
   "site-scripts.js", "youtube.js", "background-anki.js", "background-backup.js", "background-core.js",
   "background-netflix.js", "background-requests.js", "background-sharing.js", "background-updates.js",

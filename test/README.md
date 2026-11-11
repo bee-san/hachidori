@@ -907,3 +907,12 @@ compiler. Nothing else needs a native compiler.
 - Content scripts do not run on `chrome-extension://`, `about:blank`, or `file://`
   without a per-extension opt-in, so the Chrome suite serves its reading pages
   over `http://127.0.0.1`.
+
+## MCP configuration
+
+`node --test test/mcp-host.test.mjs` exercises MCP requests through the production
+shared-request dispatcher: nested settings patches, credential preservation,
+stale revisions, script edits and explicit host-language selection. Generate
+fixtures first as for the other service-worker contract suites. The companion
+hachidori-mcp repository tests the stdio CLI and the real Python relay/Chromium
+connection.
