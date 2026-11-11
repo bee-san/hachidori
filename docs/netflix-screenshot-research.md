@@ -102,9 +102,11 @@ Its [verification record](https://github.com/TomaszJanusz/Theater-Mode-Everywher
 reports a live Netflix preview in Brave Beta on 7 October 2026. That is the
 other project's reported verification, not a Hachidori end-to-end result.
 
-This is the approach Netflix mining uses for `{screenshot}`. It is an explicit
-choice because it substitutes a lower-resolution, approximate
-scene image for the exact screen. Hachidori obtains the player's existing
+This is the approach Netflix mining uses for a `{screenshot}` whose cropped
+viewport picture comes out black, and for one not from a subtitle. It
+substitutes a lower-resolution, approximate scene image for the exact screen,
+so a subtitle note keeps the viewport picture whenever Chrome shows the video
+in it. Hachidori obtains the player's existing
 preview on demand and feeds its JPEG into the existing Anki screenshot
 lifecycle. It changes no DRM settings, extracts no content keys, downloads no
 video, and requires no recording or replay. Missing previews produce a useful
