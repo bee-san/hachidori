@@ -16,6 +16,51 @@ export function mergeMcpPatch(current, patch) {
     .map(key => [key, Object.hasOwn(patch, key) ? mergeMcpPatch(current?.[key], patch[key]) : current[key]]));
 }
 
+// Anki's flat fields mirror its first Template for older readers. A supplied
+// Templates array replaces that projection; a flat patch edits the first one.
+function syncAnkiTemplate(anki, source, keys) {
+  const first = anki.templates?.[0];
+  if (Object.hasOwn(source, "templates")) {
+    if (mcpObject(first)) for (const key of keys) anki[key] = first[key];
+    return;
+  }
+  for (const key of keys) {
+    if (Object.hasOwn(source, key)) first[key] = anki[key];
+  }
+}
+
+function optionsPatch(options, source, optionsApi) {
+  if (!mcpObject(source)) throw new Error("Supply a settings patch object.");
+  for (const key of Object.keys(source)) {
+    if (!Object.hasOwn(optionsApi.DEFAULT_OPTIONS, key)) throw new Error(`Unknown setting: ${key}`);
+  }
+  // Merge only supplied keys; the ordinary writer validates values and refuses
+  // a stale baseRevision.
+  const patch = Object.fromEntries(Object.entries(source)
+    .map(([key, value]) => [key, mergeMcpPatch(options[key], value)]));
+  if (mcpObject(patch.anki)) syncAnkiTemplate(patch.anki, source.anki, optionsApi.ANKI_TEMPLATE_CONFIG_KEYS);
+  return patch;
+}
+
+function scriptsPatch(scripts, message) {
+  const index = scripts.findIndex(script => script.id === message.id);
+  if (typeof message.id !== "string" || !message.id) throw new Error("Supply a stable userscript id.");
+  if (message.remove === true) {
+    if (index < 0) throw new Error("The userscript no longer exists.");
+    scripts.splice(index, 1);
+    return scripts;
+  }
+  if (!mcpObject(message.script) || Object.keys(message.script).some(key => !["name", "enabled", "javascript", "css"].includes(key))) {
+    throw new Error("Supply userscript name, enabled, javascript and/or css fields.");
+  }
+  const previous = index < 0 ? { id: message.id, name: "", enabled: true, javascript: "", css: "" } : scripts[index];
+  const script = { ...previous, ...message.script };
+  if (["name", "javascript", "css"].some(key => Object.hasOwn(message.script, key) && script[key] !== previous[key])) delete script.store;
+  if (index < 0) scripts.push(script);
+  else scripts[index] = script;
+  return scripts;
+}
+
 export function createMcpHost({ read, writeOptions, writeSelection, userScripts, themes, version }) {
   const optionsApi = globalThis.HDReaderOptions;
   const { DEFAULT_OPTIONS, GLOBAL_OPTION_KEYS, NUMBER_RANGES, OPTION_REQUIREMENTS, EXPERIMENTAL_FEATURES,
@@ -57,51 +102,14 @@ export function createMcpHost({ read, writeOptions, writeSelection, userScripts,
           themes: await themes(), userScriptRuntime: await scriptStatus() });
       }
       case "hd_mcp_options_write": {
-        if (!mcpObject(message.options)) throw new Error("Supply a settings patch object.");
-        for (const key of Object.keys(message.options)) {
-          if (!Object.hasOwn(DEFAULT_OPTIONS, key)) throw new Error(`Unknown setting: ${key}`);
-        }
-        // Merge only the supplied top-level keys; the ordinary writer validates
-        // unknown keys and values and refuses a stale baseRevision.
-        const patch = Object.fromEntries(Object.entries(message.options)
-          .map(([key, value]) => [key, mergeMcpPatch(options[key], value)]));
-        // Anki's flat fields mirror its first Template for older readers.
-        // Keep that projection in sync when a caller supplies a new Templates
-        // array, or apply a legacy flat patch to the first Template.
-        if (mcpObject(patch.anki)) {
-          const source = message.options.anki;
-          if (Object.hasOwn(source, "templates")) {
-            const first = patch.anki.templates?.[0];
-            if (mcpObject(first)) for (const key of optionsApi.ANKI_TEMPLATE_CONFIG_KEYS) patch.anki[key] = first[key];
-          } else {
-            const first = patch.anki.templates[0];
-            for (const key of optionsApi.ANKI_TEMPLATE_CONFIG_KEYS) {
-              if (Object.hasOwn(source, key)) first[key] = patch.anki[key];
-            }
-          }
-        }
+        const patch = optionsPatch(options, message.options, optionsApi);
         return redactSecrets(await writeOptions({ ...message, type: "hd_options_write", profileId, options: patch }));
       }
       case "hd_mcp_select_profile":
         if (!optionsApi.languagesEnabled(stored.options)) throw new Error("Enable Multiple languages before selecting a lookup language.");
         return writeSelection({ ...message, type: "hd_language_selection_write", activeProfileId: profileId });
       case "hd_mcp_user_script_write": {
-        const scripts = options.userScripts;
-        const index = scripts.findIndex(script => script.id === message.id);
-        if (typeof message.id !== "string" || !message.id) throw new Error("Supply a stable userscript id.");
-        if (message.remove === true) {
-          if (index < 0) throw new Error("The userscript no longer exists.");
-          scripts.splice(index, 1);
-        } else {
-          if (!mcpObject(message.script) || Object.keys(message.script).some(key => !["name", "enabled", "javascript", "css"].includes(key))) {
-            throw new Error("Supply userscript name, enabled, javascript and/or css fields.");
-          }
-          const previous = index < 0 ? { id: message.id, name: "", enabled: true, javascript: "", css: "" } : scripts[index];
-          const script = { ...previous, ...message.script };
-          if (["name", "javascript", "css"].some(key => Object.hasOwn(message.script, key) && script[key] !== previous[key])) delete script.store;
-          if (index < 0) scripts.push(script);
-          else scripts[index] = script;
-        }
+        const scripts = scriptsPatch(options.userScripts, message);
         const result = await writeOptions({ ...message, type: "hd_options_write", profileId, options: { userScripts: scripts } });
         return redactSecrets(result);
       }
