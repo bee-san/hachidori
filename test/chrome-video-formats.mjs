@@ -50,7 +50,9 @@ try {
       const track = decoder.tracks.selectedTrack;
       const frames = [];
       for (let index = 0; index < track.frameCount; index += 1) {
-        const { image } = await decoder.decode({ frameIndex: index });
+        const { image } = await decoder.decode({ frameIndex: index }).catch(error => {
+          throw new Error(`${format} frame ${index}: ${error.message}`, { cause: error });
+        });
         const canvas = new OffscreenCanvas(width, height), context = canvas.getContext("2d");
         context.drawImage(image, 0, 0);
         frames.push({ value: context.getImageData(20, 20, 1, 1).data[0], duration: image.duration });
@@ -65,15 +67,23 @@ try {
     stillContext.fillStyle = "rgb(120, 120, 120)";
     stillContext.fillRect(0, 0, stillCanvas.width, stillCanvas.height);
     const stillBytes = await encodeStillAvif(stillCanvas);
+    await globalThis.saveVideoFormat("still.avif", Array.from(stillBytes));
     const stillDecoder = new ImageDecoder({ data: stillBytes, type: "image/avif" });
-    const { image } = await stillDecoder.decode();
-    stillContext.clearRect(0, 0, stillCanvas.width, stillCanvas.height);
-    stillContext.drawImage(image, 0, 0);
-    results.still = { brand: new TextDecoder().decode(stillBytes.subarray(4, 12)),
-      size: [image.displayWidth, image.displayHeight], frames: stillDecoder.tracks.selectedTrack.frameCount,
-      value: stillContext.getImageData(160, 90, 1, 1).data[0] };
-    image.close();
-    stillDecoder.close();
+    let stillImage;
+    try {
+      await stillDecoder.tracks.ready;
+      stillImage = await createImageBitmap(new Blob([stillBytes], { type: "image/avif" }));
+      stillContext.clearRect(0, 0, stillCanvas.width, stillCanvas.height);
+      stillContext.drawImage(stillImage, 0, 0);
+      results.still = { brand: new TextDecoder().decode(stillBytes.subarray(4, 12)),
+        size: [stillImage.width, stillImage.height], frames: stillDecoder.tracks.selectedTrack.frameCount,
+        value: stillContext.getImageData(160, 90, 1, 1).data[0] };
+    } catch (error) {
+      throw new Error(`still AVIF: ${error.message}`, { cause: error });
+    } finally {
+      stillImage?.close();
+      stillDecoder.close();
+    }
     const { encodeSentenceAudio } = await import("./sentence-audio.js");
     const context = new AudioContext();
     for (const [name, format, rate] of [["mp3", "mp3", 48_000], ["opus", "opus", 48_000], ["opus-44100.opus", "opus", 44_100]]) {

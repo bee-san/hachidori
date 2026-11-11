@@ -18,8 +18,12 @@ const LANGUAGES = JSON.parse(read("test/data/profile-languages.json"));
 const plain = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 // These shared media settings were added after the pre-profile recording.
 // Keep its original values and hashes authoritative for every older key.
-const beforeVideoFormats = value => Object.fromEntries(Object.entries(plain(value))
-  .filter(([key]) => !["videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality"].includes(key)));
+function beforeVideoFormats(value) {
+  const options = Object.fromEntries(Object.entries(plain(value))
+    .filter(([key]) => !["videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality"].includes(key)));
+  delete options.experimental?.avifScreenshots;
+  return options;
+}
 
 // A fresh reader-options.js, optionally beside a registry of fixture packs.
 // Its results are copied into this realm, except a result that is one of the

@@ -119,7 +119,7 @@ async function checkStartupPractice(startup, browser, startupUrl) {
     return reply;
   });
   check("startup screenshot capture resolves its own live extension document",
-    screenshot.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.(?:avif|jpg)$/u.test(screenshot.filename ?? ""),
+    screenshot.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(screenshot.filename ?? ""),
     JSON.stringify(screenshot));
   const originalOpacity = await startup.evaluate(async () => {
     window.__practiceScene = document.getElementById("setup-practice-scene");

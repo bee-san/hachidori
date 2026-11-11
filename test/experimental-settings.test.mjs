@@ -35,10 +35,10 @@ test("all production experimental switches start unchecked and preserve explicit
   assert.equal(switches.length, EXPERIMENTAL_FEATURES.length);
   assert.ok(switches.every(input => !input.checked));
 
-  const feature = EXPERIMENTAL_FEATURES[0];
-  controller.render(normaliseOptions({ experimental: { [feature.id]: true } }).experimental);
+  const experimental = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, true]));
+  controller.render(normaliseOptions({ experimental }).experimental);
   assert.deepEqual(switches.filter(input => input.checked).map(input => input.id),
-    [`opt-experimental-${feature.id}`]);
+    EXPERIMENTAL_FEATURES.map(feature => `opt-experimental-${feature.id}`));
 });
 
 test("each registered feature renders one labelled switch that reports changes", () => {

@@ -15,6 +15,7 @@
     "hd_anki_browse",
     "hd_anki_discover",
     "hd_anki_document",
+    "hd_anki_encode_screenshot",
     "hd_anki_fields",
     "hd_anki_index_refresh",
     "hd_anki_maturity",

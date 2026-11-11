@@ -203,11 +203,6 @@ async function youtubeFrameStage() {
   const chrome = makeChrome("youtube-frame", bus, storage);
   const captures = [];
   const injections = [];
-  bus.addListener("youtube-screenshot-render", (message, _sender, reply) => {
-    if (message.type !== "hd_anki_encode_screenshot" || message.relayed !== true) return false;
-    reply({ ok: true, dataUrl: "data:image/jpeg;base64,c2hvdA==" });
-    return false;
-  });
   const tab = { id: 7, active: true, url: WATCH, windowId: 3 };
   const documentId = "watch-document";
   chrome.tabs = {

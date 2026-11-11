@@ -3466,10 +3466,11 @@ extension contexts, which supplies its tab ID and confirms the same document
 without content-script messaging. Reloading the
 same URL or retaining an old document in the back/forward cache cannot pass as
 the document that requested the picture.
-For uncropped local viewport screenshots, the worker captures PNG and sends
-those pixels to the offscreen document. It encodes one still AVIF through the
-browser's AV1 encoder, with a JPEG quality 95 fallback from the same pixels.
-Linked screenshots and video-specific screenshot paths use JPEG.
+Screenshots use JPEG by default. **AVIF screenshots** under **Advanced →
+Experimental features** captures uncropped local viewports as PNG, then encodes
+one still AVIF in the offscreen document. When AV1 encoding fails it encodes
+JPEG at quality 95 from the same pixels. Linked screenshots and video-specific
+screenshot paths use JPEG.
 Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The

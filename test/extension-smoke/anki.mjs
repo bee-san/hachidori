@@ -339,11 +339,19 @@ async function ankiScreenshotStage() {
       return Promise.resolve({ ok: true, async json() { return { result: body.params.filename, error: null }; } });
     },
   });
-  await storage.api().local.set({ options: { revision: 1, anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" } } });
+  const screenshotOptions = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
+  await storage.api().local.set({ options: { revision: 1, anki: screenshotOptions } });
   const ask = (sender) => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
     requestId: "anki-screenshot", request: {} }, sender);
   const reader = { id: chrome.runtime.id, url: tab.url, frameId: 0, documentId, tab: { id: tab.id } };
 
+  const jpeg = await ask(reader);
+  check("Anki captures JPEG directly until experimental AVIF screenshots are enabled",
+    jpeg?.ok === true && jpeg.filename.endsWith(".jpg") && captures[0]?.options.format === "jpeg" && encodes.length === 0,
+    JSON.stringify({ jpeg, captures, encodes }));
+
+  await storage.api().local.set({ options: { revision: 2, anki: screenshotOptions,
+    experimental: { avifScreenshots: true } } });
   const taken = await ask(reader);
   screenshotFormat = "jpeg";
   tab = { ...tab, url: "https://reader.test/watch/1234?trackId=example%3Fvalue#player" };
@@ -419,8 +427,8 @@ async function ankiScreenshotStage() {
   const searchTabTaken = await ask({ ...searchPage, frameId: 0, tab: { id: tab.id } });
   const toolbarRefused = await ask({ id: chrome.runtime.id, url: chrome.runtime.getURL("toolbar.html"), documentId });
   documentId = startupDocument;
-  await storage.api().local.set({ options: { revision: 2,
-    anki: { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic", captureScreenshot: false } } });
+  await storage.api().local.set({ options: { revision: 3,
+    anki: { ...screenshotOptions, captureScreenshot: false } } });
   tab = { ...tab, url: "https://reader.test/page" };
   const switchedOff = await ask(reader);
   check("a mining screenshot captures the asking page once it is still the window's own, and never any other page",
@@ -429,7 +437,7 @@ async function ankiScreenshotStage() {
       // The picture waits for the note: capturing talks to nothing but the tab.
       && uploads.length === 0
       && retried?.ok === true && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(retried.filename)
-      && captures.every(({ windowId, options }) => windowId === 3 && options.format === "png")
+      && captures.slice(1).every(({ windowId, options }) => windowId === 3 && options.format === "png")
       && encodes.length === 7 && encodes.every(dataUrl => dataUrl === "data:image/png;base64,c2hvdA==")
       && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
       && capturesAfterSwitch === capturesBeforeSwitch + 1
@@ -465,8 +473,7 @@ async function ankiScreenshotStage() {
     duringPreview();
     return [{ frameId: 0, documentId: reader.documentId, result: previewResult }];
   } };
-  const screenshotOptions = { ...globalThis.HDReaderOptions.normaliseOptions({}).anki, model: "Basic" };
-  await storage.api().local.set({ options: { revision: 3, anki: screenshotOptions } });
+  await storage.api().local.set({ options: { revision: 4, anki: screenshotOptions } });
   documentId = reader.documentId;
   tab = { ...tab, url: "https://www.netflix.com/watch/81000001?trackId=123" };
   const netflixReader = { ...reader, url: tab.url, tab: { id: tab.id, url: tab.url } };
@@ -476,7 +483,7 @@ async function ankiScreenshotStage() {
     defaultNetflix.ok === true && captures.length === beforeDefault + 1 && injections.length === 0,
     JSON.stringify({ defaultNetflix, captures: captures.length, injections: injections.length }));
 
-  await storage.api().local.set({ options: { revision: 4, anki: screenshotOptions,
+  await storage.api().local.set({ options: { revision: 5, anki: screenshotOptions,
     experimental: { netflixMining: true } } });
   const beforePreview = captures.length;
   const previewTaken = await ask(netflixReader);
