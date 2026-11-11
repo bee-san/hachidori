@@ -33,7 +33,8 @@ function boxes(data, start = 0) {
   return result;
 }
 
-function primaryImage(sample, config, width, height) {
+function primaryImage(sample, config, width, height, mediaOffset) {
+  const inline = mediaOffset === undefined;
   const properties = box("iprp", box("ipco",
     full("ispe", 0, 0, number(width), number(height)),
     full("pixi", 0, 0, new Uint8Array([3, 8, 8, 8])), config),
@@ -41,11 +42,11 @@ function primaryImage(sample, config, width, height) {
   return full("meta", 0, 0,
     full("hdlr", 0, 0, number(0), text("pict"), new Uint8Array(13)),
     full("pitm", 0, 0, number(1, 2)),
-    // construction_method=1: the extent is relative to idat, not file offsets.
-    full("iloc", 1, 0, new Uint8Array([0x44, 0]), number(1, 2), number(1, 2), number(1, 2),
-      number(0, 2), number(1, 2), number(0), number(sample.length)),
+    // The animated poster uses an idat-relative extent. Stills point to mdat.
+    full("iloc", inline ? 1 : 0, 0, new Uint8Array([0x44, 0]), number(1, 2), number(1, 2),
+      ...(inline ? [number(1, 2)] : []), number(0, 2), number(1, 2), number(mediaOffset ?? 0), number(sample.length)),
     full("iinf", 0, 0, number(1, 2), full("infe", 2, 0, number(1, 2), number(0, 2), text("av01"), new Uint8Array(1))),
-    properties, box("idat", sample));
+    properties, ...(inline ? [box("idat", sample)] : []));
 }
 
 function indefiniteHeader(type, data, durationOffset) {
@@ -103,8 +104,12 @@ async function encodeAvifImages(entries, width, height, quality, stillCanvas) {
   const parts = boxes(new Uint8Array(target.buffer));
   const config = av1Configuration(parts);
   if (!first || !config) throw new Error("The AV1 encoder produced no AVIF image.");
-  const primary = primaryImage(first, config, width, height);
-  if (stillCanvas) return join([box("ftyp", text("avif"), number(0), text("avifmif1")), primary]);
+  if (stillCanvas) {
+    const ftyp = box("ftyp", text("avif"), number(0), text("avifmif1"));
+    const metaLength = primaryImage(first, config, width, height, 0).length;
+    const meta = primaryImage(first, config, width, height, ftyp.length + metaLength + 8);
+    return join([ftyp, meta, box("mdat", first)]);
+  }
   const ftyp = box("ftyp", text("avis"), number(0), text("avisavifmsf1mif1"));
   const shift = ftyp.length - parts[0].data.length;
   let timescale;
@@ -137,5 +142,5 @@ async function encodeAvifImages(entries, width, height, quality, stillCanvas) {
     return data;
   }
   const movie = parts.slice(1).map(rewrite);
-  return join([ftyp, ...movie, primary]);
+  return join([ftyp, ...movie, primaryImage(first, config, width, height)]);
 }
