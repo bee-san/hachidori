@@ -73,7 +73,7 @@ export function encodeStillAvif(canvas) {
   return encodeAvifImages([{ delayMs: 1000 / 30 }], canvas.width, canvas.height, quality, canvas);
 }
 
-export function encodeAvif(entries, width, height, quality) {
+export async function encodeAvif(entries, width, height, quality) {
   return encodeAvifImages(entries, width, height, new Quality(quality / 100));
 }
 
