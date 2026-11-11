@@ -419,7 +419,7 @@ async function ankiScreenshotStage() {
       // The picture waits for the note: capturing talks to nothing but the tab.
       && uploads.length === 0
       && retried?.ok === true && captures.filter(({ windowId }) => windowId === 3).length === captures.length
-      && captures.every(({ options }) => options.format === "jpeg")
+      && captures.every(({ options }) => options.format === "jpeg" && options.quality === 95)
       && switchedAway?.ok === false && switchedAway.error.includes("no longer the active tab")
       && capturesAfterSwitch === capturesBeforeSwitch + 1
       && givenUp?.ok === false && givenUp.error.includes("quota")
