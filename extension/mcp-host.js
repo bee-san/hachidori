@@ -1,6 +1,7 @@
 // Configuration for native MCP clients, over the existing sharing relay.
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./reader-options.js";
+import "./vendor/languages/registry.js";
 import { redactSecrets } from "./debug-log.js";
 import { SCRIPT_ID } from "./custom-javascript.js";
 
@@ -39,7 +40,6 @@ export function createMcpHost({ read, writeOptions, writeSelection, userScripts,
     const options = projectOptions(stored.options, profileId, { masked: false });
     switch (message.type) {
       case "hd_mcp_describe": {
-        await import("./vendor/languages/registry.js");
         return redactSecrets({ version, profileId, revision: stored.options?.revision ?? 0,
           activeProfileId: activeProfileId(stored.options, stored.languageSelection),
           selection: normaliseLanguageSelection(stored.languageSelection),

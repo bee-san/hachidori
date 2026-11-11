@@ -758,8 +758,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/^export\s+/gmu, "");
   const glossary = readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8");
   const mcpHostSource = readFileSync(resolve(EXTENSION, "mcp-host.js"), "utf8")
-    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "")
-    .replace('await import("./vendor/languages/registry.js");', "");
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const apiHost = readFileSync(resolve(EXTENSION, "api-host.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+\{[^}]*\}\s*from[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
