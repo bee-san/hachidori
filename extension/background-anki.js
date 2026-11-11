@@ -219,7 +219,8 @@ function screenshotSource(tab, sender, options, readerPage, videoFrame, crop) {
 
 // One picture from `source`: a YouTube player that shows no frame leaves the
 // viewport's picture to be taken.
-async function captureFrom(tab, sender, source) {
+async function captureFrom(tab, sender, source, avif) {
+  if (avif) return chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
   if (source === "netflix-preview") return captureNetflixPreviewInDocument(tab, sender);
   const frame = source === "youtube-frame" ? await captureYouTubeFrameInDocument(tab, sender) : null;
   return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
@@ -277,9 +278,11 @@ async function captureSenderViewport(sender, options, videoFrame = false, crop =
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, readerPage);
     const source = screenshotSource(tab, sender, options, readerPage, videoFrame, crop);
+    // Linked browsers send JPEG to hosts that may still require it.
+    const avif = source === null && crop === null && !sharingLinked;
     let captured;
     try {
-      captured = await captureFrom(tab, sender, source);
+      captured = await captureFrom(tab, sender, source, avif);
     } catch (error) {
       // A preview is not the viewport capture Chrome rate-limits.
       if (source === "netflix-preview" || attempt >= 2
@@ -292,6 +295,10 @@ async function captureSenderViewport(sender, options, videoFrame = false, crop =
     const afterCapture = await screenshotOwnedTab(sender, readerPage);
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
+    }
+    if (avif) {
+      const reply = await sendAnkiRequest("hachidori-anki-render", { type: "hd_anki_encode_screenshot", dataUrl: captured });
+      return reply.dataUrl;
     }
     if (crop === null || (source !== null && source !== "netflix-video")) return captured;
     const picture = await croppedJpeg(captured, crop, source === "netflix-video");

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// AVIF image-sequence metadata around Mediabunny's AV1 track. The library
+// AVIF image metadata around Mediabunny's AV1 track. The library
 // owns AV1 encoding, timing and MP4 sample tables; AVIF adds a primary image,
 // the pict handler and a repeating edit list (AVIF 1.2 §3, §7; HEIF §9.6.3).
 import { BufferTarget, Mp4OutputFormat, Output, VideoSample, VideoSampleSource, Quality } from "./vendor/mediabunny/mediabunny.js";
@@ -56,19 +56,41 @@ function indefiniteHeader(type, data, durationOffset) {
     new Uint8Array(8).fill(255), data.subarray(durationOffset + 4));
 }
 
-export async function encodeAvif(entries, width, height, quality) {
+function av1Configuration(parts) {
+  for (const type of ["moov", "trak", "mdia", "minf", "stbl"]) {
+    const part = parts.find(box => box.type === type);
+    if (!part) return null;
+    parts = boxes(part.data, 8);
+  }
+  const descriptions = parts.find(box => box.type === "stsd");
+  const entry = descriptions && boxes(descriptions.data, 16)[0];
+  return entry && boxes(entry.data, 86).find(box => box.type === "av1C")?.data;
+}
+
+export function encodeStillAvif(canvas) {
+  // A still needs finer quantization than the video quality presets use.
+  const quality = new Quality({ quantizer: 32, bitrate: 24_000_000 });
+  return encodeAvifImages([{ delayMs: 1000 / 30 }], canvas.width, canvas.height, quality, canvas);
+}
+
+export function encodeAvif(entries, width, height, quality) {
+  return encodeAvifImages(entries, width, height, new Quality(quality / 100));
+}
+
+async function encodeAvifImages(entries, width, height, quality, stillCanvas) {
   const target = new BufferTarget();
   let first = null;
   const output = new Output({ target, format: new Mp4OutputFormat({ fastStart: false }) });
-  const source = new VideoSampleSource({ codec: "av1", quality: new Quality(quality / 100),
+  const source = new VideoSampleSource({ codec: "av1", quality, latencyMode: stillCanvas ? "realtime" : undefined,
     onEncodedPacket: packet => { first ??= packet.data.slice(); } });
   output.addVideoTrack(source);
   await output.start();
-  const canvas = new OffscreenCanvas(width, height), context = canvas.getContext("2d");
+  const canvas = stillCanvas ?? new OffscreenCanvas(width, height);
+  const context = stillCanvas ? null : canvas.getContext("2d");
   let timestamp = 0;
   try {
     for (const { data, delayMs } of entries) {
-      context.putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0);
+      if (context) context.putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0);
       const sample = new VideoSample(canvas, { timestamp, duration: delayMs / 1000 });
       try { await source.add(sample); } finally { sample.close(); } // NOSONAR: Mediabunny requires ordered samples and encoder backpressure before reusing the canvas
       timestamp += delayMs / 1000;
@@ -79,9 +101,12 @@ export async function encodeAvif(entries, width, height, quality) {
     throw error;
   }
   const parts = boxes(new Uint8Array(target.buffer));
+  const config = av1Configuration(parts);
+  if (!first || !config) throw new Error("The AV1 encoder produced no AVIF image.");
+  const primary = primaryImage(first, config, width, height);
+  if (stillCanvas) return join([box("ftyp", text("avif"), number(0), text("avifmif1")), primary]);
   const ftyp = box("ftyp", text("avis"), number(0), text("avisavifmsf1mif1"));
   const shift = ftyp.length - parts[0].data.length;
-  let config;
   let timescale;
   function rewrite({ type, data }) {
     if (["moov", "trak", "mdia", "minf", "stbl"].includes(type)) {
@@ -91,11 +116,6 @@ export async function encodeAvif(entries, width, height, quality) {
       return box(type, ...children);
     }
     switch (type) {
-      case "stsd": {
-        const entry = boxes(data, 16)[0];
-        config = boxes(entry.data, 86).find(child => child.type === "av1C")?.data;
-        break;
-      }
       case "hdlr":
         // MP4 accepts QuickTime's mhlr component type; AVIF requires zero.
         data.fill(0, 12, 16);
@@ -117,6 +137,5 @@ export async function encodeAvif(entries, width, height, quality) {
     return data;
   }
   const movie = parts.slice(1).map(rewrite);
-  if (!first || !config) throw new Error("The AV1 encoder produced no AVIF image sequence.");
-  return join([ftyp, ...movie, primaryImage(first, config, width, height)]);
+  return join([ftyp, ...movie, primary]);
 }

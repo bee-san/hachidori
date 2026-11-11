@@ -1202,13 +1202,17 @@ async function verifyAnkiWrites() {
   assert.equal(sentence.fields.Expression.value, "selected [食べる]");
   assert.match(sentence.fields.Glossary.value, /eat/iu);
   assert.equal(word.fields.Screenshot, undefined);
-  const screenshotMatch = sentence.fields.Screenshot.value.match(/<img src="([^"]+)">/u);
+  const screenshotMatch = sentence.fields.Screenshot.value.match(/<img src="(hachidori-screenshot-[0-9a-f-]{36}\.(avif|jpg))">/u);
   assert.ok(screenshotMatch, `sentence screenshot field was empty: ${sentence.fields.Screenshot.value}`);
   const screenshot = await anki("retrieveMediaFile", { filename: screenshotMatch[1] });
   assert.ok(typeof screenshot === "string", "Anki returned the selected Template screenshot");
   const screenshotBytes = Buffer.from(screenshot, "base64");
   assert.ok(screenshotBytes.length > 1000, "Anki stored the selected Template screenshot");
-  assert.deepEqual([...screenshotBytes.subarray(0, 3)], [0xff, 0xd8, 0xff], "Anki stored a JPEG screenshot");
+  if (screenshotMatch[2] === "avif") {
+    assert.equal(screenshotBytes.toString("ascii", 4, 12), "ftypavif", "Anki stored an AVIF screenshot");
+  } else {
+    assert.deepEqual([...screenshotBytes.subarray(0, 3)], [0xff, 0xd8, 0xff], "Anki stored a JPEG screenshot");
+  }
   return {
     noteIds,
     word: {

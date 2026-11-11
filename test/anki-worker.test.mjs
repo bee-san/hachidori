@@ -588,8 +588,9 @@ test("a mining screenshot is held until the note is written, then stored under i
     documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [] };
 
   // Capturing stores nothing: the picture waits for a note that is going ahead.
-  const taken = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
-  assert.match(taken.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
+  const avifData = Buffer.from("\0\0\0\x1cftypavif").toString("base64");
+  const taken = await service.screenshot(async () => `data:image/avif;base64,${avifData}`);
+  assert.match(taken.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.avif$/u);
   assert.match(taken.token, /^[0-9a-f-]{36}$/u);
   assert.equal(uploads.length, 0);
 
@@ -597,7 +598,7 @@ test("a mining screenshot is held until the note is written, then stored under i
   const added = await service.submit({ ...request, configKey: status.configKey, screenshot: taken });
   assert.equal(added.state, "added");
   assert.deepEqual(added.warnings, []);
-  assert.deepEqual(uploads, [{ filename: taken.filename, data: "c2hvdA==", deleteExisting: false, apiKey: "local-key" }]);
+  assert.deepEqual(uploads, [{ filename: taken.filename, data: avifData, deleteExisting: false, apiKey: "local-key" }]);
   assert.equal(notes.get(12).Audio, `<img src="${taken.filename}">`);
 
   // A picture that is no longer the pending one, and a refused upload, are both
@@ -611,6 +612,7 @@ test("a mining screenshot is held until the note is written, then stored under i
 
   refuse = true;
   const retaken = await service.screenshot(async () => "data:image/jpeg;base64,c2hvdA==");
+  assert.match(retaken.filename, /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u);
   const refused = await service.submit({ ...request, term: { ...request.term, expression: "鳥" },
     configKey: status.configKey, screenshot: retaken });
   assert.equal(refused.state, "added");

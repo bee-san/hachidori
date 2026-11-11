@@ -160,11 +160,15 @@ test("every language's reader content is summarized while custom code stays comp
 
 test("the debug report carries version, engine, dictionaries and settings without reader content or credentials", async () => {
   const { chrome, window, send, sent } = host();
+  window.VideoEncoder = class {
+    static async isConfigSupported(config) { return { supported: config.codec === "av01.0.08M.08" }; }
+  };
   const report = await collectDebugInfo({ chrome, window, send, targets: TARGETS,
     context: { effectiveOptions: { anki: { apiKey: "hunter2" } } }, now: () => new Date("2026-10-06T10:00:00.123Z") });
 
   assert.equal(report.extension.version, "1.2.3");
   assert.deepEqual(report.browser.os, { os: "linux", arch: "x86-64" });
+  assert.equal(report.browser.av1Encoding, true);
   assert.equal(report.engine.status.dictionaryCount, 2);
   assert.equal(report.engine.memory.heapBytes, 1024);
   assert.equal(report.engine.extensionMemory.bytes, 2048);

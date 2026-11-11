@@ -642,8 +642,8 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const filename = /<img src="([^"]+)">/u.exec(note.Back ?? "")?.[1] ?? null;
   // The picture itself: decoded in the page, so its size and the pixels where
   // the popup stood are read from what Anki actually received.
-  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect, player }) => {
-    const response = await fetch(`data:image/jpeg;base64,${data}`);
+  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, format, rect, player }) => {
+    const response = await fetch(`data:image/${format};base64,${data}`);
     const bitmap = await createImageBitmap(await response.blob());
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const context = canvas.getContext("2d");
@@ -699,7 +699,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       wordDarkest: Math.round(wordDarkest), wordColour,
       playerSamples, playerColour: playerSum.map(sum => Math.round(sum / Math.max(1, playerSamples))),
     };
-  }, { data: files.get(filename), rect: popupRect, player: player.rect });
+  }, { data: files.get(filename), format: filename.endsWith(".avif") ? "avif" : "jpeg", rect: popupRect, player: player.rect });
   check("Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
     spaUrl !== originalUrl && spaUrl.includes("/watch/1234?trackId=example%3Fvalue#player")
       && saved.controls[0].state === "success" && filename !== null && files.has(filename)
@@ -717,7 +717,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
     saved.controls[0].action === "view"
       && calls.filter(call => call.action === "storeMediaFile").length === uploadsBefore + 1
-      && /^hachidori-screenshot-[0-9a-f-]{36}\.jpg$/u.test(upload?.params.filename ?? "")
+      && /^hachidori-screenshot-[0-9a-f-]{36}\.(?:avif|jpg)$/u.test(upload?.params.filename ?? "")
       && filename === upload.params.filename && files.get(filename) === upload.params.data
       // Hidden for the capture, restored afterwards.
       && masonry.grids.some(grid => grid.masonry && grid.cards.length >= 2)

@@ -124,10 +124,12 @@ describe("audio and Anki", () => {
     const ready = await waitFor(async () => (await mineButton(tab))?.state === "ready" || false, { timeout: 20_000 });
     await clickInPopup(tab, ".gsm-hoshidicts-mine-button");
     const added = await waitFor(async () => (notes.size > 0 ? [...notes.values()][0] : false), { timeout: 30_000 });
-    const picture = /<img src="(hachidori-screenshot-[0-9a-f-]+\.jpg)">/u.exec(added?.Picture ?? "")?.[1];
+    const screenshot = /<img src="(hachidori-screenshot-[0-9a-f-]{36}\.(avif|jpg))">/u.exec(added?.Picture ?? "");
+    const picture = screenshot?.[1];
+    const data = files.get(picture) ?? "";
     check("Add to Anki creates a note with the configured fields and a page screenshot",
       ready === true && added?.Front === "食べる" && added.Back.includes("to eat") && picture !== undefined
-        && files.get(picture)?.startsWith("/9j/") === true,
+        && (screenshot[2] === "avif" ? Buffer.from(data, "base64").toString("ascii", 4, 12) === "ftypavif" : data.startsWith("/9j/")),
       JSON.stringify({ ready, added, picture, stored: [...files.keys()] }));
     const view = await waitFor(async () => {
       const button = await mineButton(tab);

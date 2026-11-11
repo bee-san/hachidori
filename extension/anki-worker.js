@@ -388,14 +388,14 @@ export function createAnkiWorkerService({
     // Capture retries can complete out of order. Only the latest request may
     // publish its bytes, even if a newer picture has already been consumed.
     if (screenshotRequestToken !== token) throw new Error("A newer capture replaced this screenshot request.");
-    const prefix = "data:image/jpeg;base64,";
-    const data = typeof dataUrl === "string" && dataUrl.startsWith(prefix)
-      ? dataUrl.slice(prefix.length) : "";
+    const format = typeof dataUrl === "string" ? /^data:image\/(jpeg|avif);base64,/u.exec(dataUrl) : null;
+    const data = format ? dataUrl.slice(format[0].length) : "";
     const byteLength = decodedBase64Length(data);
     if (byteLength === null || byteLength > MAX_LINKED_SCREENSHOT_BYTES) {
       throw new Error("This page produced no screenshot or exceeded the 6 MiB screenshot limit.");
     }
-    pendingMedia.screenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.jpg`, data };
+    const extension = format[1] === "avif" ? "avif" : "jpg";
+    pendingMedia.screenshot = { token, filename: `hachidori-screenshot-${crypto.randomUUID()}.${extension}`, data };
     return { token: pendingMedia.screenshot.token, filename: pendingMedia.screenshot.filename };
   }
 
