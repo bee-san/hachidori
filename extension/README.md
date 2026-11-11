@@ -170,13 +170,15 @@ stores it as `rank-based` when its values are ranks (#684).
   of the line (`netflix-gif.js`, encoded with the vendored `vendor/gifenc.js`),
   or the page screenshot where there is none, and for `{sentence-audio}` while
   the video's sound does not yet go through Hachidori. A subtitle note's
-  `{gif}` is of the video alone: `netflix-content.js` hides what Netflix draws
-  over its video while the line replays and sends where the video's picture
-  is, which the recorder frame cuts out of each GIF frame. `{screenshot}` on a
-  watch page is the player's timeline JPEG, which `background-anki.js` reads
-  on demand with `netflix-preview.js` in the page's main world: lower
-  resolution and approximate timing, but no screen capture. Missing previews
-  leave a warning on the saved note. See the
+  `{screenshot}` and `{gif}` are of the video alone: `netflix-content.js`
+  hides what Netflix draws over its video while they are taken and sends where
+  the video's picture is, which `background-anki.js` cuts out of the
+  screenshot and the recorder frame out of each GIF frame. Where that
+  screenshot comes out black, and for any other `{screenshot}` on a watch
+  page, `background-anki.js` reads the player's timeline JPEG on demand with
+  `netflix-preview.js` in the page's main world: lower resolution and
+  approximate timing, but no screen capture. Missing previews leave a warning
+  on the saved note. See the
   [capture research](../docs/netflix-screenshot-research.md).
 - **YouTube mining.** The same features on `www.youtube.com` behind their own
   switch, Anki → Video mining → YouTube mining (on by default), on the same

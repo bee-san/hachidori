@@ -206,9 +206,11 @@ that tab until it is cut to the line and encoded. The line is sent as an MP3 for
 AnkiConnect server with the note. Audio that no field maps is discarded, and
 turning the switch off frees the kept audio and keeps no more. Where no GIF can
 be made, a `{gif}` field gets the ordinary page screenshot instead. With the
-switch on, `{screenshot}` on a watch page is Netflix's own seek-preview image of
-that moment, read from Netflix's player in that page instead of a picture of
-the visible page; it goes to Anki with the note like any screenshot. A browser
+switch on, `{screenshot}` for a note from a subtitle is the ordinary page
+screenshot cut down to the video's picture. Where that picture is black, and
+for any other note on a watch page, it is Netflix's own seek-preview image of
+that moment, read from Netflix's player in that page instead. Either goes to
+Anki with the note like any screenshot. A browser
 linked to another Hachidori does not record Netflix lines, and neither
 does Firefox, which lets extensions neither record a tab nor read the sound.
 
