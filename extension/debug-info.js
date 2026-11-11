@@ -319,6 +319,8 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
   const [results, debugLog] = await Promise.all([probeAll({
     os: () => chrome.runtime.getPlatformInfo(),
     userAgentHints: () => navigator.userAgentData.getHighEntropyValues(HIGH_ENTROPY_HINTS),
+    av1Encoding: async () => typeof window.VideoEncoder === "function"
+      && (await window.VideoEncoder.isConfigSupported({ codec: "av01.0.08M.08", width: 1920, height: 1080 })).supported === true,
     self: () => chrome.management.getSelf(),
     fileSchemeAccess: () => chrome.extension.isAllowedFileSchemeAccess(),
     incognitoAccess: () => chrome.extension.isAllowedIncognitoAccess(),
@@ -375,7 +377,8 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
       contentScripts: results.contentScripts,
       manifest,
     },
-    browser: { ...browserFacts(navigator, window), userAgentHints: results.userAgentHints, os: results.os },
+    browser: { ...browserFacts(navigator, window), userAgentHints: results.userAgentHints, os: results.os,
+      av1Encoding: results.av1Encoding },
     settingsPage: {
       url: window.location.href, visibilityState: window.document?.visibilityState ?? null,
       uptimeMs: Math.round(window.performance?.now() ?? 0), memory: pageMemory(window), ...redactSecrets(context),

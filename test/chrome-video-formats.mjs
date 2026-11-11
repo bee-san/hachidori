@@ -26,7 +26,7 @@ try {
     writeFileSync(resolve(root, `test/tmp/ci/video-formats.${format}`), Buffer.from(bytes));
   });
   await page.goto(`${origin}/netflix-recorder.html`);
-  const report = await page.evaluate(async () => {
+  const { still, ...report } = await page.evaluate(async () => {
     const width = 160, height = 90;
     const entries = [40, 120, 210].map((value, index) => ({ delayMs: [100, 150, 200][index],
       data: Uint8ClampedArray.from({ length: width * height * 4 }, (_, channel) => channel % 4 === 3 ? 255 : value) }));
@@ -50,7 +50,9 @@ try {
       const track = decoder.tracks.selectedTrack;
       const frames = [];
       for (let index = 0; index < track.frameCount; index += 1) {
-        const { image } = await decoder.decode({ frameIndex: index });
+        const { image } = await decoder.decode({ frameIndex: index }).catch(error => {
+          throw new Error(`${format} frame ${index}: ${error.message}`, { cause: error });
+        });
         const canvas = new OffscreenCanvas(width, height), context = canvas.getContext("2d");
         context.drawImage(image, 0, 0);
         frames.push({ value: context.getImageData(20, 20, 1, 1).data[0], duration: image.duration });
@@ -58,6 +60,29 @@ try {
       }
       results[format] = { ms, frames, loop: String(track.repetitionCount), bytes: Array.from(bytes) };
       decoder.close();
+    }
+    const { encodeStillAvif } = await import("./video-avif.js");
+    const stillCanvas = new OffscreenCanvas(161, 91);
+    const stillContext = stillCanvas.getContext("2d");
+    stillContext.fillStyle = "rgb(120, 120, 120)";
+    stillContext.fillRect(0, 0, stillCanvas.width, stillCanvas.height);
+    const stillBytes = await encodeStillAvif(stillCanvas);
+    await globalThis.saveVideoFormat("still.avif", Array.from(stillBytes));
+    const stillDecoder = new ImageDecoder({ data: stillBytes, type: "image/avif" });
+    let stillImage;
+    try {
+      await stillDecoder.tracks.ready;
+      stillImage = await createImageBitmap(new Blob([stillBytes], { type: "image/avif" }));
+      stillContext.clearRect(0, 0, stillCanvas.width, stillCanvas.height);
+      stillContext.drawImage(stillImage, 0, 0);
+      results.still = { brand: new TextDecoder().decode(stillBytes.subarray(4, 12)),
+        size: [stillImage.width, stillImage.height], frames: stillDecoder.tracks.selectedTrack.frameCount,
+        value: stillContext.getImageData(160, 90, 1, 1).data[0] };
+    } catch (error) {
+      throw new Error(`still AVIF: ${error.message}`, { cause: error });
+    } finally {
+      stillImage?.close();
+      stillDecoder.close();
     }
     const { encodeSentenceAudio } = await import("./sentence-audio.js");
     const context = new AudioContext();
@@ -95,6 +120,10 @@ try {
     }
     return results;
   });
+  assert.equal(still.brand, "ftypavif", "the screenshot has a still AVIF container");
+  assert.equal(still.frames, 1, "the screenshot decodes to one frame");
+  assert.deepEqual(still.size, [161, 91], "the screenshot preserves odd dimensions");
+  assert.ok(Math.abs(still.value - 120) < 12, "the screenshot preserves the last pixel");
   for (const [format, result] of Object.entries(report)) {
     if (format === "benchmark") continue;
     writeFileSync(resolve(root, `test/tmp/ci/video-formats.${format}`), Buffer.from(result.bytes));

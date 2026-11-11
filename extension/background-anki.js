@@ -219,7 +219,8 @@ function screenshotSource(tab, sender, options, readerPage, videoFrame, crop) {
 
 // One picture from `source`: a YouTube player that shows no frame leaves the
 // viewport's picture to be taken.
-async function captureFrom(tab, sender, source) {
+async function captureFrom(tab, sender, source, avif) {
+  if (avif) return chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
   if (source === "netflix-preview") return captureNetflixPreviewInDocument(tab, sender);
   const frame = source === "youtube-frame" ? await captureYouTubeFrameInDocument(tab, sender) : null;
   return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
@@ -265,6 +266,16 @@ async function croppedJpeg(dataUrl, crop, unlessBlack = false) {
   }
 }
 
+async function finishScreenshot(captured, tab, sender, source, crop, avif) {
+  if (avif) {
+    const reply = await sendAnkiRequest("hachidori-anki-render", { type: "hd_anki_encode_screenshot", dataUrl: captured });
+    return reply.dataUrl;
+  }
+  if (crop === null || (source !== null && source !== "netflix-video")) return captured;
+  const picture = await croppedJpeg(captured, crop, source === "netflix-video");
+  return picture ?? captureNetflixPreviewInDocument(tab, sender);
+}
+
 // captureVisibleTab takes the window's active tab. Both the active page and its
 // document owner are checked around every attempt, including a rate-limit retry.
 // A `crop` keeps that part of the viewport's picture.
@@ -277,9 +288,11 @@ async function captureSenderViewport(sender, options, videoFrame = false, crop =
   for (let attempt = 1; ; attempt += 1) {
     const tab = await screenshotOwnedTab(sender, readerPage);
     const source = screenshotSource(tab, sender, options, readerPage, videoFrame, crop);
+    // Linked browsers send JPEG to hosts that may still require it.
+    const avif = options.experimental.avifScreenshots === true && source === null && crop === null && !sharingLinked;
     let captured;
     try {
-      captured = await captureFrom(tab, sender, source);
+      captured = await captureFrom(tab, sender, source, avif);
     } catch (error) {
       // A preview is not the viewport capture Chrome rate-limits.
       if (source === "netflix-preview" || attempt >= 2
@@ -293,9 +306,7 @@ async function captureSenderViewport(sender, options, videoFrame = false, crop =
     if (afterCapture.windowId !== tab.windowId) {
       throw new Error("The reading tab moved to another window during the screenshot.");
     }
-    if (crop === null || (source !== null && source !== "netflix-video")) return captured;
-    const picture = await croppedJpeg(captured, crop, source === "netflix-video");
-    return picture ?? captureNetflixPreviewInDocument(tab, sender);
+    return finishScreenshot(captured, tab, sender, source, crop, avif);
   }
 }
 

@@ -3466,13 +3466,18 @@ extension contexts, which supplies its tab ID and confirms the same document
 without content-script messaging. Reloading the
 same URL or retaining an old document in the back/forward cache cannot pass as
 the document that requested the picture.
+Screenshots use JPEG by default. **AVIF screenshots** under **Advanced →
+Experimental features** captures uncropped local viewports as PNG, then encodes
+one still AVIF in the offscreen document. When AV1 encoding fails it encodes
+JPEG at quality 95 from the same pixels. Linked screenshots and video-specific
+screenshot paths use JPEG.
 Chrome's capture rate limit is honoured with
 one wait and retry, and that wait is long enough to switch tabs, so ownership is
 checked again after it rather than once at the start. The
-reply is the picture's name, not its upload, so the reader shows itself again as
-soon as the pixels are taken (and, for a Netflix subtitle note, cropped). The worker holds that one pending picture and stores
+reply is the picture's name, not its upload, so the reader shows itself again
+once the screenshot is ready. The worker holds that one pending picture and stores
 it through the ordinary `storeMediaFile` gateway under its own
-`hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
+`hachidori-screenshot-<uuid>.avif` or `hachidori-screenshot-<uuid>.jpg` name inside the queued write, once the
 generation, configuration and duplicate decisions have been made, so duplicate
 checks, overwrite policies and existing values are untouched; preflight and an
 initial rejection upload nothing. Only that note's own picture is consumed, so a
