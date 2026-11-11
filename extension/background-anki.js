@@ -222,7 +222,7 @@ function screenshotSource(tab, sender, options, readerPage, videoFrame, crop) {
 async function captureFrom(tab, sender, source) {
   if (source === "netflix-preview") return captureNetflixPreviewInDocument(tab, sender);
   const frame = source === "youtube-frame" ? await captureYouTubeFrameInDocument(tab, sender) : null;
-  return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg" });
+  return frame ?? chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 95 });
 }
 
 // The brightest a picture's pixels can be in every channel and it still counts
