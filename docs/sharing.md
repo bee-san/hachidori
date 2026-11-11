@@ -447,3 +447,10 @@ and profile-aware linked browsers and an in-memory relay through the
 service worker's own sharing code, and `test/chrome-languages/sharing.mjs`
 (run by `node test/run.mjs chrome-languages`) does the same with real Chromes,
 the released Hachidori as the older browser and the pinned relay.
+
+## AI configuration through MCP
+
+The [MCP configuration bridge](mcp.md) lets hachidori-mcp use the same relay to
+configure languages and settings and install userscripts. It advertises
+`mcp-configuration-v1` and preserves ordinary linked browsers' local language
+selection.

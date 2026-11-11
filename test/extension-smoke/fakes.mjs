@@ -37,6 +37,7 @@ import { NETFLIX_SCRIPTS } from "../../extension/netflix.js";
 import { YOUTUBE_SCRIPTS } from "../../extension/youtube.js";
 import { CRUNCHYROLL_SCRIPTS } from "../../extension/crunchyroll.js";
 import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
+import { SCRIPT_ID } from "../../extension/custom-javascript.js";
 import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
@@ -756,6 +757,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/sharing-protocol\.js";\s*/u, "")
     .replace(/^export\s+/gmu, "");
   const glossary = readFileSync(resolve(EXTENSION, "render/glossary.js"), "utf8");
+  const mcpHostSource = readFileSync(resolve(EXTENSION, "mcp-host.js"), "utf8")
+    .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const apiHost = readFileSync(resolve(EXTENSION, "api-host.js"), "utf8")
     .replace(/^import[^\n]+\n/gmu, "").replace(/^export\s+\{[^}]*\}\s*from[^\n]+\n/gmu, "").replace(/^export\s+/gmu, "");
   const managedSource = readFileSync(resolve(EXTENSION, "managed-dictionary-source.js"), "utf8")
@@ -782,6 +785,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   // host's retry timer and alarm out of stages that fake timers or count alarms.
   sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
   Object.assign(sandbox, {
+    SCRIPT_ID,
     ANKI_INDEX_ALARM,
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
@@ -805,7 +809,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
       + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
-      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n${searchWindow}\n`
+      + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n${searchWindow}\n${mcpHostSource}\n`
       + background,
     context,
     { filename: resolve(EXTENSION, "background.js") },

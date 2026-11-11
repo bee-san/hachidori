@@ -242,3 +242,9 @@ test("the OPFS listing gives every file's path and size and each directory's tot
   assert.deepEqual(listed.entries.map(({ path, bytes }) => [path, bytes]),
     [["/a.txt", 2], ["/dicts", 40], ["/dicts/g1", 40], ["/dicts/g1/blobs.bin", 30], ["/dicts/g1/hash.table", 10]]);
 });
+
+ test("MCP diagnostics identify the relay configuration capability without exporting another state snapshot", async () => {
+  const report = await collectDebugInfo({ ...host(), targets: TARGETS });
+  assert.deepEqual(report.services.mcp, { capability: "mcp-configuration-v1", target: "hachidori-mcp",
+    transport: "sharing-relay", hostLanguageSelection: true });
+});

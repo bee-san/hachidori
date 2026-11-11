@@ -19,6 +19,7 @@ import { ANKI_INDEX_KEY } from "./anki-index-cache.js";
 import { AUTOMATIC_BACKUPS_KEY } from "./backup-automatic.js";
 import { DEBUG_LOG_DATABASE, openDebugLogStore, readDebugLog, redactSecrets } from "./debug-log.js";
 import "./reader-options.js";
+import { MCP_CAPABILITY, MCP_TARGET } from "./sharing-protocol.js";
 import "./word-status-overrides.js";
 
 export const DEBUG_INFO_SCHEMA_VERSION = 2;
@@ -387,6 +388,8 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
     services: {
       anki: results.anki,
       sharing: redactSecrets(results.sharing),
+      mcp: { capability: MCP_CAPABILITY, target: MCP_TARGET, transport: "sharing-relay",
+        hostLanguageSelection: true },
       automaticBackups: results.automaticBackups,
     },
     debugLog,
