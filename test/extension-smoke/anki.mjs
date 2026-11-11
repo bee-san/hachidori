@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe } from "node:test";
 import { ANKI_INDEX_KEY } from "../../extension/anki-index-cache.js";
+import { encodeBase64 } from "../../extension/base64.js";
 import { captureNetflixPreview } from "../../extension/netflix-preview.js";
 import { answerAnkiConnect } from "../anki-connect-fake.mjs";
 import {
@@ -308,8 +309,22 @@ async function ankiScreenshotStage() {
       return "data:image/jpeg;base64,c2hvdA==";
     },
   };
-  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise,
+  // A capture decodes to a 1200 × 700 picture whose every pixel is `pictureLevel`
+  // in each channel, and a cropped one encodes to the bytes "crop".
+  let pictureLevel = 0;
+  const crops = [];
+  loadBackgroundScript({ chrome, console, setTimeout, clearTimeout, AbortController, crypto, Error, Promise, encodeBase64,
+    createImageBitmap: async () => ({ width: 1200, height: 700, close() {} }),
+    OffscreenCanvas: class {
+      constructor(width, height) { crops.push([width, height]); }
+      getContext() {
+        return { drawImage() {}, getImageData: (x, y, width, height) => ({
+          data: new Uint8ClampedArray(width * height * 4).fill(pictureLevel) }) };
+      }
+      async convertToBlob() { return new Blob(["crop"]); }
+    },
     fetch(url, options) {
+      if (String(url).startsWith("data:")) return globalThis.fetch(url);
       const body = JSON.parse(options.body);
       uploads.push({ url, action: body.action, params: body.params, key: body.key ?? null });
       return Promise.resolve({ ok: true, async json() { return { result: body.params.filename, error: null }; } });
@@ -501,6 +516,28 @@ async function ankiScreenshotStage() {
     subframe.ok === true && ordinaryPage.ok === true && captures.length === beforePreview + 2
       && injections.length === beforeInactive,
     JSON.stringify({ subframe, ordinaryPage }));
+
+  // A note from a Netflix subtitle sends where the video's picture is. That
+  // part of the viewport is its screenshot while it shows the video, and
+  // Netflix's preview stands in for it only once it comes out black.
+  tab = { ...tab, url: netflixReader.url };
+  const crop = { left: 0.1, top: 0, width: 0.8, height: 1, aspect: 1200 / 700 };
+  const askVideo = sender => bus.sendMessage("reader", { target: "hachidori-anki", type: "hd_anki_screenshot",
+    requestId: "anki-screenshot", request: {}, crop }, sender);
+  const beforeVideo = { captures: captures.length, injections: injections.length };
+  pictureLevel = 17;
+  const videoShown = await askVideo(netflixReader);
+  const afterShown = { captures: captures.length, injections: injections.length };
+  pictureLevel = 16;
+  const videoBlack = await askVideo(netflixReader);
+  check("Netflix mining takes a subtitle note's picture of the video from the viewport, and its preview only when it is black",
+    videoShown.ok === true && afterShown.captures === beforeVideo.captures + 1
+      && afterShown.injections === beforeVideo.injections
+      && videoBlack.ok === true && captures.length === afterShown.captures + 1
+      && injections.length === afterShown.injections + 1
+      && JSON.stringify(crops) === JSON.stringify([[960, 700], [960, 700]]),
+    JSON.stringify({ videoShown, videoBlack, beforeVideo, afterShown, crops, captures: captures.length,
+      injections: injections.length }));
 }
 
 async function ankiBackgroundStage() {

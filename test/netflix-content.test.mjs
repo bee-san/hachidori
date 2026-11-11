@@ -49,6 +49,7 @@ function netflix(t, { movieId = "81000001", lines = ["お前、こんなとこ�
     resolve: observation => plain(api.resolve(observation)),
     miningFields: (...args) => plain(api.miningFields(...args)),
     record: async (...args) => plain(await api.record(...args)),
+    screenshot: async capture => plain(await api.screenshot(capture)),
     setHoverPause: enabled => api.setHoverPause(enabled),
     setLineAudio: enabled => api.setLineAudio(enabled),
   };
@@ -307,6 +308,33 @@ test("a GIF of a Netflix line is of the video alone: Netflix's drawing hidden, c
   await f.netflix.record(cue, { send, templateId: "default" });
   assert.deepEqual(sent.map(([type, fields, wasHidden]) => [type, fields.crop, wasHidden]), [
     ["hd_netflix_capture_start", undefined, false], ["hd_netflix_capture_finish", undefined, false]]);
+});
+
+test("a subtitle note's screenshot is of the video alone: Netflix's drawing hidden while it is taken, cropped to the picture", async t => {
+  const f = netflix(t);
+  f.video.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1024, bottom: 768, width: 1024, height: 768 });
+  Object.defineProperties(f.video, { videoWidth: { value: 1920 }, videoHeight: { value: 1080 } });
+  f.window.getComputedStyle = () => ({ objectFit: "contain" });
+  const hidden = () => [...f.window.document.querySelectorAll("style")].map(style => style.textContent).join("\n");
+  const taken = [];
+  const capture = async crop => {
+    taken.push({ crop: JSON.parse(JSON.stringify(crop)), hidden: hidden() });
+    return { token: "shot", filename: "hachidori-screenshot-a.jpg" };
+  };
+  assert.deepEqual(await f.netflix.screenshot(capture), { token: "shot", filename: "hachidori-screenshot-a.jpg" });
+  assert.deepEqual(taken[0].crop, { left: 0, top: 0.125, width: 1, height: 0.75, aspect: 1024 / 768 });
+  assert.ok(taken[0].hidden.endsWith(".evidence-overlay { opacity: 0 !important; transition: none !important; }"),
+    taken[0].hidden);
+  assert.equal(hidden(), "");
+
+  // Hiding is counted: one picture finishing cannot show it while another is taken.
+  let finishFirst;
+  const first = f.netflix.screenshot(() => new Promise(done => { finishFirst = done; }));
+  await f.netflix.screenshot(async () => assert.notEqual(hidden(), ""));
+  assert.notEqual(hidden(), "", "the first picture is still being taken");
+  finishFirst({});
+  await first;
+  assert.equal(hidden(), "");
 });
 
 // What netflix-audio.js keeps, scripted: `heard` answers each clip in turn

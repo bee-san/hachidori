@@ -169,7 +169,7 @@ const player = {
   getMovieId: () => 81000001,
   getElement: () => video,
   // Netflix's seek preview: a 160 × 120 green JPEG, which Netflix mining
-  // takes for {screenshot}.
+  // takes for a {screenshot} that comes out black.
   async getTrickPlayFrame(ms) {
     evidence.previews.push(ms);
     const preview = Object.assign(document.createElement("canvas"), { width: 160, height: 120 });
@@ -202,7 +202,7 @@ video.addEventListener("loadeddata", () => {
 // With ?picture, the video shows a still 4:3 picture instead, which the
 // 1200 × 700 player pillarboxes, under Netflix's controls and paused-title
 // overlay, each fading as Netflix's do, on a page whose colour would show
-// beside the picture.
+// beside the picture. Its colour is evidence.still, which can turn it black.
 if (new URLSearchParams(location.search).has("picture")) {
   motion.style.display = "none";
   document.body.style.background = "rgb(220, 0, 0)";
@@ -211,9 +211,10 @@ if (new URLSearchParams(location.search).has("picture")) {
     box.append(Object.assign(document.createElement("div"), { className: name }));
   }
   const still = Object.assign(document.createElement("canvas"), { width: 160, height: 120 });
+  evidence.still = "rgb(0, 200, 80)";
   const fill = () => {
     const context = still.getContext("2d");
-    context.fillStyle = "rgb(0, 200, 80)";
+    context.fillStyle = evidence.still;
     context.fillRect(0, 0, still.width, still.height);
   };
   fill();
@@ -867,37 +868,51 @@ try {
   const second = await decodeGif(onlyGif);
   assert.ok(second.frames > 1 && second.distinct > 1, `the {gif}-only GIF decodes into distinct frames: ${JSON.stringify(second)}`);
 
-  // A subtitle note's screenshot is Netflix's seek preview, not the page: not
-  // the red beside the pillarboxed picture, Netflix's subtitles, controls or
-  // paused-title overlay, or the popup. Decoded in an extension page from what
-  // Anki received.
+  // A subtitle note's screenshot is of the video alone: the picture the player
+  // pillarboxes, without the page beside it, Netflix's subtitles, controls or
+  // paused-title overlay (which would have taken two seconds to fade), or the
+  // popup. A picture that comes out black is Netflix's seek preview instead.
+  // Each is decoded in an extension page from what Anki received.
   await mapBack("{screenshot}", true);
   await leaveLine();
   await tab.goto(PICTURE);
   await tab.waitForFunction(() => window.__fixture?.ready === true);
   box = await (await tab.$("#word")).boundingBox();
-  note = await addNote();
-  const shot = /^<img src="(hachidori-screenshot-[0-9a-f-]{36}\.jpg)">$/u.exec(note.fields.Back)?.[1];
-  assert.ok(shot, `the note holds the screenshot alone: ${note.fields.Back}`);
-  const picture = await settings.evaluate(async base64 => {
-    const bitmap = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${base64}`)).blob());
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const context = canvas.getContext("2d");
-    context.drawImage(bitmap, 0, 0);
-    // Inside its edges, away from the JPEG's edge blocks.
-    const edge = 3, width = bitmap.width - 2 * edge, height = bitmap.height - 2 * edge;
-    const pixels = context.getImageData(edge, edge, width, height).data;
-    let green = 0;
-    for (let index = 0; index < pixels.length; index += 4) {
-      if (pixels[index] < 60 && pixels[index + 1] > 160 && pixels[index + 2] > 40 && pixels[index + 2] < 120) green++;
-    }
-    return { width: bitmap.width, height: bitmap.height, green: green / (width * height) };
-  }, media.get(shot));
-  const previews = await tab.evaluate(() => window.__fixture.previews);
-  console.log(`screenshot ${picture.width}×${picture.height}, ${(picture.green * 100).toFixed(2)}% the preview's green`);
-  assert.ok(picture.width === 160 && picture.height === 120 && previews.length === 1,
-    `the screenshot is the player's seek preview: ${JSON.stringify({ picture, previews })}`);
-  assert.ok(picture.green > 0.995, `nothing covers the preview: ${JSON.stringify(picture)}`);
+  const screenshotNote = async () => {
+    const added = await addNote();
+    const shot = /^<img src="(hachidori-screenshot-[0-9a-f-]{36}\.jpg)">$/u.exec(added.fields.Back)?.[1];
+    assert.ok(shot, `the note holds the screenshot alone: ${added.fields.Back}`);
+    const picture = await settings.evaluate(async base64 => {
+      const bitmap = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${base64}`)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      // Inside its edges, where the crop's whole pixels meet the picture's.
+      const edge = 3, width = bitmap.width - 2 * edge, height = bitmap.height - 2 * edge;
+      const pixels = context.getImageData(edge, edge, width, height).data;
+      let green = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (pixels[index] < 60 && pixels[index + 1] > 160 && pixels[index + 2] > 40 && pixels[index + 2] < 120) green++;
+      }
+      return { width: bitmap.width, height: bitmap.height, green: green / (width * height) };
+    }, media.get(shot));
+    return { ...picture, previews: (await tab.evaluate(() => window.__fixture.previews)).length };
+  };
+  const picture = await screenshotNote();
+  console.log(`screenshot ${picture.width}×${picture.height}, ${(picture.green * 100).toFixed(2)}% the video's green`);
+  // The 1200 × 700 player shows the 160 × 120 picture 933⅓ px wide in its middle.
+  assert.ok(Math.abs(picture.width - 700 * 4 / 3) <= 2 && picture.height === 700 && picture.previews === 0,
+    `the screenshot is the video's picture: ${JSON.stringify(picture)}`);
+  assert.ok(picture.green > 0.995, `nothing covers the video's picture: ${JSON.stringify(picture)}`);
+  await leaveLine();
+  await tab.evaluate(() => { window.__fixture.still = "rgb(0, 0, 0)"; });
+  await new Promise(done => setTimeout(done, 500));
+  const preview = await screenshotNote();
+  console.log(`black video: screenshot ${preview.width}×${preview.height}, ${(preview.green * 100).toFixed(2)}% the preview's green`);
+  // The fixture's seek preview is a 160 × 120 green JPEG.
+  assert.ok(preview.width === 160 && preview.height === 120 && preview.previews === 1,
+    `a black picture gives way to the player's seek preview: ${JSON.stringify(preview)}`);
+  assert.ok(preview.green > 0.995, `nothing covers the preview: ${JSON.stringify(preview)}`);
   await leaveLine();
   await tab.goto(WATCH);
   await tab.waitForFunction(() => window.__fixture?.ready === true);
@@ -917,7 +932,8 @@ try {
   console.log(`Netflix mining fixture: ${notes.length} notes; a page open before the switch went on got the scripts, `
     + "paused and resumed, and said to reload; without a capture grant, line audio heard, replayed and played on, "
     + "tab capture asking for the toolbar button; after the click, a line recorded from the tab, a GIF and its line "
-    + "audio from one replay, a {gif}-only note, a screenshot from the seek preview; each MP3 the cue's seconds' tones; "
+    + "audio from one replay, a {gif}-only note, a screenshot of the video alone and the seek preview in place of a "
+    + "black one; each MP3 the cue's seconds' tones; "
     + "playback restored, hover pause and resume through the watch session only, no play while recording — passed");
 } finally {
   await browser?.close();
