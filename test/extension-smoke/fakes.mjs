@@ -797,7 +797,6 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
-    preserveLinkedAnkiTemplateFields,
     inspectHandlebars,
     markerName: normaliseAnkiMarkerName,
     lookupAnkiIndex,
