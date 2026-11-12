@@ -76,11 +76,11 @@ test("switched-on JavaScript registers after the popup bridge, one source per pa
     ["get", { ids: ["hachidori-custom-javascript"] }],
     ["unregister", { ids: ["hachidori-custom-javascript"] }],
     ["register", [{ id: "hachidori-custom-javascript", matches: ["<all_urls>"], allFrames: true,
-      js: [{ file: "custom-javascript-bridge.js" }, { code: userScriptSource(first) }, { code: userScriptSource(second) }],
+      js: [{ file: "anki-preparation-runtime.js" }, { file: "custom-javascript-bridge.js" }, { code: userScriptSource(first) }, { code: userScriptSource(second) }],
       runAt: "document_idle", world: "USER_SCRIPT" }]],
   ]);
   assert.equal(userScriptSource(second),
-    "(function () {\nwindow.second = 2;\n}).call(globalThis);\n//# sourceURL=hachidori-user-script/second%20one.js");
+    '(globalThis.HDAnkiPreparation?.runPackage ?? ((_id, run) => run.call(globalThis)))("second one", function () {\nwindow.second = 2;\n});\n//# sourceURL=hachidori-user-script/second%20one.js');
 });
 
 // Two packages may both declare `const popup` or return early (docs/search-history.md).

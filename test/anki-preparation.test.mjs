@@ -72,3 +72,66 @@ test("named preparation markers are escaped and JSON data rejects unsupported va
   for (const value of [null, [], { bad: undefined }, { bad: NaN }, { bad: () => {} }]) assert.throws(() => preparationData(value), /JSON|object/u);
   assert.deepEqual(preparationData({ example: ["a", { extra: true }] }), { example: ["a", { extra: true }] });
 });
+
+test("native USER_SCRIPT ports run a preparation and route only its own external requests", async () => {
+  const f = fixture();
+  const event = () => ({ listeners: [], addListener(fn) { this.listeners.push(fn); }, emit(value) { for (const listener of this.listeners) listener(value); } });
+  const client = { onMessage: event(), onDisconnect: event() };
+  const server = { name: "hachidori-anki-preparation", sender, onMessage: event(), onDisconnect: event() };
+  client.postMessage = value => queueMicrotask(() => server.onMessage.emit(structuredClone(value)));
+  server.postMessage = value => queueMicrotask(() => client.onMessage.emit(structuredClone(value)));
+  const context = vm.createContext({ addEventListener() {}, chrome: { runtime: { connect() { f.service.connect(server); return client; } } } });
+  vm.runInContext(await readFile(new URL("../extension/anki-preparation-runtime.js", import.meta.url), "utf8"), context);
+  context.HDAnkiPreparation.enableNative();
+  vm.runInContext(userScriptSource(script), context);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.requests.length, 0);
+  assert.deepEqual(await f.service.execute(sender, selected, { term: { expression: "猫" } }), { example: "猫はここ。" });
+  assert.equal(f.requests.length, 1);
+  await assert.rejects(f.service.execute({ ...sender, documentId: "other" }, selected, {}), /unavailable/u);
+  server.onDisconnect.emit();
+  assert.equal(f.service.diagnostics().registeredDocuments, 0);
+});
+
+test("a cancelled preparation cannot start fetch after its awaited script read completes", async () => {
+  let block = false;
+  const held = Promise.withResolvers(), requests = [];
+  const service = createAnkiPreparationService({ readScripts: async () => {
+    if (block) await held.promise;
+    return [script];
+  }, fetch: async (...args) => { requests.push(args); return new Response("{}"); } });
+  const operationId = await service.begin(sender, selected, source);
+  block = true;
+  const pending = service.request(sender, operationId, "https://example.org/");
+  service.cancel(sender, operationId);
+  held.resolve();
+  await assert.rejects(pending, /active/u);
+  assert.equal(requests.length, 0);
+});
+
+test("older complete Template records and flat projection writes keep preparation state", () => {
+  const { normaliseAnki, validateOptionsPatch } = globalThis.HDReaderOptions;
+  const current = normaliseAnki({ model: "Basic", preparationScript: selected });
+  const legacy = structuredClone(current);
+  delete legacy.preparationScript;
+  delete legacy.templates[0].preparationScript;
+  assert.doesNotThrow(() => validateOptionsPatch({ anki: legacy }));
+  const projected = structuredClone(current);
+  delete projected.preparationScript;
+  projected.deck = "Legacy edit";
+  const normalized = normaliseAnki(projected);
+  assert.equal(normalized.templates[0].deck, "Legacy edit");
+  assert.deepEqual(normalized.templates[0].preparationScript, selected);
+});
+
+test("same-world lifecycle disconnect retires its operation and cancels an active request", async () => {
+  const f = fixture();
+  let disconnected;
+  f.service.connectLifecycle({ name: "hachidori-anki-preparation-document", sender,
+    onDisconnect: { addListener(fn) { disconnected = fn; } } });
+  const operationId = await f.service.beginDocument(sender, selected, source);
+  disconnected();
+  assert.equal(f.service.diagnostics().activePreparations, 0);
+  await assert.rejects(f.service.request(sender, operationId, "https://example.org/"), /active/u);
+  await assert.rejects(f.service.beginDocument(sender, selected, source), /disconnected/u);
+});

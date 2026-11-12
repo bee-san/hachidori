@@ -74,7 +74,8 @@ export function redactSecrets(value) {
   if (Array.isArray(value)) return value.map(redactSecrets);
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
-    SECRET_KEY.test(key) && typeof entry === "string" && entry !== "" ? REDACTED : redactSecrets(entry)]));
+    key === "preparation" && entry && typeof entry === "object" ? { valueCount: Object.keys(entry).length }
+      : SECRET_KEY.test(key) && typeof entry === "string" && entry !== "" ? REDACTED : redactSecrets(entry)]));
 }
 
 // A web address keeps its scheme, host and path; sign-in details, query and
