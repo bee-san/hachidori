@@ -248,6 +248,14 @@ function failedReply(error) {
   return { state: "error", canAdd: false, error: error?.message || String(error) };
 }
 
+async function survivingAnkiNoteIds(invoke, noteIds) {
+  const liveIds = await invoke("findNotes", { query: ankiNoteIdsQuery(noteIds) });
+  if (!Array.isArray(liveIds) || liveIds.some(id => !noteIds.includes(id))) {
+    throw new Error("AnkiConnect returned invalid browse note IDs.");
+  }
+  return [...new Set(liveIds)];
+}
+
 export function createAnkiMiningService({
   gateway,
   readConfig,
@@ -604,11 +612,7 @@ export function createAnkiMiningService({
     } else if (supplied && source === null) {
       // Custom first-field identities have no word-index row to repair. An
       // exact live ID search still lets View recover after an external delete.
-      const liveIds = await invoke("findNotes", { query: ankiNoteIdsQuery(noteIds) });
-      if (!Array.isArray(liveIds) || liveIds.some(id => !noteIds.includes(id))) {
-        throw new Error("AnkiConnect returned invalid browse note IDs.");
-      }
-      noteIds = [...new Set(liveIds)];
+      noteIds = await survivingAnkiNoteIds(invoke, noteIds);
       if (!noteIds.length) return { opened: false, noteIds: [], repaired: true };
       repaired = true;
     }

@@ -48,6 +48,7 @@ async function checkAnkiSubmission(settings, browser, tab, popup) {
       }
       if (action === "addNote") { const noteId = notes.size + 1; notes.set(noteId, params.note.fields); return noteId; }
       if (action === "findNotes") {
+        if (params.query.startsWith("nid:")) return params.query.slice(4).split(",").map(Number).filter(id => notes.has(id));
         const expressions = queryExpressions(params.query);
         const matched = params.query === '"note:Basic"'
           ? [...notes.keys()]
