@@ -2,7 +2,7 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
-import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiTemplateDependencies, ankiTemplateMarkerNames } from "./anki-templates.js";
 import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
@@ -315,9 +315,8 @@ export function createAnkiWorkerService({
         : options.customButtons.find(candidate => candidate.id === buttonId && candidate.type === "anki");
       if (buttonId !== undefined && (button?.templateId !== templateId || !button.markers)) return null;
       // A button's markers may write a group marker its Template does not use.
-      const needsGroups = [...Object.values(template.fieldTemplates ?? {}).flatMap(field => ankiTemplateMarkerNames(field.value)),
-        ...Object.values(button?.markers ?? {})].some(name => name === "monolingual-definition"
-        || name === "bilingual-definition" || name.startsWith("glossary-selection-group-"));
+      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).groups)
+        || Object.values(button?.markers ?? {}).some(name => ankiTemplateDependencies(`{${name}}`).groups);
       return {
         ...inLanguage(template, profile),
         ...(button === null ? {} : { markerSubstitutions: button.markers }),

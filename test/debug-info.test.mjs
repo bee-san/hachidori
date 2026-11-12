@@ -96,7 +96,7 @@ test("configuration includes every current default, migrated userscripts and bun
   assert.equal(configuration.activeProfileId, "ja");
   assert.equal(configuration.optionsRevision, 3);
   assert.deepEqual(configuration.ankiFieldTemplates, { syntaxes: ["markers", "handlebars"], handlebarsVersion: "4.7.10",
-    compilerContext: "sandbox", dataContexts: ["term", "sentence", "source", "definitions", "selection", "preparation"] });
+    compilerContext: "sandbox", dataContexts: ["term", "sentence", "source", "definitions", "selection", "groups", "preparation"] });
   assert.deepEqual(configuration.experimentalFeatures, EXPERIMENTAL_FEATURES);
   assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "selected-glossary"));
   assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "glossary-selection"));

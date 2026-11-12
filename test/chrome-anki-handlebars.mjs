@@ -77,10 +77,12 @@ try {
     const { buildAnkiResourceFields } = await import("./anki-resources.js");
     const request = { term: { expression: "食べる", reading: "たべる", rules: "v1", frequencies: [], pitches: [],
       glossaries: [{ dictionary: "Sample", glossary: '["to eat"]', definitionTags: "", termTags: "" }] },
-      trace: [], sentence: "食べた。", matched: "食べた", matchOffset: 0, dictionaryIds: {}, dictionaryAliases: {},
-      preparation: { example: "A & B" } };
+      trace: [], sentence: "食べた。", matched: "食べた", matchOffset: 0, dictionaryAliases: {},
+      preparation: { example: "A & B" },
+      dictionaryIds: { Sample: "sample" }, glossaryGroups: [{ id: "Mono", name: "Monolingual", dictionaryIds: ["sample"] }],
+      glossarySelection: { dictionary: "Sample", index: 0 } };
     const fields = { Front: { value: "{{term.expression}}", syntax: "handlebars", overwriteMode: "coalesce" },
-      Back: { value: '{{marker "glossary-first"}} / {{preparation.example}}', syntax: "handlebars", overwriteMode: "coalesce" } };
+      Back: { value: '{{marker "GLOSSARY-SELECTION-GROUP-Mono"}} / {{selection.dictionary}} / {{#each groups}}{{id}}{{/each}} / {{preparation.example}}', syntax: "handlebars", overwriteMode: "coalesce" } };
     const output = await buildAnkiResourceFields(request, fields, { document, dictionaryPaths: {}, styles: async () => [] });
     const sandbox = document.querySelector('iframe[title="Anki field template renderer"]');
     let inaccessible = false;
@@ -90,6 +92,7 @@ try {
   assert.equal(rendered.output.fields.Front, "食べる");
   assert.match(rendered.output.fields.Back, /to eat/u);
   assert.match(rendered.output.fields.Back, /A &amp; B/u);
+  assert.match(rendered.output.fields.Back, /Sample \/ Mono/u, "mixed-case group ID and structured contexts survive the sandbox");
   assert.equal(rendered.inaccessible, true);
   assert.equal(rendered.sandbox, "allow-scripts");
   // Firefox BiDi does not enumerate this opaque extension child frame.

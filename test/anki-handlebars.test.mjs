@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ankiTemplateErrors, ankiTemplateMarkerNames, resolveAnkiTemplates } from "../extension/anki-templates.js";
+import { ankiTemplateErrors, ankiTemplateMarkerNames, ankiTemplateDependencies, resolveAnkiTemplates } from "../extension/anki-templates.js";
 import "../extension/reader-options.js";
+import { normaliseAnkiMarkerName } from "../extension/anki-marker-name.js";
+import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ankiRequestFixture } from "./anki-request-fixture.mjs";
 
 const template = value => ({ value, syntax: "handlebars", overwriteMode: "coalesce" });
 
@@ -33,7 +36,7 @@ const Handlebars = compiler.HDHandlebars;
 const escapeData = Handlebars.Utils.escapeExpression;
 Handlebars.Utils.escapeExpression = value => escapeData(value).replaceAll("{", "&#123;").replaceAll("}", "&#125;");
 const handlebars = (value, context, markers) => Handlebars.compile(value)(context, {
-  helpers: { marker: name => new Handlebars.SafeString(markers[name]) },
+  helpers: { marker: name => new Handlebars.SafeString(markers[normaliseAnkiMarkerName(name)]) },
   allowProtoMethodsByDefault: false, allowProtoPropertiesByDefault: false,
 });
 
@@ -61,4 +64,51 @@ test("closing a rendering document rejects a request still waiting for its sandb
   const pending = renderHandlebars(document, "{{term.expression}}", { term: { expression: "猫" } }, {});
   close();
   await assert.rejects(pending, /renderer was closed/u);
+});
+
+
+test("Handlebars dependencies include raw selection/groups contexts and preserve opaque group marker IDs", () => {
+  assert.deepEqual(ankiTemplateDependencies(template("{{selection.dictionary}}")), { markers: [], selection: true, groups: false });
+  assert.deepEqual(ankiTemplateDependencies(template("{{#each @root.groups}}{{id}}{{../selection.index}}{{/each}}")),
+    { markers: [], selection: true, groups: true });
+  assert.deepEqual(ankiTemplateDependencies(template('{{lookup @root "selection"}}')),
+    { markers: [], selection: true, groups: false });
+  assert.deepEqual(ankiTemplateDependencies(template('{{marker "GLOSSARY-SELECTION-GROUP-Mono"}}')),
+    { markers: ["glossary-selection-group-Mono"], selection: true, groups: true });
+  assert.deepEqual(ankiTemplateDependencies(template('{{"selection"}} {{term.expression}}')),
+    { markers: [], selection: false, groups: false });
+});
+
+test("the worker loads authoritative groups for Handlebars contexts/helpers and skips unused groups", async () => {
+  const f = ankiRequestFixture();
+  let groups = [{ id: "Mono", name: "Monolingual", dictionaryIds: ["a"] }], reads = 0;
+  const setBack = value => { f.options.anki = globalThis.HDReaderOptions.normaliseAnki({ model: "Basic",
+    fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" }, Back: template(value) } }); };
+  setBack('{{marker "glossary-selection-group-Mono"}}');
+  const service = createAnkiWorkerService({ gateway: f.gateway, readOptions: async () => f.options,
+    readGroups: async () => { reads++; return structuredClone(groups); },
+    readDictionaries: async () => [{ title: "Mono A", id: "a", enabled: true, path: "/dicts/a" }],
+    duplicateIndex: { async recordWrite() {} }, engine: async () => ({ ready: true, loading: false, generation: 3 }),
+    offscreen: async message => ({ media: [], fields: await buildAnkiFields(message.request, message.templates,
+      { handlebars, definition: options => options.selection.dictionary }) }),
+  });
+  const configKey = (await service.status()).configKey;
+  assert.ok(reads > 0);
+  const source = { term: { expression: "猫", reading: "ねこ", frequencies: [], pitches: [],
+    glossaries: [{ dictionary: "Mono A", glossary: '["cat"]' }] }, generation: 3,
+    sentence: "猫だ。", matchOffset: 0, matched: "猫", configKey, dictionaryAliases: {},
+    glossaryGroups: [{ id: "Mono", dictionaryIds: [] }] };
+  assert.equal((await service.submit(source)).state, "added");
+  assert.equal([...f.notes.values()][0].Back, "Mono A");
+  setBack("{{#each groups}}{{id}}:{{name}}{{/each}}");
+  const rawKey = (await service.status()).configKey;
+  groups = [{ ...groups[0], name: "Updated" }];
+  assert.notEqual((await service.status()).configKey, rawKey, "raw group context participates in the checked configuration");
+  setBack("{{term.reading}}");
+  reads = 0;
+  await service.status();
+  assert.equal(reads, 0, "a Handlebars field without group dependencies needs no group storage read");
+  const built = await buildAnkiFields({ ...source, glossaryGroups: groups }, { Back: template("{{#each groups}}{{id}}:{{name}}{{/each}}") },
+    { handlebars });
+  assert.equal(built.Back, "Mono:Updated");
 });

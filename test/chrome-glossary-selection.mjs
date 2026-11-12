@@ -37,6 +37,8 @@ const server = createServer(async (request, response) => {
       if (action === "canAddNotesWithErrorDetail") return params.notes.map(() => ({ canAdd: true, error: null }));
       if (action === "addNote") { notes.push(params.note); return notes.length; }
       if (action === "guiBrowse") return [];
+      if (action === "notesInfo") return params.notes.map(id => notes[id - 1] ? ({ noteId: id, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(notes[id - 1].fields).map(([field, value]) => [field, { value }])) }) : {});
       throw new Error(`Unexpected Anki action ${action}`);
     });
     response.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
@@ -290,6 +292,26 @@ try {
     return canvas.toDataURL("image/png").split(",")[1];
   }, images);
   writeFileSync(resolve(evidence, "palettes.png"), Buffer.from(filmstrip, "base64"));
+  // Raw Handlebars context must enable the selection UI without a glossary
+  // marker and must invalidate first-field readiness when the choice changes.
+  await update({ anki: { ...anki, url: `${origin}/anki`, model: "Basic", duplicateBehavior: "new", fieldTemplates: {
+    Front: { value: "{{selection.dictionary}}:{{selection.index}}", syntax: "handlebars", overwriteMode: "coalesce" },
+    Back: { value: "{expression}", overwriteMode: "coalesce" },
+    All: { value: "{glossary}", overwriteMode: "coalesce" },
+  } } });
+  await open("default");
+  await popupRoot(page).evaluate(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-select-definition")]
+    .find(button => button.parentNode.textContent.includes("猫 repeated")).click());
+  await popupRoot(page).waitFor(shadow => ["ready", "add-duplicate"].includes(shadow.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state));
+  const previous = notes.length;
+  await popupRoot(page).evaluate(shadow => shadow.querySelector(".gsm-hoshidicts-mine-button").click());
+  const deadline = Date.now() + 30_000;
+  while (notes.length === previous && Date.now() < deadline) await new Promise(done => setTimeout(done, 50));
+  assert.equal(notes.length, previous + 1);
+  assert.equal(notes.at(-1).fields.Front, "Selection dictionary 7:0");
+  assert.equal(notes.at(-1).fields.Back, "猫");
+  outcomes.push({ theme: "raw Handlebars selection", noteId: notes.length, selected: "Selection dictionary 7" });
+  console.log("ok raw Handlebars selection: accessible choice, first-field readiness and exact selected source");
   writeFileSync(resolve(evidence, "results.json"), JSON.stringify({ outcomes, palettes, calls }, null, 2));
   console.log(`PASS ${outcomes.length} renderer mining scenarios and ${palettes.length} palette screenshots`);
 } finally {
