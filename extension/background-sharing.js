@@ -25,6 +25,7 @@ import {
 import { applyToEveryProfile, singleProfileShape } from "./profile-state.js";
 import { preserveLinkedAnkiTemplateFields } from "./linked-anki-options.js";
 import { sameJsonValue } from "./json-value.js";
+import { preserveLinkedAnkiTemplateFields } from "./linked-anki-options.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { OVERLAY_LOCAL_OPTION_KEYS, withOverlayLookupDefault } from "./setup-state.js";
 import {
@@ -575,6 +576,12 @@ async function compatibleLinkedWorkerMessage(message, sender) {
     stored = await linkedOptionView(message);
     patch = { ...patch, anki: preserveLinkedAnkiTemplateFields(stored.anki, patch.anki, LEGACY_ANKI_GLOSSARY_DEFAULTS,
       "Update the linked Hachidori before changing Anki dictionary group settings.") };
+    message = { ...message, options: patch };
+  }
+  if (Object.hasOwn(patch, "anki") && !capabilities.includes(ANKI_PREPARATION_CAPABILITY)) {
+    stored ??= await linkedOptionView(message);
+    patch = { ...patch, anki: preserveLinkedAnkiTemplateFields(stored.anki, patch.anki,
+      { preparationScript: null }, "Update the linked Hachidori before changing preparation scripts.") };
     message = { ...message, options: patch };
   }
   if (capabilities.includes(LINKED_ANKI_CAPABILITY)) return message;

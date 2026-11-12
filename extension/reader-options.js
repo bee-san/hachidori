@@ -652,6 +652,12 @@
       && (template.syntax === undefined || template.syntax === "markers" || template.syntax === "handlebars"));
   }
 
+  function validAnkiPreparation(value, normalized) {
+    if (value === null) return normalized === null;
+    return normalized !== null && value && typeof value === "object" && !Array.isArray(value)
+      && Object.keys(value).length === 2 && value.scriptId === normalized.scriptId && value.handlerId === normalized.handlerId;
+  }
+
   function validAnkiTemplate(value, normalized) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const keys = new Set(["id", "name", ...ANKI_TEMPLATE_CONFIG_KEYS]);
@@ -659,8 +665,7 @@
         || value.id !== normalized.id || value.name !== normalized.name) return false;
     return ANKI_TEMPLATE_CONFIG_KEYS.every(key => {
       if (ANKI_GLOSSARY_CONFIG_KEYS.includes(key) && !Object.hasOwn(value, key)) return true;
-      if (key === "preparationScript") return !Object.hasOwn(value, key) || value[key] === null || (value[key] && Object.keys(value[key]).length === 2
-        && JSON.stringify(value[key]) === JSON.stringify(normalized[key]));
+      if (key === "preparationScript") return !Object.hasOwn(value, key) || validAnkiPreparation(value[key], normalized[key]);
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates)
         && JSON.stringify(value.fieldTemplates) === JSON.stringify(normalized.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
@@ -675,8 +680,7 @@
       if (ANKI_GLOSSARY_CONFIG_KEYS.includes(key) && !Object.hasOwn(value, key)) return true;
       if (key === "url") return !Object.hasOwn(value, key)
         || (normaliseAnkiConnectUrl(value.url) !== null && normaliseAnkiConnectUrl(value.url) === expected);
-      if (key === "preparationScript") return !Object.hasOwn(value, key) || value[key] === null || (value[key] && Object.keys(value[key]).length === 2
-        && JSON.stringify(value[key]) === JSON.stringify(expected));
+      if (key === "preparationScript") return !Object.hasOwn(value, key) || validAnkiPreparation(value[key], expected);
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
         && ANKI_FIELDS.every(field => value.fields[field] === expected[field]);
