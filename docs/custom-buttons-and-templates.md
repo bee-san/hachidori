@@ -165,6 +165,16 @@ For example, map MainDefinition to `{selected-glossary}`, Monolingual to
 a monolingual definition changes MainDefinition and Monolingual while Bilingual
 continues to use its group's first available entry.
 
+![Definition-group settings in the light palette](assets/anki-definition-groups-light.png)
+
+[Dark palette](assets/anki-definition-groups-dark.png) ·
+[High contrast](assets/anki-definition-groups-contrast.png).
+
+The production Chrome acceptance scenario also verifies selected-row export
+alongside a separate bilingual fallback, with the dictionary generation unchanged
+by the group-only write. Missing groups and first-field configuration changes
+have focused worker contracts in `test/anki-glossary-groups.test.mjs`.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,

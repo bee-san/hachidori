@@ -928,6 +928,10 @@ with `--firefox` runs the same proof in Firefox. It mines an exact selected entr
 with a bold source passage in Default, JL, Bee,
 Nazeka and Crystal through fake AnkiConnect. It also retains the legacy glossary
 field and captures every popup palette under `test/tmp/ci/glossary-selection/`.
+It also assigns ordered mono/bilingual groups through the worker CAS, proves
+that a selected row cannot enter the other group's field and group edits keep
+the dictionary generation, and captures Definition selection Settings in light,
+dark and high contrast under `test/tmp/ci/anki-glossary-groups/`.
 `benchmark/glossary-selection.mjs --runs 30` measures the production resource-field
 export path for twenty dictionaries, three rows each, and records every sample;
 `--plain` measures ordinary plain-text conversion without tracking.
