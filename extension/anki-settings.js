@@ -107,10 +107,9 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
   let optionsKey;
   function syncOptions() {
     const markers = markerOptions();
-    const key = JSON.stringify(markers);
-    if (optionsKey === key) return;
+    if (optionsKey === markers) return;
     const activeValue = options[active]?.value;
-    optionsKey = key;
+    optionsKey = markers;
     options = markers.map((marker, index) => {
       const option = document.createElement("div");
       option.id = `${id}-option-${index + 1}`;
@@ -353,12 +352,19 @@ export function createAnkiSettingsController({
   };
   const markerAvailable = marker => ANKI_MARKER_REQUIREMENTS[marker] === undefined
     || requirementMet(ANKI_MARKER_REQUIREMENTS[marker]);
-  const markerOptions = () => [
-    ...ANKI_TEMPLATE_MARKER_OPTIONS,
-    ...readGroups().map(group => ({ marker: `glossary-selection-group-${group.id}`,
-      value: `{glossary-selection-group-${group.id}}`,
-      description: `Selected or first available definition in ${group.name}` })),
-  ];
+  let groupMarkerKey = "[]", groupMarkerOptions = ANKI_TEMPLATE_MARKER_OPTIONS;
+  const markerOptions = () => groupMarkerOptions;
+  function updateGroupMarkers(groups) {
+    const key = JSON.stringify(groups.map(({ id, name }) => [id, name]));
+    if (key === groupMarkerKey) return;
+    groupMarkerKey = key;
+    groupMarkerOptions = groups.length === 0 ? ANKI_TEMPLATE_MARKER_OPTIONS : [
+      ...ANKI_TEMPLATE_MARKER_OPTIONS,
+      ...groups.map(group => ({ marker: `glossary-selection-group-${group.id}`,
+        value: `{glossary-selection-group-${group.id}}`,
+        description: `Selected or first available definition in ${group.name}` })),
+    ];
+  }
   const familiesListed = () => requirementMet("ankiNoteTypeFamilies");
   const modelFamily = model => (familiesListed() ? ankiSetupFamily(model) : null);
   const fieldAliases = () => {
@@ -719,6 +725,8 @@ export function createAnkiSettingsController({
   function render() {
     syncOwner();
     const config = readConfig();
+    const groups = readGroups();
+    updateGroupMarkers(groups);
     if (!apiKeyPanelInitialized) {
       apiKeyPanelInitialized = true;
       setApiKeyExpanded(config.apiKey !== "");
@@ -752,7 +760,6 @@ export function createAnkiSettingsController({
       labels: modelLabels,
     });
     renderDuplicateScope(config);
-    const groups = readGroups();
     const labels = Object.fromEntries(groups.map(group => [group.id, group.name]));
     for (const [id, value] of [["opt-anki-monolingual-group", config.monolingualGroupId],
       ["opt-anki-bilingual-group", config.bilingualGroupId]]) {
