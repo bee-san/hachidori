@@ -51,3 +51,14 @@ test("Handlebars uses escaped structured data, rich production markers and named
   assert.equal(definitions, 1);
   assert.equal(handlebars("{{term.constructor}}", { term: {} }, {}), "");
 });
+
+import { renderHandlebars } from "../extension/anki-template-sandbox.js";
+test("closing a rendering document rejects a request still waiting for its sandbox to load", async () => {
+  let close;
+  const frame = { setAttribute() {}, addEventListener() {}, remove() {} };
+  const document = { defaultView: { addEventListener(type, listener) { if (type === "pagehide") close = listener; } },
+    createElement: () => frame, body: { append() {} } };
+  const pending = renderHandlebars(document, "{{term.expression}}", { term: { expression: "猫" } }, {});
+  close();
+  await assert.rejects(pending, /renderer was closed/u);
+});

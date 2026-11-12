@@ -12,8 +12,9 @@ export function renderHandlebars(document, value, context, markers) {
     frame.setAttribute("sandbox", "allow-scripts");
     frame.src = new URL("./anki-template-frame.html", import.meta.url).href;
     const waiting = new Map();
-    let nextId = 0, port;
+    let nextId = 0, port, rejectReady;
     const ready = new Promise((resolve, reject) => {
+      rejectReady = reject;
       frame.addEventListener("error", () => reject(new Error("The Anki template sandbox could not load.")), { once: true });
       frame.addEventListener("load", () => {
         const channel = new window.MessageChannel();
@@ -38,6 +39,7 @@ export function renderHandlebars(document, value, context, markers) {
       });
     };
     window.addEventListener("pagehide", () => {
+      rejectReady(new Error("The Anki template renderer was closed."));
       for (const request of waiting.values()) request.reject(new Error("The Anki template renderer was closed."));
       waiting.clear();
       port?.close();
