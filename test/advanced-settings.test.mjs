@@ -16,7 +16,7 @@ const withoutModules = source => source.replace(/^import(?:[^;]+);\s*/gmu, "").r
 const plain = value => JSON.parse(JSON.stringify(value));
 
 // Settings as a user opens it: navigation attached, then stored options adopted.
-function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {}) {
+function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, version = "0.5.2" } = {}) {
   const dom = new JSDOM(extension("settings.html"), { runScripts: "outside-only", url: `https://settings.example/${hash}` });
   t.after(() => dom.window.close());
   const { window } = dom;
@@ -28,7 +28,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
   };
   window.MINING_CAPABILITIES = { screenshot: !overlayMode, browserSpeech: !overlayMode };
   window.chrome = {
-    runtime: { sendMessage: () => Promise.resolve({ ok: true, state: "stopped" }) },
+    runtime: { getManifest: () => ({ version }), sendMessage: () => Promise.resolve({ ok: true, state: "stopped" }) },
     storage: { onChanged: { addListener() {} }, local: { get: () => Promise.resolve({}) } },
   };
   window.eval(extension("reader-options.js"));
@@ -55,6 +55,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
   const source = withoutModules(SETTINGS_PAGE_MODULES.map(extension).join("\n"));
   assert.ok(source.endsWith("await start();\n"));
   window.eval(source.replace(/await start\(\);\s*$/u, `
+    renderInstalledVersion();
     configureBrowserUi();
     renderMiningCapabilityHelp();
     attachSettingsNavigation();
@@ -68,6 +69,17 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false } = {
   const visible = () => [...window.document.querySelectorAll("main > section")].filter(node => !node.hidden).map(node => node.id);
   return { window, el, visible };
 }
+
+test("Advanced shows the installed manifest version in browser and overlay Settings", t => {
+  for (const overlayMode of [false, true]) {
+    for (const version of ["0.5.2", "1.2.3.4"]) {
+      const { el, visible } = fixture(t, { overlayMode, version });
+      assert.deepEqual(visible(), ["advanced"]);
+      assert.equal(el("installed-version").textContent, `Hachidori ${version}`);
+      assert.ok(el("advanced").contains(el("installed-version")));
+    }
+  }
+});
 
 test("Advanced keeps dictionary experiments and discards removed media settings", async t => {
   const { window, el, visible } = fixture(t, {

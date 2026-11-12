@@ -155,6 +155,7 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
   }
   window.chrome = {
     runtime: {
+      getManifest: () => JSON.parse(extension("manifest.json")),
       async sendMessage(message) {
         messages.push(structuredClone(message));
         const answered = await onMessage?.(message, { records, write });

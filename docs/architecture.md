@@ -4406,6 +4406,12 @@ configuration and dictionary generation to validate and write the note. A
 confirmed or definitively refused write discards the pending screenshot; an
 uncertain write leaves it for inspection and an explicit retry.
 
+Settings → Advanced shows the installed Hachidori version from
+`chrome.runtime.getManifest().version`, including in embedded hosts. The debug
+report already includes that same manifest version; no setting is stored.
+
+![The installed version at the top of Advanced](assets/issue-752-settings-version.png)
+
 ## Storage ownership
 
 | Data | Owner | Storage |

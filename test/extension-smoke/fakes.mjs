@@ -879,6 +879,7 @@ async function shareWithLinkedReader(storage) {
 }
 
 function loadSettingsScript(window, { overlayMode = false, recommendedInstall = async () => ({ ok: true, runId: null, sequence: 0, finished: true, entries: [] }) } = {}) {
+  window.chrome.runtime.getManifest ??= () => JSON.parse(readFileSync(resolve(EXTENSION, "manifest.json"), "utf8"));
   window.extensionApi = window.chrome;
   window.selectExtensionApi = scope => scope.chrome ?? null;
   window.isFirefox = () => false;
