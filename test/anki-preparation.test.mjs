@@ -81,10 +81,17 @@ test("native USER_SCRIPT ports run a preparation and route only its own external
   const server = { name: "hachidori-anki-preparation", sender, onMessage: event(), onDisconnect: event() };
   client.postMessage = value => queueMicrotask(() => server.onMessage.emit(structuredClone(value)));
   server.postMessage = value => queueMicrotask(() => client.onMessage.emit(structuredClone(value)));
-  const context = vm.createContext({ addEventListener() {}, chrome: { runtime: { connect() { f.service.connect(server); return client; } } } });
+  const listeners = new Map();
+  let connects = 0;
+  const context = vm.createContext({ addEventListener(type, listener) { listeners.set(type, listener); },
+    chrome: { runtime: { connect() { connects++; f.service.connect(server); return client; } } } });
   vm.runInContext(await readFile(new URL("../extension/anki-preparation-runtime.js", import.meta.url), "utf8"), context);
   context.HDAnkiPreparation.enableNative();
+  vm.runInContext(userScriptSource({ ...script, id: "ordinary", javascript: "globalThis.ordinaryScriptRan = true;" }), context);
+  listeners.get("hachidori-popup-shown")();
+  assert.equal(connects, 0, "an ordinary user script needs no preparation port on hover");
   vm.runInContext(userScriptSource(script), context);
+  assert.equal(connects, 1);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.requests.length, 0);
   assert.deepEqual(await f.service.execute(sender, selected, { term: { expression: "猫" } }), { example: "猫はここ。" });
