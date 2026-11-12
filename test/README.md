@@ -498,8 +498,9 @@ These run separately:
   fixtures), aliases, disables, favourites, reorders and groups them, saves a
   personal source, checks for updates, sets the default and a per-dictionary
   schedule, changes Reading, Design, Audio, Anki, keybind, backup and
-  experimental settings, counts lookups, marks a word known and one ignored, and
-  exports through a real Chrome download. This checkout restores that file
+  experimental settings, counts lookups, marks a word known and one ignored,
+  saves a user script (or the older Custom JavaScript), and exports through a
+  real Chrome download. This checkout restores that file
   through Settings in a fresh profile: every item must come back equal, or
   differ only by a documented rule the check asserts (switches restore by name,
   a promoted switch becomes its setting, a newer setting keeps its default, a
