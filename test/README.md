@@ -953,3 +953,30 @@ writes. It also runs the sandbox renderer from an overlay host origin.
 fresh Firefox build. `HACHIDORI_BROWSER_ROOT` selects the shared installed
 browser directory; `HACHIDORI_TEMPLATE_EVIDENCE` saves light/dark Settings
 screenshots. The ordinary Chrome, Firefox and theme-contrast suites still apply.
+
+### Anki preparation scripts
+
+`node --test test/anki-preparation.test.mjs test/linked-anki-options.test.mjs`
+checks named JSON values, stable script/function references, source changes,
+document ownership and cancellation, and preservation of settings older linked
+readers cannot edit. The existing Anki content/mining/settings and debug-report
+contracts cover the preparation boundary and its diagnostic summaries.
+
+`node test/chrome-anki-preparation.mjs` runs an isolated fake Anki endpoint and
+an API on a different origin without CORS headers. It verifies native
+USER_SCRIPT registration/messaging, explicit-Add-only requests, the final card,
+failure without a partial note, the real search sandbox and an overlay host
+adapter using production script injection and the Anki controller. Chrome also
+checks a search HTTP failure and closing that document with a request pending.
+Light/dark Settings screenshots go to `test/tmp/ci/anki-preparation/`.
+
+`HACHIDORI_PREPARATION_BROWSER=firefox node test/chrome-anki-preparation.mjs`
+builds a temporary Firefox extension and runs the same native, search and
+overlay-adapter success paths. Set `HACHIDORI_CHROME` or `HACHIDORI_FIREFOX` to a
+specific browser binary. The adapter proves the production code in a served
+page's own world; it does not launch GameSentenceMiner itself.
+
+`HACHIDORI_PREPARATION_DELAY_MS=35000 node test/chrome-anki-preparation.mjs`
+delays the first API response by 35 seconds and disconnects DevTools while it
+waits for the note. This checks the pending preparation against Chrome's
+service-worker lifecycle without a debugger keeping that worker alive.

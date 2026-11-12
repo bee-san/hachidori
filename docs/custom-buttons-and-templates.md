@@ -374,3 +374,13 @@ Handlebars fields, `preparation.NAME`. Preparation runs once per explicit Add,
 before final field/duplicate checks and media preparation. It does no work on
 hover or readiness. The [user-script API](user-scripts.md#prepare-an-anki-card)
 explains registration, external requests, failure and linked-browser ownership.
+
+The script and registered-function controls in the light and dark palettes:
+
+![Anki preparation in the light palette](assets/anki-preparation-light.png)
+
+![Anki preparation in the dark palette](assets/anki-preparation-dark.png)
+
+[The ordinary-mining comparison](benchmarks/anki-preparation.md) records three
+repeated before/after runs, with unchanged Anki request counts when preparation
+is not selected.
