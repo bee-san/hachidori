@@ -835,7 +835,11 @@
         const records = group?.records.filter(record => !record.busy && !record.terminal && record.selectionDependent !== false) ?? [];
         if (!records.length) return;
         group.epoch++;
-        for (const record of records) {
+        // The group's old epoch also owns ordinary checks still in flight.
+        // Requeue those unfinished checks while retaining completed readiness.
+        for (const record of group.records) {
+          if (record.busy || record.terminal || (record.selectionDependent === false
+              && !record.needsCheck && record.add?.dataset.state !== "checking")) continue;
           record.viewChecked = true;
           record.needsCheck = true;
         }

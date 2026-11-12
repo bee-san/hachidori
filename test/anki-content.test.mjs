@@ -1220,3 +1220,30 @@ test("selection-dependent first-field readiness retires old replies while ordina
   await tick();
   assert.equal(f.items[0].add.dataset.state, "success", "a confirmed write never becomes retryable");
 });
+
+test("a changed glossary does not strand an ordinary custom button whose preflight shared the retired readiness epoch", async t => {
+  const held = Promise.withResolvers();
+  let ordinaryChecks = 0;
+  const f = fixture(t, handlesBatches(async (type, fields = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current", selectionDependent: fields.templateId === "default" };
+    if (type === "hd_anki_preflight_batch") {
+      if (fields.requests[0].templateId === "ordinary" && ++ordinaryChecks === 1) await held.promise;
+      return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
+    }
+    throw new Error(`Unexpected ${type}`);
+  }));
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.className = "gsm-hoshidicts-custom-anki-button";
+  custom.dataset.customButtonId = "ordinary";
+  f.items[0].actions.append(custom);
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  f.controller.update(globalThis.HDReaderOptions.normaliseOptions({ anki: { templates: [
+    { ...base, model: "Basic" }, { ...base, id: "ordinary", model: "Basic" },
+  ] }, customButtons: [{ id: "ordinary", type: "anki", label: "Ordinary", templateId: "ordinary" }] }));
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => ordinaryChecks === 1);
+  f.controller.selectionChanged(f.context.owner);
+  held.resolve();
+  await until(() => f.items[0].add.dataset.state === "ready" && custom.dataset.state === "ready");
+  assert.equal(ordinaryChecks, 2, "the discarded ordinary reply is replaced once");
+});
