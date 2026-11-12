@@ -59,3 +59,29 @@ test("popup and Anki text paths agree across multiline text, repeated strings an
   assert.match(html, /🍵<b>same<\/b>/u);
   assert.equal((html.match(/<b>/gu) ?? []).length, 1);
 });
+
+// The text themes must preserve their exact existing presentation while
+// exporting ranges through the same rich renderer as Default.
+test("plain popup fragments preserve list/table layout and exact repeated source paths", async t => {
+  const dom = new JSDOM("<!doctype html>");
+  t.after(() => dom.window.close());
+  const { document } = dom.window;
+  for (const raw of ['  raw text\nnext line  ', JSON.stringify([{ type: "structured-content", content: [
+    { tag: "ol", content: [{ tag: "li", content: "same" }, { tag: "li", content: "same" }] },
+    { tag: "table", content: { tag: "tr", content: [{ tag: "td", content: "猫" }, { tag: "td", content: "same" }] } },
+  ] }])]) {
+    const holder = document.createElement("div");
+    globalThis.HDGlossary.appendPlainGlossary(document, holder, raw, null);
+    assert.equal(holder.textContent, globalThis.HDGlossary.glossaryToPlainText(raw));
+    const last = holder.lastChild;
+    if (raw.startsWith("[")) {
+      const walker = document.createTreeWalker(holder, 4);
+      const occurrences = [];
+      while (walker.nextNode()) if (walker.currentNode.textContent === "same") occurrences.push(walker.currentNode);
+      const range = document.createRange(); range.selectNodeContents(occurrences[1]);
+      assert.deepEqual(globalThis.HDGlossary.glossarySelectionRanges(range, holder), [{
+        path: ["glossary", 0, "content", 0, "content", 1, "content"], start: 0, end: 4,
+      }]);
+    } else assert.ok(last.textContent.includes("next line"));
+  }
+});

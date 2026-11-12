@@ -1493,7 +1493,7 @@
   }
 
   function glossarySelectionRanges(range, content) {
-    if (!content.contains(range.startContainer) || !content.contains(range.endContainer)) return [];
+    if (!content || !content.contains(range.startContainer) || !content.contains(range.endContainer)) return [];
     const walker = content.ownerDocument.createTreeWalker(content, 4);
     const ranges = [];
     while (walker.nextNode()) {
@@ -2523,8 +2523,18 @@
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch {
         if (!onSegments) return marked ? value.split("\n").map(line => isolateParagraph(line, base)).join("\n") : value;
-        // The structured renderer treats a non-JSON string as one source sense.
-        value = [value];
+        const segments = [];
+        let offset = 0;
+        for (const [index, line] of value.split("\n").entries()) {
+          if (index) segments.push({ text: "\n" });
+          const wrapped = marked ? isolateParagraph(line, base) : line;
+          if (wrapped !== line) segments.push({ text: wrapped.slice(0, 1) });
+          segments.push({ text: line, path: ["glossary", 0], offset });
+          if (wrapped !== line) segments.push({ text: wrapped.slice(-1) });
+          offset += line.length + 1;
+        }
+        onSegments(segments);
+        return segments.map(segment => segment.text).join("");
       }
     }
     const [open, close] = otherLanguage && Array.isArray(language.labels?.readingBrackets)
