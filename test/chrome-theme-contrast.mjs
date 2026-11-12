@@ -61,6 +61,23 @@ async function sample(tab, points) {
   return { png, pixels };
 }
 
+// Crop a normal full-viewport screenshot in canvas. CDP clipped captures can
+// disturb Chromium's forced-colour mask painting in later screenshots.
+async function pageTextSnapshot(tab) {
+  const png = await tab.screenshot({ encoding: "base64" });
+  return tab.evaluate(async png => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+    const rect = document.getElementById("render-probe").getBoundingClientRect();
+    const scale = bitmap.width / window.innerWidth;
+    const canvas = new OffscreenCanvas(Math.round(rect.width * scale), Math.round(rect.height * scale));
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, -Math.round(rect.left * scale), -Math.round(rect.top * scale));
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", pixels));
+    return [...hash].map(value => value.toString(16).padStart(2, "0")).join("");
+  }, png);
+}
+
 // Each status's line under its word: the colour it is drawn in (the owned
 // sheet's, or HighlightText under forced colours), what it is drawn on, how
 // much of the word it spans, in how many pieces (solid, dashed, dotted) and
@@ -229,7 +246,7 @@ const server = createServer(async (request, response) => {
   response.end(page
     ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}#baseline{display:inline-block;width:0;height:0}</style>`
       + `<p id="words">${STATUSES.map(status => `<span id="${status}">${WORDS[status]}</span>`).join("と")}<span id="baseline"></span></p>`
-    : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
+    : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}#render-probe{position:absolute;left:800px;top:10px;width:280px;height:70px;font:20px sans-serif;color:black;background:white}</style><span id="word">${fixture.query}</span><div id="render-probe">読谷村の日本語を読む。Text rendering stays the same.</div>`);
 });
 let browser;
 try {
@@ -303,6 +320,7 @@ try {
       await tab.bringToFront();
       await tab.mouse.move(2, 2);
       await tab.keyboard.press("Escape");
+      const textBefore = await pageTextSnapshot(tab);
       const point = await tab.$eval("#word", node => {
         const range = document.createRange();
         range.setStart(node.firstChild, 0);
@@ -329,9 +347,12 @@ try {
         colour.fillStyle = getComputedStyle(popup).color;
         colour.fillRect(0, 0, 1, 1);
         return { theme: root.host.dataset.hoshidictsTheme,
+          backdropFilter: getComputedStyle(popup).backdropFilter,
           textColor: [...colour.getImageData(0, 0, 1, 1).data.slice(0, 3)],
           rects: images.map(image => image.closest(".gloss-image-container").getBoundingClientRect().toJSON()) };
       });
+      const pageTextUnchanged = textBefore === await pageTextSnapshot(tab);
+      const filterPassed = state.backdropFilter === "none";
       const cardRect = state.rects[0];
       const { png: cardPng, pixels: [ink, auto, background] } = await sample(tab, [
         ...state.rects.map(centre),
@@ -368,8 +389,8 @@ try {
       const imagesPassed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
         && preview.appearance === "monochrome" && near(previewInk, textColor)
         && ratio >= (scenario.forced ? 20 : 3);
-      const passed = imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
-      const result = { name: scenario.name, passed, theme: state.theme, ink, auto, background,
+      const passed = pageTextUnchanged && filterPassed && imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
+      const result = { name: scenario.name, passed, theme: state.theme, pageTextUnchanged, backdropFilter: state.backdropFilter, ink, auto, background,
         previewInk, textColor, contrast: Number(ratio.toFixed(2)),
         words: Object.fromEntries(wordTabs.map((word, index) => [word.name, Object.fromEntries(STATUSES.map(status => {
           const mark = words[index].marks[status];

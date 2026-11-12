@@ -627,7 +627,9 @@ These run separately:
   UI are outside this check.
 - **`chrome-theme-contrast.mjs`** samples a monochrome and an untagged SVG in
   every palette plus emulated forced colors (3:1 normally, 20:1 forced) and the
-  word-highlight lines on light and dark pages; `test/tmp/ci/theme-contrast.png`
+  word-highlight lines on light and dark pages. It also compares page text pixels
+  before and after the popup opens (#751); enable LCD antialiasing in fontconfig
+  to reproduce the original saturation failure on Linux. `test/tmp/ci/theme-contrast.png`
   is its filmstrip. Chrome emulation does not replace a check on a real Windows
   contrast theme.
 - **`chrome-netflix-subtitle-drag.mjs`**, included in `test:chrome`, exercises real

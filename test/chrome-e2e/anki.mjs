@@ -604,8 +604,12 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
     return { rect: { x, y, width, height },
       colour: [...frame.getImageData(video.videoWidth >> 1, video.videoHeight >> 1, 1, 1).data.slice(0, 3)] };
   });
-  // A fresh lookup, because the previous Add left its own control terminal.
+  // Keep the page's actual glyph colours as a reference: LCD antialiasing
+  // has coloured edges even when no Hachidori highlight is painted (#751).
   await tab.keyboard.press("Escape");
+  await tab.mouse.move(2, 2);
+  const cleanPage = await tab.screenshot({ encoding: "base64" });
+  // A fresh lookup, because the previous Add left its own control terminal.
   await hoverForPopup(tab, popup, "#kanjiword");
   const masonry = await settled(value => value.grids.some(grid => grid.masonry
     && grid.cards.length >= 2 && grid.cards.every(card => card.visibility === "visible")), () => popup.dictionaryTabs());
@@ -625,6 +629,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const uploadsBefore = calls.filter(call => call.action === "storeMediaFile").length;
   const ready = await settled(state => state?.controls.some(item => !item.hidden && item.state !== "checking" && !item.disabled));
   const popupRect = await popup.rect();
+  const highlightedPage = await tab.screenshot({ encoding: "base64" });
   const addRect = ready.controls[0].rect;
   const startedMining = Date.now();
   await tab.mouse.click(addRect.x + addRect.width / 2, addRect.y + addRect.height / 2, { clickCount: 2 });
@@ -642,7 +647,15 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
   const filename = /<img src="([^"]+)">/u.exec(note.Back ?? "")?.[1] ?? null;
   // The picture itself: decoded in the page, so its size and the pixels where
   // the popup stood are read from what Anki actually received.
-  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect, player }) => {
+  const picture = filename === null || !files.has(filename) ? null : await tab.evaluate(async ({ data, rect, player, cleanPage, highlightedPage }) => {
+    const reference = async png => {
+      const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const context = new OffscreenCanvas(image.width, image.height).getContext("2d");
+      context.drawImage(image, 0, 0);
+      image.close();
+      return context;
+    };
+    const clean = await reference(cleanPage), highlighted = await reference(highlightedPage);
     const response = await fetch(`data:image/jpeg;base64,${data}`);
     const bitmap = await createImageBitmap(await response.blob());
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -680,13 +693,19 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
         playerSamples += 1;
       }
     }
-    // The hovered word: still the page's own dark, neutral text rather than the
-    // reader's coloured source highlight.
+    // The hovered word must match the clean page more closely than the
+    // highlighted one. JPEG compression and LCD edges can both add colour.
     const word = document.querySelector("#kanjiword").getBoundingClientRect();
-    let wordDarkest = 255, wordColour = 0;
+    let wordDarkest = 255, wordColour = 0, cleanError = 0, highlightError = 0;
     for (let y = word.y + 2; y < word.y + word.height - 2; y += 2) {
       for (let x = word.x + 2; x < word.x + word.width - 2; x += 2) {
         const pixel = pixelAt(x, y);
+        const cleanPixel = clean.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data;
+        const highlightedPixel = highlighted.getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data;
+        for (let channel = 0; channel < 3; channel += 1) {
+          cleanError += (pixel[channel] - cleanPixel[channel]) ** 2;
+          highlightError += (pixel[channel] - highlightedPixel[channel]) ** 2;
+        }
         const spread = Math.max(pixel[0], pixel[1], pixel[2]) - Math.min(pixel[0], pixel[1], pixel[2]);
         wordColour = Math.max(wordColour, spread);
         wordDarkest = Math.min(wordDarkest, (pixel[0] + pixel[1] + pixel[2]) / 3);
@@ -696,10 +715,10 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       width: bitmap.width, height: bitmap.height,
       viewport: [Math.round(window.innerWidth * devicePixelRatio), Math.round(window.innerHeight * devicePixelRatio)],
       popupMean: Math.round(popupSum / Math.max(1, popupSamples)), popupSamples, darkest,
-      wordDarkest: Math.round(wordDarkest), wordColour,
+      wordDarkest: Math.round(wordDarkest), wordColour, cleanError, highlightError,
       playerSamples, playerColour: playerSum.map(sum => Math.round(sum / Math.max(1, playerSamples))),
     };
-  }, { data: files.get(filename), rect: popupRect, player: player.rect });
+  }, { data: files.get(filename), rect: popupRect, player: player.rect, cleanPage, highlightedPage });
   check("Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",
     spaUrl !== originalUrl && spaUrl.includes("/watch/1234?trackId=example%3Fvalue#player")
       && saved.controls[0].state === "success" && filename !== null && files.has(filename)
@@ -726,7 +745,7 @@ async function checkScreenshotMining({ tab, popup, configure, calls, notes, file
       // stood, and the page's dark text still in the picture.
       && picture !== null && JSON.stringify([picture.width, picture.height]) === JSON.stringify(picture.viewport)
       && picture.popupSamples > 100 && picture.popupMean > 240 && picture.darkest < 120
-      && picture.wordDarkest < 120 && picture.wordColour < 40,
+      && picture.wordDarkest < 120 && picture.cleanError < picture.highlightError,
     JSON.stringify({ saved: saved.controls[0], upload: upload && { filename: upload.params.filename, bytes: upload.params.data?.length },
       filename, opacity, picture, popupRect }),
   );

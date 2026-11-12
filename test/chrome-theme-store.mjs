@@ -652,6 +652,7 @@ try {
         sections: result.querySelectorAll(".crystal-block").length,
         controls: [...result.querySelectorAll('.gsm-hoshidicts-entry-actions[aria-label="Entry actions"]')].map(group =>
           [group.querySelectorAll(".gsm-hoshidicts-audio-button").length, group.querySelector(".gsm-hoshidicts-mine-button").dataset.state]) })),
+      backdropFilter: getComputedStyle(popup).backdropFilter,
       headControls: !!popup.querySelector(".crystal-head-actions .gsm-hoshidicts-mine-button"),
       defaultStyles: popupShadow.adoptedStyleSheets.some(sheet => [...sheet.cssRules].some(rule => rule.cssText.includes(".gsm-hoshidicts-glossary-card"))) };
   });
@@ -662,6 +663,7 @@ try {
     && result.controls.every(([audio, mining]) => audio === 1 && mining === "ready")), `every section has its own audio and Anki button: ${JSON.stringify(crystal)}`);
   assert.equal(crystal.headControls, true, "the first section's controls end the header");
   assert.equal(crystal.defaultStyles, false);
+  assert.equal(crystal.backdropFilter, "none", "opening Crystal preserves page text antialiasing on minimum Chrome");
   assert.deepEqual(await settings.$$eval("#opt-popup-theme-variant option", nodes => nodes.map(node => node.textContent)),
     ["Automatic", "Grey", "Beige", "Retro blue"], "Design → Colours lists Crystal's variants after Automatic");
   assert.equal(await settings.$eval("#opt-popup-theme-variant", node => node.checkVisibility()), true);

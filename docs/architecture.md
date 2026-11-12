@@ -2814,6 +2814,15 @@ requires the prior term view's exact state instead.
 
 ![Back restores an expanded Study view](assets/kanji-back.png)
 
+Bundled popups leave backdrop filtering off so opening them keeps the page's
+text rendering unchanged (#751). Chromium's colour-changing backdrop filters
+turn off LCD subpixel antialiasing elsewhere on the page; on minimum Chrome 128,
+blur alone does too. Default's Custom CSS backdrop-filter override still applies.
+
+![Page text with the popup closed, with the original saturation filter, and with no backdrop filter](assets/issue-751-page-text.png)
+
+![Crystal without backdrop filtering, Grey palette](assets/issue-751-crystal-grey.png)
+
 ## Dictionary presentation boundary
 
 Imported styles are parsed in a detached browser stylesheet, filtered, and only

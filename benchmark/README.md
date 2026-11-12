@@ -1,5 +1,14 @@
 # Browser benchmark
 
+## Popup backdrop
+
+`node benchmark/popup-backdrop.mjs <before-ref>` alternates that revision's and
+this checkout's production popup stylesheet on the same 200-paragraph reading
+page in pinned Chrome. Each of five samples opens/closes the popup 40 times,
+once per frame. It reports renderer main-thread `Performance.TaskDuration` in
+milliseconds, excluding GPU/compositor work and lookup latency. Use the same
+fontconfig and machine for both variants; the JSON records Chrome and the CPU.
+
 ## Hash index residency
 
 `index-residency.mjs` compares the original resident baseline (`43535b1b`), the rebuilt resident

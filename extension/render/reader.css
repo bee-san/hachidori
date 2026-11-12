@@ -1158,13 +1158,15 @@ html[data-hoshidicts-theme="girlypop"],
   border: 1px solid var(--hoshidicts-border-strong);
   border-radius: 14px;
   background: var(--hoshidicts-popup-background);
+  /* Backdrop filters change Chromium's page text antialiasing, including
+     blur on the minimum supported Chrome. Keep them opt-in through CSS. */
   -webkit-backdrop-filter: var(
     --gsm-hoshidicts-popup-backdrop-filter,
-    blur(16px) saturate(1.08)
+    none
   );
   backdrop-filter: var(
     --gsm-hoshidicts-popup-backdrop-filter,
-    blur(16px) saturate(1.08)
+    none
   );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
