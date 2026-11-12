@@ -90,7 +90,7 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
       return { fields: await buildAnkiFields(message.request, message.templates, { audio: message.audio }), media: [] };
     },
   });
-  return { service, gateway, calls, renders, engineCalls, notes, files, options, audioFilename,
+  return { service, gateway, duplicateIndex, calls, renders, engineCalls, notes, files, options, audioFilename,
     failMedia(error) { mediaError = error; },
     capture: () => service.screenshot(async () => "data:image/jpeg;base64,YQ=="),
     async request(expression = "猫") {

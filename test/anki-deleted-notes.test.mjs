@@ -17,6 +17,10 @@ for (const identity of ["{expression}", "word:{expression}"]) {
       const added = await f.service.submit(request);
       assert.equal(added.state, "added");
       assert.equal((await f.service.preflight(request)).state, "duplicate");
+      const cached = await f.duplicateIndex.peek(f.options.anki, request.term.expression);
+      assert.equal(cached.cached, identity === "{expression}");
+      assert.deepEqual(cached.noteIds, identity === "{expression}" ? [added.noteId] : [],
+        "only direct expression identities have a persistent word-index row");
       assert.equal(f.notes.delete(added.noteId), true, "delete only the disposable fake-Anki note");
       assert.deepEqual(await f.gateway.invoke("notesInfo", { notes: [added.noteId] }), [{}],
         "the missing-note response matches AnkiConnect's real placeholder shape");
