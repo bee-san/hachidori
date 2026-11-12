@@ -2638,6 +2638,7 @@
       onGlossaryRendered: entry => bindGlossarySelection(entry, level),
       supportsGlossarySelection: () => selectionMarkersEnabled(level),
       appendPlainGlossary: globalThis.HDGlossary.appendPlainGlossary,
+      copyGlossaryTextSource: globalThis.HDGlossary.copyGlossaryTextSource,
       appendStructuredImage: globalThis.HDGlossary.appendStructuredImage,
       document,
       getPageZoom: () => pageZoom,
