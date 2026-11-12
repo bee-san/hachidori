@@ -259,7 +259,7 @@ test("a single-profile host keeps today's hello, its one broadcast and its repli
   const { relay, host } = await hosting(singleProfileRecords());
   try {
     const older = await olderClient();
-    assert.deepEqual(older.hello.capabilities, ["linked-anki-v1", "linked-anki-v2", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"]);
+    assert.deepEqual(older.hello.capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"]);
     assert.deepEqual(older.hello.snapshot.options, singleProfileRecords().options);
     const client = await linked("aware", ["ja", "en", "ar"]);
     const linkSockets = FakeSharingSocket.instances.filter(socket => socket.url.endsWith("/link") && socket !== older.socket);
@@ -617,7 +617,7 @@ test("a profile-aware client opts in before storing anything and discards change
   const [socket] = sockets;
   socket.readyState = 1;
   socket.onopen();
-  assert.deepEqual(socket.sent[0].capabilities, ["linked-anki-v1", "linked-anki-v2"], "the client's hello does not change");
+  assert.deepEqual(socket.sent[0].capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1"], "the client's hello does not change");
   const view = { options: { revision: 3 } };
   socket.receive({ kind: "hello", protocol: 1, version: "0.4.0", name: "Chrome", dictionaryCount: 1,
     capabilities: ["linked-anki-v2", "language-profiles-v1"], snapshot: view });
