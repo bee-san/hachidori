@@ -351,7 +351,7 @@ export function createAnkiMiningService({
       return buildFields(request, rendering, { preflight: !fresh });
     }
     if (typeof current.config.preparationSource !== "string") {
-      throw new Error("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
+      throw new TypeError("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
     }
     if (!Object.hasOwn(request, "preparation")) {
       if (fresh) throw new Error("Run this Template's preparation script before adding the note.");
