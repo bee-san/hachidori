@@ -25,7 +25,6 @@ import {
 import { applyToEveryProfile, singleProfileShape } from "./profile-state.js";
 import { preserveLinkedAnkiTemplateFields } from "./linked-anki-options.js";
 import { sameJsonValue } from "./json-value.js";
-import { preserveLinkedAnkiTemplateFields } from "./linked-anki-options.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { OVERLAY_LOCAL_OPTION_KEYS, withOverlayLookupDefault } from "./setup-state.js";
 import {
