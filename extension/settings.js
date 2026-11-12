@@ -1485,7 +1485,12 @@ function renderMiningCapabilityHelp() {
   element("audio-mining-help").hidden = MINING_CAPABILITIES.browserSpeech;
 }
 
+function renderInstalledVersion() {
+  element("installed-version").textContent = `Hachidori ${chrome.runtime.getManifest().version}`;
+}
+
 async function start() {
+  renderInstalledVersion();
   configureBrowserUi();
   renderMiningCapabilityHelp();
   element("custom-buttons-settings").disabled = false;
