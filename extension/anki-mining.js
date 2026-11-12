@@ -600,8 +600,8 @@ export function createAnkiMiningService({
       if (value.configKey !== configKey) throw new Error(CONFIG_CHANGED);
     }
     const invoke = invokeFor(config);
-    const supplied = Array.isArray(value?.noteIds) && value.noteIds.length;
-    let noteIds = supplied ? [...value.noteIds] : [];
+    let noteIds = Array.isArray(value?.noteIds) ? [...value.noteIds] : [];
+    const supplied = noteIds.length > 0;
     let repaired = false;
     const source = await duplicateIndex.source(config);
     if (typeof value?.expression === "string" && value.expression && source !== null) {
