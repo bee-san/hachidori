@@ -25,7 +25,7 @@ const request = { generation: 3, term: { expression: "猫", reading: "ねこ", r
       { type: "image", path: `row-${row}.png`, width: 100, height: 50 },
     ]) }))).flat() }, trace: [], dictionaryAliases: {} };
 const dictionaryPaths = Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`Dictionary ${index + 1}`, `/dicts/generation-${index + 1}`]));
-const modes = args.includes("--legacy-only") ? ["legacy"] : ["legacy", "selected", "fallback"];
+const modes = args.includes("--plain") ? ["plain"] : args.includes("--legacy-only") ? ["legacy"] : ["legacy", "selected", "fallback"];
 const values = { legacy: "{glossary}", selected: "{selected-glossary}", fallback: "{selected-glossary}" };
 const percentile = (samples, fraction) => [...samples].sort((a, b) => a - b)[Math.ceil(samples.length * fraction) - 1];
 const samples = Object.fromEntries(modes.map(mode => [mode, []]));
@@ -37,6 +37,15 @@ try {
       const selected = mode === "selected" ? { ...request, glossarySelection: { dictionary: "Dictionary 7", index: 1,
         ranges: [{ path: ["glossary", 0, "content", "content", 0, "content", 1, "content"], start: 2, end: 10 }] } } : request;
       const start = performance.now();
+      if (mode === "plain") {
+        let characters = 0;
+        for (let index = 0; index < 2000; index++) characters += globalThis.HDGlossary.glossaryToPlainText(
+          request.term.glossaries[index % request.term.glossaries.length].glossary).length;
+        const ms = performance.now() - start;
+        assert.ok(characters > 0);
+        if (run >= 0) samples[mode].push(ms);
+        continue;
+      }
       const result = await buildAnkiResourceFields(selected, {
         Front: { value: "{expression}", overwriteMode: "coalesce" }, Back: { value: values[mode], overwriteMode: "coalesce" },
       }, { document: dom.window.document, dictionaryPaths, styles: async () => [] });
@@ -49,7 +58,8 @@ try {
   console.log(JSON.stringify({ commit: args.includes("--revision") ? option("--revision") : execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim(),
     node: process.version, os: `${platform()}/${arch()}`, cpu: cpus()[0]?.model, runs,
     input: { dictionaries: 20, rowsPerDictionary: 3, sensesPerRow: 4, imageReferencesPerRow: 1 },
-    boundary: "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+    boundary: modes[0] === "plain" ? "production glossaryToPlainText, 2000 conversions per sample; no DOM or media"
+      : "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
     results: Object.fromEntries(modes.map(mode => [mode, { samplesMs: samples[mode], medianMs: percentile(samples[mode], .5),
-      p95Ms: percentile(samples[mode], .95), media: mode === "legacy" ? 60 : 1 }])) }, null, 2));
+      p95Ms: percentile(samples[mode], .95), media: mode === "plain" ? 0 : mode === "legacy" ? 60 : 1 }])) }, null, 2));
 } finally { dom.window.close(); }

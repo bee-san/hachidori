@@ -2515,6 +2515,7 @@
   // Outside the Japanese profile tag pills are always spaced and readings use
   // the language's `readingBrackets`. Without one it is today's flattener.
   const TEXT_BLOCK_TAGS = new Set(["div", "p", "li", "table", "thead", "tbody", "tfoot", "details", "summary"]);
+  const PLAIN_TEXT_SOURCE = Symbol("glossary text");
   function glossaryToPlainText(glossary, language = null, { direction = "ltr", onSegments } = {}) {
     const marked = language?.marked === true;
     const otherLanguage = marked && language.code !== "ja";
@@ -2539,15 +2540,11 @@
     }
     const [open, close] = otherLanguage && Array.isArray(language.labels?.readingBrackets)
       ? language.labels.readingBrackets : ["[", "]"];
-    const LINE = {}, SOURCE = Symbol("glossary text"), parts = [], sources = [], lists = [], rows = [];
-    const at = (value, path) => onSegments && path ? { [SOURCE]: true, value, path } : value;
+    const LINE = {}, parts = [], sources = onSegments ? [] : null, lists = [], rows = [];
+    const at = (value, path) => onSegments && path ? { [PLAIN_TEXT_SOURCE]: true, value, path } : value;
     const push = (text, path = null) => {
       parts.push(text);
       if (onSegments) sources.push(path ? { path, offset: 0 } : null);
-    };
-    const trimLast = () => {
-      const text = parts.pop().trimEnd(), source = onSegments ? sources.pop() : null;
-      return { text, source };
     };
     let lineBreak = false;
     // The first part of the current line after its list marker.
@@ -2566,7 +2563,7 @@
         // A run of block boundaries becomes one break, without the whitespace before it.
         lineBreak = false;
         while (parts.length) {
-          const { text: last, source } = trimLast();
+          const last = parts.pop().trimEnd(), source = onSegments ? sources.pop() : null;
           if (last) {
             parts.push(last);
             if (onSegments) sources.push(source);
@@ -2577,18 +2574,21 @@
         }
         lineStart = parts.length;
       }
-      if (text) push(text, path);
+      if (text) {
+        if (onSegments) push(text, path);
+        else parts.push(text);
+      }
     };
     const stack = [Array.isArray(value) ? value.flatMap((item, index) => [at(item, ["glossary", index]), LINE]) : at(value, ["glossary", 0])];
     while (stack.length) {
       let item = stack.pop();
-      const path = item?.[SOURCE] ? item.path : null;
+      const path = onSegments && item?.[PLAIN_TEXT_SOURCE] ? item.path : null;
       if (path) item = item.value;
       if (item == null) continue;
       if (item === LINE) lineBreak = true;
       else if (typeof item === "function") item();
       else if (Array.isArray(item)) {
-        for (let index = item.length - 1; index >= 0; index--) stack.push(at(item[index], path ? [...path, index] : null));
+        for (let index = item.length - 1; index >= 0; index--) stack.push(path ? at(item[index], [...path, index]) : item[index]);
       } else if (typeof item !== "object") write(String(item), path);
       else if (item.tag === "img" || item.type === "image") {
         if (item.title) stack.push(LINE, String(item.title));
@@ -2600,13 +2600,13 @@
           push("\n");
           lineStart = parts.length;
         } else write("\n");
-      } else if (item.tag === "rt") stack.push(close, at(item.content, path ? [...path, "content"] : null), open);
+      } else if (item.tag === "rt") stack.push(close, path ? at(item.content, [...path, "content"]) : item.content, open);
       else if (item.tag === "ul" || item.tag === "ol") {
         lists.push({ tag: item.tag, type: item.style?.listStyleType, number: 0 });
-        stack.push(LINE, () => lists.pop(), at(item.content, path ? [...path, "content"] : null), LINE);
+        stack.push(LINE, () => lists.pop(), path ? at(item.content, [...path, "content"]) : item.content, LINE);
       } else if (item.tag === "tr") {
         rows.push(0);
-        stack.push(LINE, () => rows.pop(), " |", at(item.content, path ? [...path, "content"] : null), "| ", LINE);
+        stack.push(LINE, () => rows.pop(), " |", path ? at(item.content, [...path, "content"]) : item.content, "| ", LINE);
       } else if (item.tag !== "rp") {
         const block = TEXT_BLOCK_TAGS.has(item.tag);
         if (block) stack.push(LINE);
@@ -2618,7 +2618,8 @@
           stack.push(() => { if (parts.length > start && (always || parts[start].charCodeAt(0) < 128)) push(" "); });
         }
         // Icon-only cells such as Jitendex's form markers carry their meaning in the title.
-        stack.push(at(item.content ?? (typeof item.title === "string" ? item.title : null), path ? [...path, "content"] : null));
+        const content = item.content ?? (typeof item.title === "string" ? item.title : null);
+        stack.push(path ? at(content, [...path, "content"]) : content);
         if (item.tag === "li" && lists.length) {
           const list = lists.at(-1), type = item.style?.listStyleType ?? list.type;
           list.number++;
@@ -2636,7 +2637,7 @@
     }
     if (marked) {
       while (parts.length) {
-        const { text: last, source } = trimLast();
+        const last = parts.pop().trimEnd(), source = onSegments ? sources.pop() : null;
         if (last) { parts.push(last); if (onSegments) sources.push(source); break; }
       }
       finishLine();
