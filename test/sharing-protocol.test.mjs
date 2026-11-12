@@ -290,3 +290,14 @@ test("dictionary uploads forward to the host, rebuilt from the fields each step 
     assert.throws(() => allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, ...bad }), /dictionary upload/u, bad.type);
   }
 });
+
+test("linked glossary selection carries exact source ranges while destination credentials stay host-owned", () => {
+  const glossarySelection = { dictionary: "選択辞書", index: 1,
+    ranges: [{ path: ["glossary", 0, "content", 1], start: 2, end: 6 }] };
+  const request = { glossarySelection, term: { expression: "猫", reading: "ねこ" }, generation: 3,
+    apiKey: "reader-key", fields: { Back: "untrusted replacement" } };
+  const result = allowLinkedAnkiRequest({ target: "hachidori-anki", type: "hd_anki_submit", requestId: "selection", request });
+  assert.deepEqual(result.request.glossarySelection, glossarySelection);
+  assert.equal(result.request.apiKey, undefined);
+  assert.equal(result.request.fields, undefined);
+});
