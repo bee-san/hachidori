@@ -48,7 +48,7 @@ import {
 // HACHIDORI_BACKUP_RELEASE_ZIP uses a local copy of that ZIP, with the
 // release's SHA256SUMS file beside it, instead of the download.
 const [RELEASE_VERSION, RELEASE_COMMIT, RELEASE_SHA256] = (process.env.HACHIDORI_BACKUP_RELEASE
-  || "0.5.0 bf1a78f8298b 8a4d683bfcbbec5370023a674275f8f4c66c4b4f35d2cdd2e3b51940296aa75c").split(/\s+/u);
+  || "0.5.1 d41c37abe4ea 416b9e3b110d2a2c1fa9c46735c1a0c4051742f4688c329671d84620ff51477f").split(/\s+/u);
 const RELEASE_ASSET = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-chrome.zip`;
 const RELEASE_SUMS = `hachidori-${RELEASE_VERSION}-${RELEASE_COMMIT}-SHA256SUMS.txt`;
 
@@ -85,8 +85,8 @@ const ANKI_PATH = "/anki-connect";
 const ANKI_API_KEY = "round-trip-key";
 const ANKI_DECK = "Hachidori round trip";
 const CUSTOM_CSS = ".gsm-hoshidicts-popup { outline-color: rgb(12, 34, 56); }";
-// The released build's Design → Custom JavaScript, which Advanced → User
-// scripts restores as one package (docs/user-scripts.md, Storage).
+// Exercise the released build's user script, or the older Design → Custom
+// JavaScript that restores as one package (docs/user-scripts.md, Storage).
 const CUSTOM_JAVASCRIPT = "globalThis.hachidoriRoundTrip = true;";
 const ARCHIVES = [
   ["hachidori-fixture.zip", buildFixtureZip()],
@@ -607,7 +607,10 @@ async function releasedLeg() {
       customButtons: [{ id: "round-trip-search", type: "link", label: "Round-trip search", url: "https://search.example.test/?q=%s" },
         { id: "round-trip-sentence", type: "anki", label: "Sentence card", templateId: "sentence" }],
       customPopupCss: CUSTOM_CSS,
-      customPopupJavascript: CUSTOM_JAVASCRIPT,
+      ...(Object.hasOwn(defaults, "userScripts")
+        ? { userScripts: [{ id: "round-trip-script", name: "Round-trip script", enabled: true,
+          javascript: CUSTOM_JAVASCRIPT, css: "" }] }
+        : { customPopupJavascript: CUSTOM_JAVASCRIPT }),
     };
     await writeOptions(settings, written);
     // A later pinned release has Smaller Anki cards as an Anki setting, not a switch.
