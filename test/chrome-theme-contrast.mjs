@@ -229,7 +229,7 @@ const server = createServer(async (request, response) => {
   response.end(page
     ? `<!doctype html><meta charset="utf-8"><style>body{font:32px/2 sans-serif;padding:40px;margin:0;background:${page.background};color:${page.text}}#baseline{display:inline-block;width:0;height:0}</style>`
       + `<p id="words">${STATUSES.map(status => `<span id="${status}">${WORDS[status]}</span>`).join("と")}<span id="baseline"></span></p>`
-    : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}</style><span id="word">${fixture.query}</span>`);
+    : `<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:80px}#render-probe{position:absolute;left:800px;top:10px;width:280px;height:70px;font:20px sans-serif;color:black;background:white}</style><span id="word">${fixture.query}</span><div id="render-probe">読谷村の日本語を読む。Text rendering stays the same.</div>`);
 });
 let browser;
 try {
@@ -303,6 +303,11 @@ try {
       await tab.bringToFront();
       await tab.mouse.move(2, 2);
       await tab.keyboard.press("Escape");
+      const textClip = await tab.$eval("#render-probe", node => {
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      });
+      const textBefore = await tab.screenshot({ clip: textClip });
       const point = await tab.$eval("#word", node => {
         const range = document.createRange();
         range.setStart(node.firstChild, 0);
@@ -329,9 +334,13 @@ try {
         colour.fillStyle = getComputedStyle(popup).color;
         colour.fillRect(0, 0, 1, 1);
         return { theme: root.host.dataset.hoshidictsTheme,
+          backdropFilter: getComputedStyle(popup).backdropFilter,
           textColor: [...colour.getImageData(0, 0, 1, 1).data.slice(0, 3)],
           rects: images.map(image => image.closest(".gloss-image-container").getBoundingClientRect().toJSON()) };
       });
+      const textAfter = await tab.screenshot({ clip: textClip });
+      const pageTextUnchanged = Buffer.from(textBefore).equals(Buffer.from(textAfter));
+      const filterPassed = scenario.theme !== "default" || scenario.forced || state.backdropFilter === "blur(16px)";
       const cardRect = state.rects[0];
       const { png: cardPng, pixels: [ink, auto, background] } = await sample(tab, [
         ...state.rects.map(centre),
@@ -368,8 +377,8 @@ try {
       const imagesPassed = state.theme === expectedTheme && near(ink, textColor) && near(auto, [0, 0, 0])
         && preview.appearance === "monochrome" && near(previewInk, textColor)
         && ratio >= (scenario.forced ? 20 : 3);
-      const passed = imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
-      const result = { name: scenario.name, passed, theme: state.theme, ink, auto, background,
+      const passed = pageTextUnchanged && filterPassed && imagesPassed && words.every(measured => wordsPassed(measured, scenario.forced));
+      const result = { name: scenario.name, passed, theme: state.theme, pageTextUnchanged, backdropFilter: state.backdropFilter, ink, auto, background,
         previewInk, textColor, contrast: Number(ratio.toFixed(2)),
         words: Object.fromEntries(wordTabs.map((word, index) => [word.name, Object.fromEntries(STATUSES.map(status => {
           const mark = words[index].marks[status];
