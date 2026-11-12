@@ -208,6 +208,56 @@ try {
     outcomes.push({ theme, selected, noteId: notes.length, highlighted: true });
     console.log(`ok ${theme}: selected complete entry, one exact highlighted occurrence, one note`);
   }
+  const groupStatus = await settings.evaluate(async () => {
+    const { dictionaryState: state } = await chrome.storage.local.get("dictionaryState");
+    const id = index => state.dictionaries.find(row => row.title === `Selection dictionary ${index}`).id;
+    const before = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_state_cas",
+      baseRevision: state.revision, dictionaries: state.dictionaries,
+      groups: [{ id: "Mono-ID", name: "Monolingual", dictionaryIds: [id(7), id(2)] },
+        { id: "bi", name: "Bilingual", dictionaryIds: [id(1), id(3)] }] });
+    if (!reply.ok) throw new Error(reply.error);
+    const after = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return { before: before.generation, after: after.generation };
+  });
+  assert.equal(groupStatus.before, groupStatus.after, "group-only changes preserve the loaded dictionary generation");
+  await update({ anki: { ...anki, url: `${origin}/anki`, model: "Basic", duplicateBehavior: "new",
+    monolingualGroupId: "Mono-ID", bilingualGroupId: "bi", fieldTemplates: {
+      Front: { value: "{expression}", overwriteMode: "coalesce" },
+      Back: { value: "{monolingual-definition}", overwriteMode: "coalesce" },
+      All: { value: "{bilingual-definition}", overwriteMode: "coalesce" },
+    } } });
+  await open("default");
+  await reader(page).evaluate(shadow => {
+    const button = [...shadow.querySelectorAll(".gsm-hoshidicts-select-definition")]
+      .find(button => button.parentNode.textContent.includes("another row"));
+    button.click();
+  });
+  await reader(page).waitFor(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-mine-button")]
+    .some(button => button.dataset.state === "ready" || button.dataset.state === "add-duplicate"));
+  const groupNoteCount = notes.length;
+  await reader(page).evaluate(shadow => shadow.querySelector(".gsm-hoshidicts-mine-button").click());
+  const groupDeadline = Date.now() + 30_000;
+  while (notes.length === groupNoteCount && Date.now() < groupDeadline) await new Promise(done => setTimeout(done, 50));
+  assert.equal(notes.length, groupNoteCount + 1, "one grouped Add creates one note");
+  assert.match(notes.at(-1).fields.Back, /another row/u, "the monolingual field keeps the exact selected row");
+  assert.doesNotMatch(notes.at(-1).fields.Back, /猫 repeated|definition from dictionary/u);
+  assert.match(notes.at(-1).fields.All, /definition from dictionary 1/u, "the bilingual field uses its own priority fallback");
+  assert.doesNotMatch(notes.at(-1).fields.All, /another row|猫 repeated/u, "a selection outside the group cannot leak into it");
+  console.log("ok group fields: selected exact row, separate bilingual fallback, stable dictionary generation");
+  await settings.bringToFront();
+  await navigate(settings, settings.url());
+  await settings.waitForSelector('#opt-anki-monolingual-group option[value="Mono-ID"]');
+  assert.equal(await settings.$eval("#opt-anki-monolingual-group", node => node.value), "Mono-ID");
+  const groupEvidence = resolve(root, "test/tmp/ci/anki-glossary-groups");
+  mkdirSync(groupEvidence, { recursive: true });
+  for (const [name, palette] of [["light", "girlypop"], ["dark", "default"], ["contrast", "high-contrast"]]) {
+    await update({ popupTheme: palette });
+    await settings.waitForFunction(palette => document.documentElement.dataset.hoshidictsTheme === palette, {}, palette);
+    await settings.$eval("#anki-glossary-selection", node => node.scrollIntoView({ block: "center" }));
+    await (await settings.$("#anki-glossary-selection")).screenshot({ path: resolve(groupEvidence, `${name}.png`) });
+  }
+  console.log("ok group Settings: saved stable IDs and light/dark/high-contrast screenshots");
   // Default's palette variants use the same control. Capture all of them with
   // a visible pressed label, including emulated Windows contrast themes.
   const palettes = firefox ? [] : globalThis.HDReaderOptions.POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id));
