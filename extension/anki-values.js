@@ -294,12 +294,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   // anki-note-data-creator.js, a missing or non-string one is blank.
   const pageUrl = () => typeof request.pageUrl === "string" ? escape(request.pageUrl) : "";
   const pageLink = () => { const address = pageUrl(); return address && `<a href="${address}">${address}</a>`; };
-  const preparation = request.preparation ?? {};
   const table = {
-    ...Object.fromEntries(Object.keys(preparation).map(name => [`preparation-${name.toLowerCase()}`, () => {
-      const value = preparation[name];
-      return escape(typeof value === "string" ? value : JSON.stringify(value)).replaceAll("\n", "<br>\n");
-    }])),
     expression: () => escape(term.expression), reading: () => escape(term.reading),
     character: () => kanjiEntries().length ? escape(term.expression) : "",
     onyomi: () => kanjiReadings("onyomi"), kunyomi: () => kanjiReadings("kunyomi"),
@@ -387,6 +382,15 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     if (Object.hasOwn(table, name)) value = table[name]();
     else if (name.startsWith("glossary-selection-group-")) {
       value = groupDefinition(name.slice("glossary-selection-group-".length));
+    } else if (name.startsWith("preparation-")) {
+      const record = request.preparation;
+      const wanted = name.slice("preparation-".length);
+      const key = record && (Object.hasOwn(record, wanted) ? wanted
+        : Object.keys(record).find(key => key.toLowerCase() === wanted));
+      if (key !== undefined && key !== null && record) {
+        const prepared = record[key];
+        value = escape(typeof prepared === "string" ? prepared : JSON.stringify(prepared)).replaceAll("\n", "<br>\n");
+      }
     } else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
       glossaries ??= dynamicGlossaries(request, glossaryMarkerNames);
       if (glossaries.has(name)) value = definition(glossaries.get(name));

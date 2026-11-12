@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { answerAnkiConnect } from "./anki-connect-fake.mjs";
 import { buildTitledZip } from "./make-fixture.mjs";
+import { runPageUserScripts } from "../extension/custom-javascript.js";
 import "../extension/reader-options.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -24,12 +25,13 @@ const profile = mkdtempSync(resolve(tmpdir(), "hachidori-preparation-"));
 const evidence = resolve(root, `test/tmp/ci/anki-preparation/${firefox ? "firefox" : "chrome"}`);
 mkdirSync(evidence, { recursive: true });
 const notes = [], external = [];
-let failRequest = false;
+let failRequest = false, requestGate = null;
 const server = createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   if (req.url === "/prepare") {
     external.push({ body, authorization: req.headers.authorization });
+    if (requestGate) await requestGate;
     // Deliberately no Access-Control-Allow-Origin: the user script's ordinary
     // fetch cannot read this second origin. Its preparation request can.
     res.writeHead(failRequest ? 500 : 200, { "content-type": "application/json" });
@@ -100,6 +102,7 @@ try {
     await page.waitForFunction(expected => location.href === expected && document.readyState === "complete", {}, expected);
   };
   const settings = await browser.newPage();
+  await settings.setViewport({ width: 1100, height: 850 });
   settings.setDefaultTimeout(60_000);
   await navigate(settings, `${extensionOrigin}/settings.html#user-scripts`);
   if (firefox) {
@@ -179,13 +182,122 @@ try {
   await reading.waitForFunction(() => document.documentElement.dataset.preparationTestFeedback?.includes("preparation script failed"));
   assert.equal(notes.length, 1, "a failed preparation cannot send a partial note");
   assert.equal(external.length, 2);
+  failRequest = false;
+  const searchPage = await browser.newPage();
+  await navigate(searchPage, `${extensionOrigin}/search.html`);
+  const wait = async (condition, description) => {
+    for (let n = 0; n < 600; n++) { const value = await condition(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 50)); }
+    throw new Error(`Timed out: ${description}`);
+  };
+  let search;
+  if (!firefox) search = await searchPage.waitForFrame(frame => frame.url().endsWith("/search-frame.html"));
+  else {
+    const tab = searchPage.mainFrame().browsingContext, session = tab.userContext.browser.session;
+    const flatten = rows => rows.flatMap(row => [row, ...flatten(row.children ?? [])]);
+    const context = await wait(async () => {
+      const { result } = await session.send("browsingContext.getTree", { root: tab.id });
+      return flatten(result.contexts).find(row => row.url.endsWith("/search-frame.html"))?.context;
+    }, "search sandbox");
+    search = { async evaluate(fn, ...args) {
+      const { result } = await session.send("script.callFunction", {
+        functionDeclaration: `async args => JSON.stringify(await (${fn})(...JSON.parse(args)) ?? null)`, awaitPromise: true,
+        target: { context }, arguments: [{ type: "string", value: JSON.stringify(args) }] });
+      if (result.type === "exception") throw new Error(result.exceptionDetails?.text ?? "search sandbox failed");
+      return JSON.parse(result.result.value);
+    } };
+  }
+  await wait(() => search.evaluate(() => document.documentElement.dataset.preparationTestInstalled === "true"), "search script registration");
+  await search.evaluate(() => {
+    document.querySelector("#search-input").value = "猫";
+    document.querySelector("#search-form").requestSubmit();
+  });
+  await wait(() => search.evaluate(() => document.documentElement.dataset.preparationTestState === "ready"), "search Anki readiness");
+  assert.equal(external.length, 2, "opening the search result does no external work");
+  await search.evaluate(() => globalThis.dispatchEvent(new Event("test-preparation-add")));
+  await wait(() => search.evaluate(() => document.documentElement.dataset.preparationTestState === "success"), "prepared search note");
+  assert.equal(notes.length, 2);
+  assert.equal(notes[1].fields.Back, "猫の例文。");
+  assert.equal(external.length, 3);
+  // A new visit gets a fresh action while retaining the same saved Template.
+  await searchPage.close();
+  failRequest = true;
+  const failedSearchPage = await browser.newPage();
+  await navigate(failedSearchPage, `${extensionOrigin}/search.html`);
+  if (!firefox) {
+    const failedSearch = await failedSearchPage.waitForFrame(frame => frame.url().endsWith("/search-frame.html"));
+    await wait(() => failedSearch.evaluate(() => document.documentElement.dataset.preparationTestInstalled === "true"), "failure script registration");
+    await failedSearch.evaluate(() => { document.querySelector("#search-input").value = "猫"; document.querySelector("#search-form").requestSubmit(); });
+    await wait(() => failedSearch.evaluate(() => document.documentElement.dataset.preparationTestState === "ready"), "failure readiness");
+    await failedSearch.evaluate(() => globalThis.dispatchEvent(new Event("test-preparation-add")));
+    await wait(() => failedSearch.evaluate(() => document.documentElement.dataset.preparationTestFeedback?.includes("preparation script failed")), "same-world HTTP failure");
+    assert.equal(notes.length, 2);
+    assert.equal(external.length, 4);
+    failRequest = false;
+    const held = Promise.withResolvers(); requestGate = held.promise;
+    await failedSearch.evaluate(() => globalThis.dispatchEvent(new Event("test-preparation-add")));
+    await wait(() => external.length === 5, "pending same-world request");
+    await failedSearchPage.close();
+    await wait(async () => (await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_preparation_status" }))).activePreparations === 0,
+      "closed search document releases preparation");
+    requestGate = null; held.resolve();
+    assert.equal(notes.length, 2, "a retired search preparation cannot write a note");
+  } else await failedSearchPage.close();
+  failRequest = false;
+  const overlay = await browser.newPage();
+  await navigate(overlay, `${origin}/overlay`);
+  for (const file of ["reader-options.js", "anki-content.js"]) {
+    await overlay.addScriptTag({ path: resolve(root, "extension", file) });
+  }
+  // An overlay host's executeScript runs these production functions in the
+  // document's own world. The test adapter routes its runtime API to this
+  // isolated extension, retaining the worker's real validation and writes.
+  await runPageUserScripts({ scripting: { executeScript: async ({ func, args = [] }) => overlay.evaluate(func, ...args) } },
+    { tabId: 1 }, [{ id: "examples", name: "Sentence examples", enabled: true, javascript, css: "" }]);
+  await overlay.exposeFunction("preparationOverlayDisconnect", () => settings.evaluate(() => {
+    globalThis.preparationOverlayPort?.disconnect(); globalThis.preparationOverlayPort = null;
+  }));
+  await overlay.exposeFunction("preparationOverlaySend", async (type, fields) => {
+    if (type === "hd_anki_preparation_begin") await settings.evaluate(() => {
+      globalThis.preparationOverlayPort ??= chrome.runtime.connect({ name: "hachidori-anki-preparation-document" });
+    });
+    const encoded = await settings.evaluate(async encoded => {
+      const { type, fields } = JSON.parse(encoded);
+      return JSON.stringify(await chrome.runtime.sendMessage({ target: "hachidori-anki", type, ...fields }));
+    }, JSON.stringify({ type, fields }));
+    const result = JSON.parse(encoded);
+    if (!result.ok) throw new Error(result.error);
+    return result;
+  });
+  const overlayData = JSON.parse(await settings.evaluate(async () => {
+    const stored = await chrome.storage.local.get("options");
+    const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
+    return JSON.stringify({ options: HDReaderOptions.normaliseOptions(stored.options), generation: status.generation });
+  }));
+  await overlay.evaluate(encoded => {
+    const { options, generation } = JSON.parse(encoded);
+    globalThis.chrome = { runtime: { connect: () => ({ disconnect: () => { void globalThis.preparationOverlayDisconnect(); } }) } };
+    const popup = document.createElement("section"); popup.id = "preparation-overlay";
+    const actions = document.createElement("div"), feedback = document.createElement("div");
+    popup.append(actions, feedback); document.body.replaceChildren(popup);
+    const result = { generation, term: { expression: "猫", reading: "ねこ", frequencies: [], pitches: [],
+      glossaries: [{ dictionary: "Preparation fixture", glossary: '["cat"]' }] } };
+    const controller = HDAnki.createAnkiController({ send: globalThis.preparationOverlaySend, onChange() {} });
+    controller.update(options);
+    controller.bind([{ actions, feedback, result }], { owner: popup, popup, request: {}, isCurrent: () => true,
+      getRequest: () => ({ ...result, sentence: "猫を読む。", matchOffset: 0, matched: "猫", dictionaryAliases: {}, dictionaryIds: {} }) });
+  }, JSON.stringify(overlayData));
+  await overlay.waitForFunction(() => document.querySelector('#preparation-overlay .gsm-hoshidicts-mine-button')?.dataset.state === "ready");
+  await overlay.click("#preparation-overlay .gsm-hoshidicts-mine-button");
+  await overlay.waitForFunction(() => document.querySelector('#preparation-overlay .gsm-hoshidicts-mine-button')?.dataset.state === "success");
+  assert.equal(notes.length, 3);
+  assert.equal(notes[2].fields.Back, "猫の例文。");
+  await overlay.close();
   await navigate(settings, `${extensionOrigin}/settings.html?preparation=1#anki`);
   await settings.waitForSelector("#opt-anki-preparation-script");
   await settings.waitForFunction(() => document.querySelector("#opt-anki-preparation-script").value === "examples");
   for (const scheme of ["light", "dark"]) {
     await writeOptions({ popupTheme: scheme });
     await settings.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme, {}, scheme);
-    await settings.setViewport({ width: 1100, height: 850 });
     await settings.$eval("#opt-anki-preparation-script", node => node.closest(".anki-setting-row").scrollIntoView({ block: "center" }));
     await settings.screenshot({ path: resolve(evidence, `settings-${scheme}.png`) });
   }
@@ -198,7 +310,7 @@ try {
   assert.ok(!JSON.stringify(report).includes("local-test-credential"));
   assert.ok(!JSON.stringify(report.debugLog).includes("private response must not enter diagnostics"));
   assert.equal(report.services.ankiPreparation.lastFailure, "script");
-  console.log("PASS native USER_SCRIPT preparation, cross-origin fetch, explicit Add, final card, failure without a write, saved Template and light/dark Settings");
+  console.log("PASS native USER_SCRIPT, search sandbox and overlay-host preparation, cross-origin fetch, explicit Add, final cards, failure without a write, saved Template and light/dark Settings");
   console.log(`Screenshots: ${evidence}`);
 } finally {
   await browser?.close();

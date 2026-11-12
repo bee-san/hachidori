@@ -644,42 +644,42 @@
       setStatus(record, "Preparing card…");
       const runtime = globalThis.HDAnkiPreparation;
       const local = runtime?.describe(script);
-      let preparation;
-      if (local) {
-        const lifecycle = globalThis.chrome?.runtime?.connect?.({ name: "hachidori-anki-preparation-document" });
-        let operationId;
-        try { ({ operationId } = await send("hd_anki_preparation_begin", { request: { ...request, source: local.source } })); }
-        catch (error) { lifecycle?.disconnect(); throw error; }
+      const lifecycle = local ? globalThis.chrome?.runtime?.connect?.({ name: "hachidori-anki-preparation-document" }) : null;
+      if (!local) globalThis.dispatchEvent?.(new Event("hachidori-anki-preparation-connect"));
+      let operationId;
+      try {
+        ({ operationId } = await send("hd_anki_preparation_begin", { request: { ...request, ...(local ? { source: local.source } : {}) } }));
         record.preparationOperation = operationId;
-        try {
-          if (!owns()) return null;
+        if (!owns()) return null;
+        let preparation;
+        if (local) {
           const context = { term: request.term, sentence: request.sentence, matched: request.matched,
             matchOffset: request.matchOffset, searchQuery: request.searchQuery, pageUrl: request.pageUrl,
             documentTitle: request.documentTitle, glossarySelection: request.glossarySelection, templateId: request.templateId };
-          const data = await runtime.execute(script, context, (url, options) =>
-            send("hd_anki_preparation_fetch", { request: { operationId, url, options } }).then(reply => reply.response));
+          let data;
+          try {
+            data = await runtime.execute(script, context, (url, options) =>
+              send("hd_anki_preparation_fetch", { request: { operationId, url, options } }).then(reply => reply.response));
+          } catch { throw new Error("The preparation script failed. No note was sent."); }
           ({ preparation } = await send("hd_anki_preparation_finish", { request: { operationId, data } }));
-          record.preparationOperation = null;
-        } catch {
-          throw new Error("The preparation script failed. No note was sent.");
-        } finally {
-          if (record.preparationOperation === operationId) {
-            record.preparationOperation = null;
-            await send("hd_anki_preparation_cancel", { request: { operationId } }).catch(() => {});
-          }
-          lifecycle?.disconnect();
+        } else {
+          ({ preparation } = await send("hd_anki_prepare", { request: { ...request, operationId } }));
         }
-      } else {
-        globalThis.dispatchEvent?.(new Event("hachidori-anki-preparation-connect"));
-        ({ preparation } = await send("hd_anki_prepare", { request }));
+        record.preparationOperation = null;
+        if (!owns()) return null;
+        const prepared = { ...request, preparation, preparationScript: script };
+        const checked = await send("hd_anki_preflight", { request: prepared });
+        if (!owns()) return null;
+        record.decision = checked;
+        if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
+        return checked.clientSpeech ? { ...prepared, clientSpeech: checked.clientSpeech } : prepared;
+      } finally {
+        if (operationId && record.preparationOperation === operationId) {
+          record.preparationOperation = null;
+          await send("hd_anki_preparation_cancel", { request: { operationId } }).catch(() => {});
+        }
+        lifecycle?.disconnect();
       }
-      if (!owns()) return null;
-      const prepared = { ...request, preparation, preparationScript: script };
-      const checked = await send("hd_anki_preflight", { request: prepared });
-      if (!owns()) return null;
-      record.decision = checked;
-      if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
-      return checked.clientSpeech ? { ...prepared, clientSpeech: checked.clientSpeech } : prepared;
     }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
