@@ -4625,3 +4625,13 @@ its two script resources as it does the search sandbox's resources. Hosts servin
 the modules on their own origin use the same explicit frame sandbox. Document
 teardown rejects outstanding renders and closes the port. Settings previews use
 this production path with synthetic data and no Anki requests.
+
+`ankiTemplateDependencies` is the shared dependency projection for both field
+syntaxes. Handlebars' official AST identifies marker helpers and raw selection
+and group-context references; mining readiness and authoritative group loading
+use that projection. Reader content scripts use only a conservative selection UI
+hint from the saved source and load no parser. Group IDs are opaque and
+case-sensitive in both syntaxes; `anki-marker-name.js` owns normalization in the
+privileged parser and sandbox helper alike. The sandbox frame's ES module imports
+the compiler before connecting its port, so compiler availability follows module
+dependency ordering rather than two independent deferred script loads.

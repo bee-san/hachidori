@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./reader-options.js";
 import { inspectHandlebars } from "./anki-handlebars.js";
+import { normaliseAnkiMarkerName as markerName } from "./anki-marker-name.js";
 
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
@@ -117,9 +118,6 @@ export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
 const MARKERS = new Set([...CORE_MARKERS.map(marker => marker.toLowerCase()), ...MARKER_ALIASES.keys()]);
 const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-"];
 const MARKER_PATTERN = /\{([^{}]+)\}/gu;
-// Group IDs are opaque and case-sensitive even though marker names are not.
-const markerName = name => name.toLowerCase().startsWith("glossary-selection-group-")
-  ? `glossary-selection-group-${name.slice("glossary-selection-group-".length)}` : name.toLowerCase();
 const BREAK_PATTERN = /<br\s*\/?>/giu;
 const genericAliases = {
   expression: ["Expression", "Word", "Term", "Front"], reading: ["Reading", "Word Reading", "WordReading", "Kana"],
@@ -204,14 +202,21 @@ export function ankiMappedFieldNames(config, fields = []) {
   return names;
 }
 
-export function ankiTemplateMarkerNames(template) {
-  if (template?.syntax === "handlebars") return inspectHandlebars(template.value).markers.map(name => MARKER_ALIASES.get(name) ?? name);
+export function ankiTemplateDependencies(template) {
+  const inspection = template?.syntax === "handlebars" ? inspectHandlebars(template.value) : null;
   const value = typeof template === "string" ? template : template.value;
-  return [...value.matchAll(MARKER_PATTERN)].map(match => {
-    const name = markerName(match[1]);
-    return MARKER_ALIASES.get(name) ?? name;
-  });
+  const markers = (inspection?.markers ?? [...value.matchAll(MARKER_PATTERN)].map(match => markerName(match[1])))
+    .map(name => MARKER_ALIASES.get(name) ?? name);
+  const groupMarker = name => name === "monolingual-definition" || name === "bilingual-definition"
+    || name.startsWith("glossary-selection-group-");
+  return { markers,
+    selection: inspection?.contexts.includes("selection") === true || markers.some(name =>
+      name === "selected-glossary" || name === "glossary-selection" || groupMarker(name)),
+    groups: inspection?.contexts.includes("groups") === true || markers.some(groupMarker),
+  };
 }
+
+export const ankiTemplateMarkerNames = template => ankiTemplateDependencies(template).markers;
 
 export function ankiCaptureRequirements(templates) {
   const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template)));

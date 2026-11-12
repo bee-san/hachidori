@@ -393,6 +393,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
       sentence: { text: request.sentence, matched: request.matched, offset: request.matchOffset },
       source: { title: request.documentTitle, url: request.pageUrl, query: request.searchQuery },
       definitions: request.term.glossaries, selection: request.glossarySelection ?? null,
+      groups: request.glossaryGroups ?? [],
       preparation: request.preparation ?? {},
     };
     const safeMarkers = Object.fromEntries(Object.entries(markers).map(([name, value]) => [name, encodeAnkiClozeBraces(value)]));

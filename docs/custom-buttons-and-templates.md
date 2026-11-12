@@ -320,7 +320,8 @@ helpers (`if`, `unless`, `each`, `with`, `lookup` and `log`). For example:
 The context contains `term` (the dictionary result), `sentence` (`text`,
 `matched`, `offset`), `source` (`title`, `url`, `query`), `definitions` (the
 ordered glossary records), `selection` (the selected-entry descriptor, when
-available), and `preparation` (named values supplied by a preparation script,
+available), `groups` (the authoritative ordered groups with stable IDs, names
+and ordered dictionary IDs), and `preparation` (named values supplied by a preparation script,
 otherwise empty). Ordinary expressions escape HTML and keep cloze examples in
 plain data from becoming deletions. Triple-brace expressions explicitly insert
 raw HTML and can include Anki cloze syntax.
@@ -351,3 +352,9 @@ The field editor in the light and dark Settings palettes:
 ![Handlebars field syntax and sample preview in light Settings](assets/handlebars-chrome-light.png)
 
 ![Handlebars field syntax and sample preview in dark Settings](assets/handlebars-chrome-dark.png)
+
+Handlebars' raw `selection` context participates in first-field readiness just
+as a selected-glossary marker does. An expression-only cached View cannot decide
+that identity. Raw `groups` references and group marker helpers load the saved
+group configuration on the host; templates that use neither avoid that read.
+Group IDs remain case-sensitive, including inside the `marker` helper.

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import "./vendor/handlebars/compiler.js";
+import { normaliseAnkiMarkerName } from "./anki-marker-name.js";
 // This frame has an opaque origin, no extension API, and no network. Its one
 // parent-owned port carries only template source/data and rendered strings.
 (() => {
@@ -18,8 +20,8 @@
         const render = handlebars.compile(data.value);
         const html = render(data.context, {
           allowProtoMethodsByDefault: false, allowProtoPropertiesByDefault: false,
-          helpers: { marker: name => new handlebars.SafeString(Object.hasOwn(data.markers, name.toLowerCase())
-            ? data.markers[name.toLowerCase()] : "") },
+          helpers: { marker: name => new handlebars.SafeString(Object.hasOwn(data.markers, normaliseAnkiMarkerName(name))
+            ? data.markers[normaliseAnkiMarkerName(name)] : "") },
         });
         port.postMessage({ id: data.id, html });
       } catch (error) {

@@ -2,7 +2,7 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
-import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiTemplateDependencies, ankiTemplateMarkerNames } from "./anki-templates.js";
 import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
@@ -299,9 +299,7 @@ export function createAnkiWorkerService({
       const [options, profile] = await readOptionsAndProfile(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
-      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field =>
-        ankiTemplateMarkerNames(field.value).some(name => name === "monolingual-definition"
-          || name === "bilingual-definition" || name.startsWith("glossary-selection-group-")));
+      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).groups);
       return {
         ...inLanguage(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
