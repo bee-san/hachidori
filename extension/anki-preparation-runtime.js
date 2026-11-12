@@ -14,7 +14,9 @@
       return [...packages].filter(([, entry]) => entry.handlers.size > 0).map(([scriptId, entry]) => ({ scriptId, source: entry.source, handlers: [...entry.handlers.keys()] }));
     }
     function connect() {
-      if (!native || port || packages.size === 0) return;
+      if (!native || port) return;
+      const registered = descriptors();
+      if (registered.length === 0) return;
       try {
         port = globalThis.chrome.runtime.connect({ name: "hachidori-anki-preparation" });
         port.onDisconnect.addListener(() => {
@@ -52,7 +54,7 @@
             else operation.resolve(message.response);
           }
         });
-        port.postMessage({ type: "register", packages: descriptors() });
+        port.postMessage({ type: "register", packages: registered });
       } catch {
         port = null;
       }
@@ -72,8 +74,8 @@
           throw new TypeError("Register an Anki preparation function while its user script loads.");
         }
         currentPackage.handlers.set(handlerId, prepare);
-        connect();
-        port?.postMessage({ type: "register", packages: descriptors() });
+        if (port) port.postMessage({ type: "register", packages: descriptors() });
+        else connect();
       },
       runPackage(scriptId, run) {
         const previous = currentPackage;
