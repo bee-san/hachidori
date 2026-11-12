@@ -385,7 +385,8 @@ export function createView(options) {
         sense.append(chips);
       }
       formattedGlossary(sense, row.glossary, dictionary, context, owner, direction);
-      options.onGlossaryRendered?.({ parent: sense, content: sense.querySelector(".gsm-hoshidicts-glossary-content"), glossary: row, result });
+      options.onGlossaryRendered?.({ parent: sense, content: sense.querySelector(".gsm-hoshidicts-glossary-content"), glossary: row, result,
+        dictionaryName: row === rows[0] ? owner.querySelector(".crystal-dictionary") : null });
     }
   }
 

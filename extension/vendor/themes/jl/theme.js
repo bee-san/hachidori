@@ -322,7 +322,8 @@ export function createView(options, enhanced = false) {
           requestImagePreview: preview.requestImagePreview, refreshImagePreview: preview.refreshImagePreview,
           hideImagePreview: preview.hideImagePreview, ...rendering,
         });
-        options.onGlossaryRendered?.({ parent: rowContent, content: rowContent.firstElementChild, glossary: row, result });
+        options.onGlossaryRendered?.({ parent: rowContent, content: rowContent.firstElementChild, glossary: row, result,
+          dictionaryName: row === rows[0] ? owner.querySelector(".jl-dictionary") : null });
       }
     } catch (error) {
       content.replaceChildren(node("div", "gsm-hoshidicts-lookup-failure", `Could not render definition: ${error.message}`));
@@ -488,7 +489,8 @@ export function createView(options, enhanced = false) {
         else content.textContent = rowText(row.glossary, direction);
         container.append(content);
         definitions.append(container);
-        options.onGlossaryRendered?.({ parent: container, content, glossary: row, result: projected });
+        options.onGlossaryRendered?.({ parent: container, content, glossary: row, result: projected,
+          dictionaryName: row === rows[0] ? entry.querySelector(".jl-dictionary") : null });
       }
     }
   }

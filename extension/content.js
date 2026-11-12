@@ -2664,16 +2664,22 @@
         const index = rows.indexOf(entry.glossary);
         if (index >= 0) {
           const ranges = globalThis.HDGlossary.glossarySelectionRanges(range, entry.content);
-          request.glossarySelections ??= new Map();
-          request.glossarySelections.set(glossaryResultKey(result), { dictionary: entry.glossary.dictionary, index,
+          setGlossarySelection(level, result, { dictionary: entry.glossary.dictionary, index,
             ...(ranges.length ? { ranges } : {}) });
-          paintGlossarySelection(level);
         }
       }
     }
     const chosen = request?.glossarySelections?.get(glossaryResultKey(result));
     // Copy the snapshot: subsequent range or button choices cannot rewrite an Add.
     return chosen ? structuredClone(chosen) : undefined;
+  }
+  function setGlossarySelection(level, result, choice) {
+    const request = level.currentViewRequest, key = glossaryResultKey(result);
+    request.glossarySelections ??= new Map();
+    if (JSON.stringify(request.glossarySelections.get(key)) === JSON.stringify(choice)) return;
+    request.glossarySelections.set(key, choice);
+    paintGlossarySelection(level);
+    mining.selectionChanged(level);
   }
   function paintGlossarySelection(level) {
     for (const button of level.popup.querySelectorAll(".gsm-hoshidicts-select-definition")) {
@@ -2683,12 +2689,15 @@
       const selected = chosen?.dictionary === entry?.glossary.dictionary && chosen?.index === index;
       button.setAttribute("aria-pressed", String(selected));
       button.textContent = selected ? "Selected definition" : "Use this definition";
+      button.setAttribute("aria-label", `${button.textContent}: ${entry.glossary.dictionary}, entry ${index + 1}`);
     }
   }
-  function bindGlossarySelection({ parent, content, glossary, result }, level) {
+  function bindGlossarySelection({ parent, content, glossary, result, dictionaryName }, level) {
     if (!result || !selectionMarkersEnabled(level) || !level.currentViewRequest) return;
     const request = level.currentViewRequest;
-    glossarySelectionEntries.set(parent, { request, content, glossary, result });
+    const entry = { request, content, glossary, result };
+    glossarySelectionEntries.set(parent, entry);
+    if (dictionaryName) glossarySelectionEntries.set(dictionaryName, entry);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "gsm-hoshidicts-select-definition";
@@ -2702,9 +2711,7 @@
       event.stopPropagation();
       if (!parent.isConnected || request !== level.currentViewRequest || level.retainedView) return;
       const index = result.term.glossaries.filter(row => row.dictionary === glossary.dictionary).indexOf(glossary);
-      request.glossarySelections ??= new Map();
-      request.glossarySelections.set(glossaryResultKey(result), { dictionary: glossary.dictionary, index });
-      paintGlossarySelection(level);
+      setGlossarySelection(level, result, { dictionary: glossary.dictionary, index });
     });
     parent.insertBefore(button, content);
     paintGlossarySelection(level);

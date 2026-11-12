@@ -1185,3 +1185,38 @@ test("a YouTube note records its line through YouTube's recorder, and its warnin
   await until(() => g.items[0].add.dataset.state === "success");
   assert.deepEqual(pageWord, [{ templateId: "default" }]);
 });
+
+test("selection-dependent first-field readiness retires old replies while ordinary identities and confirmed writes stay untouched", async t => {
+  let selection = 0, dependent = true, checks = 0, writes = 0;
+  const held = Promise.withResolvers();
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current", selectionDependent: dependent };
+    if (type === "hd_anki_preflight") {
+      checks++;
+      if (request.glossarySelection.index === 0) { await held.promise; return { state: "duplicate", canAdd: false, noteIds: [4] }; }
+      return { state: "addable", canAdd: true };
+    }
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 9, warnings: [] }; }
+    throw new Error(`Unexpected ${type}`);
+  });
+  f.context.getRequest = result => ({ term: result.term, glossarySelection: { dictionary: "A", index: selection } });
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => checks === 1);
+  selection = 1;
+  f.controller.selectionChanged(f.context.owner);
+  held.resolve();
+  await until(() => f.items[0].add.dataset.state === "ready");
+  assert.equal(checks, 2, "the earlier duplicate reply cannot replace the new selection's readiness");
+  dependent = false;
+  f.controller.refresh(f.context.owner);
+  await until(() => checks === 3 && f.items[0].add.dataset.state === "ready");
+  f.controller.selectionChanged(f.context.owner);
+  await tick();
+  assert.equal(checks, 3, "ordinary first fields do no extra checks when their glossary changes");
+  f.items[0].add.click();
+  await until(() => writes === 1 && f.items[0].add.dataset.state === "success");
+  f.controller.selectionChanged(f.context.owner);
+  await tick();
+  assert.equal(f.items[0].add.dataset.state, "success", "a confirmed write never becomes retryable");
+});
