@@ -1183,3 +1183,13 @@ Needs `xvfb-run` and puppeteer-core (`HDW_PUPPETEER` if it is not under
 `~/.cache/hachidori-e2e`). The host is shut down through a quit file rather
 than a signal: an abruptly killed Electron cannot re-register the extension's
 service worker on the next launch with the same profile.
+
+## Dictionary navigation
+
+`node benchmark/dictionary-navigation.mjs <before-ref>` compares the production
+`HDPopup.findDifferentDictionary` from that revision and this checkout, using
+1, 50 and 500 rendered entries with 30 dictionary cards each. It checks the
+normal-path destination, warms both functions and alternates their order across
+five samples of 10,000 searches. Geometry is fixed synthetic data: the timings
+exclude DOM layout, scrolling, painting and lookup latency. JSON output includes
+the baseline revision, input sizes, runtime and CPU.

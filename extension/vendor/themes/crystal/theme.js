@@ -122,6 +122,7 @@ export function createView(options) {
     getCoordinateScale: coordinateScale, getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll });
   // blocks: one per result and dictionary, the entries keybinds index.
   // heads: one per result, with the blocks it introduces.
+  let dictionaryNavigation = null;
   let activeSource, blocks = [], bindings = [], heads = [], selected = 0, tab = null, onTabSelected = null;
   let labels = [], markers = [], tools = [], groupTabs = [], groupContext = null, availableDictionaries = [];
   let revision = 0, pendingPresentation = null, paintedPitch = "", paintedFrequency = "";
@@ -151,6 +152,7 @@ export function createView(options) {
   if (menuRoot !== document) menuRoot.addEventListener("pointerdown", onMenuPointerDown, true);
 
   function clear() {
+    dictionaryNavigation = null;
     revision += 1;
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
@@ -442,6 +444,7 @@ export function createView(options) {
     head.addEventListener("click", () => {
       const first = record.blocks.find(block => !block.hidden);
       if (first) selected = blocks.indexOf(first);
+      dictionaryNavigation = null;
     });
     return record;
   }
@@ -493,7 +496,7 @@ export function createView(options) {
     const first = head.blocks.length === 0;
     block.dataset.crystalFirst = String(first);
     const index = blocks.length;
-    block.addEventListener("click", () => { selected = index; });
+    block.addEventListener("click", () => { selected = index; dictionaryNavigation = null; });
     const banner = node("div", "crystal-banner");
     const plaque = node("span", "crystal-plaque");
     plaque.append(ornament("crystal-gem"), dictionaryLabel(dictionary));
@@ -689,10 +692,11 @@ export function createView(options) {
       let position = Math.max(0, visible.indexOf(blocks[selected]));
       if (target.dictionary) {
         const found = components.findDifferentDictionary(visible, position, Math.sign(target.dictionary), scroll,
-          block => [block], block => block.dataset.dictionary);
+          block => [block], block => block.dataset.dictionary, dictionaryNavigation);
         if (!found) return false;
         position = found.index;
       } else {
+        dictionaryNavigation = null;
         let next = position + target.offset;
         if (target === "first") next = 0;
         else if (target === "last") next = visible.length - 1;
@@ -703,6 +707,7 @@ export function createView(options) {
         : (scrollTarget(visible[position]).getBoundingClientRect().top - scroll.getBoundingClientRect().top) * coordinateScale()
           + scroll.scrollTop;
       scroll.scrollTo({ top, behavior: "instant" });
+      if (target.dictionary) dictionaryNavigation = { entry: visible[position], target: visible[position], scrollTop: scroll.scrollTop };
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation, flushDictionaryPresentation,

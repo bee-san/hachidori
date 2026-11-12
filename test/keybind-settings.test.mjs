@@ -137,6 +137,10 @@ test("keybind rows capture Yomitan-style key combinations and edit actions, argu
   assert.equal(f.control(8, "input").value, "Alt + WheelDown");
   assert.equal(f.wheel(8, { deltaY: -100, ctrlKey: true }), true);
   assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["WheelUp", "ctrl"]);
+  assert.equal(f.wheel(8, { deltaX: 100, shiftKey: true }), true, "Chromium redirects Shift+wheel horizontally");
+  assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["WheelDown", "shift"]);
+  assert.equal(f.wheel(8, { deltaX: -100, shiftKey: true }), true);
+  assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["WheelUp", "shift"]);
   f.press(8, { key: "e", code: "KeyE", altKey: true });
   assert.deepEqual([f.keybinds[8].key, ...f.keybinds[8].modifiers], ["KeyE", "alt"], "a key press replaces a wheel step");
   f.control(8, "input").blur();

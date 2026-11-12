@@ -1302,6 +1302,8 @@ async function wheelKeybindCase() {
     ({ action, argument: "", key, modifiers, scopes: ["popup"], enabled: true, ...extra });
   const custom = await createHarness(undefined, { options: { keybinds: [
     bind("firstEntry", "WheelDown", ["ctrl"]),
+    bind("nextEntryDifferentDictionary", "WheelDown", ["shift"]),
+    bind("previousEntryDifferentDictionary", "WheelUp", ["shift"]),
     bind("nextEntry", "WheelDown", ["alt"], { argument: "1", enabled: false }),
   ] } });
   try {
@@ -1312,8 +1314,14 @@ async function wheelKeybindCase() {
     wheel(custom, custom.popup, -100, 1400);
     const zoom = !wheel(custom, custom.popup, -100, 1600, { ctrlKey: true });
     const unbound = custom.entryFocus().length === 1;
+    const shifted = wheel(custom, custom.popup, 0, 1800, { shiftKey: true, deltaX: 4 });
+    for (let step = 1; step <= 25; step += 1) wheel(custom, custom.popup, 0, 1800 + step * 10, { shiftKey: true, deltaX: 4 });
+    const reversed = wheel(custom, custom.popup, 0, 2100, { shiftKey: true, deltaX: -100 });
+    const shiftDirections = JSON.stringify(custom.entryFocus()) === JSON.stringify(["first", { dictionary: 1 },
+      { dictionary: 1 }, { dictionary: -1 }]);
     result["custom wheel keybinds follow their modifiers and enablement, and unbound wheels keep scrolling"] =
-      (remapped && zoom && unbound) || { remapped, zoom, unbound, focus: custom.entryFocus() };
+      (remapped && zoom && unbound && shifted && reversed && shiftDirections)
+      || { remapped, zoom, unbound, shifted, reversed, shiftDirections, focus: custom.entryFocus() };
   } finally {
     custom.close();
   }

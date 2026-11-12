@@ -88,6 +88,7 @@ export function createView(options, enhanced = false) {
   const preview = enhanced ? components.createImagePreview({ document, window: options.window, popup,
     getCoordinateScale: () => components.popupCoordinateScale(options.getPageZoom?.() ?? 1, options.getPopupScalePercent?.() ?? 100),
     getImageHoverPreview: options.getImageHoverPreview, scrollBounds: () => scroll }) : null;
+  let dictionaryNavigation = null;
   let activeSource, entries = [], bindings = [], selected = 0, labels = [], frequencies = [], markers = [], tab = null, onTabSelected = null;
   let tools = [], groupTabs = [], groupContext = null, availableDictionaries = [], revision = 0;
   // Design's pitch switch and dictionary, as the markers were last painted.
@@ -123,6 +124,7 @@ export function createView(options, enhanced = false) {
   }
 
   function clear() {
+    dictionaryNavigation = null;
     revision += 1;
     for (const control of tools) control.close(false);
     tools = []; images.clear(); groupTabs = []; groupContext = null; availableDictionaries = []; pendingPresentation = null;
@@ -455,7 +457,7 @@ export function createView(options, enhanced = false) {
     entry.tabIndex = -1;
     entry.dataset.dictionary = dictionary;
     const index = entries.length;
-    entry.addEventListener("click", () => { selected = index; });
+    entry.addEventListener("click", () => { selected = index; dictionaryNavigation = null; });
     const { line, audio, actions } = topLine(result, dictionary, candidate, context);
     const definitions = node("div", "gsm-hoshidicts-definitions");
     const feedback = node("div", "gsm-hoshidicts-anki-feedback");
@@ -594,7 +596,7 @@ export function createView(options, enhanced = false) {
       const block = node("article", "jl-entry jl-kanji");
       block.tabIndex = -1;
       const index = entries.length;
-      block.addEventListener("click", () => { selected = index; });
+      block.addEventListener("click", () => { selected = index; dictionaryNavigation = null; });
       const line = node("div", "jl-top");
       const kanjiWord = node("span", "jl-spelling", kanji.character);
       if (marked()) setAttributes(kanjiWord, language.sourceAttributes());
@@ -658,10 +660,11 @@ export function createView(options, enhanced = false) {
       let position = Math.max(0, visible.indexOf(entries[selected]));
       if (target.dictionary) {
         const found = components.findDifferentDictionary(visible, position, Math.sign(target.dictionary), scroll,
-          entry => [entry], entry => entry.dataset.dictionary);
+          entry => [entry], entry => entry.dataset.dictionary, dictionaryNavigation);
         if (!found) return false;
         position = found.index;
       } else {
+        dictionaryNavigation = null;
         let next = position + target.offset;
         if (target === "first") next = 0;
         else if (target === "last") next = visible.length - 1;
@@ -672,6 +675,7 @@ export function createView(options, enhanced = false) {
       const top = position === 0 ? 0
         : (visible[position].getBoundingClientRect().top - scroll.getBoundingClientRect().top) * scale + scroll.scrollTop;
       scroll.scrollTo({ top, behavior: "instant" });
+      if (target.dictionary) dictionaryNavigation = { entry: visible[position], target: visible[position], scrollTop: scroll.scrollTop };
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation, flushDictionaryPresentation,

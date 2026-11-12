@@ -96,8 +96,10 @@
   // A vertical wheel step is a keybind key: the reader matches it over a popup
   // and the Keys field records it.
   function keybindWheelKey(event) {
-    if (event.deltaY > 0) return "WheelDown";
-    if (event.deltaY < 0) return "WheelUp";
+    // Chromium redirects Shift+wheel to deltaX before dispatching it.
+    const delta = event.deltaY || (event.shiftKey ? event.deltaX : 0);
+    if (delta > 0) return "WheelDown";
+    if (delta < 0) return "WheelUp";
     return null;
   }
   // Yomitan's default hotkeys without the actions Hachidori has no feature for,

@@ -9,6 +9,7 @@ function createView(options) {
   popup.append(scroll);
   const highlighter = options.sourceHighlighter;
   let highlightEnabled = options.sourceHighlightEnabled;
+  let dictionaryNavigation = null;
   let activeSource, entries = [], selected = 0, labels = [];
   const node = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -52,6 +53,7 @@ function createView(options) {
     popup.append(resize);
   }
   function clear() {
+    dictionaryNavigation = null;
     scroll.replaceChildren();
     entries = []; labels = []; selected = 0; activeSource = null;
     highlighter?.clear();
@@ -109,7 +111,7 @@ function createView(options) {
       const term = result.term;
       const entry = node("article", "gsm-hoshidicts-entry");
       entry.tabIndex = -1;
-      entry.addEventListener("click", () => { selected = index; });
+      entry.addEventListener("click", () => { selected = index; dictionaryNavigation = null; });
       const word = node("div", "nazeka-word");
       const expression = node("span", "gsm-hoshidicts-expression nazeka-main-keb");
       // The displayed forms (10.4); the stored ones stay what is mined.
@@ -180,7 +182,7 @@ function createView(options) {
       const info = node("div", "nazeka-kanji-info");
       info.tabIndex = -1;
       const index = entries.length;
-      info.addEventListener("click", () => { selected = index; });
+      info.addEventListener("click", () => { selected = index; dictionaryNavigation = null; });
       const direction = marked() ? language.dictionaryDirection(entry.dictionary) : "ltr";
       info.append(dictionaryLabel(entry.dictionary),
         node("div", "nazeka-reading", [entry.onyomi, entry.kunyomi].flat().filter(Boolean).join(" · ")),
@@ -229,11 +231,12 @@ function createView(options) {
       if (target.dictionary) {
         const found = components.findDifferentDictionary(entries, selected, Math.sign(target.dictionary), scroll,
           entry => [...entry.querySelectorAll(".nazeka-sense")],
-          row => row.querySelector(".nazeka-dictionary").dataset.dictionary);
+          row => row.querySelector(".nazeka-dictionary").dataset.dictionary, dictionaryNavigation);
         if (!found) return false;
         selected = found.index;
         destination = found.target;
       } else {
+        dictionaryNavigation = null;
         const next = target === "first" ? 0 : target === "last" ? entries.length - 1 : selected + target.offset;
         selected = Math.max(0, Math.min(entries.length - 1, next));
         destination = entries[selected];
@@ -242,6 +245,7 @@ function createView(options) {
       const top = selected === 0 && destination === entries[0] ? 0
         : (destination.getBoundingClientRect().top - scroll.getBoundingClientRect().top) * scale + scroll.scrollTop;
       scroll.scrollTo({ top, behavior: "instant" });
+      if (target.dictionary) dictionaryNavigation = { entry: entries[selected], target: destination, scrollTop: scroll.scrollTop };
       return true;
     },
     setDefinitionBlurState, updateDictionaryPresentation,

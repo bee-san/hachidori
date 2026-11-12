@@ -896,7 +896,7 @@ Alt+ArrowDown keeps moving between entries; here an auto-repeat runs only the
 entry and dictionary moves, and every other action still ignores it.
 
 A wheel step over a popup is matched the same way, with its vertical direction
-as the key, and acts on that popup rather than the deepest one, as Yomitan's
+as the key (including Chromium’s horizontal Shift+wheel events), and acts on that popup rather than the deepest one, as Yomitan's
 per-popup wheel handler does; wheel steps over the page stay with the page. One
 notch presses the binding once, whatever its delta. A touchpad sends many small
 steps instead, so steps in one direction with the same modifiers, each under
@@ -923,7 +923,13 @@ and changes through navigation or a click on an entry. It also changes when
 scrolling changes the result the popup's header shows (below). Navigation reveals
 later entries through the existing Show more control. Entry navigation scrolls the
 target's own header just under the popup's header. Dictionary navigation moves
-from the most visible glossary card to the nearest card from another dictionary.
+from the leading visible glossary card to the next or previous card from another
+dictionary. It retains the last destination while the scroll position is unchanged,
+so short cards remain reachable at the bottom of the pane. A manual scroll,
+entry move, or click resets that destination; scrolling away from the clicked
+entry recovers from the visible cards.
+![Dictionary navigation through short cards at the scroll limit](assets/issue-753-navigation-B.png)
+
 Add note, View notes and Back click the current entry's existing buttons, so
 duplicate and disabled behavior is unchanged. Forward reopens the view the last
 Back left ([clicked-kanji navigation](#clicked-kanji-navigation-and-back)).

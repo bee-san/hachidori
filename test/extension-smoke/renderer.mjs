@@ -1514,9 +1514,9 @@ function keybindEntryRenderStage({ HDGlossary, HDPopup, document, window, candid
       && scrolls.at(-1).behavior === "instant";
     const clamped = view.focusEntry({ offset: 5 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 620;
     const first = view.focusEntry("first") && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 0;
-    scrollTop = 30; // Beta is now the most visible card of the first entry.
-    const nextDictionary = view.focusEntry({ dictionary: 1 }) && view.currentEntryIndex() === 2 && scrolls.at(-1).top === 620;
-    const previousDictionary = view.focusEntry({ dictionary: -1 }) && view.currentEntryIndex() === 1 && scrolls.at(-1).top === 320;
+    scrollTop = 30; // Alpha is still partly visible; Beta must be the next stop.
+    const nextDictionary = view.focusEntry({ dictionary: 1 }) && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 110;
+    const previousDictionary = view.focusEntry({ dictionary: -1 }) && view.currentEntryIndex() === 0 && scrolls.at(-1).top === 20;
     scroller.querySelector(".gsm-hoshidicts-entry .gsm-hoshidicts-glossary-card").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     const clicked = view.currentEntryIndex() === 0;
     const last = view.focusEntry("last") && view.currentEntryIndex() === 2;
