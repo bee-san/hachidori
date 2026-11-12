@@ -4645,3 +4645,25 @@ For a custom first-field identity without a directly mapped expression,
 exact live `findNotes` query, then opens only the surviving IDs. If none survive,
 it returns `opened: false` so the existing reader controller retires View and
 rechecks Add. No collection-wide cache clear is required.
+
+### User-authored Anki field templates
+
+An advanced field mapping may carry `syntax: "handlebars"`; an absent syntax
+retains marker interpolation and literal Anki cloze source. The official
+parser-only bundle feeds `anki-handlebars.js` in privileged contexts. It parses
+all branches to discover literal `marker` helper dependencies, so the worker's
+existing capture/audio and scene-overwrite planning remains authoritative.
+`anki-values.js` prepares only those marker values, supplies the structured
+lookup context and asks `anki-template-sandbox.js` to render opted-in fields.
+Legacy fields never create a sandbox frame.
+
+The one lazily created frame per rendering document is `anki-template-frame.html`,
+listed in the manifest sandbox and also explicitly sandboxed without
+`allow-same-origin`. Its network policy is `connect-src 'none'`. One private
+MessagePort carries correlated source/data requests and strings/errors; only
+that document's parent can connect, and it connects once. The bundled full
+Handlebars compiler is loaded only there, without extension APIs. Firefox exposes
+its two script resources as it does the search sandbox's resources. Hosts serving
+the modules on their own origin use the same explicit frame sandbox. Document
+teardown rejects outstanding renders and closes the port. Settings previews use
+this production path with synthetic data and no Anki requests.

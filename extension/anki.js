@@ -277,7 +277,7 @@ export function ankiAvailability(config, discovery, resolvedTemplates) {
     errors.push(`Map the first field, “${discovery.fields[0]}”, of note type “${config.model}” before adding notes. Anki requires it.`);
   }
   if (discovery.fields.length > 0) {
-    const markers = ankiTemplateMarkerNames(resolved.templates[discovery.fields[0]].value);
+    const markers = ankiTemplateMarkerNames(resolved.templates[discovery.fields[0]]);
     if (markers.includes("screenshot") || markers.includes("sentence-audio") || markers.includes("gif")) {
       errors.push(`Captured media cannot be mapped to the first field, “${discovery.fields[0]}”.`);
     }
