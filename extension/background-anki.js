@@ -336,10 +336,14 @@ async function handleAnkiRequest(message, sender) {
   });
 }
 
+function linkedAnkiCapability(request) {
+  if (request?.preparationScript) return ANKI_PREPARATION_CAPABILITY;
+  return request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY;
+}
+
 async function forwardLinkedAnki(message) {
   try {
-    const reply = await getSharingClient().forward(message, { capability: message.request?.preparationScript ? ANKI_PREPARATION_CAPABILITY
-      : message.request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY });
+    const reply = await getSharingClient().forward(message, { capability: linkedAnkiCapability(message.request) });
     if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
       await getAnkiMining().preflightClientSpeech({
         ...message.request,
@@ -400,8 +404,7 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   let reply;
   try {
     reply = await getSharingClient().forward({ ...message, clientMedia }, {
-      capability: message.request?.preparationScript ? ANKI_PREPARATION_CAPABILITY
-        : message.request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY,
+      capability: linkedAnkiCapability(message.request),
       mutation: true,
       onSent: () => { sent = true; },
     });

@@ -13,6 +13,35 @@
     function descriptors() {
       return [...packages].filter(([, entry]) => entry.handlers.size > 0).map(([scriptId, entry]) => ({ scriptId, source: entry.source, handlers: [...entry.handlers.keys()] }));
     }
+    async function onNativeMessage(message) {
+      if (message?.type === "execute") {
+        active.add(message.operationId);
+        try {
+          const data = await execute(message.script, message.context, (url, options) => new Promise((resolve, reject) => {
+            if (!active.has(message.operationId)) { reject(new Error("The Anki preparation was cancelled.")); return; }
+            const id = `${++sequence}`;
+            pending.set(id, { resolve, reject, operationId: message.operationId });
+            port.postMessage({ type: "fetch", id, operationId: message.operationId, url, options });
+          }));
+          port?.postMessage({ type: "result", operationId: message.operationId, data });
+        } catch {
+          // Errors can contain prompts, API credentials or returned card
+          // text. Only this fixed failure crosses the diagnostics boundary.
+          port?.postMessage({ type: "result", operationId: message.operationId, failed: true });
+        } finally { active.delete(message.operationId); }
+      } else if (message?.type === "cancel") {
+        active.delete(message.operationId);
+        for (const [id, operation] of pending) if (operation.operationId === message.operationId) {
+          pending.delete(id); operation.reject(new Error("The Anki preparation was cancelled."));
+        }
+      } else if (message?.type === "fetch-result") {
+        const operation = pending.get(message.id);
+        if (!operation) return;
+        pending.delete(message.id);
+        if (message.failed) operation.reject(new Error("The preparation request failed."));
+        else operation.resolve(message.response);
+      }
+    }
     function connect() {
       if (!native || port) return;
       const registered = descriptors();
@@ -25,48 +54,20 @@
           for (const operation of pending.values()) operation.reject(unavailable());
           pending.clear();
         });
-        port.onMessage.addListener(async message => {
-          if (message?.type === "execute") {
-            active.add(message.operationId);
-            try {
-              const data = await execute(message.script, message.context, (url, options) => new Promise((resolve, reject) => {
-                if (!active.has(message.operationId)) { reject(new Error("The Anki preparation was cancelled.")); return; }
-                const id = `${++sequence}`;
-                pending.set(id, { resolve, reject, operationId: message.operationId });
-                port.postMessage({ type: "fetch", id, operationId: message.operationId, url, options });
-              }));
-              port?.postMessage({ type: "result", operationId: message.operationId, data });
-            } catch {
-              // Errors can contain prompts, API credentials or returned card
-              // text. Only this fixed failure crosses the diagnostics boundary.
-              port?.postMessage({ type: "result", operationId: message.operationId, failed: true });
-            } finally { active.delete(message.operationId); }
-          } else if (message?.type === "cancel") {
-            active.delete(message.operationId);
-            for (const [id, operation] of pending) if (operation.operationId === message.operationId) {
-              pending.delete(id); operation.reject(new Error("The Anki preparation was cancelled."));
-            }
-          } else if (message?.type === "fetch-result") {
-            const operation = pending.get(message.id);
-            if (!operation) return;
-            pending.delete(message.id);
-            if (message.failed) operation.reject(new Error("The preparation request failed."));
-            else operation.resolve(message.response);
-          }
-        });
+        port.onMessage.addListener(onNativeMessage);
         port.postMessage({ type: "register", packages: registered });
       } catch {
         port = null;
       }
     }
-    function response(value) {
-      return { ok: value.ok, status: value.status, headers: value.headers,
-        text: async () => value.body, json: async () => JSON.parse(value.body) };
-    }
     async function execute(script, context, request) {
       const handler = packages.get(script.scriptId)?.handlers.get(script.handlerId);
       if (!handler) throw unavailable();
-      return handler(JSON.parse(JSON.stringify(context)), { request: async (url, options = {}) => response(await request(url, options)) });
+      return handler(structuredClone(context), { request: async (url, options = {}) => {
+        const value = await request(url, options);
+        return { ok: value.ok, status: value.status, headers: value.headers,
+          text: async () => value.body, json: async () => JSON.parse(value.body) };
+      } });
     }
     globalThis.HDAnkiPreparation = Object.freeze({
       register(handlerId, prepare) {

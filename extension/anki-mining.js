@@ -344,6 +344,25 @@ export function createAnkiMiningService({
     };
   }
 
+  async function preparationFields(request, current, rendering, fresh) {
+    const script = current.config.preparationScript;
+    if (!script) {
+      if (Object.hasOwn(request, "preparation")) throw new Error("This Anki Template has no preparation script.");
+      return buildFields(request, rendering, { preflight: !fresh });
+    }
+    if (typeof current.config.preparationSource !== "string") {
+      throw new Error("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
+    }
+    if (!Object.hasOwn(request, "preparation")) {
+      if (fresh) throw new Error("Run this Template's preparation script before adding the note.");
+      return { fields: { [current.discovery.fields[0]]: "hachidori_pending_preparation" }, media: [], deferDuplicateCheck: true };
+    }
+    if (JSON.stringify(request.preparationScript) !== JSON.stringify(script)) throw new Error(CONFIG_CHANGED);
+    // Keep request identity: linked media and speech ownership use WeakMaps.
+    preparationData(request.preparation);
+    return buildFields(request, rendering, { preflight: !fresh });
+  }
+
   async function prepare(request, fresh) {
     const configured = await configuration(request?.templateId);
     if (request.configKey !== configured.configKey) throw new Error(CONFIG_CHANGED);
@@ -355,21 +374,7 @@ export function createAnkiMiningService({
     const rendering = !fresh && nativeDuplicateCheck(current) ? { ...current, resolved: { ...current.resolved,
       templates: Object.fromEntries(Object.entries(current.resolved.templates).filter(([field, template]) =>
         field === current.discovery.fields[0] || /\{\{c/iu.test(template.value))) } } : current;
-    const script = current.config.preparationScript;
-    let resources;
-    if (!script && Object.hasOwn(request, "preparation")) throw new Error("This Anki Template has no preparation script.");
-    if (script && typeof current.config.preparationSource !== "string") {
-      throw new Error("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
-    }
-    if (script && !Object.hasOwn(request, "preparation")) {
-      if (fresh) throw new Error("Run this Template's preparation script before adding the note.");
-      resources = { fields: { [current.discovery.fields[0]]: "hachidori_pending_preparation" }, media: [], deferDuplicateCheck: true };
-    } else {
-      if (script && JSON.stringify(request.preparationScript) !== JSON.stringify(script)) throw new Error(CONFIG_CHANGED);
-      // Keep request identity: linked media and speech ownership use WeakMaps.
-      if (script) preparationData(request.preparation);
-      resources = await buildFields(request, rendering, { preflight: !fresh });
-    }
+    const resources = await preparationFields(request, current, rendering, fresh);
     const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) {
