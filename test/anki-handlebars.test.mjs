@@ -73,6 +73,10 @@ test("Handlebars dependencies include raw selection/groups contexts and preserve
     { markers: [], selection: true, groups: true });
   assert.deepEqual(ankiTemplateDependencies(template('{{lookup @root "selection"}}')),
     { markers: [], selection: true, groups: false });
+  assert.deepEqual(ankiTemplateDependencies(template('{{#with this as |context|}}{{context.selection.dictionary}}{{lookup context "groups"}}{{/with}}')),
+    { markers: [], selection: true, groups: true });
+  assert.deepEqual(ankiTemplateDependencies(template('{{#with this as |context|}}{{lookup context preparation.contextKey}}{{/with}}')),
+    { markers: [], selection: true, groups: true });
   assert.deepEqual(ankiTemplateDependencies(template('{{marker "GLOSSARY-SELECTION-GROUP-Mono"}}')),
     { markers: ["glossary-selection-group-Mono"], selection: true, groups: true });
   assert.deepEqual(ankiTemplateDependencies(template('{{"selection"}} {{term.expression}}')),
