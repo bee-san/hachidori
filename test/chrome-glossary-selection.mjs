@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,8 +17,11 @@ const require = createRequire(resolve(root, "test/tooling/package.json"));
 const puppeteer = require("puppeteer-core");
 const chromeBuild = JSON.parse(readFileSync(resolve(root, "test/tooling/package.json"), "utf8")).config.chrome;
 const chrome = process.env.HACHIDORI_CHROME || resolve(root, `test/tmp/browsers/chrome/linux-${chromeBuild}/chrome-linux64/chrome`);
+const firefox = process.argv.includes("--firefox");
+const firefoxBuild = JSON.parse(readFileSync(resolve(root, "test/tooling/package.json"), "utf8")).config.firefox;
+const firefoxPath = process.env.HACHIDORI_FIREFOX || resolve(root, `test/tmp/browsers/firefox/linux-${firefoxBuild}/firefox/firefox`);
 const profile = mkdtempSync(resolve(tmpdir(), "hachidori-glossary-selection-"));
-const evidence = resolve(root, "test/tmp/ci/glossary-selection");
+const evidence = resolve(root, `test/tmp/ci/glossary-selection${firefox ? "-firefox" : ""}`);
 mkdirSync(evidence, { recursive: true });
 const notes = [], calls = [];
 const server = createServer(async (request, response) => {
@@ -39,21 +43,81 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify(reply));
   } else response.end('<!doctype html><meta charset="utf-8"><style>body{font:32px sans-serif;padding:50px}</style><span id="word">猫</span>');
 });
+// Firefox BiDi exposes closed roots by shared node identity. This is the
+// existing Firefox suite's inspection boundary, without opening the popup root.
+function reader(page) {
+  if (!firefox) return popupRoot(page);
+  async function evaluate(callback, ...args) {
+    const context = page.mainFrame().browsingContext;
+    const session = context.userContext.browser.session;
+    const { result: host } = await session.send("script.callFunction", {
+      functionDeclaration: "() => document.querySelector('hachidori-host')", awaitPromise: false, target: { context: context.id },
+      serializationOptions: { maxDomDepth: 1, includeShadowTree: "all" } });
+    const shadow = host.result?.value?.shadowRoot?.sharedId;
+    if (!shadow) return null;
+    const { result } = await session.send("script.callFunction", {
+      functionDeclaration: `async (root, args) => JSON.stringify(await (${callback.toString()})(root, ...JSON.parse(args)))`,
+      awaitPromise: true, target: { context: context.id },
+      arguments: [{ sharedId: shadow }, { type: "string", value: JSON.stringify(args) }] });
+    if (result.type === "exception") throw new Error(result.exceptionDetails?.text ?? "popup script failed");
+    return JSON.parse(result.result?.value ?? "null");
+  }
+  async function waitFor(callback, { timeout = 30_000 } = {}, ...args) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const result = await evaluate(callback, ...args);
+      if (result) return result;
+      await new Promise(done => setTimeout(done, 50));
+    }
+    throw new Error(`Popup condition timed out: ${callback}`);
+  }
+  return { evaluate, waitFor };
+}
+async function navigate(page, url) {
+  if (!firefox) return page.goto(url);
+  const context = page.mainFrame().browsingContext;
+  await context.userContext.browser.session.send("browsingContext.navigate", { context: context.id, url, wait: "none" });
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(expected => location.href === expected && document.readyState === "complete", url).catch(() => false)) return;
+    await new Promise(done => setTimeout(done, 50));
+  }
+  throw new Error(`Page did not load: ${url}`);
+}
 let browser;
 try {
   await new Promise(done => server.listen(0, "127.0.0.1", done));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true, userDataDir: profile,
-    args: [`--disable-extensions-except=${resolve(root, "extension")}`, `--load-extension=${resolve(root, "extension")}`,
-      "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"] });
-  const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  let extensionOrigin;
+  if (firefox) {
+    const extension = resolve(root, "test/tmp/glossary-selection-firefox-extension");
+    execFileSync("python3", ["scripts/build-firefox.py", "--output-dir", extension]);
+    const uuid = "a6810000-0000-4000-8000-000000000001";
+    browser = await puppeteer.launch({ browser: "firefox", executablePath: firefoxPath, headless: true, userDataDir: profile,
+      env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" },
+      extraPrefsFirefox: { "extensions.webextensions.uuids": JSON.stringify({ "{b39ca224-e554-498d-8d8b-b2a5ad2f7a13}": uuid }),
+        "dom.disable_beforeunload": true, "media.cubeb.force_mock_context": true } });
+    await browser.installExtension(extension);
+    extensionOrigin = `moz-extension://${uuid}`;
+  } else {
+    browser = await puppeteer.launch({ executablePath: chrome, headless: true, enableExtensions: true, userDataDir: profile,
+      args: [`--disable-extensions-except=${resolve(root, "extension")}`, `--load-extension=${resolve(root, "extension")}`,
+        "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox"] });
+    const worker = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+    extensionOrigin = `chrome-extension://${new URL(worker.url()).host}`;
+  }
   const settings = await browser.newPage();
   settings.setDefaultTimeout(120_000);
-  await settings.goto(`chrome-extension://${new URL(worker.url()).host}/settings.html#anki`);
+  await navigate(settings, `${extensionOrigin}/settings.html#anki`);
   await settings.waitForFunction(async () => {
     const status = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
     return status.ok && status.ready && !status.loading;
   }, { polling: 100 });
+  // This standalone mining fixture never hosts other browsers' dictionaries.
+  await settings.evaluate(async () => {
+    const reply = await chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable", requestId: "selection-private-host" });
+    if (!reply.ok) throw new Error(reply.error);
+  });
   for (let index = 1; index <= 7; index++) {
     const gloss = index === 7 ? [{ type: "structured-content", content: ["猫 repeated ", { tag: "em", content: "猫 repeated" }, " suffix"] }]
       : [`definition from dictionary ${index}`];
@@ -84,19 +148,20 @@ try {
   await page.setViewport({ width: 1000, height: 850 });
   const open = async theme => {
     await update({ popupTheme: theme });
-    await page.goto(origin);
+    await navigate(page, `${origin}/`);
+    await page.bringToFront();
     await page.mouse.move(2, 2);
     const point = await page.$eval("#word", node => {
       const rect = node.getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
     await page.mouse.move(point.x, point.y);
-    await popupRoot(page).waitFor(shadow => shadow.querySelectorAll(".gsm-hoshidicts-select-definition").length >= 8);
+    await reader(page).waitFor(shadow => shadow.querySelectorAll(".gsm-hoshidicts-select-definition").length >= 8);
   };
   const outcomes = [];
   for (const theme of ["default", "jl", "bee", "nazeka", "crystal"]) {
     await open(theme);
-    const selected = await popupRoot(page).evaluate(shadow => {
+    const selected = await reader(page).evaluate(shadow => {
       const buttons = [...shadow.querySelectorAll(".gsm-hoshidicts-select-definition")];
       const button = buttons.find(node => node.parentNode.textContent.includes("猫 repeated"));
       const content = button.parentNode.querySelector(".gsm-hoshidicts-glossary-content, .bee-rich-row > ul, .gloss-list") ?? button.nextElementSibling;
@@ -106,7 +171,7 @@ try {
       const range = document.createRange();
       const offset = chosen.data.indexOf("猫 repeated");
       range.setStart(chosen, offset); range.setEnd(chosen, offset + 1);
-      const selection = shadow.getSelection();
+      const selection = shadow.getSelection?.() ?? window.getSelection();
       selection.removeAllRanges(); selection.addRange(range);
       content.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
       button.scrollIntoView({ block: "center" });
@@ -114,11 +179,11 @@ try {
       return { selected: button.getAttribute("aria-pressed"), label: button.textContent };
     });
     assert.equal(selected.selected, "true", `${theme}: text selection selects its owning entry`);
-    await popupRoot(page).waitFor(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-mine-button")]
+    await reader(page).waitFor(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-mine-button")]
       .some(button => button.dataset.state === "ready" || button.dataset.state === "add-duplicate"));
     await page.screenshot({ path: resolve(evidence, `${theme}.png`) });
     const previous = notes.length;
-    await popupRoot(page).evaluate(shadow => {
+    await reader(page).evaluate(shadow => {
       const selected = shadow.querySelector('.gsm-hoshidicts-select-definition[aria-pressed="true"]');
       const entry = selected.closest(".gsm-hoshidicts-entry, .crystal-dictionary");
       (entry?.querySelector(".gsm-hoshidicts-mine-button") ?? shadow.querySelector(".gsm-hoshidicts-mine-button")).click();
@@ -136,10 +201,10 @@ try {
   }
   // Default's palette variants use the same control. Capture all of them with
   // a visible pressed label, including emulated Windows contrast themes.
-  const palettes = globalThis.HDReaderOptions.POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id));
+  const palettes = firefox ? [] : globalThis.HDReaderOptions.POPUP_THEME_GROUPS.flatMap(group => group.themes.map(theme => theme.id));
   for (const palette of palettes) {
     await open(palette);
-    await popupRoot(page).evaluate(shadow => {
+    await reader(page).evaluate(shadow => {
       const button = shadow.querySelector(".gsm-hoshidicts-select-definition");
       button.click(); button.focus();
     });

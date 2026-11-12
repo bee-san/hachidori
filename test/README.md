@@ -943,7 +943,8 @@ Its disposable fake endpoint returns AnkiConnect's actual `{}` missing-note
 placeholder; it does not touch a real Anki collection.
 
 `node test/chrome-glossary-selection.mjs` imports seven small dictionaries and
-mines an exact selected entry with a bold source passage in Default, JL, Bee,
+with `--firefox` runs the same proof in Firefox. It mines an exact selected entry
+with a bold source passage in Default, JL, Bee,
 Nazeka and Crystal through fake AnkiConnect. It also retains the legacy glossary
 field and captures every popup palette under `test/tmp/ci/glossary-selection/`.
 `benchmark/glossary-selection.mjs --runs 30` measures the production resource-field
