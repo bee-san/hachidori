@@ -8,7 +8,7 @@
 
 import { describe } from "node:test";
 import { runInContext } from "node:vm";
-import { SHARING_CAPABILITIES } from "../../extension/sharing-protocol.js";
+import { API_CAPABILITY, LINKED_IMPORT_CAPABILITY, MCP_CAPABILITY, SHARING_CAPABILITIES } from "../../extension/sharing-protocol.js";
 import { ANKI_INDEX_ALARM } from "../../extension/anki-index-cache.js";
 import {
   CUSTOM_DICTIONARY_ID,
@@ -150,7 +150,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "anki-glossary-groups-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify([...SHARING_CAPABILITIES, API_CAPABILITY, LINKED_IMPORT_CAPABILITY, MCP_CAPABILITY])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options",
         "wordStatusOverrides"])
       && hello.snapshot.options === null,
@@ -629,9 +629,9 @@ async function sharingClientStage() {
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello"
-      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "anki-glossary-groups-v1"]) && probe.readyState === 3
+      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(SHARING_CAPABILITIES) && probe.readyState === 3
       && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
-      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "anki-glossary-groups-v1"])
+      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(SHARING_CAPABILITIES)
       && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
       && linkedReply.sharing.client.display === "this computer"
       && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"

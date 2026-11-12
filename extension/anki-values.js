@@ -39,6 +39,14 @@ const VALUE_ALIASES = { "glossary-selection": "selected-glossary", definition: "
 const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, dictionary)
   ? request.dictionaryAliases[dictionary] : dictionary;
 
+function preparationValue(record, wanted) {
+  if (!record) return "";
+  const key = Object.hasOwn(record, wanted) ? wanted : Object.keys(record).find(key => key.toLowerCase() === wanted);
+  if (key === undefined) return "";
+  const value = record[key];
+  return escape(typeof value === "string" ? value : JSON.stringify(value)).replaceAll("\n", "<br>\n");
+}
+
 function furiganaHtml(segments, plain) {
   return segments.map(({ text, reading }, index) => {
     if (!reading) return escape(text);
@@ -382,6 +390,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     if (Object.hasOwn(table, name)) value = table[name]();
     else if (name.startsWith("glossary-selection-group-")) {
       value = groupDefinition(name.slice("glossary-selection-group-".length));
+    } else if (name.startsWith("preparation-")) {
+      value = preparationValue(request.preparation, name.slice("preparation-".length));
     } else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
       glossaries ??= dynamicGlossaries(request, glossaryMarkerNames);
       if (glossaries.has(name)) value = definition(glossaries.get(name));

@@ -12,7 +12,7 @@ import {
 import {
   WORKER_HANDLERS, handleRecommendedInstall, handleWorkerRequest, SHARING_TARGET,
 } from "./background-requests.js";
-import { broadcastWordStatus, indexRevision, reconcileAnkiIndex, handleAnkiRequest } from "./background-anki.js";
+import { broadcastWordStatus, indexRevision, reconcileAnkiIndex, handleAnkiRequest, readAnkiOptions } from "./background-anki.js";
 import {
   automaticBackupNextAt, automaticBackupWaitingForState, getBackupDownloads, scheduleAutomaticBackup,
   queueAutomaticBackup, relayEngineRequest, validBackupPreparationToken, cancelOwnedBackupPreparation, handleAlarm,
@@ -27,6 +27,7 @@ import {
 import { netflixMining } from "./background-netflix.js";
 import { youtubeMining } from "./background-youtube.js";
 import { crunchyrollMining } from "./background-crunchyroll.js";
+import { ankiPreparation, handlePreparationRequest, PREPARATION_REQUESTS } from "./background-anki-preparation.js";
 import { extensionApi as chrome } from "./browser-api.js";
 import { captureDebugLog, openDebugLogStore } from "./debug-log.js";
 import { describeErrorOrJson } from "./error-text.js";
@@ -246,6 +247,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 const VIDEO_SITES = [netflixMining, youtubeMining, crunchyrollMining];
 
 chrome.runtime.onConnect.addListener(port => {
+  ankiPreparation.connectLifecycle(port);
   VIDEO_SITES.find(site => site.recorderPort === port.name)?.connectRecorder(port);
 });
 
@@ -257,11 +259,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// Only the native USER_SCRIPT event can register privileged script ports.
+// onConnect from a content script or a page never reaches this listener.
+let preparationListenerInstalled = false;
+function installPreparationListener() {
+  if (preparationListenerInstalled || !chrome.runtime.onUserScriptConnect) return;
+  chrome.runtime.onUserScriptConnect.addListener(port => ankiPreparation.connect(port));
+  preparationListenerInstalled = true;
+}
+installPreparationListener();
+
 // Anki owns its own mutation queue. Discovery, DOM rendering and network I/O
 // must never hold the dictionary storage queue while the engine calls into it.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== "hachidori-anki") return false;
-  handleAnkiRequest(message, sender).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  if (PREPARATION_REQUESTS.has(message.type)) {
+    handlePreparationRequest(message, sender, { readOptions: readAnkiOptions, settingsSender: ankiSettingsSender,
+      readStatus: (templateId, profileId) => handleAnkiRequest({ target: "hachidori-anki", type: "hd_anki_status",
+        templateId, ...(profileId === undefined ? {} : { profileId }) }, sender) })
+      .then(result => sendResponse(workerReply(message, result)), error => sendResponse(failureReply(message, error)));
+  } else {
+    handleAnkiRequest(message, sender).then(sendResponse, (error) => sendResponse(failureReply(message, error)));
+  }
   return true;
 });
 
@@ -673,6 +692,7 @@ void chrome.storage.local.get(OPTIONS_KEY).then(stored => {
 // applies once that grant arrives.
 chrome.permissions?.onAdded.addListener(({ permissions = [] }) => {
   if (!permissions.includes("userScripts")) return;
+  installPreparationListener();
   void chrome.storage.local.get(OPTIONS_KEY)
     .then(stored => applyCustomJavaScript(chrome, normaliseOptions(stored[OPTIONS_KEY]).userScripts));
 });

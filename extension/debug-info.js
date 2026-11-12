@@ -372,6 +372,7 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
     automaticBackups: () => send("hd_backup_auto_list", {}, targets.worker),
     sharing: () => send("hd_sharing_status", {}, targets.sharing),
     anki: () => send("hd_anki_status", {}, targets.anki),
+    ankiPreparation: () => send("hd_anki_preparation_status", {}, targets.anki),
   }, timeoutMs), collectDebugLog({ window, send, targets, timeoutMs })]);
   return {
     schemaVersion: DEBUG_INFO_SCHEMA_VERSION,
@@ -406,6 +407,7 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
     dictionaries: redactSecrets(results.dictionaryState),
     services: {
       anki: results.anki,
+      ankiPreparation: results.ankiPreparation,
       sharing: redactSecrets(results.sharing),
       mcp: { capability: MCP_CAPABILITY, target: MCP_TARGET, transport: "sharing-relay",
         hostLanguageSelection: true },

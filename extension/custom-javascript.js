@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import "./anki-preparation-runtime.js";
+
 export const SCRIPT_ID = "hachidori-custom-javascript";
 let application = Promise.resolve();
 
@@ -8,7 +10,7 @@ let application = Promise.resolve();
 // packages' top-level names cannot collide. The source URL names the package
 // in the console's errors and stack traces.
 export function userScriptSource(script) {
-  return `(function () {\n${script.javascript}\n}).call(globalThis);\n//# sourceURL=hachidori-user-script/${encodeURIComponent(script.name)}.js`;
+  return `(globalThis.HDAnkiPreparation?.runPackage ?? ((_id, run) => run.call(globalThis)))(${JSON.stringify(script.id)}, function () {\n${script.javascript}\n});\n//# sourceURL=hachidori-user-script/${encodeURIComponent(script.name)}.js`;
 }
 
 // Chrome MV3 `userScripts` registration (Advanced → User scripts): the bridge,
@@ -25,6 +27,7 @@ async function apply(browser, scripts) {
   } catch {
     return { supported: false, registered: false };
   }
+  await api.configureWorld?.({ messaging: true });
   await api.unregister({ ids: [SCRIPT_ID] }).catch(() => {});
   const sources = globalThis.HDReaderOptions.javaScriptUserScripts(scripts).map(script => ({ code: userScriptSource(script) }));
   if (sources.length === 0) return { supported: true, registered: false };
@@ -33,7 +36,7 @@ async function apply(browser, scripts) {
     matches: ["<all_urls>"],
     // The reader also lives in frames, including YouTube's live chat (#729).
     allFrames: true,
-    js: [{ file: "custom-javascript-bridge.js" }, ...sources],
+    js: [{ file: "anki-preparation-runtime.js" }, { file: "custom-javascript-bridge.js" }, ...sources],
     runAt: "document_idle",
     world: "USER_SCRIPT",
   }]);
@@ -51,7 +54,10 @@ export function applyCustomJavaScript(browser, scripts) {
 // popup's root open to them (content.js).
 export async function runPageUserScripts(browser, target, scripts) {
   const sources = globalThis.HDReaderOptions.javaScriptUserScripts(scripts).map(script => userScriptSource(script));
-  if (sources.length > 0) await browser.scripting.executeScript({ target, world: "MAIN", func: runSources, args: [sources] });
+  if (sources.length > 0) {
+    await browser.scripting.executeScript({ target, world: "MAIN", func: globalThis.HDAnkiPreparationFactory });
+    await browser.scripting.executeScript({ target, world: "MAIN", func: runSources, args: [sources] });
+  }
   return { ran: sources.length };
 }
 

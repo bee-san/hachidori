@@ -38,7 +38,7 @@ test("legacy Anki and custom-link settings migrate losslessly into one Template 
     ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS
       .map(key => [key, legacy[key] ?? globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE[key]])) });
   assert.deepEqual(ankiTemplateConfig(options.anki, "default"), { ...legacy,
-    glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "" });
+    glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "", preparationScript: null });
   assert.deepEqual(options.customButtons, [{ id: "legacy-link-1", type: "link",
     label: "Jisho", url: "https://jisho.org/search/%w" }]);
   assert.deepEqual(options.customLinks, [{ label: "Jisho", url: "https://jisho.org/search/%w" }]);

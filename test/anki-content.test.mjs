@@ -1247,3 +1247,34 @@ test("a changed glossary does not strand an ordinary custom button whose preflig
   await until(() => f.items[0].add.dataset.state === "ready" && custom.dataset.state === "ready");
   assert.equal(ordinaryChecks, 2, "the discarded ordinary reply is replaced once");
 });
+
+test("preparation starts only on Add, final preflight sees its data, and a retired view sends no note", async t => {
+  for (const retire of [false, true]) await t.test(`retire=${retire}`, async t => {
+    const calls = [], held = Promise.withResolvers();
+    const preparationScript = { scriptId: "sentences", handlerId: "prepare" };
+    const f = fixture(t, async (type, fields) => {
+      calls.push([type, fields]);
+      if (type === "hd_anki_status") return { available: true, configKey: "current" };
+      if (type === "hd_anki_preflight") return { state: "addable", canAdd: true, preparationScript };
+      if (type === "hd_anki_prepare") return held.promise;
+      if (type === "hd_anki_submit") return { state: "added", noteId: 81 };
+      return {};
+    });
+    f.controller.update({ ...configured, anki: { ...configured.anki, preparationScript } });
+    f.controller.bind(f.items, f.context);
+    await until(() => f.items[0].add?.dataset.state === "ready");
+    assert.equal(calls.filter(([type]) => type === "hd_anki_prepare").length, 0);
+    f.items[0].add.click();
+    await until(() => calls.some(([type]) => type === "hd_anki_prepare"));
+    if (retire) f.controller.retire(f.context.owner);
+    held.resolve({ preparation: { example: "my sentence" } });
+    await tick(); await tick();
+    const submissions = calls.filter(([type]) => type === "hd_anki_submit");
+    assert.equal(submissions.length, retire ? 0 : 1);
+    if (!retire) {
+      assert.deepEqual(submissions[0][1].request.preparation, { example: "my sentence" });
+      assert.deepEqual(submissions[0][1].request.preparationScript, preparationScript);
+      assert.ok(calls.some(([type, fields]) => type === "hd_anki_preflight" && fields.request.preparation));
+    }
+  });
+});

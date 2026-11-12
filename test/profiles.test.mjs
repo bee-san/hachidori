@@ -16,7 +16,7 @@ const golden = JSON.parse(read("test/data/profiles-golden.json"));
 const LANGUAGES = JSON.parse(read("test/data/profile-languages.json"));
 
 const plain = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
-// These media and Anki definition settings were added after the pre-profile recording.
+// These media and Anki Template settings were added after the pre-profile recording.
 // Keep its original values and hashes authoritative for every older key.
 function beforeVideoFormats(value) {
   const options = Object.fromEntries(Object.entries(plain(value))
@@ -27,6 +27,7 @@ function beforeVideoFormats(value) {
       delete anki.glossarySelectionFallback;
       delete anki.monolingualGroupId;
       delete anki.bilingualGroupId;
+      delete anki.preparationScript;
     }
   }
   return options;

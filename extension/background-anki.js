@@ -8,7 +8,7 @@ import { captureNetflixPreview } from "./netflix-preview.js";
 import { captureYouTubeFrame } from "./youtube-frame.js";
 import { cropOf } from "./background-video.js";
 import { YOUTUBE_PAGE_URL } from "./background-youtube.js";
-import { LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
+import { ANKI_PREPARATION_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
 import { profileTemplateKey } from "./anki-worker.js";
@@ -336,9 +336,14 @@ async function handleAnkiRequest(message, sender) {
   });
 }
 
+function linkedAnkiCapability(request) {
+  if (request?.preparationScript) return ANKI_PREPARATION_CAPABILITY;
+  return request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY;
+}
+
 async function forwardLinkedAnki(message) {
   try {
-    const reply = await getSharingClient().forward(message, { capability: message.request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY });
+    const reply = await getSharingClient().forward(message, { capability: linkedAnkiCapability(message.request) });
     if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
       await getAnkiMining().preflightClientSpeech({
         ...message.request,
@@ -399,7 +404,7 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   let reply;
   try {
     reply = await getSharingClient().forward({ ...message, clientMedia }, {
-      capability: message.request?.glossarySelection ? SELECTED_GLOSSARY_CAPABILITY : LINKED_ANKI_CAPABILITY,
+      capability: linkedAnkiCapability(message.request),
       mutation: true,
       onSent: () => { sent = true; },
     });

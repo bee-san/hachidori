@@ -73,6 +73,7 @@ function host({ fail = new Set(), stored = STORED } = {}) {
       session: "o1", n: 1, context: "offscreen", version: "1.2.3", level: "warn", message: "hoshidicts: direct OPFS is unavailable" }] }] },
     hd_sharing_status: { ok: true, sharing: { enabled: false } },
     hd_anki_status: { ok: true, available: false, error: "Choose an Anki note type in Settings." },
+    hd_anki_preparation_status: { ok: true, registeredDocuments: 2, registeredHandlers: 3, activePreparations: 0, lastFailure: null },
     hd_state_read: { ok: true, state: { dictionaries: [{ id: "a", title: "Jitendex", enabled: true }] } },
   };
   const send = async (type, fields, target = "offscreen") => {
@@ -267,4 +268,15 @@ test("the OPFS listing gives every file's path and size and each directory's tot
   const report = await collectDebugInfo({ ...host(), targets: TARGETS });
   assert.deepEqual(report.services.mcp, { capability: "mcp-configuration-v1", target: "hachidori-mcp",
     transport: "sharing-relay", hostLanguageSelection: true });
+});
+
+
+test("preparation diagnostics expose counts independently of Anki availability", async () => {
+  const env = host();
+  const report = await collectDebugInfo({ ...env, targets: TARGETS });
+  assert.equal(report.services.ankiPreparation.registeredDocuments, 2);
+  assert.equal(report.services.ankiPreparation.registeredHandlers, 3);
+  const failed = await collectDebugInfo({ ...host({ fail: new Set(["hd_anki_preparation_status"]) }), targets: TARGETS });
+  assert.match(failed.services.ankiPreparation.error, /did not reply/u);
+  assert.equal(failed.engine.status.ready, true);
 });

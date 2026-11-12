@@ -20,11 +20,13 @@ export const LEGACY_LINKED_ANKI_CAPABILITY = "linked-anki-v1";
 export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
 export const SELECTED_GLOSSARY_CAPABILITY = "selected-glossary-v1";
 export const ANKI_GLOSSARY_GROUPS_CAPABILITY = "anki-glossary-groups-v1";
+export const ANKI_PREPARATION_CAPABILITY = "anki-preparation-v1";
 export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
   SELECTED_GLOSSARY_CAPABILITY,
   ANKI_GLOSSARY_GROUPS_CAPABILITY,
+  ANKI_PREPARATION_CAPABILITY,
 ]);
 // The relay's own client for its Yomitan-compatible API (hachidori-anki
 // docs/host-contract.md). Never a remote computer, never a linked browser.
@@ -193,6 +195,7 @@ const MINING_REQUEST_FIELDS = [
   "searchQuery", "documentTitle", "pageUrl", "audioSelection", "dictionaryAliases", "dictionaryIds",
   // A profile's notes follow each dictionary's direction and target language (docs/languages.md 12).
   "dictionaryDirections", "dictionaryTargetLanguages",
+  "preparation", "preparationScript",
   "frequencyDictionaries", "configKey", "screenshot", "captureUnavailable",
   "clientSpeech", "templateId", "allowDuplicate",
 ];
