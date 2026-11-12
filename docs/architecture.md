@@ -4619,7 +4619,12 @@ The one lazily created frame per rendering document is `anki-template-frame.html
 listed in the manifest sandbox and also explicitly sandboxed without
 `allow-same-origin`. Its network policy is `connect-src 'none'`. One private
 MessagePort carries correlated source/data requests and strings/errors; only
-that document's parent can connect, and it connects once. The bundled full
+that document's exact parent window and bound effective origin can connect,
+and it connects once. The fragment carries that origin because extension
+sandbox documents have no referrer. `Window.origin` preserves an opaque search
+parent's `null` message origin. Addressing an opaque child requires the wildcard
+target, and compiling Handlebars requires `unsafe-eval`; these two reviewed lines
+are scoped to this API-free, network-free sandbox. The bundled full
 Handlebars compiler is loaded only there, without extension APIs. Firefox exposes
 its script resources as it does the search sandbox's resources. Hosts serving
 the modules on their own origin use the same explicit frame sandbox. Document

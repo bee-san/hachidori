@@ -214,6 +214,32 @@ function dynamicFrequencies(request) {
   return variants;
 }
 
+async function renderPlannedFields(request, planned, handlebars) {
+  const output = {};
+  let context;
+  const rendering = [];
+  for (const { field, template, markers } of planned) {
+    if (template.syntax !== "handlebars") {
+      output[field] = renderAnkiTemplate(template.value, markers);
+      continue;
+    }
+    const errors = ankiTemplateErrors(template);
+    if (errors.length) throw new Error(errors.join("\n"));
+    if (!handlebars) throw new Error("Handlebars fields require the Anki template sandbox.");
+    context ??= { term: request.term,
+      sentence: { text: request.sentence, matched: request.matched, offset: request.matchOffset },
+      source: { title: request.documentTitle, url: request.pageUrl, query: request.searchQuery },
+      definitions: request.term.glossaries, selection: request.glossarySelection ?? null,
+      groups: request.glossaryGroups ?? [],
+      preparation: request.preparation ?? {},
+    };
+    const safeMarkers = Object.fromEntries(Object.entries(markers).map(([name, value]) => [name, encodeAnkiClozeBraces(value)]));
+    rendering.push(Promise.resolve(handlebars(template.value, context, safeMarkers)).then(value => { output[field] = value; }));
+  }
+  if (rendering.length) await Promise.all(rendering);
+  return Object.fromEntries(planned.map(({ field }) => [field, output[field]]));
+}
+
 // `language` is the language object of the profile the note is mined in, once
 // the records have profiles (docs/languages.md 12); without one every value is
 // today's.
@@ -378,27 +404,5 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   // Only glossary/resource values need asynchronous settlement. Ordinary text
   // and frequency templates should not create a promise per field and marker.
   if (pending.length) await Promise.all(pending);
-  const output = {};
-  let context;
-  const rendering = [];
-  for (const { field, template, markers } of planned) {
-    if (template.syntax !== "handlebars") {
-      output[field] = renderAnkiTemplate(template.value, markers);
-      continue;
-    }
-    const errors = ankiTemplateErrors(template);
-    if (errors.length) throw new Error(errors.join("\n"));
-    if (!handlebars) throw new Error("Handlebars fields require the Anki template sandbox.");
-    context ??= { term: request.term,
-      sentence: { text: request.sentence, matched: request.matched, offset: request.matchOffset },
-      source: { title: request.documentTitle, url: request.pageUrl, query: request.searchQuery },
-      definitions: request.term.glossaries, selection: request.glossarySelection ?? null,
-      groups: request.glossaryGroups ?? [],
-      preparation: request.preparation ?? {},
-    };
-    const safeMarkers = Object.fromEntries(Object.entries(markers).map(([name, value]) => [name, encodeAnkiClozeBraces(value)]));
-    rendering.push(Promise.resolve(handlebars(template.value, context, safeMarkers)).then(value => { output[field] = value; }));
-  }
-  if (rendering.length) await Promise.all(rendering);
-  return Object.fromEntries(planned.map(({ field }) => [field, output[field]]));
+  return renderPlannedFields(request, planned, handlebars);
 }

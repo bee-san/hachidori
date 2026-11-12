@@ -35,7 +35,7 @@ const server = createServer(async (request, response) => {
     });
     response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(value)); return;
   }
-  if (request.url === "/overlay.html") { response.setHeader("Content-Type", "text/html"); response.end("<!doctype html><title>Overlay host</title><body></body>"); return; }
+  if (["/overlay.html", "/opaque-parent.html"].includes(request.url)) { response.setHeader("Content-Type", "text/html"); response.end("<!doctype html><title>Overlay host</title><body></body>"); return; }
   // Overlay hosts serve these same production modules on their own origin.
   const path = request.url === "/" ? "/anki-template-frame.html" : request.url;
   try {
@@ -97,7 +97,7 @@ try {
   assert.equal(rendered.sandbox, "allow-scripts");
   // Firefox BiDi does not enumerate this opaque extension child frame.
   if (!firefox) {
-    const templateFrame = page.frames().find(frame => frame.url().endsWith("/anki-template-frame.html"));
+    const templateFrame = page.frames().find(frame => new URL(frame.url()).pathname === "/anki-template-frame.html");
     assert.equal(await templateFrame.evaluate(() => typeof globalThis.chrome?.runtime?.sendMessage), "undefined",
       "the compiler frame has no extension messaging API");
   }
@@ -137,6 +137,19 @@ try {
       return renderHandlebars(document, "{{term.expression}}", { term: { expression: "host <word>" } }, {});
     });
     assert.equal(value, "host &lt;word&gt;");
+    await overlay.evaluate(url => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.src = `${url}/opaque-parent.html`;
+      document.body.append(frame);
+    }, serverUrl);
+    const opaque = await overlay.waitForFrame(frame => frame.url().endsWith("/opaque-parent.html"));
+    assert.equal(await opaque.evaluate(() => globalThis.origin), "null");
+    const nested = await opaque.evaluate(async () => {
+      const { renderHandlebars } = await import("./anki-template-sandbox.js");
+      return renderHandlebars(document, "{{term.expression}}", { term: { expression: "opaque <word>" } }, {});
+    });
+    assert.equal(nested, "opaque &lt;word&gt;", "a search-style opaque parent retains its effective null origin");
   }
   console.log(`PASS: ${firefox ? "Firefox" : "Chrome and overlay-origin"} sandbox, production rich fields, Settings preview/errors, no Anki writes.`);
 } finally {
