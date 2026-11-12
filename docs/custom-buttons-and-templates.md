@@ -98,6 +98,32 @@ what becomes bold. A selection-dependent first field refreshes its own readiness
 ordinary expression first fields retain their existing checks. Confirmed notes
 and in-progress writes keep their original ownership.
 
+### Export timing
+
+`node benchmark/glossary-selection.mjs --runs 20 --legacy-only` compares
+ordinary export with an extracted extension from `8f2ddb18` (pass
+`--source PATH --revision 8f2ddb18`). `--plain` measures 2,000 production
+plain-text conversions per sample. Each rich result has twenty dictionaries,
+three rows per dictionary, four structured senses and one image per row.
+Three repetitions alternate the before/after order; the complete environment,
+commands, every sample and p95 values are in the
+[raw benchmark report](assets/anki-glossary-selection-benchmark.json).
+
+The plain renderer initially regressed when it tracked provenance for every
+conversion. The final implementation skips source-path checks and metadata
+allocation when tracking is off. The final repeated comparison measured
+56.69 → 45.64 ms median for ordinary rich export, and 18.94 → 18.06 ms for
+2,000 ordinary plain conversions. Earlier repetitions were heavily contended:
+rich-export medians were 728.13 → 407.77 and 150.30 → 226.25 ms, and plain
+medians 39.15 → 41.23 and 27.25 → 28.91 ms. These variable timings do not
+establish a speedup.
+
+A separate thirty-sample run measured a 6.00 ms median for selected-entry
+export and 5.90 ms for its first-entry fallback. Both planned one image;
+ordinary all-definition export planned sixty. These are DOM export and media
+reference planning timings in jsdom on Node 22.23.1/Linux x64, not dictionary
+lookup, capture, media transfer, external enrichment or end-to-end Anki latency.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,

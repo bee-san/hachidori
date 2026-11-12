@@ -929,5 +929,6 @@ Nazeka and Crystal through fake AnkiConnect. It also retains the legacy glossary
 field and captures every popup palette under `test/tmp/ci/glossary-selection/`.
 `benchmark/glossary-selection.mjs --runs 30` measures the production resource-field
 export path for twenty dictionaries, three rows each, and records every sample;
+`--plain` measures ordinary plain-text conversion without tracking.
 `--source PATH --revision SHA --legacy-only` measures the same legacy path from
 an extracted earlier extension. Neither measures lookup, capture or Anki writes.
