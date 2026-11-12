@@ -25,13 +25,15 @@ const profile = mkdtempSync(resolve(tmpdir(), "hachidori-preparation-"));
 const evidence = resolve(root, `test/tmp/ci/anki-preparation/${firefox ? "firefox" : "chrome"}`);
 mkdirSync(evidence, { recursive: true });
 const notes = [], external = [];
-let failRequest = false, requestGate = null;
+const firstRequestDelay = Number(process.env.HACHIDORI_PREPARATION_DELAY_MS ?? 0);
+let failRequest = false, requestGate = null, releaseRequestGate = null;
 const server = createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   if (req.url === "/prepare") {
     external.push({ body, authorization: req.headers.authorization });
     if (requestGate) await requestGate;
+    if (external.length === 1 && firstRequestDelay > 0) await new Promise(resolve => setTimeout(resolve, firstRequestDelay));
     // Deliberately no Access-Control-Allow-Origin: the user script's ordinary
     // fetch cannot read this second origin. Its preparation request can.
     res.writeHead(failRequest ? 500 : 200, { "content-type": "application/json" });
@@ -101,7 +103,7 @@ try {
     await context.userContext.browser.session.send("browsingContext.navigate", { context: context.id, url: expected, wait: "none" });
     await page.waitForFunction(expected => location.href === expected && document.readyState === "complete", {}, expected);
   };
-  const settings = await browser.newPage();
+  let settings = await browser.newPage();
   await settings.setViewport({ width: 1100, height: 850 });
   settings.setDefaultTimeout(60_000);
   await navigate(settings, `${extensionOrigin}/settings.html#user-scripts`);
@@ -110,11 +112,12 @@ try {
     await settings.click("#custom-javascript-allow");
     await settings.waitForFunction(async () => chrome.permissions.contains({ permissions: ["userScripts"] }));
   }
-  await navigate(settings, `${extensionOrigin}/settings.html#anki`);
+  // Keep Anki Settings unopened until this test has saved its own endpoint.
   await settings.waitForFunction(async () => {
     const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-offscreen", type: "hd_status" });
     return reply.ok && reply.ready && !reply.loading;
   });
+  await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-sharing", type: "hd_sharing_host_disable" }));
   const archive = buildTitledZip("Preparation fixture", { terms: [["猫", "ねこ", "", "", 1, ["cat"], 1, ""]] });
   await settings.evaluate(async base64 => {
     const blobUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(base64), c => c.charCodeAt(0))]));
@@ -157,7 +160,7 @@ try {
       preparationScript, fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
         Back: { value: "{preparation-example}", overwriteMode: "coalesce" } } }) });
   await settings.waitForFunction(async () => (await chrome.userScripts.getScripts()).some(script => script.id === "hachidori-custom-javascript"));
-  const reading = await browser.newPage();
+  let reading = await browser.newPage();
   await reading.setViewport({ width: 1100, height: 800 });
   const show = async () => {
     await navigate(reading, origin);
@@ -172,6 +175,18 @@ try {
   const registered = await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_preparation_status" }));
   assert.ok(registered.registeredHandlers > 0, JSON.stringify({ registered, diagnostics }));
   await reading.evaluate(() => globalThis.dispatchEvent(new Event("test-preparation-add")));
+  if (firstRequestDelay > 0 && !firefox) {
+    const endpoint = browser.wsEndpoint();
+    browser.disconnect(); // No debugger keeps the service worker alive during the delayed API response.
+    const deadline = Date.now() + firstRequestDelay + 30_000;
+    while (notes.length === 0 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+    browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
+    const pages = await browser.pages();
+    settings = pages.find(page => page.url().startsWith(extensionOrigin + "/settings.html"));
+    reading = pages.find(page => page.url() === origin + "/");
+    assert.equal(notes.length, 1, `the ${firstRequestDelay} ms API response must survive the worker lifecycle without a debugger`);
+    console.log(`PASS ${firstRequestDelay} ms API response with the debugger disconnected`);
+  }
   await reading.waitForFunction(() => document.documentElement.dataset.preparationTestState === "success");
   assert.equal(notes.length, 1);
   assert.equal(notes[0].fields.Back, "猫の例文。");
@@ -233,13 +248,13 @@ try {
     assert.equal(notes.length, 2);
     assert.equal(external.length, 4);
     failRequest = false;
-    const held = Promise.withResolvers(); requestGate = held.promise;
+    const held = Promise.withResolvers(); requestGate = held.promise; releaseRequestGate = held.resolve;
     await failedSearch.evaluate(() => globalThis.dispatchEvent(new Event("test-preparation-add")));
     await wait(() => external.length === 5, "pending same-world request");
     await failedSearchPage.close();
     await wait(async () => (await settings.evaluate(() => chrome.runtime.sendMessage({ target: "hachidori-anki", type: "hd_anki_preparation_status" }))).activePreparations === 0,
       "closed search document releases preparation");
-    requestGate = null; held.resolve();
+    requestGate = null; held.resolve(); releaseRequestGate = null;
     assert.equal(notes.length, 2, "a retired search preparation cannot write a note");
   } else await failedSearchPage.close();
   failRequest = false;
@@ -295,6 +310,7 @@ try {
   await navigate(settings, `${extensionOrigin}/settings.html?preparation=1#anki`);
   await settings.waitForSelector("#opt-anki-preparation-script");
   await settings.waitForFunction(() => document.querySelector("#opt-anki-preparation-script").value === "examples");
+  if (!firefox) await settings.bringToFront();
   for (const scheme of ["light", "dark"]) {
     await writeOptions({ popupTheme: scheme });
     await settings.waitForFunction(theme => document.documentElement.dataset.hoshidictsTheme === theme, {}, scheme);
@@ -313,6 +329,7 @@ try {
   console.log("PASS native USER_SCRIPT, search sandbox and overlay-host preparation, cross-origin fetch, explicit Add, final cards, failure without a write, saved Template and light/dark Settings");
   console.log(`Screenshots: ${evidence}`);
 } finally {
+  releaseRequestGate?.();
   await browser?.close();
   await new Promise(resolve => server.close(resolve));
   rmSync(profile, { recursive: true, force: true });
