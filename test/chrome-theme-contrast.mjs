@@ -61,6 +61,23 @@ async function sample(tab, points) {
   return { png, pixels };
 }
 
+// Crop a normal full-viewport screenshot in canvas. CDP clipped captures can
+// disturb Chromium's forced-colour mask painting in later screenshots.
+async function pageTextSnapshot(tab) {
+  const png = await tab.screenshot({ encoding: "base64" });
+  return tab.evaluate(async png => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+    const rect = document.getElementById("render-probe").getBoundingClientRect();
+    const scale = bitmap.width / window.innerWidth;
+    const canvas = new OffscreenCanvas(Math.round(rect.width * scale), Math.round(rect.height * scale));
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, -Math.round(rect.left * scale), -Math.round(rect.top * scale));
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", pixels));
+    return [...hash].map(value => value.toString(16).padStart(2, "0")).join("");
+  }, png);
+}
+
 // Each status's line under its word: the colour it is drawn in (the owned
 // sheet's, or HighlightText under forced colours), what it is drawn on, how
 // much of the word it spans, in how many pieces (solid, dashed, dotted) and
@@ -303,11 +320,7 @@ try {
       await tab.bringToFront();
       await tab.mouse.move(2, 2);
       await tab.keyboard.press("Escape");
-      const textClip = await tab.$eval("#render-probe", node => {
-        const { x, y, width, height } = node.getBoundingClientRect();
-        return { x, y, width, height };
-      });
-      const textBefore = await tab.screenshot({ clip: textClip });
+      const textBefore = await pageTextSnapshot(tab);
       const point = await tab.$eval("#word", node => {
         const range = document.createRange();
         range.setStart(node.firstChild, 0);
@@ -338,8 +351,7 @@ try {
           textColor: [...colour.getImageData(0, 0, 1, 1).data.slice(0, 3)],
           rects: images.map(image => image.closest(".gloss-image-container").getBoundingClientRect().toJSON()) };
       });
-      const textAfter = await tab.screenshot({ clip: textClip });
-      const pageTextUnchanged = Buffer.from(textBefore).equals(Buffer.from(textAfter));
+      const pageTextUnchanged = textBefore === await pageTextSnapshot(tab);
       const filterPassed = scenario.theme !== "default" || scenario.forced || state.backdropFilter === "blur(16px)";
       const cardRect = state.rects[0];
       const { png: cardPng, pixels: [ink, auto, background] } = await sample(tab, [
