@@ -35,8 +35,10 @@ test("legacy Anki and custom-link settings migrate losslessly into one Template 
     customLinks: [{ label: "Jisho", url: "https://jisho.org/search/%w" }] });
   assert.equal(options.anki.templates.length, 1);
   assert.deepEqual(options.anki.templates[0], { id: "default", name: "Default",
-    ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS.map(key => [key, legacy[key]])) });
-  assert.deepEqual(ankiTemplateConfig(options.anki, "default"), legacy);
+    ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS
+      .map(key => [key, legacy[key] ?? globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE[key]])) });
+  assert.deepEqual(ankiTemplateConfig(options.anki, "default"), { ...legacy,
+    glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "" });
   assert.deepEqual(options.customButtons, [{ id: "legacy-link-1", type: "link",
     label: "Jisho", url: "https://jisho.org/search/%w" }]);
   assert.deepEqual(options.customLinks, [{ label: "Jisho", url: "https://jisho.org/search/%w" }]);

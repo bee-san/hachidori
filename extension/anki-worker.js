@@ -68,6 +68,7 @@ export function createAnkiWorkerService({
   readProfile = async () => null,
   readOptionsAndProfile = async profileId => Promise.all([readOptions(profileId), readProfile(profileId)]),
   readDictionaries,
+  readGroups = async () => [],
   engine,
   offscreen,
   duplicateIndex,
@@ -138,7 +139,10 @@ export function createAnkiWorkerService({
   const render = async (request, templates, audio, resources) => {
     const profile = resources.profile ?? null;
     const segments = await sentenceSegments(request, templates, profile);
-    return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
+    const exportRequest = { ...request, ...resources.glossaryConfiguration,
+      dictionaryIds: resources.dictionaryIds,
+      ...(segments ? { sentenceSegments: segments } : {}) };
+    return offscreen({ type: "hd_anki_fields", request: exportRequest,
       templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true,
       compactGlossaries: resources.compactGlossaries === true,
       // The note builder writes the profile's language (docs/languages.md 12).
@@ -295,6 +299,9 @@ export function createAnkiWorkerService({
       const [options, profile] = await readOptionsAndProfile(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
+      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field =>
+        ankiTemplateMarkerNames(field.value).some(name => name === "monolingual-definition"
+          || name === "bilingual-definition" || name.startsWith("glossary-selection-group-")));
       return {
         ...inLanguage(template, profile),
         audioSources: options.audioSources.filter(source => source.enabled),
@@ -302,6 +309,9 @@ export function createAnkiWorkerService({
         // Compact popup and Anki between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
         compactGlossaries: options.glossaryLayoutMode === "compact-popup-anki",
+        // The host's current group membership/order owns export policy. Group
+        // edits retire mining preflights without invalidating dictionary lookups.
+        ...(needsGroups ? { glossaryGroups: await readGroups(profileId) } : {}),
         // Likewise for the Netflix and YouTube mining switches,
         // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
@@ -317,6 +327,12 @@ export function createAnkiWorkerService({
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
       const resources = { dictionaryPaths: {}, compactGlossary: current.config.compactGlossary === true,
         compactGlossaries: current.config.compactGlossaries === true,
+        glossaryConfiguration: {
+          glossarySelectionFallback: current.config.glossarySelectionFallback,
+          monolingualGroupId: current.config.monolingualGroupId,
+          bilingualGroupId: current.config.bilingualGroupId,
+          glossaryGroups: current.config.glossaryGroups ?? [],
+        },
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
       if (preflight && Object.values(current.resolved.templates).length === 1
@@ -327,6 +343,8 @@ export function createAnkiWorkerService({
       }
       await currentGeneration(request);
       const dictionaries = await readDictionaries(requestProfile(request));
+      resources.dictionaryIds = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
+        .map(item => [item.title, item.id]));
       resources.dictionaryPaths = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
         .map(item => [item.title, item.path]));
       await prepareFirstFieldAudio(request, current, resources, preflight);

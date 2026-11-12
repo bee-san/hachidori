@@ -13,6 +13,18 @@ const snapshot = () => ({
   wordStatusOverrides: { revision: 3, known: ["猫"], ignored: ["さん"] },
 });
 
+test("backup restore retains Anki group identities and fallback including a missing group", async () => {
+  const archived = snapshot();
+  archived.options.anki = globalThis.HDReaderOptions.normaliseAnki({ monolingualGroupId: "mono",
+    bilingualGroupId: "removed", glossarySelectionFallback: "first" });
+  archived.state.groups = [{ id: "mono", name: "Monolingual", dictionaryIds: [] }];
+  await assertBackupSnapshot(archived);
+  const restored = restoredBackupSnapshot(snapshot(), archived, []);
+  await assertBackupSnapshot(restored);
+  assert.deepEqual(restored.options.anki, archived.options.anki);
+  assert.deepEqual(restored.state.groups, archived.state.groups);
+});
+
 test("complete restore advances each local revision and replaces absent/default settings", async () => {
   const current = snapshot();
   const archived = snapshot();
@@ -89,7 +101,7 @@ test("a pre-Template backup validates and restores through the canonical Templat
     id: "default",
     name: "Default",
     ...Object.fromEntries(globalThis.HDReaderOptions.ANKI_TEMPLATE_CONFIG_KEYS
-      .map(key => [key, archived.options.anki[key]])),
+      .map(key => [key, archived.options.anki[key] ?? defaults[key]])),
   }]);
   assert.deepEqual(restored.options.customButtons, [
     { id: "legacy-link-1", type: "link", label: "First", url: "https://one.example/%w" },
