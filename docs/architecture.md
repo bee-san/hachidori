@@ -4576,3 +4576,14 @@ custom source compilation and restart durability, service-worker idling,
 bounded concurrency, and transactional replacement recovery.
 
 The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).
+
+### Deleted Anki note repair
+
+`inspectAnkiNoteIds` recognizes the empty-object placeholder AnkiConnect returns
+for a missing `notesInfo` ID and reports the cached row stale, allowing Overwrite
+to re-query it and return to Add. Nonempty malformed details remain errors.
+For a custom first-field identity without a directly mapped expression,
+`browse` cannot repair a word-index row: it checks supplied note IDs with an
+exact live `findNotes` query, then opens only the surviving IDs. If none survive,
+it returns `opened: false` so the existing reader controller retires View and
+rechecks Add. No collection-wide cache clear is required.

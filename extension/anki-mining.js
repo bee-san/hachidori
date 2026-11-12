@@ -595,10 +595,20 @@ export function createAnkiMiningService({
     const supplied = Array.isArray(value?.noteIds) && value.noteIds.length;
     let noteIds = supplied ? [...value.noteIds] : [];
     let repaired = false;
-    if (typeof value?.expression === "string" && value.expression
-        && await duplicateIndex.source(config) !== null) {
+    const source = await duplicateIndex.source(config);
+    if (typeof value?.expression === "string" && value.expression && source !== null) {
       const refreshed = await duplicateIndex.repair(config, value.expression, invoke);
       noteIds = refreshed.noteIds;
+      if (!noteIds.length) return { opened: false, noteIds: [], repaired: true };
+      repaired = true;
+    } else if (supplied && source === null) {
+      // Custom first-field identities have no word-index row to repair. An
+      // exact live ID search still lets View recover after an external delete.
+      const liveIds = await invoke("findNotes", { query: ankiNoteIdsQuery(noteIds) });
+      if (!Array.isArray(liveIds) || liveIds.some(id => !noteIds.includes(id))) {
+        throw new Error("AnkiConnect returned invalid browse note IDs.");
+      }
+      noteIds = [...new Set(liveIds)];
       if (!noteIds.length) return { opened: false, noteIds: [], repaired: true };
       repaired = true;
     }
