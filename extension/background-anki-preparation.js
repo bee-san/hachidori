@@ -36,7 +36,9 @@ export async function handlePreparationRequest(message, sender, { readOptions, r
   }
   const script = template.preparationScript;
   if (message.type === "hd_anki_preparation_begin") {
-    return { operationId: await ankiPreparation.beginDocument(sender, script, request.source) };
+    return { operationId: typeof request.source === "string"
+      ? await ankiPreparation.beginDocument(sender, script, request.source)
+      : await ankiPreparation.beginNative(sender, script) };
   }
   // The script receives lookup data and the chosen Template's public identity,
   // never a connection/API key, saved field mapping or another script's source.
@@ -44,7 +46,8 @@ export async function handlePreparationRequest(message, sender, { readOptions, r
     matchOffset: request.matchOffset, searchQuery: request.searchQuery, pageUrl: request.pageUrl,
     documentTitle: request.documentTitle, glossarySelection: request.glossarySelection,
     templateId: request.templateId, profileId: message.profileId };
-  const preparation = await ankiPreparation.execute(sender, script, context);
+  if (typeof request.operationId !== "string") throw new Error("Begin an Anki preparation before running its function.");
+  const preparation = await ankiPreparation.execute(sender, script, context, request.operationId);
   if ((await readStatus(request.templateId, message.profileId)).configKey !== request.configKey) {
     throw new Error("Anki configuration changed. Refresh this result before adding a note.");
   }

@@ -37,10 +37,19 @@ export function createAnkiPreparationService({ readScripts, fetch: fetchRequest 
     if (!sameDocument(operation.sender, sender)) throw new Error("The preparation belongs to another document.");
     return operation;
   }
-  function cancel(sender, operationId) {
+  function release(sender, operationId) {
     const operation = owned(sender, operationId);
     operations.delete(operationId);
     for (const controller of operation.controllers) controller.abort();
+  }
+  function cancel(sender, operationId) {
+    const operation = owned(sender, operationId);
+    operation.reject?.(new Error("The Anki preparation was cancelled. No note was sent."));
+    release(sender, operationId);
+    if (connections.has(operation.connection)) {
+      try { operation.connection.port.postMessage({ type: "cancel", operationId }); }
+      catch { /* A closing document needs no cancellation notification. */ }
+    }
   }
   async function finish(sender, operationId, data) {
     const operation = owned(sender, operationId);
@@ -48,7 +57,7 @@ export function createAnkiPreparationService({ readScripts, fetch: fetchRequest 
       await available(operation.script, operation.source);
       owned(sender, operationId);
       return preparationData(data);
-    } finally { if (operations.has(operationId)) cancel(sender, operationId); }
+    } finally { if (operations.has(operationId)) release(sender, operationId); }
   }
   async function request(sender, operationId, address, options = {}) {
     const operation = owned(sender, operationId);
@@ -68,7 +77,7 @@ export function createAnkiPreparationService({ readScripts, fetch: fetchRequest 
     for (const [operationId, operation] of operations) {
       if (operation.connection !== connection) continue;
       operation.reject?.(new Error("The preparation document disconnected. No note was sent."));
-      cancel(operation.sender, operationId);
+      release(operation.sender, operationId);
     }
   }
   function connectLifecycle(port) {
@@ -121,16 +130,30 @@ export function createAnkiPreparationService({ readScripts, fetch: fetchRequest 
       }
     });
   }
-  async function execute(sender, script, context) {
+  async function beginNative(sender, script) {
     const connection = [...connections].find(entry => sameDocument(entry.port.sender, sender)
       && entry.packages.some(item => item.scriptId === script.scriptId && item.handlers.includes(script.handlerId)));
     if (!connection) throw new Error("The preparation script is unavailable in this document. Enable user scripts and reload this page.");
     const entry = connection.packages.find(item => item.scriptId === script.scriptId);
     const operationId = await begin(sender, script, entry.source, connection);
+    if (!connections.has(connection)) {
+      release(sender, operationId);
+      throw new Error("The preparation document disconnected. No note was sent.");
+    }
+    return operationId;
+  }
+  async function execute(sender, script, context, operationId = null) {
+    operationId ??= await beginNative(sender, script);
+    const operation = owned(sender, operationId);
+    if (JSON.stringify(script) !== JSON.stringify(operation.script) || !connections.has(operation.connection)) {
+      throw new Error("The preparation does not belong to this script.");
+    }
+    await available(script, operation.source);
+    owned(sender, operationId);
     return new Promise((resolve, reject) => {
-      Object.assign(operations.get(operationId), { resolve, reject });
-      try { connection.port.postMessage({ type: "execute", operationId, script, context }); }
-      catch (error) { cancel(sender, operationId); reject(error); }
+      Object.assign(operation, { resolve, reject });
+      try { operation.connection.port.postMessage({ type: "execute", operationId, script, context }); }
+      catch (error) { release(sender, operationId); reject(error); }
     });
   }
   function diagnostics() {
@@ -138,5 +161,5 @@ export function createAnkiPreparationService({ readScripts, fetch: fetchRequest 
       registeredHandlers: [...connections].reduce((sum, item) => sum + item.packages.reduce((n, entry) => n + entry.handlers.length, 0), 0),
       activePreparations: operations.size, lastFailure };
   }
-  return { connect, connectLifecycle, execute, begin, beginDocument, finish, cancel, request, diagnostics };
+  return { connect, connectLifecycle, execute, begin, beginDocument, beginNative, finish, cancel, request, diagnostics };
 }

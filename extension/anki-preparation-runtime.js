@@ -7,7 +7,7 @@
     if (globalThis.HDAnkiPreparation) return;
     const packages = new Map();
     let currentPackage = null, native = false, port = null;
-    const pending = new Map();
+    const pending = new Map(), active = new Set();
     let sequence = 0;
     const unavailable = () => new Error("The Anki preparation script is unavailable. Enable user scripts and reload this page.");
     function descriptors() {
@@ -19,15 +19,18 @@
         port = globalThis.chrome.runtime.connect({ name: "hachidori-anki-preparation" });
         port.onDisconnect.addListener(() => {
           port = null;
+          active.clear();
           for (const operation of pending.values()) operation.reject(unavailable());
           pending.clear();
         });
         port.onMessage.addListener(async message => {
           if (message?.type === "execute") {
+            active.add(message.operationId);
             try {
               const data = await execute(message.script, message.context, (url, options) => new Promise((resolve, reject) => {
+                if (!active.has(message.operationId)) { reject(new Error("The Anki preparation was cancelled.")); return; }
                 const id = `${++sequence}`;
-                pending.set(id, { resolve, reject });
+                pending.set(id, { resolve, reject, operationId: message.operationId });
                 port.postMessage({ type: "fetch", id, operationId: message.operationId, url, options });
               }));
               port?.postMessage({ type: "result", operationId: message.operationId, data });
@@ -35,6 +38,11 @@
               // Errors can contain prompts, API credentials or returned card
               // text. Only this fixed failure crosses the diagnostics boundary.
               port?.postMessage({ type: "result", operationId: message.operationId, failed: true });
+            } finally { active.delete(message.operationId); }
+          } else if (message?.type === "cancel") {
+            active.delete(message.operationId);
+            for (const [id, operation] of pending) if (operation.operationId === message.operationId) {
+              pending.delete(id); operation.reject(new Error("The Anki preparation was cancelled."));
             }
           } else if (message?.type === "fetch-result") {
             const operation = pending.get(message.id);
