@@ -331,7 +331,7 @@ export function createView(options) {
       let offset = 0;
       text.replaceWith(...text.data.split(CIRCLED).filter(Boolean).map(part => {
         const fragment = document.createTextNode(part);
-        globalThis.HDGlossary.copyGlossaryTextSource(text, fragment, offset);
+        options.copyGlossaryTextSource?.(text, fragment, offset);
         offset += part.length;
         if (!CIRCLED.test(part)) return fragment;
         const circled = node("span", "crystal-circled");
