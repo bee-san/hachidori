@@ -2765,3 +2765,9 @@ textarea {
   border-radius: var(--radius-control);
   background: var(--surface-sunken);
 }
+
+.anki-template-controls { display: flex; flex-direction: column; gap: 8px; }
+.anki-template-syntax-label { display: flex; flex-direction: column; gap: 4px; }
+.anki-template-syntax-label select { width: auto; min-width: 0; }
+.anki-template-preview-output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16em; overflow: auto; }
+.anki-template-preview-output:empty { display: none; }

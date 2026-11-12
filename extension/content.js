@@ -2649,7 +2649,10 @@
   function selectionMarkersEnabled(level) {
     const { options: effective } = profileView(levelProfile(level));
     return effective.anki.templates.some(template => Object.values(template.fieldTemplates ?? {})
-      .some(field => /selected-glossary|glossary-selection|monolingual-definition|bilingual-definition/iu.test(field.value)));
+      // This is a conservative UI hint; the worker parses Handlebars to own
+      // readiness and data dependencies. No compiler/parser runs in a reader.
+      .some(field => /selected-glossary|glossary-selection|monolingual-definition|bilingual-definition/iu.test(field.value)
+        || (field.syntax === "handlebars" && /\bselection\b|\blookup\b/u.test(field.value))));
   }
   function selectedGlossary(result, level) {
     const request = level.currentViewRequest;

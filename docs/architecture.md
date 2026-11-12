@@ -4603,3 +4603,40 @@ custom source compilation and restart durability, service-worker idling,
 bounded concurrency, and transactional replacement recovery.
 
 The browser benchmark records import-to-first-valid-lookup, steady lookup, full-process restoration, process-tree resources, exact storage manifests, and input/runtime hashes. The cross-engine benchmark adds production-path adapters for Yomitan and JL under one rotating schedule; see [Benchmarks](../benchmark/README.md).
+
+### User-authored Anki field templates
+
+An advanced field mapping may carry `syntax: "handlebars"`; an absent syntax
+retains marker interpolation and literal Anki cloze source. The official
+parser-only bundle feeds `anki-handlebars.js` in privileged contexts. It parses
+all branches to discover literal `marker` helper dependencies, so the worker's
+existing capture/audio and scene-overwrite planning remains authoritative.
+`anki-values.js` prepares only those marker values, supplies the structured
+lookup context and asks `anki-template-sandbox.js` to render opted-in fields.
+Legacy fields never create a sandbox frame.
+
+The one lazily created frame per rendering document is `anki-template-frame.html`,
+listed in the manifest sandbox and also explicitly sandboxed without
+`allow-same-origin`. Its network policy is `connect-src 'none'`. One private
+MessagePort carries correlated source/data requests and strings/errors; only
+that document's exact parent window and bound effective origin can connect,
+and it connects once. The fragment carries that origin because extension
+sandbox documents have no referrer. `Window.origin` preserves an opaque search
+parent's `null` message origin. Addressing an opaque child requires the wildcard
+target, and compiling Handlebars requires `unsafe-eval`; these two reviewed lines
+are scoped to this API-free, network-free sandbox. The bundled full
+Handlebars compiler is loaded only there, without extension APIs. Firefox exposes
+its script resources as it does the search sandbox's resources. Hosts serving
+the modules on their own origin use the same explicit frame sandbox. Document
+teardown rejects outstanding renders and closes the port. Settings previews use
+this production path with synthetic data and no Anki requests.
+
+`ankiTemplateDependencies` is the shared dependency projection for both field
+syntaxes. Handlebars' official AST identifies marker helpers and raw selection
+and group-context references; mining readiness and authoritative group loading
+use that projection. Reader content scripts use only a conservative selection UI
+hint from the saved source and load no parser. Group IDs are opaque and
+case-sensitive in both syntaxes; `anki-marker-name.js` owns normalization in the
+privileged parser and sandbox helper alike. The sandbox frame's ES module imports
+the compiler before connecting its port, so compiler availability follows module
+dependency ordering rather than two independent deferred script loads.

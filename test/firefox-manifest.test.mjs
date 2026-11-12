@@ -56,7 +56,7 @@ test("Firefox runs background.js in an event page and leaves out what Firefox do
 
 // Firefox serves a sandboxed page (#644) only the stylesheets and modules a web
 // page could load; Chrome serves it every file of the extension.
-test("Firefox can serve every stylesheet and module the sandboxed search frame loads", () => {
+test("Firefox can serve every stylesheet and module the sandboxed pages load", () => {
   const accessible = new Set(firefox.web_accessible_resources.filter(entry => entry.matches?.includes("<all_urls>"))
     .flatMap(entry => entry.resources));
   const covered = path => accessible.has(path) || [...accessible].some(pattern => pattern.endsWith("/*")
@@ -67,11 +67,16 @@ test("Firefox can serve every stylesheet and module the sandboxed search frame l
     loaded.add(module);
     for (const [, path] of read(`extension/${module}`).matchAll(/^import (?:[^;]*? from )?"\.\/([^"]+)";/gmu)) visit(path);
   };
-  assert.deepEqual(chrome.sandbox.pages, ["search-frame.html"]);
-  const page = read("extension/search-frame.html");
-  for (const [, path] of page.matchAll(/<link rel="stylesheet" href="([^"]+)"/gu)) loaded.add(path);
-  for (const [, path] of page.matchAll(/<script type="module" src="([^"]+)"/gu)) visit(path);
+  assert.deepEqual(chrome.sandbox.pages, ["search-frame.html", "anki-template-frame.html"]);
+  for (const sandbox of chrome.sandbox.pages) {
+    const page = read(`extension/${sandbox}`);
+    for (const [, path] of page.matchAll(/<link rel="stylesheet" href="([^"]+)"/gu)) loaded.add(path);
+    // The two pages use different attribute orders; both load ES modules.
+    for (const [, path] of page.matchAll(/<script\b(?=[^>]*\btype="module")(?=[^>]*\bsrc="([^"]+)")[^>]*>/gu)) visit(path);
+  }
   assert.ok(loaded.has("search.js") && loaded.has("debug-log.js") && loaded.has("search.css"), [...loaded].join());
+  assert.ok(loaded.has("anki-template-frame.js") && loaded.has("anki-marker-name.js")
+    && loaded.has("vendor/handlebars/compiler.js"), [...loaded].join());
   assert.deepEqual([...loaded].filter(path => !covered(path)), []);
 });
 

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { buildAnkiResourceFields } from "./anki-resources.js";
 import { ankiAvailability } from "./anki.js";
 import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_MARKER_REQUIREMENTS, ANKI_TEMPLATE_MARKER_OPTIONS, ankiFieldNames, ankiMappedFieldNames, ankiTemplateErrors, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
@@ -138,6 +139,7 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
     active = options.findIndex(option => option.value === activeValue);
   }
 
+  let suggestions = true;
   let open = false;
   let showAll = false;
   let active = -1;
@@ -191,6 +193,7 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
   }
 
   function setOpen(value, all = false) {
+    value = value && suggestions;
     open = value;
     showAll = value && all;
     editor.setAttribute("aria-expanded", `${open}`);
@@ -315,8 +318,12 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
     editor,
     error,
     close: () => setOpen(false),
-    update({ value, label, errors }) {
+    update({ value, label, errors, syntax = "markers" }) {
       syncOptions();
+      suggestions = syntax !== "handlebars";
+      if (!suggestions && open) setOpen(false);
+      setAttributeIfChanged(editor, "role", suggestions ? "combobox" : "textbox");
+      if (toggle.hidden === suggestions) toggle.hidden = !suggestions;
       labelText = label;
       committedValue = value;
       updateLabel(label);
@@ -468,7 +475,57 @@ export function createAnkiSettingsController({
     for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
     const remove = row.querySelector("button");
     remove.setAttribute("aria-label", `Remove unavailable field: ${field}`);
-    record = { field, row, label, editor, combobox, mode, remove, indexBadge, modeLabel: mode.parentElement };
+    const syntaxLabel = document.createElement("label");
+    syntaxLabel.className = "field-hint anki-template-syntax-label";
+    syntaxLabel.textContent = "Syntax";
+    const syntax = document.createElement("select");
+    syntax.className = "anki-template-syntax";
+    syntax.setAttribute("aria-label", `Field syntax: ${field}`);
+    syntax.add(new document.defaultView.Option("Markers", "markers"));
+    syntax.add(new document.defaultView.Option("Handlebars", "handlebars"));
+    syntaxLabel.append(syntax);
+    const controls = document.createElement("div");
+    controls.className = "anki-template-controls";
+    const modeLabel = mode.parentElement;
+    modeLabel.before(controls);
+    controls.append(modeLabel, syntaxLabel);
+    const preview = document.createElement("button");
+    preview.type = "button";
+    preview.className = "ghost anki-template-preview";
+    preview.textContent = "Preview with sample data";
+    preview.setAttribute("aria-label", `Preview with sample data: ${field}`);
+    const output = document.createElement("pre");
+    output.className = "field-hint anki-template-preview-output";
+    output.setAttribute("role", "status");
+    combobox.root.append(preview, output);
+    editor.addEventListener("input", () => { output.textContent = ""; });
+    record = { field, row, label, editor, combobox, mode, remove, indexBadge, syntax, preview, output,
+      modeLabel: mode.parentElement };
+    syntax.addEventListener("change", () => {
+      const templates = materializeTemplates();
+      if (syntax.value === "handlebars") templates[record.field].syntax = "handlebars";
+      else delete templates[record.field].syntax;
+      output.textContent = "";
+      change({ fieldTemplates: templates });
+    });
+    preview.addEventListener("click", async () => {
+      const value = editor.value;
+      const selectedSyntax = syntax.value;
+      preview.disabled = true;
+      output.textContent = "Rendering sample…";
+      try {
+        const request = { term: { expression: "食べる", reading: "たべる", rules: "v1", pitches: [], frequencies: [],
+          glossaries: [{ dictionary: "Sample dictionary", glossary: '["to eat"]', definitionTags: "", termTags: "" }] },
+          trace: [], sentence: "昨日、食べました。", matchOffset: 3, matched: "食べました", searchQuery: "食べました",
+          documentTitle: "Sample page", pageUrl: "https://example.com/", popupSelectionText: "", preparation: {},
+          dictionaryAliases: {}, dictionaryIds: {}, dictionaryMedia: [], dictionaryStyles: [] };
+        const rendered = await buildAnkiResourceFields(request, { preview: { value, syntax: selectedSyntax, overwriteMode: "coalesce" } },
+          { document, dictionaryPaths: {}, styles: async () => [] });
+        if (editor.value === value && syntax.value === selectedSyntax) output.textContent = rendered.fields.preview || "(empty field)";
+      } catch (error) {
+        if (editor.value === value && syntax.value === selectedSyntax) output.textContent = `Preview failed: ${error.message}`;
+      } finally { preview.disabled = false; }
+    });
     mode.addEventListener("change", () => editTemplate(record.field, { overwriteMode: mode.value }));
     remove.addEventListener("click", () => {
       const templates = materializeTemplates();
@@ -480,8 +537,12 @@ export function createAnkiSettingsController({
   }
 
   function updateTemplateRow(row, template, showMode, unavailable, index) {
-    const errors = ankiTemplateErrors(template.value);
-    row.combobox.update({ value: template.value, label: row.field, errors });
+    const errors = ankiTemplateErrors(template);
+    row.combobox.update({ value: template.value, label: row.field, errors, syntax: template.syntax });
+    if (row.syntax.value !== (template.syntax ?? "markers")) row.syntax.value = template.syntax ?? "markers";
+    const previewHidden = template.syntax !== "handlebars";
+    if (row.preview.hidden !== previewHidden) row.preview.hidden = previewHidden;
+    if (row.output.hidden !== previewHidden) row.output.hidden = previewHidden;
     if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
     if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
     if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
-import { ankiCaptureRequirements, ankiTemplateMarkerNames, resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiCaptureRequirements, ankiTemplateDependencies, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiListedFamily } from "./anki-setup.js";
@@ -16,6 +16,7 @@ const SENTENCE_AUDIO_FIELDS = { kiku: "SentenceAudio", lapis: "SentenceAudio", s
 // word index and exact target fields; cross-model scopes keep their policy.
 function nativeDuplicateCheck({ config, discovery, resolved }) {
   return config.duplicateScope === "model" && config.duplicateBehavior !== "overwrite"
+    && resolved.templates[discovery.fields[0]]?.syntax !== "handlebars"
     && /^\{expression\}$/iu.test(resolved.templates[discovery.fields[0]]?.value ?? "");
 }
 
@@ -300,11 +301,9 @@ export function createAnkiMiningService({
     return promise;
   }
 
-  const selectionMarker = marker => ["selected-glossary", "glossary-selection", "monolingual-definition", "bilingual-definition"]
-    .includes(marker) || marker.startsWith("glossary-selection-group-");
   function selectionDependent(current) {
     const first = current.resolved?.templates[current.discovery?.fields[0]];
-    return first ? ankiTemplateMarkerNames(first.value).some(selectionMarker) : false;
+    return first ? ankiTemplateDependencies(first).selection : false;
   }
 
   async function status(templateId) {
@@ -328,7 +327,7 @@ export function createAnkiMiningService({
     };
     // A source-dependent first field has a different duplicate identity for
     // each choice. It cannot be answered by the expression-only word index.
-    if (Object.values(current.config.fieldTemplates ?? {}).some(field => ankiTemplateMarkerNames(field.value).some(selectionMarker))) {
+    if (Object.values(current.config.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).selection)) {
       if (selectionDependent(await configuration(request?.templateId))) return { ...unknown, selectionDependent: true };
     }
     if (current.config.duplicateBehavior !== "prevent") return unknown;

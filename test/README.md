@@ -937,3 +937,19 @@ export path for twenty dictionaries, three rows each, and records every sample;
 `--plain` measures ordinary plain-text conversion without tracking.
 `--source PATH --revision SHA --legacy-only` measures the same legacy path from
 an extracted earlier extension. Neither measures lookup, capture or Anki writes.
+
+### Handlebars Anki fields
+
+`node --test test/anki-handlebars.test.mjs` checks the explicit syntax choice,
+legacy cloze mappings, official parser errors, static marker dependencies,
+escaped structured data and production marker values. `anki-settings` checks
+syntax edits without changing authored text; `debug-info` covers the renderer's
+configuration descriptor.
+
+`node test/chrome-anki-handlebars.mjs` loads the production extension and checks
+its CSP sandbox, rich glossary export, sample-preview errors and absence of Anki
+writes. It also runs the sandbox renderer from an overlay host origin.
+`HACHIDORI_TEMPLATE_BROWSER=firefox` runs the same extension assertions in a
+fresh Firefox build. `HACHIDORI_BROWSER_ROOT` selects the shared installed
+browser directory; `HACHIDORI_TEMPLATE_EVIDENCE` saves light/dark Settings
+screenshots. The ordinary Chrome, Firefox and theme-contrast suites still apply.

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./reader-options.js";
+import { inspectHandlebars } from "./anki-handlebars.js";
+import { normaliseAnkiMarkerName as markerName } from "./anki-marker-name.js";
 
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
@@ -116,9 +118,6 @@ export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
 const MARKERS = new Set([...CORE_MARKERS.map(marker => marker.toLowerCase()), ...MARKER_ALIASES.keys()]);
 const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-"];
 const MARKER_PATTERN = /\{([^{}]+)\}/gu;
-// Group IDs are opaque and case-sensitive even though marker names are not.
-const markerName = name => name.toLowerCase().startsWith("glossary-selection-group-")
-  ? `glossary-selection-group-${name.slice("glossary-selection-group-".length)}` : name.toLowerCase();
 const BREAK_PATTERN = /<br\s*\/?>/giu;
 const genericAliases = {
   expression: ["Expression", "Word", "Term", "Front"], reading: ["Reading", "Word Reading", "WordReading", "Kana"],
@@ -203,15 +202,24 @@ export function ankiMappedFieldNames(config, fields = []) {
   return names;
 }
 
-export function ankiTemplateMarkerNames(template) {
-  return [...template.matchAll(MARKER_PATTERN)].map(match => {
-    const name = markerName(match[1]);
-    return MARKER_ALIASES.get(name) ?? name;
-  });
+export function ankiTemplateDependencies(template) {
+  const inspection = template?.syntax === "handlebars" ? inspectHandlebars(template.value) : null;
+  const value = typeof template === "string" ? template : template.value;
+  const markers = (inspection?.markers ?? [...value.matchAll(MARKER_PATTERN)].map(match => markerName(match[1])))
+    .map(name => MARKER_ALIASES.get(name) ?? name);
+  const groupMarker = name => name === "monolingual-definition" || name === "bilingual-definition"
+    || name.startsWith("glossary-selection-group-");
+  return { markers,
+    selection: inspection?.contexts.includes("selection") === true || markers.some(name =>
+      name === "selected-glossary" || name === "glossary-selection" || groupMarker(name)),
+    groups: inspection?.contexts.includes("groups") === true || markers.some(groupMarker),
+  };
 }
 
+export const ankiTemplateMarkerNames = template => ankiTemplateDependencies(template).markers;
+
 export function ankiCaptureRequirements(templates) {
-  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
+  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template)));
   return {
     // {gif} falls back to the screenshot's <img> off a subtitle line and on failure,
     // so a mapped {gif} needs the viewport screenshot taken as well.
@@ -222,11 +230,18 @@ export function ankiCaptureRequirements(templates) {
 }
 
 export function ankiTemplateErrors(template) {
+  if (template?.syntax === "handlebars") {
+    const { markers, errors } = inspectHandlebars(template.value);
+    return [...errors, ...markers.filter(name => !knownMarker(name)).map(name => `Unknown marker: {${name}}`)];
+  }
+  template = typeof template === "string" ? template : template.value;
   return [...new Set([...template.matchAll(MARKER_PATTERN)].filter(match => !knownMarker(match[1].toLowerCase()))
     .map(match => `Unknown marker: ${match[0]}`))];
 }
 
 export function isAnkiAudioOnlyTemplate(template) {
+  if (template?.syntax === "handlebars") return false;
+  template = typeof template === "string" ? template : template.value;
   let hasAudio = false;
   const rest = template.replace(MARKER_PATTERN, (match, name) => {
     if (name.toLowerCase() !== "audio") return match;
@@ -275,7 +290,7 @@ function basicTemplates(config, fields) {
 export function ankiPresetCoreMapped(fieldTemplates, family) {
   const table = PRESETS[family];
   if (table === undefined) return false;
-  const values = new Set(Object.values(fieldTemplates).map(template => template.value));
+  const values = new Set(Object.values(fieldTemplates).filter(template => template.syntax !== "handlebars").map(template => template.value));
   const expression = table === SENREN ? table.word : table.Expression;
   const reading = table === SENREN ? table.reading : table.ExpressionReading;
   const definition = table === SENREN ? table.definition : table.MainDefinition;
@@ -303,7 +318,7 @@ export function resolveAnkiTemplates(config, fields) {
   const errors = staleFields.map(field =>
     `Template field “${field}” is unavailable in note type “${config.model}”.${availableFields(fields)}`);
   for (const [field, template] of Object.entries(templates)) {
-    errors.push(...ankiTemplateErrors(template.value).map(error => `Field “${field}”: ${error}`));
+    errors.push(...ankiTemplateErrors(template).map(error => `Field “${field}”: ${error}`));
   }
   return { templates, staleFields, errors };
 }

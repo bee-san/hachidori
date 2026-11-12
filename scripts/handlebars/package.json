@@ -1,0 +1,16 @@
+{
+  "name": "hachidori-handlebars",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Builds the pinned Handlebars parser and sandbox compiler for Anki fields",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "devDependencies": {
+    "handlebars": "4.7.10",
+    "esbuild": "0.28.2"
+  }
+}

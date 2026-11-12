@@ -149,7 +149,8 @@
   },
   "sandbox": {
     "pages": [
-      "search-frame.html"
+      "search-frame.html",
+      "anki-template-frame.html"
     ]
   },
   "cross_origin_embedder_policy": {

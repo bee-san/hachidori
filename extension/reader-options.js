@@ -644,7 +644,8 @@
     if (value === null) return true;
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     return Object.entries(value).every(([field, template]) => field !== "" && template
-      && typeof template.value === "string" && ANKI_OVERWRITE_MODES.includes(template.overwriteMode));
+      && typeof template.value === "string" && ANKI_OVERWRITE_MODES.includes(template.overwriteMode)
+      && (template.syntax === undefined || template.syntax === "markers" || template.syntax === "handlebars"));
   }
 
   function validAnkiTemplate(value, normalized) {
