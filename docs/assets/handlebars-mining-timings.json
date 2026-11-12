@@ -1,0 +1,804 @@
+{
+  "before": {
+    "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one new word, model scope, no dictionary images; fresh index per sample; metadata discovery excluded",
+    "results": [
+      {
+        "audio": false,
+        "screenshot": false,
+        "samples": [
+          {
+            "duplicateMs": 26.523852999999974,
+            "addMs": 29.152923999999985,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.25530500000002,
+            "addMs": 29.175523,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.76716600000003,
+            "addMs": 30.12487100000004,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.789806999999996,
+            "addMs": 29.590309000000047,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.522549000000026,
+            "addMs": 29.090337999999974,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.778553999999986,
+            "addMs": 29.289301000000023,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.076663000000053,
+            "addMs": 31.237131999999974,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.96502600000008,
+            "addMs": 31.766434000000004,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 56.7172690000001,
+            "addMs": 72.09642999999983,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 33.574863999999934,
+            "addMs": 49.93474399999991,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.193588999999974,
+            "addMs": 36.49652199999991,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.741251000000148,
+            "addMs": 28.376628999999866,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.368696999999884,
+            "addMs": 28.407347999999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.121127000000115,
+            "addMs": 28.288802999999916,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.420206000000007,
+            "addMs": 28.348169999999982,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.41221100000007,
+            "addMs": 28.747994999999946,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.226664000000028,
+            "addMs": 28.369038000000046,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.42846899999995,
+            "addMs": 28.851296000000048,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.160548999999946,
+            "addMs": 28.770224999999982,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.383744999999863,
+            "addMs": 28.463498999999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.42846899999995,
+        "duplicateP95Ms": 33.574863999999934,
+        "addMedianMs": 29.090337999999974,
+        "addP95Ms": 49.93474399999991
+      },
+      {
+        "audio": false,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.34557300000006,
+            "addMs": 29.021450999999615,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.40310499999987,
+            "addMs": 31.805413999999928,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.885917999999947,
+            "addMs": 32.67297099999996,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.33746999999994,
+            "addMs": 28.031019000000015,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.230872999999974,
+            "addMs": 28.03775900000028,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.305529999999635,
+            "addMs": 28.556326000000354,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.321026000000074,
+            "addMs": 28.961095999999998,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.39009699999997,
+            "addMs": 30.285887999999886,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.426586000000043,
+            "addMs": 28.66521300000022,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.303214000000025,
+            "addMs": 28.395101000000068,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.01176600000008,
+            "addMs": 28.023143999999775,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.17489599999999,
+            "addMs": 27.67471599999999,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.212417000000187,
+            "addMs": 27.876647000000048,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.26778800000011,
+            "addMs": 28.827784000000065,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.550548000000163,
+            "addMs": 28.273545000000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.376549999999952,
+            "addMs": 28.449051000000054,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.428604000000178,
+            "addMs": 28.719841000000088,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.43763399999989,
+            "addMs": 29.103747000000112,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.4233220000001,
+            "addMs": 28.476517000000058,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.44484599999987,
+            "addMs": 29.23087600000008,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.34557300000006,
+        "duplicateP95Ms": 26.550548000000163,
+        "addMedianMs": 28.556326000000354,
+        "addP95Ms": 31.805413999999928
+      },
+      {
+        "audio": true,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.39529999999968,
+            "addMs": 29.216377000000648,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.119480000000294,
+            "addMs": 27.95877399999972,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.209595000000263,
+            "addMs": 28.547327999999652,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.316007999999783,
+            "addMs": 28.57811000000038,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.24892600000021,
+            "addMs": 29.087596000000303,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.411082999999962,
+            "addMs": 29.052224000000024,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.3986560000003,
+            "addMs": 29.127414999999928,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.45736500000021,
+            "addMs": 28.6901799999996,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.35035499999958,
+            "addMs": 28.833865000000515,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.325458000000253,
+            "addMs": 28.960649999999987,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.49649000000045,
+            "addMs": 28.488091000000168,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.4030759999996,
+            "addMs": 29.32937800000036,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.23873100000037,
+            "addMs": 29.010190999999395,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.685717000000295,
+            "addMs": 29.25851799999964,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.445980999999847,
+            "addMs": 29.207171000000017,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.541446999999607,
+            "addMs": 29.78213599999981,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.506609000000026,
+            "addMs": 29.125338999999258,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.42188400000032,
+            "addMs": 28.71545900000001,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.208757000000332,
+            "addMs": 28.137888000000203,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.562239000000773,
+            "addMs": 28.419968999999583,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.4030759999996,
+        "duplicateP95Ms": 26.685717000000295,
+        "addMedianMs": 28.960649999999987,
+        "addP95Ms": 29.32937800000036
+      }
+    ]
+  },
+  "after": {
+    "commit": "a39a635b4fcb53b3ee76b79522e2614c6463b6f3",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one new word, model scope, no dictionary images; fresh index per sample; metadata discovery excluded",
+    "results": [
+      {
+        "audio": false,
+        "screenshot": false,
+        "samples": [
+          {
+            "duplicateMs": 26.65804499999996,
+            "addMs": 30.48211900000001,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.635816999999975,
+            "addMs": 28.149966000000006,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 28.42091499999998,
+            "addMs": 31.08506799999998,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.619013999999993,
+            "addMs": 28.653136000000018,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.471897000000013,
+            "addMs": 29.201859000000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.55864399999996,
+            "addMs": 29.465345999999954,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.710629999999924,
+            "addMs": 29.334452000000056,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.53865600000006,
+            "addMs": 28.698008999999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.342392000000018,
+            "addMs": 28.93340699999999,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.393485000000055,
+            "addMs": 29.358835999999883,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.29987899999992,
+            "addMs": 28.335726000000022,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.429387000000133,
+            "addMs": 28.545791999999892,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.236552000000074,
+            "addMs": 28.77752099999998,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.738235999999915,
+            "addMs": 29.707399000000123,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.78044799999998,
+            "addMs": 30.41272700000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.649497999999994,
+            "addMs": 29.139545,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.364554,
+            "addMs": 28.380949999999984,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.873334000000114,
+            "addMs": 29.25771799999984,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.35023000000001,
+            "addMs": 29.607537999999977,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.716769999999997,
+            "addMs": 29.09689500000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.55864399999996,
+        "duplicateP95Ms": 26.873334000000114,
+        "addMedianMs": 29.139545,
+        "addP95Ms": 30.48211900000001
+      },
+      {
+        "audio": false,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.398995999999897,
+            "addMs": 30.121681999999964,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.399473999999827,
+            "addMs": 27.995582999999897,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.449360999999953,
+            "addMs": 28.848218000000088,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.808196999999836,
+            "addMs": 33.06264999999985,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.515644000000066,
+            "addMs": 29.22027900000012,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.60737300000028,
+            "addMs": 28.3533639999996,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.177311000000373,
+            "addMs": 28.64788899999985,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.291478000000097,
+            "addMs": 28.912445999999818,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.40182999999979,
+            "addMs": 29.837392999999793,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.376892000000225,
+            "addMs": 29.018209999999726,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.77573799999982,
+            "addMs": 34.27088099999992,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.48228199999994,
+            "addMs": 28.495762000000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.269876000000295,
+            "addMs": 28.241087999999763,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.251650000000154,
+            "addMs": 28.418914999999743,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.08022600000004,
+            "addMs": 28.805423000000246,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.304041000000325,
+            "addMs": 28.798021999999946,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 25.360367000000224,
+            "addMs": 29.06956799999989,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.567913999999746,
+            "addMs": 28.30215500000031,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.58591000000024,
+            "addMs": 29.37191699999994,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.63006200000018,
+            "addMs": 28.842916999999943,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.399473999999827,
+        "duplicateP95Ms": 26.77573799999982,
+        "addMedianMs": 28.842916999999943,
+        "addP95Ms": 33.06264999999985
+      },
+      {
+        "audio": true,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.30699900000036,
+            "addMs": 27.787550999999894,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.944868000000042,
+            "addMs": 31.022613000000092,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.30534699999953,
+            "addMs": 28.286259000000427,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.364747999999963,
+            "addMs": 28.459992000000057,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.361448000000564,
+            "addMs": 28.87025199999971,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.53827199999978,
+            "addMs": 29.995922000000064,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.012434000000212,
+            "addMs": 29.176166999999623,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.447398999999677,
+            "addMs": 31.553437000000486,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.298665000000256,
+            "addMs": 28.48041000000012,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.205547999999908,
+            "addMs": 28.19795999999951,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.320724999999584,
+            "addMs": 28.225534000000152,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.350320000000465,
+            "addMs": 29.293165999999474,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 25.37679599999956,
+            "addMs": 28.828160000000025,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.238991999999598,
+            "addMs": 28.036552999999913,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.485201000000416,
+            "addMs": 29.19338400000015,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.333091000000422,
+            "addMs": 28.872349000000213,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.51882099999966,
+            "addMs": 28.796440000000075,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.80883399999948,
+            "addMs": 28.895371999999952,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.255419000000074,
+            "addMs": 28.80810500000007,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.615547999999762,
+            "addMs": 29.484015,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.350320000000465,
+        "duplicateP95Ms": 26.944868000000042,
+        "addMedianMs": 28.828160000000025,
+        "addP95Ms": 31.022613000000092
+      }
+    ]
+  }
+}
