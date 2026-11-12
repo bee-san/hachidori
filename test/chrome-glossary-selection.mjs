@@ -245,7 +245,11 @@ try {
   assert.match(notes.at(-1).fields.All, /definition from dictionary 1/u, "the bilingual field uses its own priority fallback");
   assert.doesNotMatch(notes.at(-1).fields.All, /another row|猫 repeated/u, "a selection outside the group cannot leak into it");
   console.log("ok group fields: selected exact row, separate bilingual fallback, stable dictionary generation");
-  await settings.bringToFront();
+  if (firefox) await settings.evaluate(async () => {
+    const tab = await chrome.tabs.getCurrent();
+    await chrome.tabs.update(tab.id, { active: true });
+  });
+  else await settings.bringToFront();
   await navigate(settings, settings.url());
   await settings.waitForSelector('#opt-anki-monolingual-group option[value="Mono-ID"]');
   assert.equal(await settings.$eval("#opt-anki-monolingual-group", node => node.value), "Mono-ID");
