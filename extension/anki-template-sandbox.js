@@ -10,7 +10,9 @@ export function renderHandlebars(document, value, context, markers) {
     frame.hidden = true;
     frame.title = "Anki field template renderer";
     frame.setAttribute("sandbox", "allow-scripts");
-    frame.src = new URL("./anki-template-frame.html", import.meta.url).href;
+    const source = new URL("./anki-template-frame.html", import.meta.url);
+    source.hash = new URLSearchParams({ parentOrigin: window.origin }).toString();
+    frame.src = source.href;
     const waiting = new Map();
     let nextId = 0, port, rejectReady;
     const ready = new Promise((resolve, reject) => {
@@ -27,7 +29,8 @@ export function renderHandlebars(document, value, context, markers) {
           if (data.error) request.reject(new Error(data.error));
           else request.resolve(data.html);
         };
-        frame.contentWindow.postMessage({ kind: "hd-anki-template-connect" }, "*", [channel.port2]);
+        // The child has an opaque origin, so an exact target origin cannot address it.
+        frame.contentWindow.postMessage({ kind: "hd-anki-template-connect" }, "*", [channel.port2]); // NOSONAR: opaque child; it verifies the bound parent origin and window.
       }, { once: true });
     });
     sandbox = async (value, context, markers) => {

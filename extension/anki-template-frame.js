@@ -5,8 +5,11 @@ import { normaliseAnkiMarkerName } from "./anki-marker-name.js";
 // parent-owned port carries only template source/data and rendered strings.
 (() => {
   let connected = false;
+  // An opaque extension frame has no referrer. The creating parent binds its
+  // exact origin in the fragment, which is never sent as a resource request.
+  const parentOrigin = new URLSearchParams(location.hash.slice(1)).get("parentOrigin");
   globalThis.addEventListener("message", event => {
-    if (connected || event.source !== globalThis.parent || event.data?.kind !== "hd-anki-template-connect"
+    if (connected || event.origin !== parentOrigin || event.source !== globalThis.parent || event.data?.kind !== "hd-anki-template-connect"
         || event.ports.length !== 1) return;
     connected = true;
     const port = event.ports[0];

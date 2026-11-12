@@ -59,11 +59,30 @@ import { renderHandlebars } from "../extension/anki-template-sandbox.js";
 test("closing a rendering document rejects a request still waiting for its sandbox to load", async () => {
   let close;
   const frame = { setAttribute() {}, addEventListener() {}, remove() {} };
-  const document = { defaultView: { addEventListener(type, listener) { if (type === "pagehide") close = listener; } },
+  const document = { defaultView: { origin: "null", addEventListener(type, listener) { if (type === "pagehide") close = listener; } },
     createElement: () => frame, body: { append() {} } };
   const pending = renderHandlebars(document, "{{term.expression}}", { term: { expression: "猫" } }, {});
   close();
   await assert.rejects(pending, /renderer was closed/u);
+});
+
+test("the compiler frame accepts one port only from its exact parent window and bound effective origin", () => {
+  let connect;
+  const parent = {}, replies = [];
+  const context = vm.createContext({ HDHandlebars: Handlebars, normaliseAnkiMarkerName, parent, URLSearchParams,
+    location: { hash: "#parentOrigin=null" }, addEventListener(_type, listener) { connect = listener; } });
+  const source = readFileSync(new URL("../extension/anki-template-frame.js", import.meta.url), "utf8").replace(/^import .*;\n/gmu, "");
+  vm.runInContext(source, context);
+  const port = { postMessage: value => replies.push(value) };
+  const message = { source: parent, origin: "null", data: { kind: "hd-anki-template-connect" }, ports: [port] };
+  connect({ ...message, source: {} });
+  connect({ ...message, origin: "https://other.example" });
+  assert.equal(replies.length, 0);
+  connect(message);
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].ready, true);
+  connect(message);
+  assert.equal(replies.length, 1);
 });
 
 

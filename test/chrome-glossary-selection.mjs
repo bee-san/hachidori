@@ -300,11 +300,11 @@ try {
     All: { value: "{glossary}", overwriteMode: "coalesce" },
   } } });
   await open("default");
-  await popupRoot(page).evaluate(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-select-definition")]
+  await reader(page).evaluate(shadow => [...shadow.querySelectorAll(".gsm-hoshidicts-select-definition")]
     .find(button => button.parentNode.textContent.includes("猫 repeated")).click());
-  await popupRoot(page).waitFor(shadow => ["ready", "add-duplicate"].includes(shadow.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state));
+  await reader(page).waitFor(shadow => ["ready", "add-duplicate"].includes(shadow.querySelector(".gsm-hoshidicts-mine-button")?.dataset.state));
   const previous = notes.length;
-  await popupRoot(page).evaluate(shadow => shadow.querySelector(".gsm-hoshidicts-mine-button").click());
+  await reader(page).evaluate(shadow => shadow.querySelector(".gsm-hoshidicts-mine-button").click());
   const deadline = Date.now() + 30_000;
   while (notes.length === previous && Date.now() < deadline) await new Promise(done => setTimeout(done, 50));
   assert.equal(notes.length, previous + 1);
