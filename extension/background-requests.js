@@ -1160,6 +1160,12 @@ function getAnkiMining() {
         return (hasDictionaryProfiles(state) ? projectDictionaryState(state, profileId ?? JAPANESE_PROFILE_ID)?.dictionaries
           : state?.dictionaries) ?? [];
       },
+      readGroups: async profileId => {
+        const { state } = await readDictionaryStorage();
+        const view = hasDictionaryProfiles(state)
+          ? projectDictionaryState(state, profileId ?? JAPANESE_PROFILE_ID) : state;
+        return (view?.groups ?? []).map(({ id, dictionaryIds }) => ({ id, dictionaryIds }));
+      },
       engine: fields => send(TARGET, fields), offscreen: fields => send("hachidori-anki-render", fields),
     });
   }

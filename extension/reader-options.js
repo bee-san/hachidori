@@ -9,16 +9,19 @@
   const ANKI_DUPLICATE_SCOPES = ["model", "deck", "all"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
+  const ANKI_GLOSSARY_FALLBACKS = ["first-brief", "first"];
+  const ANKI_GLOSSARY_CONFIG_KEYS = ["glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"];
   const STABLE_ID_MAX_LENGTH = 256;
   const ANKI_TEMPLATE_CONFIG_KEYS = ["deck", "model", "tags", "fields", "duplicateScope", "duplicateBehavior",
-    "captureScreenshot", "fieldTemplates"];
+    "captureScreenshot", "fieldTemplates", ...ANKI_GLOSSARY_CONFIG_KEYS];
   // `captureScreenshot` only matters once a mapped field asks for {screenshot},
   // so it is on by default: a note type with a picture field gets the viewport
   // screenshot the mining request was made from, and nothing else changes.
   const DEFAULT_ANKI_TEMPLATE = { id: "default", name: "Default", deck: "Default", model: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])),
     duplicateScope: "model", duplicateBehavior: "prevent",
-    captureScreenshot: true, fieldTemplates: null };
+    captureScreenshot: true, fieldTemplates: null,
+    glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "" };
   const DEFAULT_ANKI = {
     url: "http://127.0.0.1:8765",
     apiKey: "",
@@ -570,6 +573,12 @@
     if (ANKI_DUPLICATE_BEHAVIORS.includes(source.duplicateBehavior)) result.duplicateBehavior = source.duplicateBehavior;
     if (source.checkForDuplicates === false) result.duplicateBehavior = "new";
     result.fieldTemplates = normaliseAnkiFieldTemplates(source.fieldTemplates);
+    if (ANKI_GLOSSARY_FALLBACKS.includes(source.glossarySelectionFallback)) {
+      result.glossarySelectionFallback = source.glossarySelectionFallback;
+    }
+    for (const key of ["monolingualGroupId", "bilingualGroupId"]) {
+      if (validIdentifier(source[key])) result[key] = source[key];
+    }
     return result;
   }
 
@@ -605,7 +614,13 @@
       // A legacy caller may spread the normalized object and edit its
       // first-Template compatibility fields. Keep that edit lossless.
       const projected = normaliseAnkiTemplateConfig(source);
-      const carriesProjection = ANKI_TEMPLATE_CONFIG_KEYS.every(key => Object.hasOwn(source, key));
+      // Older projected writers know only the original keys. Apply their edits
+      // while retaining definition settings that only the Template carries.
+      for (const key of ANKI_GLOSSARY_CONFIG_KEYS) {
+        if (!Object.hasOwn(source, key)) projected[key] = templates[0][key];
+      }
+      const carriesProjection = ANKI_TEMPLATE_CONFIG_KEYS.every(key =>
+        ANKI_GLOSSARY_CONFIG_KEYS.includes(key) || Object.hasOwn(source, key));
       if (carriesProjection && !sameAnkiTemplateConfig(projected, templates[0])) {
         templates[0] = { id: templates[0].id, name: templates[0].name, ...projected };
       }
@@ -638,6 +653,7 @@
     if (Object.keys(value).some(key => !keys.has(key))
         || value.id !== normalized.id || value.name !== normalized.name) return false;
     return ANKI_TEMPLATE_CONFIG_KEYS.every(key => {
+      if (ANKI_GLOSSARY_CONFIG_KEYS.includes(key) && !Object.hasOwn(value, key)) return true;
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates)
         && JSON.stringify(value.fieldTemplates) === JSON.stringify(normalized.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
@@ -649,6 +665,7 @@
 
   function validAnkiProjection(value, normalized) {
     return Object.entries(normalized).filter(([key]) => key !== "templates").every(([key, expected]) => {
+      if (ANKI_GLOSSARY_CONFIG_KEYS.includes(key) && !Object.hasOwn(value, key)) return true;
       if (key === "url") return !Object.hasOwn(value, key)
         || (normaliseAnkiConnectUrl(value.url) !== null && normaliseAnkiConnectUrl(value.url) === expected);
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);

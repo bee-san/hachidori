@@ -131,6 +131,50 @@ ordinary all-definition export planned sixty. These are DOM export and media
 reference planning timings in jsdom on Node 22.23.1/Linux x64, not dictionary
 lookup, capture, media transfer, external enrichment or end-to-end Anki latency.
 
+## Definition groups
+
+Under **Anki → Definition selection**, each Template chooses a definition
+format and optional monolingual and bilingual groups. Create the groups and
+order their dictionaries under **Dictionaries**. Classification is your choice;
+Hachidori does not infer it from a dictionary's name.
+
+- `{monolingual-definition}` uses the Template's monolingual group.
+- `{bilingual-definition}` uses its bilingual group.
+- `{glossary-selection-group-GROUP}` uses the group with that stable ID. The
+  marker picker lists each current group by name and inserts its complete
+  marker, so no ID needs to be typed.
+
+Each field exports the entry selected in the popup if its dictionary belongs
+to that group. Otherwise it uses the first available dictionary in the
+group's order and that dictionary's first entry. An empty, deleted or unassigned
+group gives an empty field, including when a selection belongs to another
+group. A group's rename does not change its marker. Removed group choices stay
+visible as unavailable so they can be corrected without silently changing a
+card's contents.
+
+**First available, brief** omits labels and tags; **First available, full**
+keeps them. These formats apply to selected and group definitions; existing
+`{glossary}`, `{glossary-first}` and dictionary-specific mappings are unchanged.
+Group settings belong to each Template in its language profile and travel
+through backups and linked browsers. The sharing host applies its saved group
+membership and order. A changed export group invalidates an earlier mining
+check without invalidating dictionary lookups.
+
+For example, map MainDefinition to `{selected-glossary}`, Monolingual to
+`{monolingual-definition}`, and Bilingual to `{bilingual-definition}`. Selecting
+a monolingual definition changes MainDefinition and Monolingual while Bilingual
+continues to use its group's first available entry.
+
+![Definition-group settings in the light palette](assets/anki-definition-groups-light.png)
+
+[Dark palette](assets/anki-definition-groups-dark.png) ·
+[High contrast](assets/anki-definition-groups-contrast.png).
+
+The production Chrome acceptance scenario also verifies selected-row export
+alongside a separate bilingual fallback, with the dictionary generation unchanged
+by the group-only write. Missing groups and first-field configuration changes
+have focused worker contracts in `test/anki-glossary-groups.test.mjs`.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,

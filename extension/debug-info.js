@@ -130,7 +130,7 @@ export function summariseStorage(items) {
 // appear here automatically. The raw stored values stay in storage.local.
 function configuration(items) {
   const { profiles, projectOptions, normaliseLanguageSelection, activeProfileId, LANGUAGE_SELECTION_KEY,
-    EXPERIMENTAL_FEATURES, packSettingValue, popupRenderer } = globalThis.HDReaderOptions;
+    EXPERIMENTAL_FEATURES, packSettingValue, popupRenderer, projectDictionaryState } = globalThis.HDReaderOptions;
   const stored = items.options;
   const languageSelection = normaliseLanguageSelection(items[LANGUAGE_SELECTION_KEY]);
   const registry = globalThis.HDLanguages;
@@ -147,10 +147,21 @@ function configuration(items) {
     profiles: profiles(stored).map(profile => {
       const pack = registry.get(profile.language);
       const effectiveOptions = projectOptions(stored, profile.id);
+      const dictionaryView = projectDictionaryState(items.dictionaryState, profile.id);
+      const groups = dictionaryView?.groups ?? [];
+      const enabled = new Set((dictionaryView?.dictionaries ?? []).filter(item => item.enabled !== false).map(item => item.id));
+      const groupBinding = id => {
+        const group = groups.find(group => group.id === id);
+        return { id, available: group !== undefined,
+          enabledDictionaryCount: group?.dictionaryIds.filter(id => enabled.has(id)).length ?? 0 };
+      };
       return { ...profile, packAvailable: pack !== null,
         effectivePackSettings: Object.fromEntries((pack?.settings ?? [])
           .map(setting => [setting.id, packSettingValue(pack, profile.packSettings, setting.id)])),
         effectiveOptions,
+        ankiDefinitionGroups: effectiveOptions.anki.templates.map(template => ({ templateId: template.id,
+          fallback: template.glossarySelectionFallback,
+          monolingual: groupBinding(template.monolingualGroupId), bilingual: groupBinding(template.bilingualGroupId) })),
         theme: { selected: effectiveOptions.popupTheme, renderer: popupRenderer(effectiveOptions.popupTheme),
           variant: effectiveOptions.popupThemeVariant },
       };

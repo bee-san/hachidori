@@ -21,6 +21,18 @@ const STORED = {
 
 const TARGETS = { worker: "worker", sharing: "sharing", anki: "anki" };
 
+test("debug info reports effective definition-group availability and enabled membership without glossary content", async () => {
+  const stored = structuredClone(STORED);
+  stored.options.anki = { monolingualGroupId: "mono", bilingualGroupId: "missing", glossarySelectionFallback: "first" };
+  stored.dictionaryState = { schemaVersion: 1, revision: 2,
+    dictionaries: [{ id: "a", enabled: true }, { id: "b", enabled: false }],
+    groups: [{ id: "mono", name: "Monolingual", dictionaryIds: ["a", "b"] }] };
+  const report = await collectDebugInfo({ ...host({ stored }), targets: TARGETS });
+  assert.deepEqual(report.configuration.profiles[0].ankiDefinitionGroups, [{ templateId: "default", fallback: "first",
+    monolingual: { id: "mono", available: true, enabledDictionaryCount: 1 },
+    bilingual: { id: "missing", available: false, enabledDictionaryCount: 0 } }]);
+});
+
 function host({ fail = new Set(), stored = STORED } = {}) {
   const sent = [];
   let storageReads = 0;
