@@ -156,14 +156,14 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
   // differs from the dictionary's target language, which the body carries.
   // Under the right-to-left rules each block of the other direction keeps its
   // own, a row's text that sits in the body itself included (10.2).
-  function content(glossary, pending, rtlRules = false) {
+  function content(glossary, pending, rtlRules = false, selection) {
     const body = inert.createElement("div");
     body.className = "gsm-hoshidicts-glossary-content";
     body.dataset.hoshidictsDictionary = glossary.dictionary;
     const tag = language?.dictionaryLanguage(glossary.dictionary) ?? null;
     if (tag) body.lang = tag;
     globalThis.HDGlossary.appendTextOnlyGlossary(inert, body, glossary.glossary, {
-      dictionary: glossary.dictionary, layout: "anki", compactGlossaries, ...(language === null ? {} : { language }),
+      dictionary: glossary.dictionary, layout: "anki", compactGlossaries, selection, ...(language === null ? {} : { language }),
       appendImage: pending ? (...args) => appendImage(...args, pending) : () => {},
     });
     const direction = rtlRules ? directionOf(glossary.dictionary) : null;
@@ -201,7 +201,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
     return lines.join("<br>");
   }
 
-  function entry(glossary, brief, noDictionary, pending, rtlRules) {
+  function entry(glossary, brief, noDictionary, pending, rtlRules, selection) {
     const wrapper = inert.createElement("div");
     // Yomitan's glossary-single: one comma-separated label per tag, the
     // definition tags in their tag-bank order.
@@ -218,7 +218,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
       meta.normalize();
       wrapper.append(meta, " ");
     }
-    wrapper.append(replaceNewlines(content(glossary, pending, rtlRules)));
+    wrapper.append(replaceNewlines(content(glossary, pending, rtlRules, selection)));
     return wrapper;
   }
 
@@ -267,9 +267,19 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
     return { root, list, rtlRules, mixed };
   }
 
-  return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false }) => {
+  return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false, selectedOnly = false, selection }) => {
     let selected = [...groups].filter(([name]) => dictionary === undefined || name === dictionary);
     if (firstOnly) selected = selected.slice(0, 1);
+    if (selectedOnly) {
+      if (selection) {
+        if (typeof selection.dictionary !== "string" || !Number.isSafeInteger(selection.index) || selection.index < 0) {
+          throw new Error("The selected dictionary entry is invalid. Choose its definition again.");
+        }
+        const row = groups.get(selection.dictionary)?.[selection.index];
+        if (!row) throw new Error("The selected dictionary entry is no longer available. Look it up again.");
+        selected = [[selection.dictionary, [row]]];
+      } else selected = selected.length ? [[selected[0][0], selected[0][1].slice(0, 1)]] : [];
+    }
     if (!selected.length) return "";
     if (plain) return plainDefinition(selected, noDictionary);
     const pending = [];
@@ -281,7 +291,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
         const page = inert.createElement("li");
         page.dataset.dictionary = name;
         if (mixed) page.dir = directionOf(name);
-        page.append(entry(glossary, brief, noDictionary, pending, rtlRules));
+        page.append(entry(glossary, brief, noDictionary, pending, rtlRules, selectedOnly ? selection?.ranges : undefined));
         list.append(page);
       }
     }
