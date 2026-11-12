@@ -4,6 +4,8 @@ import test from "node:test";
 import { buildAnkiFields } from "../extension/anki-values.js";
 import { ankiTemplateErrors } from "../extension/anki-templates.js";
 import "../extension/reader-options.js";
+import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { ankiRequestFixture } from "./anki-request-fixture.mjs";
 
 const row = dictionary => ({ dictionary, glossary: '["definition"]', definitionTags: "", termTags: "" });
 const request = patch => ({ term: { expression: "猫", reading: "ねこ", rules: "", frequencies: [], pitches: [],
@@ -15,27 +17,31 @@ const request = patch => ({ term: { expression: "猫", reading: "ねこ", rules:
 const fields = async (source, value) => buildAnkiFields(source, { Back: { value, overwriteMode: "coalesce" } }, {
   definition: options => JSON.stringify(options),
 });
+const parsed = value => JSON.parse(value.replaceAll("&#123;", "{").replaceAll("&#125;", "}"));
 
 test("group glossary markers use group order, constrain selection and retain an exact selected row", async () => {
   const marker = "{glossary-selection-group-mono}";
   assert.deepEqual(ankiTemplateErrors(marker), []);
-  assert.deepEqual(JSON.parse((await fields(request(), marker)).Back), {
+  assert.deepEqual(parsed((await fields(request(), marker)).Back), {
     selectedOnly: true, selection: { dictionary: "Mono A", index: 0 }, brief: true,
   });
   const selection = { dictionary: "Mono A", index: 1,
     ranges: [{ path: ["glossary", 0], start: 0, end: 3 }] };
-  assert.deepEqual(JSON.parse((await fields(request({ glossarySelection: selection }), marker)).Back), {
+  assert.deepEqual(parsed((await fields(request({ glossarySelection: selection }), marker)).Back), {
     selectedOnly: true, selection, brief: true,
   });
-  assert.deepEqual(JSON.parse((await fields(request({ glossarySelection: { dictionary: "Bilingual", index: 0 } }), marker)).Back), {
+  assert.deepEqual(parsed((await fields(request({ glossarySelection: { dictionary: "Bilingual", index: 0 } }), marker)).Back), {
     selectedOnly: true, selection: { dictionary: "Mono A", index: 0 }, brief: true,
   });
+  const mixed = request({ glossaryGroups: [{ id: "Mono", dictionaryIds: ["a"] }, { id: "mono", dictionaryIds: ["b"] }] });
+  assert.equal(parsed((await fields(mixed, "{glossary-selection-group-Mono}")).Back).selection.dictionary, "Mono A");
+  assert.equal(parsed((await fields(mixed, marker)).Back).selection.dictionary, "Mono B");
 });
 
 test("named mono/bilingual markers use explicit Template groups and never leak across missing groups", async () => {
   const result = await fields(request({ glossarySelectionFallback: "first" }),
     "{monolingual-definition}|{bilingual-definition}");
-  const [mono, bi] = result.Back.split("|").map(JSON.parse);
+  const [mono, bi] = result.Back.split("|").map(parsed);
   assert.deepEqual(mono, { selectedOnly: true, selection: { dictionary: "Mono A", index: 0 }, brief: false });
   assert.deepEqual(bi, { selectedOnly: true, selection: { dictionary: "Bilingual", index: 0 }, brief: false });
   for (const patch of [{ monolingualGroupId: "" }, { glossaryGroups: [] },
@@ -65,5 +71,33 @@ test("Anki group choices normalize, reject invalid writes and preserve legacy Te
   assert.doesNotThrow(() => options.validateOptionsPatch({ anki: edited }));
   assert.equal(options.ankiTemplateConfig(edited).monolingualGroupId, "mono");
   edited.templates[0].glossarySelectionFallback = "all-dictionaries";
-  assert.throws(() => options.validateOptionsPatch({ anki: edited }), /anki/iu);
+  assert.throws(() => options.validateOptionsPatch({ anki: edited }), /invalid reader option/iu);
+});
+
+test("the worker binds group order and installed package IDs to its checked configuration", async () => {
+  const f = ankiRequestFixture();
+  f.options.anki = globalThis.HDReaderOptions.normaliseAnki({ model: "Basic", monolingualGroupId: "mono",
+    fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
+      Back: { value: "{monolingual-definition}", overwriteMode: "coalesce" } } });
+  let groups = [{ id: "mono", dictionaryIds: ["a", "b"] }];
+  const service = createAnkiWorkerService({ gateway: f.gateway, readOptions: async () => f.options,
+    readGroups: async () => structuredClone(groups),
+    readDictionaries: async () => ["Mono A", "Mono B", "Bilingual"].map((title, index) => ({ title,
+      id: ["a", "b", "bi"][index], enabled: true, path: `/dicts/${index}` })),
+    duplicateIndex: { async recordWrite() {} },
+    engine: async () => ({ ready: true, loading: false, generation: 3 }),
+    offscreen: async message => ({ media: [], fields: await buildAnkiFields(message.request, message.templates, {
+      definition: options => options.selection.dictionary,
+    }) }),
+  });
+  const configKey = (await service.status()).configKey;
+  const source = request({ generation: 3, configKey,
+    dictionaryIds: { Bilingual: "a" }, glossaryGroups: [{ id: "mono", dictionaryIds: ["bi"] }],
+    glossarySelection: { dictionary: "Bilingual", index: 0 } });
+  assert.equal((await service.submit(source)).state, "added");
+  assert.equal([...f.notes.values()][0].Back, "Mono A", "client metadata cannot move bilingual text into the saved group");
+  groups = [{ id: "mono", dictionaryIds: ["b", "a"] }];
+  assert.notEqual((await service.status()).configKey, configKey);
+  await assert.rejects(service.submit(source), /configuration changed/iu);
+  assert.equal(f.calls.filter(call => call.action === "addNote").length, 1);
 });
