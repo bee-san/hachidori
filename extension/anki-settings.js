@@ -340,6 +340,7 @@ export function createAnkiSettingsController({
   document,
   readConfig,
   editConfig,
+  readScripts = () => [],
   send,
   capabilities = { screenshot: true },
   readOwnerKey = () => "",
@@ -773,7 +774,30 @@ export function createAnkiSettingsController({
     ["bilingualGroupId", "opt-anki-bilingual-group"],
   ];
 
+  function renderPreparation(config) {
+    const select = element("opt-anki-preparation-script");
+    if (!select) return;
+    const selected = config.preparationScript;
+    const scripts = readScripts().filter(script => script.javascript.trim());
+    const choices = [["", "None"], ...scripts.map(script => [script.id, `${script.name}${script.enabled ? "" : " (disabled)"}`])];
+    if (selected && !scripts.some(script => script.id === selected.scriptId)) choices.push([selected.scriptId, "Missing user script"]);
+    const key = JSON.stringify(choices);
+    if (select.dataset.choices !== key) {
+      select.replaceChildren(...choices.map(([value, label]) => {
+        const option = document.createElement("option"); option.value = value; option.textContent = label; return option;
+      }));
+      select.dataset.choices = key;
+    }
+    const scriptId = selected?.scriptId ?? "";
+    if (select !== document.activeElement && select.value !== scriptId) select.value = scriptId;
+    const handler = element("opt-anki-preparation-handler");
+    if (handler.disabled !== !selected) handler.disabled = !selected;
+    const handlerId = selected?.handlerId ?? "prepare";
+    if (handler !== document.activeElement && handler.value !== handlerId) handler.value = handlerId;
+  }
+
   function renderFormControls(config) {
+    renderPreparation(config);
     const values = { ...config, captureScreenshot: capabilities.screenshot && config.captureScreenshot };
     for (const [key, id] of controls) {
       const control = element(id);
@@ -835,6 +859,14 @@ export function createAnkiSettingsController({
     if (connectionKey(config) !== requestedKey) void refresh();
   }
 
+  element("opt-anki-preparation-script")?.addEventListener("change", event => {
+    const scriptId = event.target.value;
+    change({ preparationScript: scriptId ? { scriptId, handlerId: readConfig().preparationScript?.handlerId ?? "prepare" } : null });
+  });
+  element("opt-anki-preparation-handler")?.addEventListener("change", event => {
+    const current = readConfig().preparationScript;
+    if (current) change({ preparationScript: { ...current, handlerId: event.target.value.trim() || "prepare" } });
+  });
   element("opt-anki-deck").addEventListener("change", event => change({ deck: event.target.value }));
   element("opt-anki-model").addEventListener("change", event => {
     if (event.target.value === readConfig().model) return;
@@ -893,6 +925,7 @@ export function createAnkiTemplateSettingsController({
   readAnki,
   editAnki,
   readButtons = () => [],
+  readScripts = () => [],
   send,
   capabilities = { screenshot: true },
   createId = () => document.defaultView.crypto.randomUUID(),
@@ -948,6 +981,7 @@ export function createAnkiTemplateSettingsController({
     send,
     capabilities,
     readOwnerKey: () => selected().template.id,
+    readScripts,
     readProfile,
     readGroups,
   });

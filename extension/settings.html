@@ -1308,6 +1308,14 @@
               </label>
               <p id="anki-screenshot-help" class="field-hint">Appends the visible browser page to fields using <code>{screenshot}</code>.</p>
             </div>
+            <div class="anki-setting-row">
+              <div class="anki-setting-col">
+                <span class="field-label">Preparation script</span>
+                <span class="field-hint" id="anki-preparation-help">Run a function from <a href="#user-scripts">Advanced → User scripts</a> when you press Add. Its named results are available as {preparation-NAME}. The note is sent only after the function succeeds.</span>
+              </div>
+              <label class="anki-setting-col"><span class="field-label">User script</span><select id="opt-anki-preparation-script" aria-describedby="anki-preparation-help"><option value="">None</option></select></label>
+              <label class="anki-setting-col"><span class="field-label">Registered function</span><input id="opt-anki-preparation-handler" type="text" value="prepare" autocomplete="off" spellcheck="false" disabled></label>
+            </div>
             <div class="anki-setting-row anki-duplicate-row">
               <div class="anki-setting-col">
                 <span class="field-label">Duplicate checking</span>
@@ -1564,7 +1572,7 @@
           <fieldset class="lookup-group" id="debug-info-settings">
             <legend data-search-keywords="debug diagnostics bug report troubleshooting support logs version">Troubleshooting</legend>
             <div class="setting-row">
-              <p class="field-hint" id="debug-info-help">Downloads a JSON file to attach to a bug report: the Hachidori version and install, browser and system including AV1 encoding support, engine status and memory use, installed dictionaries, Anki and sharing status, supported Anki export markers and definition-group availability, Anki field syntax and the template renderer, MCP support, every setting, language profiles and their effective settings, themes, Custom CSS, userscript source and registration, what Hachidori stores in this browser, and its debug log. The log keeps warnings, errors and failed requests from this and earlier sessions, the errors Hachidori showed you and, by name only, the buttons and settings you used before them. Your AnkiConnect API key and other credentials are removed, Japanese and other non-Latin study text in the log is replaced with language markers, and your personal dictionary entries, known and ignored words, lookup history and Anki notes are left out.</p>
+              <p class="field-hint" id="debug-info-help">Downloads a JSON file to attach to a bug report: the Hachidori version and install, browser and system including AV1 encoding support, engine status and memory use, installed dictionaries, Anki and sharing status, supported Anki export markers and definition-group availability, Anki field syntax and the template renderer, preparation-script availability and pending-operation counts, MCP support, every setting, language profiles and their effective settings, themes, Custom CSS, userscript source and registration, what Hachidori stores in this browser, and its debug log. The log keeps warnings, errors and failed requests from this and earlier sessions, the errors Hachidori showed you and, by name only, the buttons and settings you used before them. Your AnkiConnect API key and other credentials are removed, Japanese and other non-Latin study text in the log is replaced with language markers, and your personal dictionary entries, known and ignored words, lookup history, preparation results and Anki notes are left out.</p>
               <div class="options-actions">
                 <button type="button" class="ghost" id="debug-info-download" aria-describedby="debug-info-help">Get debug info</button>
                 <output class="custom-dictionary-status" id="debug-info-status" aria-live="polite"></output>

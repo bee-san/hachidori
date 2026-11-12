@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY,
-  ANKI_GLOSSARY_GROUPS_CAPABILITY, LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
+  ANKI_PREPARATION_CAPABILITY, ANKI_GLOSSARY_GROUPS_CAPABILITY, LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
@@ -104,7 +104,7 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
     capabilities: SHARING_CAPABILITIES })),
   { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [...SHARING_CAPABILITIES] });
-  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY, ANKI_GLOSSARY_GROUPS_CAPABILITY]);
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY, ANKI_GLOSSARY_GROUPS_CAPABILITY, ANKI_PREPARATION_CAPABILITY]);
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
     { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),

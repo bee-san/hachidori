@@ -33,7 +33,8 @@ export const READER_REQUESTS = new Map(Object.entries({
   "hoshidicts-worker": ["hd_options_write", "hd_open_external", "hd_lookup_stats_read", "hd_lookup_stats_record",
     "hd_word_status_override", "hd_language_selection_write", "hd_open_settings"],
   "hachidori-anki": ["hd_anki_status", "hd_anki_view", "hd_anki_preflight", "hd_anki_preflight_batch", "hd_anki_submit",
-    "hd_anki_browse", "hd_anki_screenshot", "hd_anki_screenshot_discard", "hd_anki_maturity", "hd_anki_word_status"],
+    "hd_anki_browse", "hd_anki_screenshot", "hd_anki_screenshot_discard", "hd_anki_maturity", "hd_anki_word_status", "hd_anki_prepare", "hd_anki_preparation_begin", "hd_anki_preparation_fetch",
+    "hd_anki_preparation_finish", "hd_anki_preparation_cancel"],
   "hachidori-audio": ["hd_audio_play", "hd_audio_candidates", "hd_audio_stop"],
   "hachidori-page-zoom": ["hd_page_zoom"],
 }).map(([target, types]) => [target, new Set(types)]));
@@ -113,6 +114,7 @@ export function searchHistoryRequests(history, { settings, page }) {
 export function serveSearchFrame(api, port, store, page, history = null) {
   // The ring's keys of the records this frame wrote, the only ones it may update.
   const written = new Set();
+  let preparationPort = null;
   const answer = (id, request) => {
     Promise.resolve().then(request).then((value) => { port.postMessage({ kind: "reply", id, value }); },
       (error) => { port.postMessage({ kind: "reply", id, error: describeErrorMessage(error) }); });
@@ -122,6 +124,10 @@ export function serveSearchFrame(api, port, store, page, history = null) {
       answer(data.id, () => {
         if (!readerRequest(data.message)) {
           throw new Error(`The search page cannot send ${data.message?.type} to ${data.message?.target}.`);
+        }
+        if (data.message.type === "hd_anki_preparation_begin" && !preparationPort) {
+          preparationPort = api.runtime.connect({ name: "hachidori-anki-preparation-document" });
+          preparationPort.onDisconnect.addListener(() => { preparationPort = null; });
         }
         return api.runtime.sendMessage(data.message);
       });
@@ -160,6 +166,7 @@ export function serveSearchFrame(api, port, store, page, history = null) {
     api.runtime.onMessage.removeListener(onMessage);
     api.storage.onChanged.removeListener(onChanged);
     unheard?.();
+    preparationPort?.disconnect();
     port.close();
   };
 }

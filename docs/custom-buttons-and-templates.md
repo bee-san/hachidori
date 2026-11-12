@@ -360,3 +360,17 @@ group configuration on the host; templates that use neither avoid that read.
 Group IDs remain case-sensitive, including inside the `marker` helper.
 Block aliases retain these dependencies. A computed `lookup` property can select
 either root context, so Hachidori conservatively prepares both.
+
+## Preparation scripts
+
+Each Template can optionally name a `preparationScript` of
+`{ scriptId, handlerId }`, referring to a package under Advanced → User scripts
+and the function it registers with `HDAnkiPreparation.register`. A missing or
+disabled script remains selected so it can be restored, and cannot silently
+produce an ordinary card. Choose None to remove preparation from the Template.
+
+Its named results are available as `{preparation-NAME}` markers and, in
+Handlebars fields, `preparation.NAME`. Preparation runs once per explicit Add,
+before final field/duplicate checks and media preparation. It does no work on
+hover or readiness. The [user-script API](user-scripts.md#prepare-an-anki-card)
+explains registration, external requests, failure and linked-browser ownership.

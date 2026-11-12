@@ -18,7 +18,7 @@ const chrome = readonly(["chrome"]);
 // The namespace each classic script publishes on the global object for the
 // scripts loaded after it.
 const published = readonly([
-  "HDAnki", "HDAudio", "HDContent", "HDCrunchyroll", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
+  "HDAnki", "HDAnkiPreparation", "HDAnkiPreparationFactory", "HDAudio", "HDContent", "HDCrunchyroll", "HDDesignPreview", "HDDictionaryGroups", "HDExternalLinkHost", "HDExternalLinks",
   "HDGlossary", "HDLookupStats", "HDMessageTypes", "HDNetflix", "HDNetflixAudio", "HDNetflixSubtitles", "HDPopup",
   "HDReaderOptions", "HDReaderReady", "HDSearchBridge", "HDSentence", "HDThemeHost", "HDVideoSite", "HDVisualNovel",
   "HDWordHighlights", "HDWordStatusOverrides", "HDYouTube",
@@ -35,7 +35,7 @@ const CLASSIC = [
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in
 // Chrome's user-script world, which has none either.
-const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js"];
+const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js", "anki-preparation-runtime.js"];
 // The service worker serializes these modules' functions into Netflix's and
 // YouTube's pages.
 const INJECTED = ["netflix-preview.js", "youtube-frame.js"];
@@ -45,7 +45,7 @@ const SANDBOX_MODULES = ["anki-template-frame.js"];
 const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
   "mcp-host.js", "anki-media.js", "anki-mining.js", "anki-worker.js", "api-host.js", "backup-downloads.js", "chrome-offscreen.js",
-  "custom-javascript.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
+  "custom-javascript.js", "anki-preparation-service.js", "background-anki-preparation.js", "google-docs.js", "language-scripts.js", "media-limits.js", "netflix.js", "sharing-client.js", "sharing-host.js",
   "site-scripts.js", "youtube.js", "background-anki.js", "background-backup.js", "background-core.js",
   "background-netflix.js", "background-requests.js", "background-sharing.js", "background-updates.js",
   "background-video.js", "background-youtube.js", "crunchyroll.js", "background-crunchyroll.js",

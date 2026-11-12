@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
 import { ankiCaptureRequirements, ankiTemplateDependencies, resolveAnkiTemplates } from "./anki-templates.js";
+import { preparationData } from "./anki-preparation-service.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiListedFamily } from "./anki-setup.js";
@@ -354,7 +355,21 @@ export function createAnkiMiningService({
     const rendering = !fresh && nativeDuplicateCheck(current) ? { ...current, resolved: { ...current.resolved,
       templates: Object.fromEntries(Object.entries(current.resolved.templates).filter(([field, template]) =>
         field === current.discovery.fields[0] || /\{\{c/iu.test(template.value))) } } : current;
-    const resources = await buildFields(request, rendering, { preflight: !fresh });
+    const script = current.config.preparationScript;
+    let resources;
+    if (!script && Object.hasOwn(request, "preparation")) throw new Error("This Anki Template has no preparation script.");
+    if (script && typeof current.config.preparationSource !== "string") {
+      throw new Error("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
+    }
+    if (script && !Object.hasOwn(request, "preparation")) {
+      if (fresh) throw new Error("Run this Template's preparation script before adding the note.");
+      resources = { fields: { [current.discovery.fields[0]]: "hachidori_pending_preparation" }, media: [], deferDuplicateCheck: true };
+    } else {
+      if (script && JSON.stringify(request.preparationScript) !== JSON.stringify(script)) throw new Error(CONFIG_CHANGED);
+      // Keep request identity: linked media and speech ownership use WeakMaps.
+      if (script) preparationData(request.preparation);
+      resources = await buildFields(request, rendering, { preflight: !fresh });
+    }
     const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) {
@@ -389,7 +404,8 @@ export function createAnkiMiningService({
   async function deferredReply(request, prepared) {
     const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
     return { state: "addable", canAdd: true, error: null, deferred: true, screenshot: screenshotFor(prepared),
-      ...sentenceAudioFor(prepared, request), ...gifFor(prepared, request), ...extra };
+      ...sentenceAudioFor(prepared, request), ...gifFor(prepared, request),
+      ...(prepared.config.preparationScript ? { preparationScript: prepared.config.preparationScript } : {}), ...extra };
   }
 
   async function preflightReply(request, prepared, result) {

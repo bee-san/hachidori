@@ -302,6 +302,8 @@ export function createAnkiWorkerService({
       const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).groups);
       return {
         ...inLanguage(template, profile),
+        ...(template.preparationScript ? { preparationSource: options.userScripts.find(script =>
+          script.id === template.preparationScript.scriptId && script.enabled)?.javascript ?? null } : {}),
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards or
         // Compact popup and Anki between a preflight and Add refuses the stale Add.

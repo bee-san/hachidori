@@ -155,3 +155,69 @@ packages.
 - `test/chrome-e2e/search.mjs`, `test/chrome-dark-reader.mjs` and the Firefox
   suite's `settings.mjs` and `search.mjs`: packages in real browsers, on pages
   and on the search page; Firefox's types its script into the code editor.
+
+## Prepare an Anki card
+
+An Anki Template can choose one preparation function from an installed user
+script. Select its package and registered function under **Anki → Templates →
+Preparation script**. Its custom Anki buttons use the same preparation. The
+package must be enabled, and browser user scripts must be allowed; after adding
+or changing its JavaScript, reload the reading page.
+
+Register a function while the package loads:
+
+```js
+if (!globalThis.HDAnkiPreparation) return;
+HDAnkiPreparation.register("prepare", async (context, { request }) => {
+  const response = await request("https://your-sentence-service.example/api", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ word: context.term.expression }),
+  });
+  if (!response.ok) throw new Error("The sentence service refused the request.");
+  return { example: (await response.json()).sentence };
+});
+```
+
+Map a field to `{preparation-example}` to insert that returned string. The
+marker escapes HTML and literal cloze braces. Marker names are case-insensitive;
+use distinct lowercase names for returned values. A returned object or array
+is inserted as JSON. The complete result must be a JSON object, with no
+functions, undefined values or cycles. Handlebars fields can read the same data
+under `preparation` when that syntax is available.
+
+`context` is a copy of the clicked lookup: `term` (expression, reading and
+ordered dictionary glossaries), `sentence`, `matched`, `matchOffset`,
+`searchQuery`, `pageUrl`, `documentTitle`, the glossary selection when there is
+one, and the chosen `templateId`. Mutating this copy does not change the lookup
+or destination. No AnkiConnect key, endpoint or saved field mappings are given
+to the script.
+
+The second argument's `request(url, options)` makes an HTTP(S) request through
+Hachidori, so the service need not enable CORS. `options` supports `method`,
+`headers` and a string `body`. The returned response has `ok`, `status`,
+`headers`, `text()` and `json()`. Cookies are omitted; a script can explicitly
+provide an API authorization header. This helper is available only during the
+preparation that owns it. It cannot be called on hover, from an unrelated page
+message or after that operation is cancelled.
+
+Registration and ordinary lookup readiness do not run the preparation or
+contact the service. Pressing Add captures the lookup, awaits the function,
+then checks the final fields and duplicates through the normal Anki path.
+Failure sends no note and leaves Add retryable. Navigation or retiring that
+lookup cancels its preparation; a late result cannot add a note for another
+lookup. Once an Anki write has been sent, today's confirmed-success and
+uncertain-write behavior still applies.
+
+Browser user scripts communicate through the browser's dedicated
+`onUserScriptConnect` channel. A page cannot register such a port. Search and
+overlay scripts use the same API in their own document, with a worker-issued
+operation token for each preparation request. A linked browser runs its own
+script and sends only named data; its sharing host still chooses the saved
+Template, renders the fields and owns Anki writes. Both sides need the
+`anki-preparation-v1` capability. Older hosts refuse prepared submissions.
+
+Get debug info includes the saved script/function choice, registration and
+active-operation counts, and fixed failure categories. Preparation data is
+summarized by its value count, and script failures never put API responses or
+prompts into diagnostic messages.

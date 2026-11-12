@@ -8,7 +8,7 @@ import { createApiHost } from "./api-host.js";
 import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
   MCP_CAPABILITY, API_CAPABILITY, API_CLIENT_ORIGIN, FORWARDED_REQUESTS, LANGUAGE_PROFILES_CAPABILITY, LANGUAGE_PROFILES_OPT_IN,
-  ANKI_GLOSSARY_GROUPS_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
+  ANKI_PREPARATION_CAPABILITY, ANKI_GLOSSARY_GROUPS_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
   browserName, mutatingForwardedRequest, parseLinkAddress, sharingPort,
 } from "./sharing-protocol.js";
 import {
@@ -479,6 +479,7 @@ const LEGACY_ANKI_GLOSSARY_DEFAULTS = {
 function linkedOptionsCapability(message) {
   if (message?.type !== "hd_options_write") return null;
   const patch = message.options;
+  if (patch?.anki?.templates?.some(template => template.preparationScript)) return ANKI_PREPARATION_CAPABILITY;
   const templates = Array.isArray(patch?.anki?.templates) ? patch.anki.templates : [];
   if ([patch?.anki, ...templates].some(template => template && typeof template === "object"
       && Object.keys(LEGACY_ANKI_GLOSSARY_DEFAULTS).some(key => Object.hasOwn(template, key)))) return ANKI_GLOSSARY_GROUPS_CAPABILITY;
