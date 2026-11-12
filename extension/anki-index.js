@@ -259,6 +259,9 @@ export async function inspectAnkiNoteIds(invoke, source, expression, noteIds) {
   const requested = new Set(ids);
   const byId = new Map();
   for (const info of infos) {
+    // notesInfo returns an empty object in place of a deleted note. Keep it
+    // absent from byId so the stale-row repair below can run.
+    if (info && typeof info === "object" && !Array.isArray(info) && Object.keys(info).length === 0) continue;
     if (!positiveId(info?.noteId) || !requested.has(info.noteId) || byId.has(info.noteId)
         || typeof info.modelName !== "string") {
       throw new Error("AnkiConnect returned invalid duplicate note details.");

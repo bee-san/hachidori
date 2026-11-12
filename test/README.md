@@ -921,3 +921,9 @@ stale revisions, script edits and explicit host-language selection. Generate
 fixtures first as for the other service-worker contract suites. The companion
 hachidori-mcp repository tests the stdio CLI and the real Python relay/Chromium
 connection.
+
+`anki-deleted-notes.test.mjs` runs Add → delete → preflight → View → Add through
+the production gateway, worker and persistent duplicate index. It covers Prevent
+and Overwrite with both direct expression and custom first-field identities.
+Its disposable fake endpoint returns AnkiConnect's actual `{}` missing-note
+placeholder; it does not touch a real Anki collection.

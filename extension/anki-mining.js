@@ -248,6 +248,14 @@ function failedReply(error) {
   return { state: "error", canAdd: false, error: error?.message || String(error) };
 }
 
+async function survivingAnkiNoteIds(invoke, noteIds) {
+  const liveIds = await invoke("findNotes", { query: ankiNoteIdsQuery(noteIds) });
+  if (!Array.isArray(liveIds) || liveIds.some(id => !noteIds.includes(id))) {
+    throw new Error("AnkiConnect returned invalid browse note IDs.");
+  }
+  return [...new Set(liveIds)];
+}
+
 export function createAnkiMiningService({
   gateway,
   readConfig,
@@ -592,13 +600,19 @@ export function createAnkiMiningService({
       if (value.configKey !== configKey) throw new Error(CONFIG_CHANGED);
     }
     const invoke = invokeFor(config);
-    const supplied = Array.isArray(value?.noteIds) && value.noteIds.length;
-    let noteIds = supplied ? [...value.noteIds] : [];
+    let noteIds = Array.isArray(value?.noteIds) ? [...value.noteIds] : [];
+    const supplied = noteIds.length > 0;
     let repaired = false;
-    if (typeof value?.expression === "string" && value.expression
-        && await duplicateIndex.source(config) !== null) {
+    const source = await duplicateIndex.source(config);
+    if (typeof value?.expression === "string" && value.expression && source !== null) {
       const refreshed = await duplicateIndex.repair(config, value.expression, invoke);
       noteIds = refreshed.noteIds;
+      if (!noteIds.length) return { opened: false, noteIds: [], repaired: true };
+      repaired = true;
+    } else if (supplied && source === null) {
+      // Custom first-field identities have no word-index row to repair. An
+      // exact live ID search still lets View recover after an external delete.
+      noteIds = await survivingAnkiNoteIds(invoke, noteIds);
       if (!noteIds.length) return { opened: false, noteIds: [], repaired: true };
       repaired = true;
     }

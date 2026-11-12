@@ -56,3 +56,17 @@ To compare an earlier checkout, copy `test/anki-request-fixture.mjs` and
 `test/anki-connect-fake.mjs` from this revision into its `test/` directory and
 pass `--source /path/to/earlier-checkout` to the same driver. Keep both reports
 with the PR and compare under the same runtime and injected delay.
+
+## Deleted notes
+
+AnkiConnect's `notesInfo` keeps an empty object at the position of a deleted
+note. Overwrite treats that placeholder as a stale cached ID and repairs the
+word's row before choosing Add or an overwrite target. Malformed nonempty note
+details still fail normally.
+
+View repairs indexed expression IDs as before. A Template with a custom first
+field and no direct expression field has no word-index row, so View checks its
+supplied IDs with one exact `findNotes` query before opening Anki. When none
+remain, the popup returns to Add. An uncertain write with no returned note ID
+still opens the existing expression search. These repairs do not clear other
+words or change the scheduled index refresh.

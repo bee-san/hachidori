@@ -1,0 +1,1090 @@
+{
+  "customViewBefore": {
+    "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one live note with a custom first-field identity; discovery and Add excluded; fresh service per sample",
+    "medianMs": 26.236680999999862,
+    "p95Ms": 27.243710999999962,
+    "samples": [
+      {
+        "durationMs": 26.681472999999983,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 25.69730699999991,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.19477100000006,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 27.243710999999962,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.188903999999866,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.89551500000016,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.32024300000012,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 25.853271000000177,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.406049000000166,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 27.15634100000011,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 27.036452999999938,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.217813999999862,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.236680999999862,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 25.95680799999991,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.1863629999998,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.11883200000011,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 25.72050900000022,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.58072399999992,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 26.490410999999767,
+        "requests": [
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 28.3734300000001,
+        "requests": [
+          "guiBrowse"
+        ]
+      }
+    ]
+  },
+  "customViewAfter": {
+    "commit": "863a2e632a33d7d8cb08b03b2a199f0037ff2eb1",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one live note with a custom first-field identity; discovery and Add excluded; fresh service per sample",
+    "medianMs": 51.81777899999997,
+    "p95Ms": 52.67943800000012,
+    "samples": [
+      {
+        "durationMs": 53.119952999999896,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.21830499999999,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.947304999999915,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.608720000000176,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.67943800000012,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.26385600000003,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.04359599999998,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.424101000000064,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.618787999999995,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.62304900000004,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.04240600000003,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.099654999999984,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.586679000000004,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 52.1510830000002,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.652896000000055,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.81777899999997,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.389156999999614,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.568886999999904,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.7082019999998,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      },
+      {
+        "durationMs": 51.820932000000084,
+        "requests": [
+          "findNotes",
+          "guiBrowse"
+        ]
+      }
+    ]
+  },
+  "ordinaryBefore": {
+    "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one new word, model scope, no dictionary images; fresh index per sample; metadata discovery excluded",
+    "results": [
+      {
+        "audio": false,
+        "screenshot": false,
+        "samples": [
+          {
+            "duplicateMs": 26.523852999999974,
+            "addMs": 29.152923999999985,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.25530500000002,
+            "addMs": 29.175523,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.76716600000003,
+            "addMs": 30.12487100000004,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.789806999999996,
+            "addMs": 29.590309000000047,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.522549000000026,
+            "addMs": 29.090337999999974,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.778553999999986,
+            "addMs": 29.289301000000023,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.076663000000053,
+            "addMs": 31.237131999999974,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.96502600000008,
+            "addMs": 31.766434000000004,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 56.7172690000001,
+            "addMs": 72.09642999999983,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 33.574863999999934,
+            "addMs": 49.93474399999991,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.193588999999974,
+            "addMs": 36.49652199999991,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.741251000000148,
+            "addMs": 28.376628999999866,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.368696999999884,
+            "addMs": 28.407347999999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.121127000000115,
+            "addMs": 28.288802999999916,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.420206000000007,
+            "addMs": 28.348169999999982,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.41221100000007,
+            "addMs": 28.747994999999946,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.226664000000028,
+            "addMs": 28.369038000000046,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.42846899999995,
+            "addMs": 28.851296000000048,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.160548999999946,
+            "addMs": 28.770224999999982,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.383744999999863,
+            "addMs": 28.463498999999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.42846899999995,
+        "duplicateP95Ms": 33.574863999999934,
+        "addMedianMs": 29.090337999999974,
+        "addP95Ms": 49.93474399999991
+      },
+      {
+        "audio": false,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.34557300000006,
+            "addMs": 29.021450999999615,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.40310499999987,
+            "addMs": 31.805413999999928,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.885917999999947,
+            "addMs": 32.67297099999996,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.33746999999994,
+            "addMs": 28.031019000000015,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.230872999999974,
+            "addMs": 28.03775900000028,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.305529999999635,
+            "addMs": 28.556326000000354,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.321026000000074,
+            "addMs": 28.961095999999998,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.39009699999997,
+            "addMs": 30.285887999999886,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.426586000000043,
+            "addMs": 28.66521300000022,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.303214000000025,
+            "addMs": 28.395101000000068,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.01176600000008,
+            "addMs": 28.023143999999775,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.17489599999999,
+            "addMs": 27.67471599999999,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.212417000000187,
+            "addMs": 27.876647000000048,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.26778800000011,
+            "addMs": 28.827784000000065,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.550548000000163,
+            "addMs": 28.273545000000013,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.376549999999952,
+            "addMs": 28.449051000000054,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.428604000000178,
+            "addMs": 28.719841000000088,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.43763399999989,
+            "addMs": 29.103747000000112,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.4233220000001,
+            "addMs": 28.476517000000058,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.44484599999987,
+            "addMs": 29.23087600000008,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.34557300000006,
+        "duplicateP95Ms": 26.550548000000163,
+        "addMedianMs": 28.556326000000354,
+        "addP95Ms": 31.805413999999928
+      },
+      {
+        "audio": true,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.39529999999968,
+            "addMs": 29.216377000000648,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.119480000000294,
+            "addMs": 27.95877399999972,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.209595000000263,
+            "addMs": 28.547327999999652,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.316007999999783,
+            "addMs": 28.57811000000038,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.24892600000021,
+            "addMs": 29.087596000000303,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.411082999999962,
+            "addMs": 29.052224000000024,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.3986560000003,
+            "addMs": 29.127414999999928,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.45736500000021,
+            "addMs": 28.6901799999996,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.35035499999958,
+            "addMs": 28.833865000000515,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.325458000000253,
+            "addMs": 28.960649999999987,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.49649000000045,
+            "addMs": 28.488091000000168,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.4030759999996,
+            "addMs": 29.32937800000036,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.23873100000037,
+            "addMs": 29.010190999999395,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.685717000000295,
+            "addMs": 29.25851799999964,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.445980999999847,
+            "addMs": 29.207171000000017,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.541446999999607,
+            "addMs": 29.78213599999981,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.506609000000026,
+            "addMs": 29.125338999999258,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.42188400000032,
+            "addMs": 28.71545900000001,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.208757000000332,
+            "addMs": 28.137888000000203,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.562239000000773,
+            "addMs": 28.419968999999583,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.4030759999996,
+        "duplicateP95Ms": 26.685717000000295,
+        "addMedianMs": 28.960649999999987,
+        "addP95Ms": 29.32937800000036
+      }
+    ]
+  },
+  "ordinaryAfter": {
+    "commit": "863a2e632a33d7d8cb08b03b2a199f0037ff2eb1",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 20,
+    "delay": 25,
+    "input": "one new word, model scope, no dictionary images; fresh index per sample; metadata discovery excluded",
+    "results": [
+      {
+        "audio": false,
+        "screenshot": false,
+        "samples": [
+          {
+            "duplicateMs": 26.698577999999998,
+            "addMs": 30.886292000000026,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.76637199999999,
+            "addMs": 29.001704000000018,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.959273999999994,
+            "addMs": 29.77301399999999,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.953723999999966,
+            "addMs": 28.958753,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.68413600000008,
+            "addMs": 29.10791299999994,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.771616999999992,
+            "addMs": 28.94286999999997,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.04834799999992,
+            "addMs": 30.33160900000007,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.430882999999994,
+            "addMs": 30.124154999999973,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.736869999999954,
+            "addMs": 29.088932999999997,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.33420000000001,
+            "addMs": 31.05374400000005,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.988736000000017,
+            "addMs": 28.978162999999995,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.777540000000045,
+            "addMs": 31.183066000000053,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.854282000000012,
+            "addMs": 29.882937000000084,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.504455000000007,
+            "addMs": 29.596990000000005,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.180049000000054,
+            "addMs": 27.747146999999813,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.87167499999987,
+            "addMs": 28.4047700000001,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.504969999999958,
+            "addMs": 28.59848000000011,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.11529100000007,
+            "addMs": 28.22477499999991,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.66757400000006,
+            "addMs": 27.468183999999837,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 25.914037000000008,
+            "addMs": 27.987114999999903,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.76637199999999,
+        "duplicateP95Ms": 27.430882999999994,
+        "addMedianMs": 29.001704000000018,
+        "addP95Ms": 31.05374400000005
+      },
+      {
+        "audio": false,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 27.71978399999989,
+            "addMs": 32.88914199999999,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 28.72806999999966,
+            "addMs": 32.611123000000134,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.608996999999817,
+            "addMs": 29.892193000000134,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.516865000000053,
+            "addMs": 27.671170000000075,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.312955999999758,
+            "addMs": 28.484226000000035,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.174045000000206,
+            "addMs": 28.56071699999984,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.220382999999856,
+            "addMs": 27.730899000000136,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 25.297661999999946,
+            "addMs": 28.396778000000268,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.32245499999999,
+            "addMs": 29.506288999999924,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.181970999999976,
+            "addMs": 28.612255000000005,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.383876000000328,
+            "addMs": 29.30796199999986,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.071894000000157,
+            "addMs": 28.50605799999994,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.22331800000029,
+            "addMs": 28.60245999999961,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.136109000000033,
+            "addMs": 28.27783099999988,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.340638000000126,
+            "addMs": 28.08862799999997,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.36692099999982,
+            "addMs": 28.731210000000374,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.128655999999864,
+            "addMs": 28.056252000000313,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.259515000000192,
+            "addMs": 27.709771999999703,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.326452000000245,
+            "addMs": 28.951372999999876,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.39939000000004,
+            "addMs": 28.874491000000035,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.312955999999758,
+        "duplicateP95Ms": 27.71978399999989,
+        "addMedianMs": 28.56071699999984,
+        "addP95Ms": 32.611123000000134
+      },
+      {
+        "audio": true,
+        "screenshot": true,
+        "samples": [
+          {
+            "duplicateMs": 26.155295000000024,
+            "addMs": 28.835781000000225,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.062127999999575,
+            "addMs": 27.815991000000395,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.17934200000036,
+            "addMs": 28.387614000000212,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.153377999999975,
+            "addMs": 28.364282999999887,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.104130000000623,
+            "addMs": 28.505678999999873,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 27.013347000000067,
+            "addMs": 28.368615000000318,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.376866999999947,
+            "addMs": 28.328036999999313,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.20027399999981,
+            "addMs": 28.569132999999965,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.46032700000069,
+            "addMs": 28.7113219999992,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.370896999999786,
+            "addMs": 28.85072300000047,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.098266999999396,
+            "addMs": 28.559693000000152,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.122442000000774,
+            "addMs": 28.37188099999912,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.42471999999998,
+            "addMs": 28.653072000000066,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.440803000000415,
+            "addMs": 28.782592999999906,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.47465000000011,
+            "addMs": 29.12282200000027,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.622143999999935,
+            "addMs": 29.408010999999533,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.728532999999516,
+            "addMs": 30.825659000000087,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.61178099999961,
+            "addMs": 29.57568699999956,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.378405999999814,
+            "addMs": 28.80665399999998,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          },
+          {
+            "duplicateMs": 26.355862000000343,
+            "addMs": 28.899414999999863,
+            "duplicateRequests": 1,
+            "addRequests": 1
+          }
+        ],
+        "duplicateMedianMs": 26.376866999999947,
+        "duplicateP95Ms": 27.013347000000067,
+        "addMedianMs": 28.653072000000066,
+        "addP95Ms": 29.57568699999956
+      }
+    ]
+  }
+}
