@@ -1007,3 +1007,16 @@ test("a YouTube request is routed like a Netflix one, by YouTube mining's switch
   // YouTube's switch does not make a Netflix request one.
   assert.equal(Object.hasOwn(await f.preflight({ netflix: NETFLIX_CUE }), "sentenceAudio"), false);
 });
+
+test("selection-dependent first fields bypass expression-only View and report their readiness dependency", async () => {
+  const f = fixture();
+  f.change({ fieldTemplates: { Front: { value: "{selected-glossary}", overwriteMode: "coalesce" },
+    Back: { value: "{expression}", overwriteMode: "coalesce" } } });
+  f.dependencies.duplicateIndex.peek = async () => assert.fail("a selected first field cannot use an expression-only cache");
+  assert.equal((await f.service.status()).selectionDependent, true);
+  assert.deepEqual((await f.service.view({ expression: "猫" })).noteIds, []);
+  f.change({ fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
+    Back: { value: "{selected-glossary}", overwriteMode: "coalesce" } } });
+  assert.equal((await f.service.status()).selectionDependent, false,
+    "a selected Back field never changes the first field's duplicate identity");
+});

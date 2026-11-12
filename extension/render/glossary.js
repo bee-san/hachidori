@@ -1450,13 +1450,71 @@
     }
   }
 
+  // Text provenance is shared by the popup and Anki renderer. Paths identify
+  // the source string, so repeated words and different list layouts stay exact.
+  const selectionTexts = new WeakMap();
+  function appendGlossaryText(documentRef, parent, text, state, path, offset = 0) {
+    if (!state?.trackSelection && !state?.selection) {
+      parent.appendChild(documentRef.createTextNode(text));
+      return;
+    }
+    const ranges = state?.selection?.filter(range => JSON.stringify(range.path) === JSON.stringify(path)) ?? [];
+    const cuts = new Set([0, text.length]);
+    for (const range of ranges) {
+      cuts.add(Math.max(0, Math.min(text.length, range.start - offset)));
+      cuts.add(Math.max(0, Math.min(text.length, range.end - offset)));
+    }
+    const boundaries = [...cuts].sort((a, b) => a - b);
+    for (let index = 1; index < boundaries.length; index++) {
+      const start = boundaries[index - 1], end = boundaries[index];
+      if (start === end) continue;
+      const node = documentRef.createTextNode(text.slice(start, end));
+      if (state?.trackSelection) selectionTexts.set(node, { path: [...path], offset: offset + start });
+      if (ranges.some(range => range.start <= offset + start && range.end >= offset + end)) {
+        const bold = documentRef.createElement("b");
+        bold.append(node);
+        parent.append(bold);
+      } else parent.append(node);
+    }
+  }
+
+  function appendPlainGlossary(documentRef, parent, raw, language, options = {}) {
+    glossaryToPlainText(raw, language, { ...options, onSegments: segments => {
+      for (const { text, path, offset = 0 } of segments) {
+        if (path) appendGlossaryText(documentRef, parent, text, { trackSelection: true }, path, offset);
+        else parent.append(documentRef.createTextNode(text));
+      }
+    } });
+  }
+
+  function copyGlossaryTextSource(from, to, offset) {
+    const source = selectionTexts.get(from);
+    if (source) selectionTexts.set(to, { path: source.path, offset: source.offset + offset });
+  }
+
+  function glossarySelectionRanges(range, content) {
+    if (!content || !content.contains(range.startContainer) || !content.contains(range.endContainer)) return [];
+    const walker = content.ownerDocument.createTreeWalker(content, 4);
+    const ranges = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode, source = selectionTexts.get(node);
+      if (!source || !range.intersectsNode(node)) continue;
+      const start = node === range.startContainer ? range.startOffset : 0;
+      const end = node === range.endContainer ? range.endOffset : node.length;
+      if (end > start) ranges.push({ path: source.path, start: source.offset + start, end: source.offset + end });
+    }
+    return ranges;
+  }
+
   // Yomitan's _setMultilineTextContent: each "\n" becomes a <br>, so the text
   // copies with its line breaks. A glossary's text gets the same language
   // detection as a string in structured content.
-  function appendMultilineText(documentRef, parent, text, state = null) {
+  function appendMultilineText(documentRef, parent, text, state = null, path = []) {
+    let offset = 0;
     text.split("\n").forEach((line, index) => {
       if (index > 0) parent.appendChild(documentRef.createElement("br"));
-      if (line) parent.appendChild(documentRef.createTextNode(line));
+      if (line) appendGlossaryText(documentRef, parent, line, state, path, offset);
+      offset += line.length + 1;
     });
     const language = state?.detectLanguage ? state.detectLanguage(text, parent) : languageFromText(text);
     if (language) parent.lang = language;
@@ -1963,14 +2021,14 @@
       value = frame.value;
       parent = frame.parent;
       if (typeof value === "string") {
-        parent.appendChild(documentRef.createTextNode(value));
+        appendGlossaryText(documentRef, parent, value, state, currentPath);
         let language = null;
         if (frame.language === null) language = state.detectLanguage ? state.detectLanguage(value, parent) : languageFromText(value);
         if (language) parent.lang = language;
         continue;
       }
       if (typeof value === "number" || typeof value === "boolean") {
-        parent.appendChild(documentRef.createTextNode(String(value)));
+        appendGlossaryText(documentRef, parent, String(value), state, currentPath);
         continue;
       }
       if (Array.isArray(value)) {
@@ -2124,14 +2182,15 @@
     content.className = "gloss-content";
     if (typeof item === "string" || (isRecord(item) && item.type === "text" && typeof item.text === "string")) {
       countStructuredNode(state, path);
-      appendMultilineText(documentRef, content, typeof item === "string" ? item : item.text, state);
+      appendMultilineText(documentRef, content, typeof item === "string" ? item : item.text, state,
+        typeof item === "string" ? path : [...path, "text"]);
     } else if (isRecord(item) && item.type === "image") {
       countStructuredNode(state, path);
       appendStructuredImage(documentRef, content, item, state);
       if (typeof item.description === "string") {
         const description = documentRef.createElement("span");
         description.className = "gloss-image-description";
-        appendMultilineText(documentRef, description, item.description, state);
+        appendMultilineText(documentRef, description, item.description, state, [...path, "description"]);
         content.append(" ", description);
       }
     } else if (isRecord(item) && item.type === "structured-content") {
@@ -2172,6 +2231,8 @@
     const items = Array.isArray(parsed) ? parsed : [parsed];
     const state = {
       nodes: 0,
+      trackSelection: options.trackSelection === true,
+      selection: options.selection,
       dictionary: options.dictionary,
       appendImage: options.appendImage,
       imageContext: options.imageContext,
@@ -2454,19 +2515,37 @@
   // Outside the Japanese profile tag pills are always spaced and readings use
   // the language's `readingBrackets`. Without one it is today's flattener.
   const TEXT_BLOCK_TAGS = new Set(["div", "p", "li", "table", "thead", "tbody", "tfoot", "details", "summary"]);
-  function glossaryToPlainText(glossary, language = null, { direction = "ltr" } = {}) {
+  const PLAIN_TEXT_SOURCE = Symbol("glossary text");
+  function glossaryToPlainText(glossary, language = null, { direction = "ltr", onSegments } = {}) {
     const marked = language?.marked === true;
     const otherLanguage = marked && language.code !== "ja";
     const base = direction === "rtl" ? "rtl" : "ltr";
     let value = glossary;
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch {
-        return marked ? value.split("\n").map(line => isolateParagraph(line, base)).join("\n") : value;
+        if (!onSegments) return marked ? value.split("\n").map(line => isolateParagraph(line, base)).join("\n") : value;
+        const segments = [];
+        let offset = 0;
+        for (const [index, line] of value.split("\n").entries()) {
+          if (index) segments.push({ text: "\n" });
+          const wrapped = marked ? isolateParagraph(line, base) : line;
+          if (wrapped !== line) segments.push({ text: wrapped.slice(0, 1) });
+          segments.push({ text: line, path: ["glossary", 0], offset });
+          if (wrapped !== line) segments.push({ text: wrapped.slice(-1) });
+          offset += line.length + 1;
+        }
+        onSegments(segments);
+        return segments.map(segment => segment.text).join("");
       }
     }
     const [open, close] = otherLanguage && Array.isArray(language.labels?.readingBrackets)
       ? language.labels.readingBrackets : ["[", "]"];
-    const LINE = {}, parts = [], lists = [], rows = [];
+    const LINE = {}, parts = [], sources = onSegments ? [] : null, lists = [], rows = [];
+    const at = (value, path) => onSegments && path ? { [PLAIN_TEXT_SOURCE]: true, value, path } : value;
+    const push = (text, path = null) => {
+      parts.push(text);
+      if (onSegments) sources.push(path ? { path, offset: 0 } : null);
+    };
     let lineBreak = false;
     // The first part of the current line after its list marker.
     let lineStart = 0;
@@ -2475,35 +2554,42 @@
       const own = textDirection(parts.slice(lineStart).join(""));
       if (own && own !== base) {
         parts.splice(lineStart, 0, ISOLATES[own]);
-        parts.push(POP_ISOLATE);
+        if (onSegments) sources.splice(lineStart, 0, null);
+        push(POP_ISOLATE);
       }
     };
-    const write = text => {
+    const write = (text, path = null) => {
       if (lineBreak) {
         // A run of block boundaries becomes one break, without the whitespace before it.
         lineBreak = false;
         while (parts.length) {
-          const last = parts.pop().trimEnd();
+          const last = parts.pop().trimEnd(), source = onSegments ? sources.pop() : null;
           if (last) {
             parts.push(last);
+            if (onSegments) sources.push(source);
             finishLine();
-            parts.push("\n");
+            push("\n");
             break;
           }
         }
         lineStart = parts.length;
       }
-      if (text) parts.push(text);
+      if (text) {
+        if (onSegments) push(text, path);
+        else parts.push(text);
+      }
     };
-    const stack = [Array.isArray(value) ? value.flatMap(item => [item, LINE]) : value];
+    const stack = [Array.isArray(value) ? value.flatMap((item, index) => [at(item, ["glossary", index]), LINE]) : at(value, ["glossary", 0])];
     while (stack.length) {
-      const item = stack.pop();
+      let item = stack.pop();
+      const path = onSegments && item?.[PLAIN_TEXT_SOURCE] ? item.path : null;
+      if (path) item = item.value;
       if (item == null) continue;
       if (item === LINE) lineBreak = true;
       else if (typeof item === "function") item();
       else if (Array.isArray(item)) {
-        for (let index = item.length - 1; index >= 0; index--) stack.push(item[index]);
-      } else if (typeof item !== "object") write(String(item));
+        for (let index = item.length - 1; index >= 0; index--) stack.push(path ? at(item[index], [...path, index]) : item[index]);
+      } else if (typeof item !== "object") write(String(item), path);
       else if (item.tag === "img" || item.type === "image") {
         if (item.title) stack.push(LINE, String(item.title));
       } else if (item.tag === "br") {
@@ -2511,16 +2597,16 @@
           // An isolate cannot cross a line break.
           write("");
           finishLine();
-          parts.push("\n");
+          push("\n");
           lineStart = parts.length;
         } else write("\n");
-      } else if (item.tag === "rt") stack.push(close, item.content, open);
+      } else if (item.tag === "rt") stack.push(close, path ? at(item.content, [...path, "content"]) : item.content, open);
       else if (item.tag === "ul" || item.tag === "ol") {
         lists.push({ tag: item.tag, type: item.style?.listStyleType, number: 0 });
-        stack.push(LINE, () => lists.pop(), item.content, LINE);
+        stack.push(LINE, () => lists.pop(), path ? at(item.content, [...path, "content"]) : item.content, LINE);
       } else if (item.tag === "tr") {
         rows.push(0);
-        stack.push(LINE, () => rows.pop(), " |", item.content, "| ", LINE);
+        stack.push(LINE, () => rows.pop(), " |", path ? at(item.content, [...path, "content"]) : item.content, "| ", LINE);
       } else if (item.tag !== "rp") {
         const block = TEXT_BLOCK_TAGS.has(item.tag);
         if (block) stack.push(LINE);
@@ -2529,10 +2615,11 @@
         if (item.tag === "span" && (item.style ? item.style.marginRight != null : item.data?.class != null)) {
           write(""); // settle a pending break so parts[start] is the pill's own text
           const start = parts.length, always = item.style != null || otherLanguage;
-          stack.push(() => { if (parts.length > start && (always || parts[start].charCodeAt(0) < 128)) parts.push(" "); });
+          stack.push(() => { if (parts.length > start && (always || parts[start].charCodeAt(0) < 128)) push(" "); });
         }
         // Icon-only cells such as Jitendex's form markers carry their meaning in the title.
-        stack.push(item.content ?? (typeof item.title === "string" ? item.title : null));
+        const content = item.content ?? (typeof item.title === "string" ? item.title : null);
+        stack.push(path ? at(content, [...path, "content"]) : content);
         if (item.tag === "li" && lists.length) {
           const list = lists.at(-1), type = item.style?.listStyleType ?? list.type;
           list.number++;
@@ -2550,10 +2637,23 @@
     }
     if (marked) {
       while (parts.length) {
-        const last = parts.pop().trimEnd();
-        if (last) { parts.push(last); break; }
+        const last = parts.pop().trimEnd(), source = onSegments ? sources.pop() : null;
+        if (last) { parts.push(last); if (onSegments) sources.push(source); break; }
       }
       finishLine();
+    }
+    if (onSegments) {
+      // Keep the existing trimming and bidi characters while retaining each
+      // visible source fragment's position, without searching for its text.
+      while (parts.length && !parts[0].trimStart()) { parts.shift(); sources.shift(); }
+      if (parts.length) {
+        const trimmed = parts[0].trimStart();
+        if (sources[0]) sources[0].offset += parts[0].length - trimmed.length;
+        parts[0] = trimmed;
+      }
+      while (parts.length && !parts.at(-1).trimEnd()) { parts.pop(); sources.pop(); }
+      if (parts.length) parts[parts.length - 1] = parts.at(-1).trimEnd();
+      onSegments(parts.map((text, index) => ({ text, ...sources[index] })));
     }
     return parts.join("").trim();
   }
@@ -2565,6 +2665,9 @@
     appendStructuredImage,
     appendStructuredValue,
     appendTextOnlyGlossary,
+    glossarySelectionRanges,
+    copyGlossaryTextSource,
+    appendPlainGlossary,
     applyDictionaryStyles,
     applyStructuredData,
     applyStructuredStyle,

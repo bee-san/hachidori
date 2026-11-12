@@ -93,7 +93,7 @@ function popup(t, status, { deck = "", canOpenSettings = true } = {}) {
 
 test("only a Template that names no deck, and has nothing else wrong, is the empty-deck case", async () => {
   assert.deepEqual(await statusFor({ deck: "" }),
-    { available: false, configKey: (await statusFor({ deck: "" })).configKey, error: "Choose an available deck.", emptyDeck: true });
+    { available: false, configKey: (await statusFor({ deck: "" })).configKey, error: "Choose an available deck.", emptyDeck: true, selectionDependent: false });
   for (const [patch, error] of [
     [{ deck: "Gone" }, "Anki has no deck named “Gone”. Choose an available deck."],
     [{ deck: "", model: "Lapis" }, "Choose an available deck.\nAnki has no note type named “Lapis”. Choose an available note type."],

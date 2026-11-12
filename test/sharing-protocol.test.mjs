@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
+  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY,
   LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   assertLinkedAnkiFrame, browserName,
@@ -104,7 +104,7 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
     capabilities: SHARING_CAPABILITIES })),
   { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [...SHARING_CAPABILITIES] });
-  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, SELECTED_GLOSSARY_CAPABILITY]);
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
     { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),
@@ -289,4 +289,15 @@ test("dictionary uploads forward to the host, rebuilt from the fields each step 
   ]) {
     assert.throws(() => allowLinkedImportRequest({ target: LINKED_IMPORT_TARGET, ...bad }), /dictionary upload/u, bad.type);
   }
+});
+
+test("linked glossary selection carries exact source ranges while destination credentials stay host-owned", () => {
+  const glossarySelection = { dictionary: "選択辞書", index: 1,
+    ranges: [{ path: ["glossary", 0, "content", 1], start: 2, end: 6 }] };
+  const request = { glossarySelection, term: { expression: "猫", reading: "ねこ" }, generation: 3,
+    apiKey: "reader-key", fields: { Back: "untrusted replacement" } };
+  const result = allowLinkedAnkiRequest({ target: "hachidori-anki", type: "hd_anki_submit", requestId: "selection", request });
+  assert.deepEqual(result.request.glossarySelection, glossarySelection);
+  assert.equal(result.request.apiKey, undefined);
+  assert.equal(result.request.fields, undefined);
 });

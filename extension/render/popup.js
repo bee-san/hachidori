@@ -3921,6 +3921,7 @@
               deferredGlossaryFills.push(fillContent);
             }
             definition.appendChild(content);
+            options.onGlossaryRendered?.({ parent: definition, content, glossary, result });
             definitions.appendChild(definition);
           }
           card.appendChild(definitions);

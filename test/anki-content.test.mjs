@@ -1185,3 +1185,65 @@ test("a YouTube note records its line through YouTube's recorder, and its warnin
   await until(() => g.items[0].add.dataset.state === "success");
   assert.deepEqual(pageWord, [{ templateId: "default" }]);
 });
+
+test("selection-dependent first-field readiness retires old replies while ordinary identities and confirmed writes stay untouched", async t => {
+  let selection = 0, dependent = true, checks = 0, writes = 0;
+  const held = Promise.withResolvers();
+  const f = fixture(t, async (type, { request } = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current", selectionDependent: dependent };
+    if (type === "hd_anki_preflight") {
+      checks++;
+      if (request.glossarySelection.index === 0) { await held.promise; return { state: "duplicate", canAdd: false, noteIds: [4] }; }
+      return { state: "addable", canAdd: true };
+    }
+    if (type === "hd_anki_submit") { writes++; return { state: "added", noteId: 9, warnings: [] }; }
+    throw new Error(`Unexpected ${type}`);
+  });
+  f.context.getRequest = result => ({ term: result.term, glossarySelection: { dictionary: "A", index: selection } });
+  f.controller.update(configured);
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => checks === 1);
+  selection = 1;
+  f.controller.selectionChanged(f.context.owner);
+  held.resolve();
+  await until(() => f.items[0].add.dataset.state === "ready");
+  assert.equal(checks, 2, "the earlier duplicate reply cannot replace the new selection's readiness");
+  dependent = false;
+  f.controller.refresh(f.context.owner);
+  await until(() => checks === 3 && f.items[0].add.dataset.state === "ready");
+  f.controller.selectionChanged(f.context.owner);
+  await tick();
+  assert.equal(checks, 3, "ordinary first fields do no extra checks when their glossary changes");
+  f.items[0].add.click();
+  await until(() => writes === 1 && f.items[0].add.dataset.state === "success");
+  f.controller.selectionChanged(f.context.owner);
+  await tick();
+  assert.equal(f.items[0].add.dataset.state, "success", "a confirmed write never becomes retryable");
+});
+
+test("a changed glossary does not strand an ordinary custom button whose preflight shared the retired readiness epoch", async t => {
+  const held = Promise.withResolvers();
+  let ordinaryChecks = 0;
+  const f = fixture(t, handlesBatches(async (type, fields = {}) => {
+    if (type === "hd_anki_status") return { available: true, configKey: "current", selectionDependent: fields.templateId === "default" };
+    if (type === "hd_anki_preflight_batch") {
+      if (fields.requests[0].templateId === "ordinary" && ++ordinaryChecks === 1) await held.promise;
+      return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
+    }
+    throw new Error(`Unexpected ${type}`);
+  }));
+  const custom = f.items[0].actions.ownerDocument.createElement("button");
+  custom.className = "gsm-hoshidicts-custom-anki-button";
+  custom.dataset.customButtonId = "ordinary";
+  f.items[0].actions.append(custom);
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  f.controller.update(globalThis.HDReaderOptions.normaliseOptions({ anki: { templates: [
+    { ...base, model: "Basic" }, { ...base, id: "ordinary", model: "Basic" },
+  ] }, customButtons: [{ id: "ordinary", type: "anki", label: "Ordinary", templateId: "ordinary" }] }));
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => ordinaryChecks === 1);
+  f.controller.selectionChanged(f.context.owner);
+  held.resolve();
+  await until(() => f.items[0].add.dataset.state === "ready" && custom.dataset.state === "ready");
+  assert.equal(ordinaryChecks, 2, "the discarded ordinary reply is replaced once");
+});

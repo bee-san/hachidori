@@ -376,6 +376,7 @@
         if (!needsCheck(record) || record.viewChecked) continue;
         const result = await requestCachedView(record);
         if (result === null || !owns() || !boundHere(record)) continue;
+        if (result.selectionDependent === true) record.selectionDependent = true;
         const configKey = configKeys.get(record.templateId) ?? null;
         const checked = checkedConfigKey(configKey, result);
         if (checked.changed) {
@@ -423,7 +424,10 @@
         restartChecks(records);
         return;
       }
-      for (const record of records) record.configKey = status.configKey;
+      for (const record of records) {
+        record.configKey = status.configKey;
+        record.selectionDependent = status.selectionDependent === true;
+      }
       available(records, status.available, status.error, status.emptyDeck === true);
       if (!status.available) return;
       onChange(group.owner);
@@ -826,6 +830,21 @@
       }
     }
     return { bind, retire,
+      selectionChanged(owner) {
+        const group = owners.get(owner);
+        const records = group?.records.filter(record => !record.busy && !record.terminal && record.selectionDependent !== false) ?? [];
+        if (!records.length) return;
+        group.epoch++;
+        // The group's old epoch also owns ordinary checks still in flight.
+        // Requeue those unfinished checks while retaining completed readiness.
+        for (const record of group.records) {
+          if (record.busy || record.terminal || (record.selectionDependent === false
+              && !record.needsCheck && record.add?.dataset.state !== "checking")) continue;
+          record.viewChecked = true;
+          record.needsCheck = true;
+        }
+        refresh(group);
+      },
       refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
       update(options, ready = true) {
         const anki = globalThis.HDReaderOptions.normaliseAnki(options.anki);

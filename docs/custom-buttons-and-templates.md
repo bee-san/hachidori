@@ -58,6 +58,79 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
+## Choose the definition to export
+
+Map a field to `{selected-glossary}` (also named `{glossary-selection}`) to
+export one dictionary entry. **Use this definition** appears beside each entry
+when a Template uses this marker. It is a native keyboard-focusable button;
+its pressed state and **Selected definition** label identify the choice.
+Selecting text inside a definition chooses that entry and makes exactly that
+passage bold in the exported full definition. Selecting its dictionary name
+chooses the entry without highlighting its body. The ordinary Add button,
+custom Anki buttons and the Add keybind all use the same selection.
+
+Without a selection, this marker exports the first available term-bank row in
+brief form. `{glossary}` still exports all definitions, `{glossary-first}`
+still exports the first dictionary, and `{popup-selection-text}` still exports
+only the selected text. These older fields are unaffected. A per-dictionary Add action keeps its own
+entries: a remembered choice outside that action uses its first-entry fallback
+without clearing the choice for Back or All. An entry includes
+all its senses; choosing one never collects other rows from the same dictionary.
+
+The choice belongs to the lookup request: Back restores it, and a new lookup
+starts empty. Add captures the choice before asynchronous media preparation,
+so another selection cannot alter a note already being prepared. Highlight
+ranges identify the source strings and UTF-16 offsets rather than matching
+text, preserving repeated passages, structured content and line breaks across
+popup and Anki layouts. Linked hosts advertise `selected-glossary-v1`; a host
+without it refuses a chosen-entry submission instead of discarding the choice.
+The debug report lists the production export markers without including the
+reader's chosen text.
+
+![Chosen glossary and exact selected passage in Default](assets/anki-glossary-selection-default.png)
+
+![The same selection workflow in JL](assets/anki-glossary-selection-jl.png)
+
+[Every affected popup palette and renderer](assets/anki-glossary-selection-palettes.png)
+and the [dictionary-image and forced-colour contrast filmstrip](assets/anki-glossary-selection-contrast.png)
+come from the production Chrome acceptance runs. `node test/chrome-glossary-selection.mjs`
+checks selection and one successful Add in Default, JL, Bee, Nazeka and Crystal.
+The same command with `--firefox` builds and installs the Firefox extension and
+proves all five renderers through its BiDi closed-root boundary and the native
+Firefox selection API.
+Its repeated passage proves the source range, rather than text matching, chooses
+what becomes bold. A selection-dependent first field refreshes its own readiness;
+ordinary expression first fields retain their existing checks. Confirmed notes
+and in-progress writes keep their original ownership.
+
+![The chosen source passage in Firefox](assets/anki-glossary-selection-firefox.png)
+
+### Export timing
+
+`node benchmark/glossary-selection.mjs --runs 20 --legacy-only` compares
+ordinary export with an extracted extension from `8f2ddb18` (pass
+`--source PATH --revision 8f2ddb18`). `--plain` measures 2,000 production
+plain-text conversions per sample. Each rich result has twenty dictionaries,
+three rows per dictionary, four structured senses and one image per row.
+Three repetitions alternate the before/after order; the complete environment,
+commands, every sample and p95 values are in the
+[raw benchmark report](assets/anki-glossary-selection-benchmark.json).
+
+The plain renderer initially regressed when it tracked provenance for every
+conversion. The final implementation skips source-path checks and metadata
+allocation when tracking is off. The final repeated comparison measured
+56.69 → 45.64 ms median for ordinary rich export, and 18.94 → 18.06 ms for
+2,000 ordinary plain conversions. Earlier repetitions were heavily contended:
+rich-export medians were 728.13 → 407.77 and 150.30 → 226.25 ms, and plain
+medians 39.15 → 41.23 and 27.25 → 28.91 ms. These variable timings do not
+establish a speedup.
+
+A separate thirty-sample run measured a 6.00 ms median for selected-entry
+export and 5.90 ms for its first-entry fallback. Both planned one image;
+ordinary all-definition export planned sixty. These are DOM export and media
+reference planning timings in jsdom on Node 22.23.1/Linux x64, not dictionary
+lookup, capture, media transfer, external enrichment or end-to-end Anki latency.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,
