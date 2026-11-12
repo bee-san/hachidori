@@ -19,10 +19,12 @@ export function canDiscoverSharingHost(sharing) {
 export const LEGACY_LINKED_ANKI_CAPABILITY = "linked-anki-v1";
 export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
 export const SELECTED_GLOSSARY_CAPABILITY = "selected-glossary-v1";
+export const ANKI_GLOSSARY_GROUPS_CAPABILITY = "anki-glossary-groups-v1";
 export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
   SELECTED_GLOSSARY_CAPABILITY,
+  ANKI_GLOSSARY_GROUPS_CAPABILITY,
 ]);
 // The relay's own client for its Yomitan-compatible API (hachidori-anki
 // docs/host-contract.md). Never a remote computer, never a linked browser.

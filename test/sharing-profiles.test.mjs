@@ -259,7 +259,7 @@ test("a single-profile host keeps today's hello, its one broadcast and its repli
   const { relay, host } = await hosting(singleProfileRecords());
   try {
     const older = await olderClient();
-    assert.deepEqual(older.hello.capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"]);
+    assert.deepEqual(older.hello.capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "anki-glossary-groups-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"]);
     assert.deepEqual(older.hello.snapshot.options, singleProfileRecords().options);
     const client = await linked("aware", ["ja", "en", "ar"]);
     const linkSockets = FakeSharingSocket.instances.filter(socket => socket.url.endsWith("/link") && socket !== older.socket);
@@ -617,7 +617,7 @@ test("a profile-aware client opts in before storing anything and discards change
   const [socket] = sockets;
   socket.readyState = 1;
   socket.onopen();
-  assert.deepEqual(socket.sent[0].capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1"], "the client's hello does not change");
+  assert.deepEqual(socket.sent[0].capabilities, ["linked-anki-v1", "linked-anki-v2", "selected-glossary-v1", "anki-glossary-groups-v1"], "the client's hello does not change");
   const view = { options: { revision: 3 } };
   socket.receive({ kind: "hello", protocol: 1, version: "0.4.0", name: "Chrome", dictionaryCount: 1,
     capabilities: ["linked-anki-v2", "language-profiles-v1"], snapshot: view });
@@ -706,7 +706,12 @@ test("older linked Anki writers preserve group settings by Template ID in the ad
   const options = anki => ({ type: "hd_options_write", profileId: "en", options: { anki } });
   const v1 = { linkedCapabilities: ["linked-anki-v1"] };
   const v2 = { linkedCapabilities: ["linked-anki-v1", "linked-anki-v2"] };
-  const flat = plain(await compatible(options({ deck: "Changed" }), v1));
+  const legacy = patch => {
+    const flat = { ...globalThis.HDReaderOptions.normaliseAnki({ model: "Basic" }) };
+    for (const key of ["templates", "glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"]) delete flat[key];
+    return { ...flat, ...patch };
+  };
+  const flat = plain(await compatible(options(legacy({ deck: "Changed" })), v1));
   assert.equal(flat.options.anki.templates[0].monolingualGroupId, "en-mono");
   assert.equal(flat.options.anki.templates[0].glossarySelectionFallback, "first");
   assert.equal(flat.options.anki.templates[1].monolingualGroupId, "en-other");
@@ -722,11 +727,15 @@ test("older linked Anki writers preserve group settings by Template ID in the ad
   ]);
   assert.equal(Object.hasOwn(reordered.options.anki.templates[0], "monolingualGroupId"), false);
   for (const sender of [v1, v2]) {
-    await assert.rejects(compatible(options({ monolingualGroupId: "changed" }), sender), /Update.*group/iu);
-    const unchanged = await compatible(options({ monolingualGroupId: "en-mono", glossarySelectionFallback: "first" }), sender);
+    await assert.rejects(compatible(options(legacy({ monolingualGroupId: "changed" })), sender), /Update.*group/iu);
+    const unchanged = await compatible(options(legacy({ monolingualGroupId: "en-mono", glossarySelectionFallback: "first" })), sender);
     assert.equal(unchanged.options.anki.monolingualGroupId, "en-mono");
   }
   await assert.rejects(compatible(options({ templates: [{ id: "word", bilingualGroupId: "changed" }] }), v2), /Update.*group/iu);
+  await assert.rejects(compatible(options({ templates: [{ id: "new", monolingualGroupId: "new-group" }] }), v2), /Update.*group/iu);
+  const capability = runInContext("linkedOptionsCapability", host.context);
+  assert.equal(capability(options({ templates: [{ id: "word", monolingualGroupId: "changed" }] })), "anki-glossary-groups-v1");
+  assert.equal(capability({ type: "hd_options_write", options: { hoverEnabled: true } }), null);
   const current = { linkedCapabilities: [...v2.linkedCapabilities, "anki-glossary-groups-v1"] };
   const change = options({ templates: [{ id: "word", monolingualGroupId: "changed" }] });
   assert.equal(await compatible(change, current), change, "a current linked writer may edit its group settings");
