@@ -340,10 +340,11 @@ async function handleAnkiRequest(message, sender) {
 }
 
 // A Template's preparation function needs a host that runs it. A chosen
-// definition needs a host that exports it rather than discarding the choice. A request that names a custom button with marker substitutions
-// needs a host that mines with them (More custom buttons); an older host would
-// use the Template alone. Each capability is newer than the next, so a host
-// with the first that applies has the rest.
+// definition needs a host that exports it rather than discarding the choice.
+// A request that names a custom button with marker substitutions needs a host
+// that mines with them (More custom buttons); an older host would use the
+// Template alone. Each capability is newer than the next, so a host with the
+// first that applies has the rest.
 function linkedAnkiCapability(message) {
   if (message.request?.preparationScript) return { capability: ANKI_PREPARATION_CAPABILITY };
   if (message.request?.glossarySelection) return { capability: SELECTED_GLOSSARY_CAPABILITY };

@@ -38,7 +38,7 @@ test("Template preparation references normalize, validate and survive a legacy p
 
 test("preparation runs only when asked, exports named data, and authenticated requests end with its operation", async () => {
   const f = fixture();
-  const context = vm.createContext({});
+  const context = vm.createContext({ structuredClone });
   vm.runInContext(await readFile(new URL("../extension/anki-preparation-runtime.js", import.meta.url), "utf8"), context);
   vm.runInContext(userScriptSource(script), context);
   assert.equal(f.requests.length, 0, "registration does not request external data");
@@ -83,7 +83,7 @@ test("native USER_SCRIPT ports run a preparation and route only its own external
   server.postMessage = value => queueMicrotask(() => client.onMessage.emit(structuredClone(value)));
   const listeners = new Map();
   let connects = 0;
-  const context = vm.createContext({ addEventListener(type, listener) { listeners.set(type, listener); },
+  const context = vm.createContext({ structuredClone, addEventListener(type, listener) { listeners.set(type, listener); },
     chrome: { runtime: { connect() { connects++; f.service.connect(server); return client; } } } });
   vm.runInContext(await readFile(new URL("../extension/anki-preparation-runtime.js", import.meta.url), "utf8"), context);
   context.HDAnkiPreparation.enableNative();
