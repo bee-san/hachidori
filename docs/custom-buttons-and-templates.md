@@ -93,10 +93,15 @@ reader's chosen text.
 and the [dictionary-image and forced-colour contrast filmstrip](assets/anki-glossary-selection-contrast.png)
 come from the production Chrome acceptance runs. `node test/chrome-glossary-selection.mjs`
 checks selection and one successful Add in Default, JL, Bee, Nazeka and Crystal.
+The same command with `--firefox` builds and installs the Firefox extension and
+proves all five renderers through its BiDi closed-root boundary and the native
+Firefox selection API.
 Its repeated passage proves the source range, rather than text matching, chooses
 what becomes bold. A selection-dependent first field refreshes its own readiness;
 ordinary expression first fields retain their existing checks. Confirmed notes
 and in-progress writes keep their original ownership.
+
+![The chosen source passage in Firefox](assets/anki-glossary-selection-firefox.png)
 
 ### Export timing
 
