@@ -2,6 +2,7 @@
 import "./theme-host.js";
 import { buildAnkiFields } from "./anki-values.js";
 import { createAnkiDefinitionRenderer } from "./anki-glossary.js";
+import { renderHandlebars } from "./anki-template-sandbox.js";
 import { ankiDigest } from "./anki-digest.js";
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico", "tiff"]);
@@ -50,7 +51,7 @@ export async function buildAnkiResourceFields(request, templates, {
     }
     return media.get(key).then(item => item.filename);
   }
-  const fields = await buildAnkiFields(request, templates, { audio, language, definition: async options => {
+  const fields = await buildAnkiFields(request, templates, { audio, language, handlebars: (value, context, markers) => renderHandlebars(document, value, context, markers), definition: async options => {
     if (options.plain) {
       plainRenderer ??= createAnkiDefinitionRenderer(document, source, undefined, { compactGlossaries, language });
       return plainRenderer(options);

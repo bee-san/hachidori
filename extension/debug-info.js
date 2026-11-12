@@ -140,6 +140,9 @@ function configuration(items) {
     activeProfileId: activeProfileId(stored, languageSelection),
     experimentalFeatures: EXPERIMENTAL_FEATURES,
     ankiExport: { markers: ANKI_TEMPLATE_MARKER_OPTIONS },
+
+    ankiFieldTemplates: { syntaxes: ["markers", "handlebars"], handlebarsVersion: "4.7.10",
+      compilerContext: "sandbox", dataContexts: ["term", "sentence", "source", "definitions", "selection", "preparation"] },
     languages: { registryVersion: registry.version, packs: registry.codes.map(code => {
       const { name, nativeName, bcp47, scripts, direction, capabilities, settings } = registry.get(code);
       return { code, name, nativeName, bcp47, scripts, direction, capabilities, settings };

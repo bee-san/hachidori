@@ -27,7 +27,7 @@ export async function enrichAnkiNote(context, { audio, render, store }) {
   // confirmed before the note mutation. Only deferred pronunciation remains.
   const canonical = existingFields ? canonicalAnkiFields({}, resolved.templates, existingFields).templates : resolved.templates;
   const templates = Object.fromEntries(Object.entries(canonical).filter(([field, template]) => {
-    if (!ankiTemplateMarkerNames(template.value).includes("audio")) return false;
+    if (!ankiTemplateMarkerNames(template).includes("audio")) return false;
     return !existingFields || (template.overwriteMode !== "skip" && !ankiUpdateKeepsField(template, request)
       && !(template.overwriteMode === "coalesce" && existingFields[field]));
   }));

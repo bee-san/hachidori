@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./render/glossary.js";
 import { ankiPitchGraphs } from "./anki-pitch.js";
-import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape, encodeAnkiClozeBraces, ankiTemplateErrors } from "./anki-templates.js";
 
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
@@ -217,7 +217,7 @@ function dynamicFrequencies(request) {
 // `language` is the language object of the profile the note is mined in, once
 // the records have profiles (docs/languages.md 12); without one every value is
 // today's.
-export async function buildAnkiFields(request, templates, { definition, audio = "", language = null }) {
+export async function buildAnkiFields(request, templates, { definition, audio = "", language = null, handlebars = null }) {
   const { term } = request;
   // A note mined in a right-to-left profile follows the right-to-left rules.
   const rtlRules = language?.direction === "rtl";
@@ -343,7 +343,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   let glossaries, frequencies;
   const glossaryMarkerNames = new Set();
   const planned = Object.entries(templates).map(([field, template]) => {
-    const names = new Set(ankiTemplateMarkerNames(template.value));
+    const names = new Set(ankiTemplateMarkerNames(template));
     for (const name of names) {
       if (name.startsWith(GLOSSARY_MARKER_PREFIX)) glossaryMarkerNames.add(name);
     }
@@ -378,5 +378,26 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   // Only glossary/resource values need asynchronous settlement. Ordinary text
   // and frequency templates should not create a promise per field and marker.
   if (pending.length) await Promise.all(pending);
-  return Object.fromEntries(planned.map(({ field, template, markers }) => [field, renderAnkiTemplate(template.value, markers)]));
+  const output = {};
+  let context;
+  const rendering = [];
+  for (const { field, template, markers } of planned) {
+    if (template.syntax !== "handlebars") {
+      output[field] = renderAnkiTemplate(template.value, markers);
+      continue;
+    }
+    const errors = ankiTemplateErrors(template);
+    if (errors.length) throw new Error(errors.join("\n"));
+    if (!handlebars) throw new Error("Handlebars fields require the Anki template sandbox.");
+    context ??= { term: request.term,
+      sentence: { text: request.sentence, matched: request.matched, offset: request.matchOffset },
+      source: { title: request.documentTitle, url: request.pageUrl, query: request.searchQuery },
+      definitions: request.term.glossaries, selection: request.glossarySelection ?? null,
+      preparation: request.preparation ?? {},
+    };
+    const safeMarkers = Object.fromEntries(Object.entries(markers).map(([name, value]) => [name, encodeAnkiClozeBraces(value)]));
+    rendering.push(Promise.resolve(handlebars(template.value, context, safeMarkers)).then(value => { output[field] = value; }));
+  }
+  if (rendering.length) await Promise.all(rendering);
+  return Object.fromEntries(planned.map(({ field }) => [field, output[field]]));
 }

@@ -60,7 +60,7 @@ const SCENE_MEDIA_MARKERS = new Set(["screenshot", "gif", "sentence-audio"]);
 // (display-anki.js `_getOverwrittenField`). A Netflix, YouTube or Crunchyroll
 // cue is a line even when it is one word: its own audio and GIF go with it.
 export function ankiUpdateKeepsField(template, request) {
-  const markers = ankiTemplateMarkerNames(template.value);
+  const markers = ankiTemplateMarkerNames(template);
   const scene = markers.some(name => SENTENCE_MARKERS.has(name))
     || (markers.length > 0 && markers.every(name => SCENE_MEDIA_MARKERS.has(name)));
   if (!scene || request.netflix?.cue || request.youtube?.cue || request.crunchyroll?.cue) return false;
@@ -88,7 +88,7 @@ export function canonicalAnkiFields(fields, templates, existing) {
 }
 
 export function overwriteAnkiFields(incoming, existing, templates, { includeAudio = false } = {}) {
-  return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template.value))
+  return Object.fromEntries(Object.entries(templates).filter(([, template]) => includeAudio || !isAnkiAudioOnlyTemplate(template))
     .map(([field, template]) => [field, overwriteValue(existing[field] ?? "", incoming[field] ?? "", template.overwriteMode)]));
 }
 

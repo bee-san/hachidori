@@ -35,7 +35,7 @@ const CLASSIC = [
 // Classic scripts injected into a web page's own main world, without
 // extension APIs, and the bridge that runs ahead of Custom JavaScript in
 // Chrome's user-script world, which has none either.
-const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js"];
+const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript-bridge.js", "anki-template-frame.js"];
 // The service worker serializes these modules' functions into Netflix's and
 // YouTube's pages.
 const INJECTED = ["netflix-preview.js", "youtube-frame.js"];

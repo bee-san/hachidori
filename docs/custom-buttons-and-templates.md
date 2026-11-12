@@ -300,3 +300,54 @@ the manager's final layout read. The retained sample measured a 33.33 ms median,
 [`anki-template-switch-timing.json`](assets/anki-template-switch-timing.json).
 This measures the static Settings interaction and render path; it is not an
 Anki or dictionary-engine benchmark.
+
+## Handlebars field syntax
+
+Each field has an explicit **Syntax** choice. **Markers** keeps the existing
+mapping syntax, including literal Anki cloze deletions such as
+`{{c1::{expression}}}`. Switching syntax keeps the exact text; Hachidori never
+interprets a legacy mapping as Handlebars just because it contains double braces.
+
+**Handlebars** supports the standard Handlebars 4.7.10 expressions and built-in
+helpers (`if`, `unless`, `each`, `with`, `lookup` and `log`). For example:
+
+```handlebars
+{{#if term.reading}}{{term.expression}} ({{term.reading}}){{else}}{{term.expression}}{{/if}}
+{{marker "glossary-first-brief"}}
+{{#if preparation.example}}<p>{{preparation.example}}</p>{{/if}}
+```
+
+The context contains `term` (the dictionary result), `sentence` (`text`,
+`matched`, `offset`), `source` (`title`, `url`, `query`), `definitions` (the
+ordered glossary records), `selection` (the selected-entry descriptor, when
+available), and `preparation` (named values supplied by a preparation script,
+otherwise empty). Ordinary expressions escape HTML and keep cloze examples in
+plain data from becoming deletions. Triple-brace expressions explicitly insert
+raw HTML and can include Anki cloze syntax.
+
+`{{marker "NAME"}}` produces the same formatted value as `{NAME}`, including
+rich glossary HTML, dictionary images, audio and screenshots. Its name must be a
+literal string so Hachidori can plan required resources before rendering;
+conditional branches are included in that plan. Only requested glossary values
+are rendered. Existing duplicate, overwrite, media and transaction rules still
+apply. Template helpers from Yomitan are not implicitly available.
+
+**Preview with sample data** renders that field with a small synthetic Japanese
+entry and shows the exact output HTML, or a readable error. It does not create a
+note, upload media or call an enrichment API. Real card rendering uses the current
+lookup and its selected Template. Handlebars templates use the complete live
+preflight when their first field needs rendering; the expression-only legacy
+mapping keeps its existing fast path.
+
+The bundled compiler runs in a dedicated sandbox with no extension APIs or
+network. Only serializable template data and resulting strings cross its private
+port. Privileged contexts use a separate parser-only bundle to validate source
+and discover marker dependencies; they never compile or evaluate user templates.
+The same sandbox renderer runs in Chrome, Firefox and hosts serving the extension
+modules on their own origin. Handlebars' default prototype restrictions stay on.
+
+The field editor in the light and dark Settings palettes:
+
+![Handlebars field syntax and sample preview in light Settings](assets/handlebars-chrome-light.png)
+
+![Handlebars field syntax and sample preview in dark Settings](assets/handlebars-chrome-dark.png)

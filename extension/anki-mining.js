@@ -16,6 +16,7 @@ const SENTENCE_AUDIO_FIELDS = { kiku: "SentenceAudio", lapis: "SentenceAudio", s
 // word index and exact target fields; cross-model scopes keep their policy.
 function nativeDuplicateCheck({ config, discovery, resolved }) {
   return config.duplicateScope === "model" && config.duplicateBehavior !== "overwrite"
+    && resolved.templates[discovery.fields[0]]?.syntax !== "handlebars"
     && /^\{expression\}$/iu.test(resolved.templates[discovery.fields[0]]?.value ?? "");
 }
 
