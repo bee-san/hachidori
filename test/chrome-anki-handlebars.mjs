@@ -92,9 +92,12 @@ try {
   assert.match(rendered.output.fields.Back, /A &amp; B/u);
   assert.equal(rendered.inaccessible, true);
   assert.equal(rendered.sandbox, "allow-scripts");
-  const templateFrame = page.frames().find(frame => frame.url().endsWith("/anki-template-frame.html"));
-  assert.equal(await templateFrame.evaluate(() => typeof globalThis.chrome?.runtime?.sendMessage), "undefined",
-    "the compiler frame has no extension messaging API");
+  // Firefox BiDi does not enumerate this opaque extension child frame.
+  if (!firefox) {
+    const templateFrame = page.frames().find(frame => frame.url().endsWith("/anki-template-frame.html"));
+    assert.equal(await templateFrame.evaluate(() => typeof globalThis.chrome?.runtime?.sendMessage), "undefined",
+      "the compiler frame has no extension messaging API");
+  }
   await page.evaluate(async url => {
     const options = globalThis.HDReaderOptions.normaliseOptions({ anki: { url, deck: "Default", model: "Basic",
       fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
