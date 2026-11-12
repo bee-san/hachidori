@@ -2670,8 +2670,11 @@
       }
     }
     const chosen = request?.glossarySelections?.get(glossaryResultKey(result));
+    // A theme's per-dictionary Add still owns only its own projected entries.
+    // Keep an outside choice for Back/All without exporting it through this action.
+    const row = chosen && result.term.glossaries.filter(glossary => glossary.dictionary === chosen.dictionary)[chosen.index];
     // Copy the snapshot: subsequent range or button choices cannot rewrite an Add.
-    return chosen ? structuredClone(chosen) : undefined;
+    return row ? structuredClone(chosen) : undefined;
   }
   function setGlossarySelection(level, result, choice) {
     const request = level.currentViewRequest, key = glossaryResultKey(result);

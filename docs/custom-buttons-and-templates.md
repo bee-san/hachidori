@@ -72,7 +72,9 @@ custom Anki buttons and the Add keybind all use the same selection.
 Without a selection, this marker exports the first available term-bank row in
 brief form. `{glossary}` still exports all definitions, `{glossary-first}`
 still exports the first dictionary, and `{popup-selection-text}` still exports
-only the selected text. These older fields are unaffected. An entry includes
+only the selected text. These older fields are unaffected. A per-dictionary Add action keeps its own
+entries: a remembered choice outside that action uses its first-entry fallback
+without clearing the choice for Back or All. An entry includes
 all its senses; choosing one never collects other rows from the same dictionary.
 
 The choice belongs to the lookup request: Back restores it, and a new lookup

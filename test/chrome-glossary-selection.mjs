@@ -196,6 +196,15 @@ try {
     assert.match(html, /<b>猫<\/b>/u, `${theme}: source range survives popup layout`);
     assert.doesNotMatch(html, /another row|definition from dictionary/u);
     if (theme === "default") assert.match(all, /definition from dictionary 1/u, "legacy glossary still exports every dictionary");
+    if (theme !== "default" && theme !== "nazeka") {
+      const count = notes.length;
+      await reader(page).evaluate(shadow => shadow.querySelector(".gsm-hoshidicts-mine-button").click());
+      const until = Date.now() + 30_000;
+      while (notes.length === count && Date.now() < until) await new Promise(done => setTimeout(done, 50));
+      assert.equal(notes.length, count + 1, `${theme}: another dictionary's Add keeps its own entries`);
+      assert.match(notes.at(-1).fields.Back, /definition from dictionary 1/u);
+      assert.doesNotMatch(notes.at(-1).fields.Back, /猫 repeated/u);
+    }
     outcomes.push({ theme, selected, noteId: notes.length, highlighted: true });
     console.log(`ok ${theme}: selected complete entry, one exact highlighted occurrence, one note`);
   }
