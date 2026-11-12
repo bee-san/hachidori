@@ -31,6 +31,7 @@ test("Template preparation references normalize, validate and survive a legacy p
   assert.deepEqual(config.templates[0].preparationScript, selected);
   assert.deepEqual(validateOptionsPatch({ anki: config }).anki.templates[0].preparationScript, selected);
   assert.deepEqual(normaliseAnki({ ...config, deck: "Words" }).templates[0].preparationScript, selected);
+  assert.doesNotThrow(() => validateOptionsPatch({ anki: { ...config, preparationScript: { handlerId: selected.handlerId, scriptId: selected.scriptId } } }));
   assert.equal(normaliseAnki({ preparationScript: { scriptId: 2, handlerId: "a" } }).preparationScript, null);
   assert.throws(() => validateOptionsPatch({ anki: { ...config, preparationScript: { ...selected, extra: true } } }), /invalid reader option/u);
 });
