@@ -250,7 +250,7 @@ try {
     await chrome.tabs.update(tab.id, { active: true });
   });
   else await settings.bringToFront();
-  await navigate(settings, settings.url());
+  await navigate(settings, `${extensionOrigin}/settings.html?glossary-groups=1#anki`);
   await settings.waitForSelector('#opt-anki-monolingual-group option[value="Mono-ID"]');
   assert.equal(await settings.$eval("#opt-anki-monolingual-group", node => node.value), "Mono-ID");
   const groupEvidence = resolve(root, "test/tmp/ci/anki-glossary-groups");
