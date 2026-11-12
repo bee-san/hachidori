@@ -19,14 +19,19 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
   } });
   const calls = [], renders = [], engineCalls = [], notes = new Map(), files = new Map();
   const audioFilename = `hachidori_${"c".repeat(64)}.wav`;
-  let state, mediaError;
+  let state, mediaError, nextNoteId = 1;
   const handle = async (action, params) => {
     switch (action) {
       case "deckNames": return ["Default"];
       case "modelNames": return ["Basic"];
+      case "modelNamesAndIds": return { Basic: 1 };
       case "modelFieldNames": return Object.keys(options.anki.fieldTemplates);
-      case "findNotes": return params.query.includes("is:review") ? []
-        : [...notes].filter(([, fields]) => params.query.includes(`:${fields.Front}\"`)).map(([id]) => id);
+      case "findNotes": {
+        if (params.query.includes("is:review")) return [];
+        if (params.query.startsWith("nid:")) return params.query.slice(4).split(",").map(Number).filter(id => notes.has(id));
+        return [...notes].filter(([, fields]) => params.query.includes(`:${fields.Front}\"`)
+          || params.query === `"dupe:1,${fields.Front.replace(/[\\"]/gu, String.raw`\$&`)}"`).map(([id]) => id);
+      }
       case "canAddNotesWithErrorDetail": return params.notes.map(note => {
         const duplicate = !note.options.allowDuplicate && [...notes.values()].some(fields => fields.Front === note.fields.Front);
         return { canAdd: !duplicate, error: duplicate ? "cannot create note because it is a duplicate" : null };
@@ -36,12 +41,13 @@ export function ankiRequestFixture({ audio = false, screenshot = false, delay = 
         if (!note.options.allowDuplicate && [...notes.values()].some(fields => fields.Front === note.fields.Front)) {
           throw new AnkiConnectError("cannot create note because it is a duplicate");
         }
-        const id = notes.size + 1;
+        const id = nextNoteId++;
         notes.set(id, { ...note.fields });
         return id;
       }
-      case "notesInfo": return params.notes.map(noteId => ({ noteId, modelName: "Basic", cards: [],
-        fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([key, value]) => [key, { value }])) }));
+      // AnkiConnect notesInfo preserves positions with {} for deleted IDs.
+      case "notesInfo": return params.notes.map(noteId => notes.has(noteId) ? ({ noteId, modelName: "Basic", cards: [],
+        fields: Object.fromEntries(Object.entries(notes.get(noteId)).map(([key, value]) => [key, { value }])) }) : {});
       case "getMediaFilesNames": return files.has(params.pattern) ? [params.pattern] : [];
       case "storeMediaFile":
         if (mediaError) throw mediaError;
