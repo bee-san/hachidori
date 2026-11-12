@@ -2916,6 +2916,7 @@
       captureTermView = null;
       pendingScrollRestoration = null;
       currentEntry = null;
+      dictionaryNavigation = null;
       // A retained lookup toolbar must not keep another result's actions.
       shownResult?.release();
       shownResult = null;
