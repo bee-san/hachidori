@@ -12,15 +12,19 @@ export function inspectHandlebars(value) {
   const visit = node => {
     if (!node || typeof node !== "object") return;
     if (node.type === "PathExpression") {
-      const root = node.data && node.parts[0] === "root" ? node.parts[1] : node.parts[0];
-      if (root === "selection" || root === "groups") contexts.add(root);
+      // A block parameter can alias the root, as in context.selection. Keep
+      // dependencies conservative rather than interpreting alias scopes here.
+      for (const part of node.parts) if (part === "selection" || part === "groups") contexts.add(part);
     }
-    // lookup can address a root context by its literal key or a computed key.
-    if (node.path?.original === "lookup" && ["@root", "this", "."].includes(node.params?.[0]?.original)) {
+    // lookup can address root contexts through block aliases too. A computed
+    // property may select either context, so both must be ready before render.
+    if (node.path?.original === "lookup") {
       const key = node.params[1];
       if (key?.type === "StringLiteral") {
         if (key.value === "selection" || key.value === "groups") contexts.add(key.value);
-      } else { contexts.add("selection"); contexts.add("groups"); }
+      } else if (key?.type === "PathExpression" || key?.type === "SubExpression") {
+        contexts.add("selection"); contexts.add("groups");
+      }
     }
     if (["MustacheStatement", "SubExpression", "BlockStatement"].includes(node.type)
         && node.path?.original === "marker") {

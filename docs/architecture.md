@@ -4621,7 +4621,7 @@ listed in the manifest sandbox and also explicitly sandboxed without
 MessagePort carries correlated source/data requests and strings/errors; only
 that document's parent can connect, and it connects once. The bundled full
 Handlebars compiler is loaded only there, without extension APIs. Firefox exposes
-its two script resources as it does the search sandbox's resources. Hosts serving
+its script resources as it does the search sandbox's resources. Hosts serving
 the modules on their own origin use the same explicit frame sandbox. Document
 teardown rejects outstanding renders and closes the port. Settings previews use
 this production path with synthetic data and no Anki requests.

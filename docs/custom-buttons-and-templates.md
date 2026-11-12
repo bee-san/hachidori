@@ -358,3 +358,5 @@ as a selected-glossary marker does. An expression-only cached View cannot decide
 that identity. Raw `groups` references and group marker helpers load the saved
 group configuration on the host; templates that use neither avoid that read.
 Group IDs remain case-sensitive, including inside the `marker` helper.
+Block aliases retain these dependencies. A computed `lookup` property can select
+either root context, so Hachidori conservatively prepares both.
