@@ -352,7 +352,7 @@ try {
           rects: images.map(image => image.closest(".gloss-image-container").getBoundingClientRect().toJSON()) };
       });
       const pageTextUnchanged = textBefore === await pageTextSnapshot(tab);
-      const filterPassed = scenario.theme !== "default" || scenario.forced || state.backdropFilter === "blur(16px)";
+      const filterPassed = state.backdropFilter === "none";
       const cardRect = state.rects[0];
       const { png: cardPng, pixels: [ink, auto, background] } = await sample(tab, [
         ...state.rects.map(centre),

@@ -2808,13 +2808,14 @@ requires the prior term view's exact state instead.
 
 ![Back restores an expanded Study view](assets/kanji-back.png)
 
-The popup's default backdrop filter blurs without changing saturation. A
-colour-changing backdrop filter makes Chromium rasterize text elsewhere on the
-page without LCD subpixel antialiasing (#751). Keeping only `blur(16px)` retains
-the popup's blur and the page's original text rendering. An explicit Custom CSS
-backdrop-filter override still applies.
+Bundled popups leave backdrop filtering off so opening them keeps the page's
+text rendering unchanged (#751). Chromium's colour-changing backdrop filters
+turn off LCD subpixel antialiasing elsewhere on the page; on minimum Chrome 128,
+blur alone does too. Default's Custom CSS backdrop-filter override still applies.
 
-![Page text with the popup closed, with the original saturation filter, and with blur only](assets/issue-751-page-text.png)
+![Page text with the popup closed, with the original saturation filter, and with no backdrop filter](assets/issue-751-page-text.png)
+
+![Crystal without backdrop filtering, Grey palette](assets/issue-751-crystal-grey.png)
 
 ## Dictionary presentation boundary
 
