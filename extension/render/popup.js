@@ -29,20 +29,32 @@
     "showPitchAccentFurigana", "pitchAccentFuriganaDictionary", "pitchAccentFuriganaStyle", "showPitchAccentBadge",
     "showPitchAccentDictionaryNames", "showPitchAccentText", "showPitchAccentPosition", "showPitchAccentGraph", "hidePopupGrammarTags"];
 
-  // Shared keyboard semantics for rich cards and direct text definitions.
-  function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf) {
-    const cards = cardsOf(entries[index]);
-    const view = scroll.getBoundingClientRect();
-    let visible = null, coverage = 0;
-    for (const card of sign > 0 ? cards : [...cards].reverse()) {
-      const { top, bottom } = card.getBoundingClientRect();
-      const shown = Math.min(bottom, view.bottom) - Math.max(top, view.top);
-      if (shown > coverage) { visible = card; coverage = shown; }
+  // Start at the leading visible card, not the largest visible definition.
+  // A retained target keeps short cards navigable when scrolling is clamped.
+  function findDifferentDictionary(entries, index, sign, scroll, cardsOf, dictionaryOf, current = null) {
+    let visible = null;
+    if (current && current.scrollTop === scroll.scrollTop && entries.includes(current.entry)
+        && cardsOf(current.entry).includes(current.target)) {
+      index = entries.indexOf(current.entry);
+      visible = current.target;
+    } else {
+      const view = scroll.getBoundingClientRect();
+      // A clicked entry normally remains visible; recover if manual scrolling
+      // has moved it away, without scanning every entry on the normal path.
+      const visibleCard = entry => cardsOf(entry).find(card => {
+        const { top, bottom } = card.getBoundingClientRect();
+        return bottom > view.top && top < view.bottom;
+      });
+      visible = visibleCard(entries[index]);
+      if (!visible) index = entries.findIndex(entry => {
+        visible = visibleCard(entry);
+        return Boolean(visible);
+      });
     }
     if (!visible) return null;
     const dictionary = dictionaryOf(visible);
     for (let i = index; i >= 0 && i < entries.length; i += sign) {
-      const ordered = sign > 0 ? cardsOf(entries[i]) : cardsOf(entries[i]).reverse();
+      const ordered = sign > 0 ? cardsOf(entries[i]) : [...cardsOf(entries[i])].reverse();
       const start = i === index ? ordered.indexOf(visible) + 1 : 0;
       const target = ordered.slice(start).find(card => dictionaryOf(card) !== dictionary);
       if (target) return { index: i, target };
@@ -2690,13 +2702,17 @@
     // when a keybind focuses an entry or the reader clicks one, and when a
     // scroll puts another entry in the pinned header (renderResultPanel).
     let currentEntry = null;
+    let dictionaryNavigation = null;
     let shownResult = null;
     const entryNodes = () => [...contentScroll.querySelectorAll(
       ":scope > .gsm-hoshidicts-tab-panel > .gsm-hoshidicts-entry, :scope > .gsm-hoshidicts-kanji-entry")];
     contentScroll.addEventListener("click", event => {
       const entry = event.button === 0 && event.target instanceof windowRef.Element
         ? event.target.closest(".gsm-hoshidicts-entry, .gsm-hoshidicts-kanji-entry") : null;
-      if (entry && entryNodes().includes(entry)) currentEntry = entry;
+      if (entry && entryNodes().includes(entry)) {
+        currentEntry = entry;
+        dictionaryNavigation = null;
+      }
     });
     // Scroll events arrive at most once a frame; each reads two header edges.
     const onContentScroll = () => shownResult?.update();
@@ -2727,8 +2743,8 @@
       return Boolean(showMore);
     }
 
-    // Yomitan starts from the current entry's most visible definition and moves
-    // to the nearest definition from another dictionary; here each dictionary
+    // Move one dictionary card at a time, including short cards at the end
+    // of the scrollport; here each dictionary
     // is one glossary card. Kanji views have no such definitions.
     function focusEntryWithDifferentDictionary(nodes, index, sign) {
       const cardsOf = node => node.classList.contains("gsm-hoshidicts-entry")
@@ -2736,8 +2752,11 @@
       const dictionaryOf = card => card.querySelector(":scope > .gsm-hoshidicts-definitions > .definition-item")
         ?.dataset.dictionary ?? "";
       const search = entries => {
-        const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf);
-        return found ? scrollToEntry(entries, found.index, found.target) : false;
+        const found = findDifferentDictionary(entries, index, sign, contentScroll, cardsOf, dictionaryOf, dictionaryNavigation);
+        if (!found) return false;
+        scrollToEntry(entries, found.index, found.target);
+        dictionaryNavigation = { entry: entries[found.index], target: found.target, scrollTop: contentScroll.scrollTop };
+        return true;
       };
       return search(nodes) || (sign > 0 && expandEntries() && search(entryNodes()));
     }
@@ -2747,6 +2766,7 @@
       if (nodes.length === 0) return false;
       const index = currentEntryIndex(nodes);
       if (target.dictionary) return focusEntryWithDifferentDictionary(nodes, index, Math.sign(target.dictionary));
+      dictionaryNavigation = null;
       const next = target === "first" ? 0 : target === "last" ? Infinity : index + target.offset;
       if (next >= nodes.length && expandEntries()) nodes = entryNodes();
       return scrollToEntry(nodes, Math.max(0, Math.min(nodes.length - 1, next)));

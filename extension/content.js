@@ -3277,7 +3277,7 @@
     const signature = [key, ...keybindModifiers(event)].join();
     const continuing = wheelGesture?.level === level && wheelGesture.signature === signature
       && event.timeStamp - wheelGesture.timeStamp < WHEEL_GESTURE_GAP_MS;
-    const travel = continuing ? wheelGesture.travel + Math.abs(event.deltaY) : WHEEL_NOTCH_PX;
+    const travel = continuing ? wheelGesture.travel + Math.abs(event.deltaY || event.deltaX) : WHEEL_NOTCH_PX;
     const presses = Math.floor(travel / WHEEL_NOTCH_PX);
     let handled = continuing;
     for (let press = 0; press < presses; press += 1) handled = runKeybinds(event, level, key) || handled;
