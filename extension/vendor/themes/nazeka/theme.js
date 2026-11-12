@@ -158,8 +158,16 @@ function createView(options) {
         const direction = marked() ? language.dictionaryDirection(glossary.dictionary, result) : "ltr";
         const name = dictionaryLabel(glossary.dictionary);
         const tags = glossary.definitionTags ? `(${glossary.definitionTags}) ` : "";
+        if (!options.supportsGlossarySelection?.()) {
         row.append(name, node("span", "gsm-hoshidicts-glossary-content",
           ` ${tags}${components.glossaryToPlainText(glossary.glossary, language, { direction })}`));
+        } else {
+        const content = node("span", "gsm-hoshidicts-glossary-content");
+        if (options.appendPlainGlossary) options.appendPlainGlossary(document, content, glossary.glossary, language, { direction });
+        else content.textContent = components.glossaryToPlainText(glossary.glossary, language, { direction });
+        row.append(name, document.createTextNode(` ${tags}`), content);
+        options.onGlossaryRendered?.({ parent: row, content, glossary, result });
+        }
         definitions.append(row);
       }
       entry.append(word, definitions, feedback);

@@ -15,6 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
 import { LOOKUP_STATS_ROW_PREFIX } from "./lookup-stats.js";
+import { ANKI_TEMPLATE_MARKER_OPTIONS } from "./anki-templates.js";
 import { ANKI_INDEX_KEY } from "./anki-index-cache.js";
 import { AUTOMATIC_BACKUPS_KEY } from "./backup-automatic.js";
 import { DEBUG_LOG_DATABASE, openDebugLogStore, readDebugLog, redactSecrets } from "./debug-log.js";
@@ -138,6 +139,7 @@ function configuration(items) {
     languageSelection,
     activeProfileId: activeProfileId(stored, languageSelection),
     experimentalFeatures: EXPERIMENTAL_FEATURES,
+    ankiExport: { markers: ANKI_TEMPLATE_MARKER_OPTIONS },
     languages: { registryVersion: registry.version, packs: registry.codes.map(code => {
       const { name, nativeName, bcp47, scripts, direction, capabilities, settings } = registry.get(code);
       return { code, name, nativeName, bcp47, scripts, direction, capabilities, settings };

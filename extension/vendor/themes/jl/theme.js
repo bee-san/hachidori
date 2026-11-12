@@ -322,6 +322,7 @@ export function createView(options, enhanced = false) {
           requestImagePreview: preview.requestImagePreview, refreshImagePreview: preview.refreshImagePreview,
           hideImagePreview: preview.hideImagePreview, ...rendering,
         });
+        options.onGlossaryRendered?.({ parent: rowContent, content: rowContent.firstElementChild, glossary: row, result });
       }
     } catch (error) {
       content.replaceChildren(node("div", "gsm-hoshidicts-lookup-failure", `Could not render definition: ${error.message}`));
@@ -474,7 +475,21 @@ export function createView(options, enhanced = false) {
       formattedDefinition(definitions, rows, dictionary, context, entry, projected);
     } else {
       if (marked()) setAttributes(definitions, language.glossaryAttributes(dictionary, projected));
-      definitions.append(node("div", "gsm-hoshidicts-glossary-content", definitionText(rows, direction)));
+      if (!options.supportsGlossarySelection?.()) {
+        definitions.append(node("div", "gsm-hoshidicts-glossary-content", definitionText(rows, direction)));
+        return;
+      }
+      for (const row of rows) {
+        const container = node("div", "gsm-hoshidicts-glossary-content");
+        const content = node("span");
+        const tags = brackets(tagGroups(row.definitionTags));
+        if (tags) container.append(document.createTextNode(`${tags} `));
+        if (options.appendPlainGlossary) options.appendPlainGlossary(document, content, row.glossary, language, { direction });
+        else content.textContent = rowText(row.glossary, direction);
+        container.append(content);
+        definitions.append(container);
+        options.onGlossaryRendered?.({ parent: container, content, glossary: row, result: projected });
+      }
     }
   }
   // Like Default's tabs, core binds only the blocks the selected tab shows, so

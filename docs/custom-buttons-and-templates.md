@@ -58,6 +58,33 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
+## Choose the definition to export
+
+Map a field to `{selected-glossary}` (also named `{glossary-selection}`) to
+export one dictionary entry. **Use this definition** appears beside each entry
+when a Template uses this marker. It is a native keyboard-focusable button;
+its pressed state and **Selected definition** label identify the choice.
+Selecting text inside a definition chooses that entry and makes exactly that
+passage bold in the exported full definition. Selecting its dictionary name
+chooses the entry without highlighting its body. The ordinary Add button,
+custom Anki buttons and the Add keybind all use the same selection.
+
+Without a selection, this marker exports the first available term-bank row in
+brief form. `{glossary}` still exports all definitions, `{glossary-first}`
+still exports the first dictionary, and `{popup-selection-text}` still exports
+only the selected text. These older fields are unaffected. An entry includes
+all its senses; choosing one never collects other rows from the same dictionary.
+
+The choice belongs to the lookup request: Back restores it, and a new lookup
+starts empty. Add captures the choice before asynchronous media preparation,
+so another selection cannot alter a note already being prepared. Highlight
+ranges identify the source strings and UTF-16 offsets rather than matching
+text, preserving repeated passages, structured content and line breaks across
+popup and Anki layouts. Linked hosts advertise `selected-glossary-v1`; a host
+without it refuses a chosen-entry submission instead of discarding the choice.
+The debug report lists the production export markers without including the
+reader's chosen text.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,

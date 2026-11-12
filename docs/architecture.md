@@ -3250,6 +3250,24 @@ link has focus, only unfocused immediate siblings move around its owner: the
 focused subtree is never detached or refocused, preserving continuous keyboard
 interaction and draft selection. Only existing popup actions are shown.
 
+### Selected glossary export
+
+Selection-aware Templates enable the reader's per-entry **Use this definition**
+controls. Renderers report exact row ownership through `onGlossaryRendered`;
+`content.js` keeps the choice on the current view request and captures it for
+mining as `glossarySelection: {dictionary, index, ranges?}`. `index` is the row's
+position among that dictionary's rows in the mined result. `ranges` contain
+`{path, start, end}` for the glossary's source strings. Rich and plain renderers
+share source provenance through `render/glossary.js`; the Anki exporter uses the
+same source paths to bold only those fragments. No popup HTML is trusted or
+copied into a card. Existing glossary markers ignore this selection.
+
+The selection is transient reader state; it survives Back with its request but
+is never persisted as history or included in diagnostic content. Linked
+submissions preserve it through the explicit mining allowlist and require
+`selected-glossary-v1` whenever a choice is present. The host still chooses its
+saved Template, resolves dictionary generations and owns the Anki write.
+
 ## Anki submission
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)

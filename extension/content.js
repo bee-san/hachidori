@@ -2501,6 +2501,15 @@
     popup.className = "gsm-hoshidicts-popup";
     popup.dataset.hoshidictsDepth = String(level.depth);
     popup.hidden = true;
+    const rememberGlossarySelection = () => {
+      const selection = shadow.getSelection?.() ?? window.getSelection();
+      let node = selection?.anchorNode;
+      while (node && node !== popup && !glossarySelectionEntries.has(node)) node = node.parentNode;
+      const entry = glossarySelectionEntries.get(node);
+      if (entry) selectedGlossary(entry.result, level);
+    };
+    popup.addEventListener("mouseup", rememberGlossarySelection);
+    popup.addEventListener("keyup", rememberGlossarySelection);
     popup.addEventListener("focusin", () => {
       cancelCandidateScan();
       clearHideTimer();
@@ -2577,7 +2586,11 @@
       language: renderLanguage({ profileId: activeProfileId() }),
       appendExpressionRuby: globalThis.HDGlossary.appendExpressionRuby,
       createPronunciationPitchAccent: globalThis.HDGlossary.createPronunciationPitchAccent,
-      appendTextOnlyGlossary: globalThis.HDGlossary.appendTextOnlyGlossary,
+      appendTextOnlyGlossary: (doc, parent, glossary, rendering) => globalThis.HDGlossary.appendTextOnlyGlossary(
+        doc, parent, glossary, { ...rendering, trackSelection: selectionMarkersEnabled(level) }),
+      onGlossaryRendered: entry => bindGlossarySelection(entry, level),
+      supportsGlossarySelection: () => selectionMarkersEnabled(level),
+      appendPlainGlossary: globalThis.HDGlossary.appendPlainGlossary,
       appendStructuredImage: globalThis.HDGlossary.appendStructuredImage,
       document,
       getPageZoom: () => pageZoom,
@@ -2627,9 +2640,80 @@
     });
   }
 
+  // Selection is owned by the logical view request, so Back restores it and a
+  // new lookup starts empty. The renderer supplies exact row ownership rather
+  // than guessing from text or from a dictionary's display name.
+  const glossarySelectionEntries = new WeakMap();
+  const glossaryResultKey = result => JSON.stringify([result.term.expression, result.term.reading]);
+  function selectionMarkersEnabled(level) {
+    const { options: effective } = profileView(levelProfile(level));
+    return effective.anki.templates.some(template => Object.values(template.fieldTemplates ?? {})
+      .some(field => /selected-glossary|glossary-selection|monolingual-definition|bilingual-definition/iu.test(field.value)));
+  }
+  function selectedGlossary(result, level) {
+    const request = level.currentViewRequest;
+    const selection = shadow.getSelection?.() ?? window.getSelection();
+    if (request && selection?.rangeCount && !selection.isCollapsed) {
+      const range = selection.getRangeAt(0);
+      let node = range.startContainer;
+      while (node && node !== level.popup && !glossarySelectionEntries.has(node)) node = node.parentNode;
+      const entry = glossarySelectionEntries.get(node);
+      if (entry?.request === request && node.contains(range.endContainer)
+          && glossaryResultKey(entry.result) === glossaryResultKey(result)) {
+        const rows = result.term.glossaries.filter(row => row.dictionary === entry.glossary.dictionary);
+        const index = rows.indexOf(entry.glossary);
+        if (index >= 0) {
+          const ranges = globalThis.HDGlossary.glossarySelectionRanges(range, entry.content);
+          request.glossarySelections ??= new Map();
+          request.glossarySelections.set(glossaryResultKey(result), { dictionary: entry.glossary.dictionary, index,
+            ...(ranges.length ? { ranges } : {}) });
+          paintGlossarySelection(level);
+        }
+      }
+    }
+    const chosen = request?.glossarySelections?.get(glossaryResultKey(result));
+    // Copy the snapshot: subsequent range or button choices cannot rewrite an Add.
+    return chosen ? structuredClone(chosen) : undefined;
+  }
+  function paintGlossarySelection(level) {
+    for (const button of level.popup.querySelectorAll(".gsm-hoshidicts-select-definition")) {
+      const entry = glossarySelectionEntries.get(button.parentNode);
+      const chosen = entry?.request?.glossarySelections?.get(glossaryResultKey(entry.result));
+      const index = entry?.result.term.glossaries.filter(row => row.dictionary === entry.glossary.dictionary).indexOf(entry.glossary);
+      const selected = chosen?.dictionary === entry?.glossary.dictionary && chosen?.index === index;
+      button.setAttribute("aria-pressed", String(selected));
+      button.textContent = selected ? "Selected definition" : "Use this definition";
+    }
+  }
+  function bindGlossarySelection({ parent, content, glossary, result }, level) {
+    if (!result || !selectionMarkersEnabled(level) || !level.currentViewRequest) return;
+    const request = level.currentViewRequest;
+    glossarySelectionEntries.set(parent, { request, content, glossary, result });
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gsm-hoshidicts-select-definition";
+    button.title = "Use this dictionary entry for selected-glossary Anki fields";
+    button.textContent = "Use this definition";
+    button.setAttribute("aria-pressed", "false");
+    button.style.cssText = "display:block;margin:2px 0;padding:2px 6px;font:inherit;font-size:.75em;"
+      + "color:inherit;background:transparent;border:1px solid currentColor;border-radius:3px;";
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!parent.isConnected || request !== level.currentViewRequest || level.retainedView) return;
+      const index = result.term.glossaries.filter(row => row.dictionary === glossary.dictionary).indexOf(glossary);
+      request.glossarySelections ??= new Map();
+      request.glossarySelections.set(glossaryResultKey(result), { dictionary: glossary.dictionary, index });
+      paintGlossarySelection(level);
+    });
+    parent.insertBefore(button, content);
+    paintGlossarySelection(level);
+  }
+
   function bindResultActions(rendered, level) {
     const token = level.lookupToken, request = level.currentViewRequest;
     level.definitionReveal.sync();
+    paintGlossarySelection(level);
     // Keybinds index these like the view's entries; Show more grows the same
     // arrays and rebinds only the newly revealed controls. The count element
     // belongs to the initial render and stays until the next one.
@@ -2661,6 +2745,7 @@
         matchOffset: candidate.matchOffset, matched: sentenceMatchedText(candidate, result.matched || result.term.expression),
         searchQuery: request?.payload?.text ?? request?.kanjiPayload?.character ?? candidate.query,
         popupSelectionText: selection?.anchorNode && level.popup.contains(selection.anchorNode) ? selection.toString() : "",
+        glossarySelection: selectedGlossary(result, level),
         documentTitle: document.title, audioSelection: audio.selectionFor(result) ?? undefined,
         // Like Yomitan, a note mined on Hachidori's own page (the setup practice) has no source address.
         pageUrl: location.protocol === EXTENSION_PROTOCOL ? "" : location.href,
