@@ -1183,3 +1183,12 @@ Needs `xvfb-run` and puppeteer-core (`HDW_PUPPETEER` if it is not under
 `~/.cache/hachidori-e2e`). The host is shut down through a quit file rather
 than a signal: an abruptly killed Electron cannot re-register the extension's
 service worker on the next launch with the same profile.
+
+## Popup backdrop
+
+`node benchmark/popup-backdrop.mjs <before-ref>` alternates that revision's and
+this checkout's production popup stylesheet on the same 200-paragraph reading
+page in pinned Chrome. Each of five samples opens/closes the popup 40 times,
+once per frame. It reports renderer main-thread `Performance.TaskDuration` in
+milliseconds, excluding GPU/compositor work and lookup latency. Use the same
+fontconfig and machine for both variants; the JSON records Chrome and the CPU.
