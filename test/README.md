@@ -179,6 +179,7 @@ see [benchmark/README.md](../benchmark/README.md).
 | `anki-deck-settings` | A Template that names no deck (docs/languages.md 6.3): the mining service marks that readiness, the popup's Anki button keeps "Choose an available deck." and opens Settings → Anki on the profile in effect through `content.js` and the worker's `hd_open_settings`, Settings starts on the profile its address names, and every other unavailable Template keeps today's button. |
 | `anki-duplicates` | Duplicate options keep Anki's race guard on the configured type; browse searches escape HTML and query syntax. |
 | `anki-enrichment` | Audio enrichment applies overwrite modes once and preserves a late external edit. |
+| `anki-glossary-selection` | Chosen-row export, source-path highlighting across rich/plain layouts, repeated and multibyte text, and marker aliases. |
 | `anki-glossary` | Rich and plain glossary markers: ordered senses, aliases, safe media, `<br>`, one `li[data-dictionary]` per row, image sizes, style escaping, Yomitan's inline structured-content styles at 67db60d, and dictionary CSS scoped by selector prefix (the cascade itself is checked in Chrome). |
 | `anki-index`, `anki-index-cache`, `anki-index-integration` | The duplicate index: scopes, note types, exact word keys, compact rows, maturity, deck filters, malformed replies; warm hits without Anki, miss repair, 30-minute refreshes, retained snapshots, worker restart, linked-role suspension; word status from rows in memory; the offscreen refresh worker returns compact rows and terminates. Never contacts an Anki collection. |
 | `anki-media` | The media transaction: deduplicated PNG/SVG, deterministic names, valid base64, live inventory confirmation, retries without re-upload; bad media never reaches `addNote`. |
@@ -921,3 +922,12 @@ stale revisions, script edits and explicit host-language selection. Generate
 fixtures first as for the other service-worker contract suites. The companion
 hachidori-mcp repository tests the stdio CLI and the real Python relay/Chromium
 connection.
+
+`node test/chrome-glossary-selection.mjs` imports seven small dictionaries and
+mines an exact selected entry with a bold source passage in Default, JL, Bee,
+Nazeka and Crystal through fake AnkiConnect. It also retains the legacy glossary
+field and captures every popup palette under `test/tmp/ci/glossary-selection/`.
+`benchmark/glossary-selection.mjs --runs 30` measures the production resource-field
+export path for twenty dictionaries, three rows each, and records every sample;
+`--source PATH --revision SHA --legacy-only` measures the same legacy path from
+an extracted earlier extension. Neither measures lookup, capture or Anki writes.

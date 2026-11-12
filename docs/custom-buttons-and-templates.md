@@ -85,6 +85,19 @@ without it refuses a chosen-entry submission instead of discarding the choice.
 The debug report lists the production export markers without including the
 reader's chosen text.
 
+![Chosen glossary and exact selected passage in Default](assets/anki-glossary-selection-default.png)
+
+![The same selection workflow in JL](assets/anki-glossary-selection-jl.png)
+
+[Every affected popup palette and renderer](assets/anki-glossary-selection-palettes.png)
+and the [dictionary-image and forced-colour contrast filmstrip](assets/anki-glossary-selection-contrast.png)
+come from the production Chrome acceptance runs. `node test/chrome-glossary-selection.mjs`
+checks selection and one successful Add in Default, JL, Bee, Nazeka and Crystal.
+Its repeated passage proves the source range, rather than text matching, chooses
+what becomes bold. A selection-dependent first field refreshes its own readiness;
+ordinary expression first fields retain their existing checks. Confirmed notes
+and in-progress writes keep their original ownership.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,
