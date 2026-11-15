@@ -682,6 +682,14 @@ async function writeAutoSwitch(enabled) {
   if (!reply.ok) throw new Error(reply.error || "the setting could not be saved");
 }
 
+// Advanced → Languages → Language rules (section 8.1), written whole.
+async function writeProfileRules(rules) {
+  const reply = await send("hd_language_selection_write",
+    { baseRevision: languageSelection.revision, rules }, WORKER_TARGET);
+  if (reply.selection) adoptLanguageSelection(reply.selection);
+  if (!reply.ok) throw new Error(reply.error || "the rules could not be saved");
+}
+
 // The sidebar's language link leads to Advanced → Languages' Settings shows.
 function openLanguages() {
   if (window.location.hash !== "#languages") window.history.pushState(null, "", "#languages");
@@ -711,6 +719,7 @@ async function loadProfileSettings() {
     chooseEditedProfile,
     useEditedProfileForLookups,
     writeAutoSwitch,
+    writeRules: writeProfileRules,
     settleEdits: async () => {
       if (!await settlePendingOptions()) throw new Error("Save your changes or use the saved settings first.");
       await settleDictionaryCommits();

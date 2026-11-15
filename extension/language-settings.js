@@ -121,8 +121,8 @@ function renderDisplayNote(document, fieldset, presentation, themeName) {
 
 export function renderLanguageSettings({ document, descriptor, name, values, presentation, themeName = null, onChange }) {
   const settings = Array.isArray(descriptor?.settings) ? descriptor.settings : [];
-  // Each group's card follows Your languages, or the group before it.
-  let anchor = document.getElementById("language-settings");
+  // Each group's card follows Your languages and Language rules, or the group before it.
+  let anchor = document.getElementById("language-rules") ?? document.getElementById("language-settings");
   for (const [group, { id, legend }] of Object.entries(GROUPS)) {
     const own = settings.filter(setting => setting?.group === group && typeof setting.id === "string");
     let fieldset = document.getElementById(id);
