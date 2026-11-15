@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./render/glossary.js";
 import { ankiPitchGraphs } from "./anki-pitch.js";
-import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, minedExpression, renderAnkiTemplate, escapeAnkiHtml as escape } from "./anki-templates.js";
 
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
@@ -219,6 +219,8 @@ function dynamicFrequencies(request) {
 // today's.
 export async function buildAnkiFields(request, templates, { definition, audio = "", language = null }) {
   const { term } = request;
+  // Mined as kana (#770), the headword markers write the reading.
+  const headword = { ...term, expression: minedExpression(request) };
   // A note mined in a right-to-left profile follows the right-to-left rules.
   const rtlRules = language?.direction === "rtl";
   // Without ruby the furigana markers give the plain headword.
@@ -255,13 +257,13 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   const pageUrl = () => typeof request.pageUrl === "string" ? escape(request.pageUrl) : "";
   const pageLink = () => { const address = pageUrl(); return address && `<a href="${address}">${address}</a>`; };
   const table = {
-    expression: () => escape(term.expression), reading: () => escape(term.reading),
+    expression: () => escape(headword.expression), reading: () => escape(term.reading),
     character: () => kanjiEntries().length ? escape(term.expression) : "",
     onyomi: () => kanjiReadings("onyomi"), kunyomi: () => kanjiReadings("kunyomi"),
     "stroke-count": () => escape(kanjiEntries().flatMap(entry => entry.stats ?? [])
       .find(stat => stat.name === "strokes")?.value ?? ""),
-    furigana: () => (ruby ? expressionFurigana(term, false) : escape(term.expression)),
-    "furigana-plain": () => (ruby ? expressionFurigana(term, true) : escape(term.expression)),
+    furigana: () => (ruby ? expressionFurigana(headword, false) : escape(headword.expression)),
+    "furigana-plain": () => (ruby ? expressionFurigana(headword, true) : escape(headword.expression)),
     dictionary: () => escape(firstDictionary()), "dictionary-alias": () => escape(alias(request, firstDictionary())),
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),

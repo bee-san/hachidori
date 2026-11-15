@@ -18,10 +18,19 @@ export function canDiscoverSharingHost(sharing) {
 // reader silently sending a custom button through the wrong destination.
 export const LEGACY_LINKED_ANKI_CAPABILITY = "linked-anki-v1";
 export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
+// A host that writes a mining request's `headword` (Mine as kana, #770). An
+// older host drops the field and would add the result's kanji headword, so a
+// request that names one goes only to a host advertising this.
+export const LINKED_ANKI_KANA_CAPABILITY = "linked-anki-kana-v1";
 export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
+  LINKED_ANKI_KANA_CAPABILITY,
 ]);
+// The capability a linked browser's Anki request needs of its host.
+export function linkedAnkiCapability(message) {
+  return message?.request?.headword === undefined ? LINKED_ANKI_CAPABILITY : LINKED_ANKI_KANA_CAPABILITY;
+}
 // The relay's own client for its Yomitan-compatible API (hachidori-anki
 // docs/host-contract.md). Never a remote computer, never a linked browser.
 export const API_CAPABILITY = "hoshidicts-api-v1";
@@ -191,6 +200,8 @@ const MINING_REQUEST_FIELDS = [
   "dictionaryDirections", "dictionaryTargetLanguages",
   "frequencyDictionaries", "configKey", "screenshot", "captureUnavailable",
   "clientSpeech", "templateId", "allowDuplicate",
+  // Mine as kana (#770): the reading is the card's headword.
+  "headword",
 ];
 
 function selectedFields(value, fields) {

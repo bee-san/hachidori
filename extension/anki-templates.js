@@ -164,6 +164,14 @@ const semanticLabel = semantic => semantic;
 const availableFields = fields => fields.length === 0 ? ""
   : ` Its fields are ${fields.map(field => `“${field}”`).join(", ")}.`;
 
+// The word a mining request puts on its card: the result's headword, or its
+// reading for a Japanese result mined as kana (#770). The duplicate checks
+// and the word index key the note by it, as the headword markers write it.
+export function minedExpression(request) {
+  return request?.headword === "reading" && request.term?.reading ? request.term.reading
+    : request?.term?.expression ?? request?.expression;
+}
+
 export const escapeAnkiHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#x27;");
 

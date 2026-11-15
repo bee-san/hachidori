@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
-import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiCaptureRequirements, minedExpression, resolveAnkiTemplates } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiListedFamily } from "./anki-setup.js";
@@ -131,7 +131,7 @@ async function decision(prepared, request, duplicateIndex) {
     return nativeDecision(prepared, await checkAnkiDuplicate(prepared.invoke, prepared.note));
   }
   const { invoke, config } = prepared;
-  const expression = request.term?.expression ?? request.expression;
+  const expression = minedExpression(request);
   const source = await duplicateIndex.source(config);
   if (source === null) return unindexedDecision(prepared);
   let duplicate = await duplicateIndex.lookup(config, expression, invoke);
@@ -166,7 +166,7 @@ async function batchDecisions(entries, duplicateIndex) {
     return entries.map(({ prepared, request }) => () => decision(prepared, request, duplicateIndex));
   }
   const found = await duplicateIndex.lookupMany(config,
-    entries.map(({ request }) => request.term?.expression ?? request.expression), invoke);
+    entries.map(({ request }) => minedExpression(request)), invoke);
   const checked = entries.filter((_, index) => needsAddCheck(config, found[index]));
   const checks = await validateAnkiNotes(invoke, checked.map(({ prepared }) => prepared.note));
   const checkFor = new Map(checked.map((entry, index) => [entry, checks[index]]));
@@ -205,7 +205,7 @@ function fieldsForDecision(prepared, checked, request) {
 // Names the looked-up word in an error, so a reader mining several results
 // can tell which one Anki refused.
 function describeRequestTerm(request) {
-  const expression = request?.term?.expression ?? request?.expression;
+  const expression = minedExpression(request);
   return typeof expression === "string" && expression.trim() ? `“${expression}”` : "this result";
 }
 
@@ -318,7 +318,7 @@ export function createAnkiMiningService({
 
   async function view(request) {
     const current = await identity(request?.templateId);
-    const expression = request?.term?.expression ?? request?.expression;
+    const expression = minedExpression(request);
     const unknown = {
       state: "unknown",
       canAdd: false,
@@ -513,7 +513,7 @@ export function createAnkiMiningService({
         await releaseRejected();
         let noteIds = [];
         try {
-          const expression = request.term?.expression ?? request.expression;
+          const expression = minedExpression(request);
           noteIds = await duplicateIndex.source(config) === null
             ? (await findAnkiDuplicateNotes(invoke, note, firstField, config)).map(match => match.noteId)
             : (await duplicateIndex.repair(config, expression, invoke)).noteIds;
@@ -538,7 +538,7 @@ export function createAnkiMiningService({
     }
     const warnings = [...(Array.isArray(writeResources?.warnings) ? writeResources.warnings : [])];
     try {
-      await duplicateIndex.recordWrite(config, request.term?.expression ?? request.expression, noteId,
+      await duplicateIndex.recordWrite(config, minedExpression(request), noteId,
         { mature: checked.mature === true });
     } catch (error) {
       warnings.push(`Duplicate index: ${error.message}`);
