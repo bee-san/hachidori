@@ -1013,7 +1013,10 @@ because the issue's owner asked for it there. As Yomitan's backend does
 (`_onCommandOpenSearchPage`, `_onCommandOpenSearchPageCurrentTab` and
 `_getOrCreateSearchPopup`), a search page that is already open comes to the
 front instead of a second one opening: the new-tab and current-tab ways take
-any open search page, the popup window only one in a popup window.
+any open search page, the popup window only one in a popup window. The page
+brought forward focuses its box and selects the box's text, so the next
+keystroke replaces the last query (#768): `search-window.js` sends it the
+page's tab id, which `search-shell.js` hands its frame as an Escape.
 `search-window.js` holds this for the worker's shortcuts and the menu, and
 finds the open pages with `runtime.getContexts` because tabs hide extension
 URLs. The popup window is 600 × 640 by default, larger than Yomitan's
@@ -1227,7 +1230,10 @@ Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results
 after a search, which lets PageDown scroll them. Here focus goes to the
 searched text, whose arrow keys move its cursor, so a typed character still
 goes into the box; Alt+ArrowUp and Alt+ArrowDown move between the result's
-entries and Tab reaches its controls.
+entries and Tab reaches its controls. Tab past the last of them, or from the
+searched text when the result has none, comes back to the box and selects its
+text instead of leaving the page (#768): the frame's last Tab stop hands focus
+straight on. Shift+Tab keeps its order.
 
 ![The search page with a real result, the toolbar menu and the popup window](assets/search-page.png)
 
