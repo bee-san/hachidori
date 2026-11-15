@@ -23,6 +23,7 @@ import "./reader-options.js";
 import { CLIPBOARD_TARGET, createClipboardMonitor } from "./search-clipboard.js";
 import { openSearchHistory } from "./search-history.js";
 import { renderTemplateChoices, withBuiltinTemplate } from "./search-templates.js";
+import { FOCUS_SEARCH_BOX } from "./search-window.js";
 import { applyPageTheme } from "./settings-dom.js";
 
 // The requests the reader sends, by target. test/search-bridge.test.mjs keeps
@@ -449,6 +450,18 @@ async function start() {
     if (!handBack || !event.pointerType) return;
     handBack = false;
     setTimeout(() => { frame.focus(); }, 0);
+  });
+  // The browser shortcuts and the toolbar menu's Search bring this page
+  // forward with its box focused and its text selected (search-window.js).
+  const tab = chrome.tabs.getCurrent();
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.target !== FOCUS_SEARCH_BOX) return false;
+    void tab.then((current) => {
+      if (message.tabId !== current?.id) return;
+      frame.focus();
+      port?.postMessage({ kind: "key", key: "Escape" });
+    });
+    return false;
   });
   // The page's own keys work from the switch too, as they did when it shared
   // the page's document (search.js): Escape selects the box's text and Ctrl+U

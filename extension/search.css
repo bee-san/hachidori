@@ -188,8 +188,10 @@ body.search-page {
   justify-content: flex-end;
 }
 /* The cursor's word, for a screen reader: the searched text's caret does not
-   move with the cursor, so the word is announced here. */
-.search-cursor-word {
+   move with the cursor, so the word is announced here. The end of the Tab
+   order, which hands focus straight to the box, is not seen either. */
+.search-cursor-word,
+.search-wrap {
   position: absolute;
   width: 1px;
   height: 1px;

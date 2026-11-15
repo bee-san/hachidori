@@ -453,6 +453,14 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// Tab from the searched text, or past the results' last control, comes back to
+// the box and selects its text, ready for the next query (#768), rather than
+// leaving the page. Shift+Tab and every other control keep their order.
+document.getElementById("search-wrap").addEventListener("focus", () => {
+  input.focus();
+  input.select();
+});
+
 // What search.html's Clipboard monitor (#639) reads: text with Japanese in it,
 // copied in any tab or program, goes into the box and is searched, as a paste
 // is. A Note being written or saved in the result holds it off, and so does a
