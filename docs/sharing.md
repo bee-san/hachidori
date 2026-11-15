@@ -166,7 +166,11 @@ After linking, the page reloads, and from then on:
   older reading browsers. A current host applies a legacy flat Anki write only
   to the first Template and applies a legacy custom-link write without removing
   custom Anki buttons. It rejects rich Template or custom-button writes from a
-  client that did not advertise v2;
+  client that did not advertise v2. More custom buttons' button kinds, icons
+  and marker substitutions, and mining with a button's substitutions, need a
+  host advertising `linked-buttons-v1`; a v2 client's custom-button write
+  keeps the host's buttons and fields it does not know
+  ([custom buttons](custom-buttons-and-templates.md#mining-and-ownership));
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG bytes to the host, which validates and uploads

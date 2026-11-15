@@ -1185,3 +1185,71 @@ test("a YouTube note records its line through YouTube's recorder, and its warnin
   await until(() => g.items[0].add.dataset.state === "success");
   assert.deepEqual(pageWord, [{ templateId: "default" }]);
 });
+
+// #555, #765: View notes opens an entry's notes beside Overwrite and Add
+// duplicate, not only when the Anki button itself has turned into View.
+test("viewNotes opens the notes an entry found beside Overwrite, and reports entries without notes", async t => {
+  const calls = [];
+  const f = fixture(t, async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight") {
+      return fields.request.term.expression === "猫"
+        ? { state: "duplicate", canAdd: true, action: "overwrite", noteIds: [41, 42], configKey: "current" }
+        : { state: "addable", canAdd: true, configKey: "current" };
+    }
+    if (type === "hd_anki_browse") return { opened: true, noteIds: fields.request.noteIds };
+    throw new Error(`Unexpected ${type}`);
+  });
+  f.controller.update(configured);
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items[0].add?.dataset.state === "overwrite" && f.items[1].add?.dataset.state === "ready");
+  assert.equal(f.items[0].add.dataset.action, "add", "the Anki button still overwrites");
+  assert.equal(f.controller.canViewNotes(f.context.owner, f.items[0]), true);
+  assert.equal(f.controller.canViewNotes(f.context.owner, f.items[1]), false);
+  assert.equal(f.controller.viewNotes(f.context.owner, f.items[1]), false);
+  assert.equal(f.controller.viewNotes(f.context.owner, f.items[0]), true);
+  await until(() => calls.some(call => call.type === "hd_anki_browse"));
+  assert.deepEqual(calls.find(call => call.type === "hd_anki_browse").fields.request,
+    { noteIds: [41, 42], expression: "猫", configKey: "current", templateId: "default" });
+  assert.equal(calls.filter(call => call.type === "hd_anki_submit").length, 0);
+  assert.equal(f.controller.canViewNotes({}, f.items[0]), false, "another popup's entry is not this one's");
+});
+
+// #770: an Anki button with marker substitutions names itself beside its
+// Template in every request, so the worker reads them from its own settings.
+test("a custom Anki button with marker substitutions sends its button id and checks apart from its Template", async t => {
+  const calls = [];
+  const key = value => (value?.buttonId ? "key-kana" : "key-plain");
+  const f = fixture(t, handlesBatches(handlesAnkiView(async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [], configKey: key(fields.request), cached: false };
+    if (type === "hd_anki_status") return { available: true, configKey: key(fields) };
+    if (type === "hd_anki_preflight_batch") return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
+    if (type === "hd_anki_submit") return { state: "added", noteId: 9, warnings: [] };
+    throw new Error(`Unexpected ${type}`);
+  })));
+  const document = f.items[0].actions.ownerDocument;
+  const custom = document.createElement("button");
+  custom.type = "button";
+  custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
+  custom.dataset.customButtonId = "kana";
+  custom.dataset.customButtonLabel = "Mine as kana";
+  f.items[0].actions.append(custom);
+  f.controller.update(globalThis.HDReaderOptions.normaliseOptions({ ...configured,
+    customButtons: [{ id: "kana", type: "anki", label: "Mine as kana", templateId: "default",
+      markers: { expression: "reading" } }] }));
+  f.controller.bind([f.items[0]], f.context);
+  await until(() => f.items[0].add?.dataset.state === "ready" && custom.dataset.state === "ready");
+  assert.deepEqual(calls.filter(call => call.type === "hd_anki_view").map(call => call.fields.request.buttonId),
+    [undefined, "kana"]);
+  assert.deepEqual(calls.filter(call => call.type === "hd_anki_status").map(call => call.fields),
+    [{ templateId: "default" }, { templateId: "default", buttonId: "kana" }]);
+  const batches = calls.filter(call => call.type === "hd_anki_preflight_batch")
+    .map(call => call.fields.requests.map(request => [request.templateId, request.buttonId, request.configKey]));
+  assert.deepEqual(batches, [[["default", undefined, "key-plain"]], [["default", "kana", "key-kana"]]]);
+  custom.click();
+  await until(() => custom.dataset.state === "success");
+  const submitted = calls.find(call => call.type === "hd_anki_submit").fields.request;
+  assert.deepEqual([submitted.templateId, submitted.buttonId, submitted.configKey], ["default", "kana", "key-kana"]);
+});

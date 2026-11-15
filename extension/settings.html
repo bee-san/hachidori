@@ -1089,6 +1089,10 @@
                 <legend>Custom buttons</legend>
                 <p id="custom-buttons-overlay-help" class="section-note" hidden>Link buttons open in your system browser from a real lookup popup. The live preview cannot launch links in this overlay.</p>
                 <p class="field-hint">Add link buttons or Anki buttons that use a chosen Template. Buttons appear in this order after the built-in actions.</p>
+                <div id="custom-button-presets" class="custom-button-presets" role="group" aria-labelledby="custom-button-presets-label" hidden>
+                  <span id="custom-button-presets-label" class="field-label">Start from a ready-made button</span>
+                  <div id="custom-button-preset-list" class="custom-button-preset-list"></div>
+                </div>
                 <ol id="custom-button-list" class="custom-button-list"></ol>
                 <p id="custom-button-empty" class="field-hint">No custom buttons yet.</p>
                 <form id="custom-button-form" class="custom-button-form" novalidate>
@@ -1103,6 +1107,8 @@
                       <select id="opt-custom-button-type">
                         <option value="link">Open a link</option>
                         <option value="anki">Send to Anki</option>
+                        <option value="action" hidden disabled>Run an action</option>
+                        <option value="script" hidden disabled>Tell a user script</option>
                       </select>
                     </label>
                     <label class="field" id="custom-button-link-field">
@@ -1115,6 +1121,35 @@
                       <span class="field-label">Template</span>
                       <select id="opt-custom-button-template" aria-describedby="custom-buttons-status"></select>
                       <span class="field-hint">This button uses that Template’s deck, note type, fields and duplicate handling.</span>
+                    </label>
+                    <label class="field" id="custom-button-markers-field" hidden>
+                      <span class="field-label">Other markers</span>
+                      <textarea id="opt-custom-button-markers" rows="3" spellcheck="false" autocapitalize="off"
+                        placeholder="{expression} → {reading}" aria-describedby="custom-button-markers-help custom-buttons-status"></textarea>
+                      <span id="custom-button-markers-help" class="field-hint">Optional, one per line: a marker the Template uses, then the marker this button writes in its place. {expression} → {reading} mines the reading as the word; {glossary} → {single-glossary-jitendex} mines one dictionary’s definitions.</span>
+                    </label>
+                    <label class="field" id="custom-button-action-field" hidden>
+                      <span class="field-label">Keybind action</span>
+                      <select id="opt-custom-button-action" aria-describedby="custom-button-action-help custom-buttons-status"></select>
+                      <span id="custom-button-action-help" class="field-hint">Does what its keybind does, for the word whose row holds the button. View notes shows only on a word that is already in Anki.</span>
+                    </label>
+                    <label class="field" id="custom-button-count-field" hidden>
+                      <span class="field-label">Count</span>
+                      <input id="opt-custom-button-count" type="number" min="1" step="1" inputmode="numeric" />
+                    </label>
+                    <label class="field" id="custom-button-source-field" hidden>
+                      <span class="field-label">Source</span>
+                      <select id="opt-custom-button-source"></select>
+                    </label>
+                    <label class="field" id="custom-button-option-field" hidden>
+                      <span class="field-label">Option</span>
+                      <select id="opt-custom-button-option"></select>
+                    </label>
+                    <p id="custom-button-script-help" class="field-hint" hidden>Your user scripts in Advanced → User scripts hear a press of this button as a <code>hachidori-button</code> event with the word, its reading and the sentence. <a href="https://github.com/bee-san/hachidori/blob/main/docs/user-scripts.md#custom-buttons" target="_blank" rel="noopener noreferrer">How scripts answer a button</a></p>
+                    <label class="field" id="custom-button-icon-field" hidden>
+                      <span class="field-label">Icon</span>
+                      <select id="opt-custom-button-icon" aria-describedby="custom-button-icon-help"></select>
+                      <span id="custom-button-icon-help" class="field-hint">An icon takes the place of the name in the popup. Screen readers still read the name.</span>
                     </label>
                   </div>
                   <div class="custom-dictionary-actions">

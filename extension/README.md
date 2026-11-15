@@ -30,7 +30,10 @@ The popup action row is one non-wrapping keyboard and visual group: a nested
 Close or Back control first, then Anki, pronunciation, Mark as known and Ignore
 (while word highlighting is on), personal-dictionary edit, and custom buttons
 in saved order. A custom button opens a URL template
-or mines with a chosen Anki Template. The Default renderer's header shows the
+or mines with a chosen Anki Template; with More custom buttons it may also run
+a keybind action on its result, mine with other markers than its Template, or
+leave its press to a user script
+([custom buttons](../docs/custom-buttons-and-templates.md#more-custom-buttons-experimental)). The Default renderer's header shows the
 result being read, so its Anki, pronunciation and custom buttons act on the
 result whose definitions are at the top. Actions share a 32-pixel height and a
 4-pixel gap. An icon-only row takes its natural width, so the compact summary

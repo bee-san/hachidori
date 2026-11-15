@@ -4311,7 +4311,12 @@ client's validated capability list into request dispatch. For a client without
 v2, a legacy flat Anki write updates only the first Template while preserving
 its identity and the remaining Templates, and a legacy `customLinks` write
 replaces only link buttons while retaining custom Anki buttons. Rich Template
-or custom-button writes from that client fail closed.
+or custom-button writes from that client fail closed. `linked-buttons-v1` adds
+More custom buttons: action and script buttons, icons and Anki buttons' marker
+substitutions in settings writes, and a `buttonId` beside the Template in
+mining requests. A client without it that has v2 saves its custom buttons
+without removing the host's action and script buttons or the icons and
+substitutions of the buttons it keeps.
 
 `extension/sharing-host.js` owns the host socket, retries with the capture
 host's backoff while the worker lives, and keeps a one-minute

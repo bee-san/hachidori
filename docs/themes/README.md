@@ -111,6 +111,12 @@ presentation updates are optional.
 `createLookupActions` shares the personal dictionary editor and custom link/Anki
 buttons with Default; the renderer supplies prefill, form placement and optional
 custom-button layout. Core still binds mining to the returned actions container.
+With More custom buttons, it also makes action and script buttons
+(`.gsm-hoshidicts-custom-action-button`, `.gsm-hoshidicts-custom-script-button`),
+whose presses reach core through the `onCustomActionClick` option a renderer
+passes on unchanged, and marks a button with a chosen icon with
+`data-custom-button-icon`. Core hides an action button whose action has nothing
+to act on in its row, such as View notes on a word not in Anki.
 
 - Render calls receive structured lookup results and the current request context.
   Never scrape Default DOM. Core owns cancellation, navigation and action engines.

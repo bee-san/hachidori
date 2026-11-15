@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { ANKI_TEMPLATE_MARKER_OPTIONS, applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate, ankiCaptureRequirements } from "../extension/anki-templates.js";
+import { ANKI_TEMPLATE_MARKER_OPTIONS, applyAnkiPreset, resolveAnkiTemplates, ankiTemplateErrors, renderAnkiTemplate, ankiCaptureRequirements, substituteAnkiMarkers } from "../extension/anki-templates.js";
 
 const config = patch => ({ ...globalThis.HDReaderOptions.normaliseOptions({}).anki, ...patch });
 
@@ -127,4 +127,20 @@ test("revisioned Anki options retain uncapped templates and validate every overw
     { Front: { value: "x", overwriteMode: "guess" } }, { "": { value: "x", overwriteMode: "skip" } }]) {
     assert.throws(() => globalThis.HDReaderOptions.validateOptionsPatch({ anki: config({ fieldTemplates: templates }) }));
   }
+});
+
+test("a button's marker substitutions rewrite every field and report markers they introduce", () => {
+  const resolved = { staleFields: [], errors: [], templates: {
+    Word: { value: "{expression}", overwriteMode: "overwrite" },
+    Furigana: { value: "{Furigana-Plain}<br>{pitch-accent}", overwriteMode: "overwrite" },
+    Meaning: { value: "{glossary}", overwriteMode: "coalesce" },
+  } };
+  assert.equal(substituteAnkiMarkers(resolved, null), resolved);
+  const kana = substituteAnkiMarkers(resolved, { expression: "reading", "furigana-plain": "reading", pitch: "pitch-position",
+    glossary: "single-glossary-jitendex" });
+  assert.deepEqual(Object.fromEntries(Object.entries(kana.templates).map(([field, template]) => [field, template.value])),
+    { Word: "{reading}", Furigana: "{reading}<br>{pitch-position}", Meaning: "{single-glossary-jitendex}" });
+  assert.equal(kana.templates.Meaning.overwriteMode, "coalesce");
+  assert.deepEqual(kana.errors, []);
+  assert.match(substituteAnkiMarkers(resolved, { expression: "nope" }).errors[0], /Field “Word”: Unknown marker: \{nope\}/u);
 });
