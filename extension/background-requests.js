@@ -54,7 +54,7 @@ import {
   hasProfiles, hasDictionaryProfiles, optionProfiles, applyOptionsPatch, projectDictionaryState, profileError,
   requestProfileId, profileLanguages, assertPersonalPlacement, assertOrdinaryPersonalTransition,
   assertProfileDictionaryState, profileDictionaryCommit,
-  profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
+  profileViewCommit, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, normaliseProfileRules,
   DICTIONARY_STATE_PROFILES_SCHEMA_VERSION, LANGUAGE_CODE,
 } from "./background-core.js";
 import {
@@ -339,10 +339,15 @@ function convertedBackRemovals(values, document, stored) {
 function selectionAfterRemoval(stored, profileId, options) {
   const selection = stored[LANGUAGE_SELECTION_KEY];
   const current = normaliseLanguageSelection(selection);
-  if (selection === undefined || profileId === undefined || current.activeProfileId !== profileId) return {};
+  const rules = current.rules?.filter(rule => rule.profileId !== profileId) ?? [];
+  if (selection === undefined || profileId === undefined
+      || (current.activeProfileId !== profileId && rules.length === (current.rules?.length ?? 0))) return {};
+  const { rules: _removed, ...kept } = current;
   const left = optionProfiles(options);
-  const next = left.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? left[0]?.id ?? null;
-  return { [LANGUAGE_SELECTION_KEY]: { ...current, revision: current.revision + 1, activeProfileId: next } };
+  const next = current.activeProfileId !== profileId ? current.activeProfileId
+    : left.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? left[0]?.id ?? null;
+  return { [LANGUAGE_SELECTION_KEY]: { ...kept, revision: current.revision + 1, activeProfileId: next,
+    ...(rules.length === 0 ? {} : { rules }) } };
 }
 
 async function removeErasedLookupRows() {
@@ -905,8 +910,9 @@ const WORKER_HANDLERS = {
     return profileCas(message);
   },
 
-  // The installation-local active profile and automatic switching (section
-  // 4.4). Never forwarded to a sharing host: each browser chooses its own.
+  // The installation-local active profile, automatic switching and profile
+  // rules (section 4.4). Never forwarded to a sharing host: each browser
+  // chooses its own.
   async hd_language_selection_write(message) {
     const stored = await chrome.storage.local.get([LANGUAGE_SELECTION_KEY, OPTIONS_KEY]);
     if (!hasProfiles(stored[OPTIONS_KEY])) throw new Error("Add a second language before choosing one.");
@@ -924,10 +930,18 @@ const WORKER_HANDLERS = {
     if (message.autoSwitch !== undefined && typeof message.autoSwitch !== "boolean") {
       throw new TypeError("the language selection write carried an invalid automatic switch");
     }
+    const rules = message.rules === undefined ? current.rules ?? [] : normaliseProfileRules(message.rules);
+    // Rules arrive in their stored shape, which Settings writes whole.
+    if (message.rules !== undefined && JSON.stringify(rules) !== JSON.stringify(message.rules)) {
+      throw new TypeError("the language selection write carried an invalid rule");
+    }
+    if (message.rules !== undefined && rules.some(rule => !optionProfiles(stored[OPTIONS_KEY])
+      .some(profile => profile.id === rule.profileId))) throw profileError(PROFILE_REMOVED, "profile-missing");
     const next = { revision: current.revision + 1, activeProfileId: message.activeProfileId ?? current.activeProfileId,
-      autoSwitch: message.autoSwitch ?? current.autoSwitch };
+      autoSwitch: message.autoSwitch ?? current.autoSwitch, ...(rules.length === 0 ? {} : { rules }) };
     if (stored[LANGUAGE_SELECTION_KEY] !== undefined && next.activeProfileId === current.activeProfileId
-        && next.autoSwitch === current.autoSwitch) return { selection: current };
+        && next.autoSwitch === current.autoSwitch
+        && JSON.stringify(rules) === JSON.stringify(current.rules ?? [])) return { selection: current };
     await writeLocalState({ [LANGUAGE_SELECTION_KEY]: next });
     return { selection: next };
   },

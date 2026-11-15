@@ -1449,11 +1449,82 @@
 
   function normaliseLanguageSelection(value) {
     const source = plainObject(value) ?? {};
+    const rules = normaliseProfileRules(source.rules);
     return {
       revision: storedRevision(source),
       activeProfileId: validIdentifier(source.activeProfileId) ? source.activeProfileId : null,
       autoSwitch: source.autoSwitch === true,
+      // Present only with a rule, so a selection without rules keeps its shape.
+      ...(rules.length === 0 ? {} : { rules }),
     };
+  }
+
+  // Rules that choose a lookup's profile (section 8.1): in order, the first
+  // whose conditions all match. A domain condition holds a comma-separated
+  // list, a URL condition text the address contains, a modifier condition a
+  // key held at the lookup, and a popup level condition compares the level
+  // the lookup starts in: 0 on the page, 1 in the first popup.
+  const PROFILE_RULE_MODIFIERS = ["Shift", "Control", "Alt", "Meta"];
+  const PROFILE_RULE_COMPARISONS = ["equal", "atLeast", "atMost"];
+
+  function normaliseRuleCondition(value) {
+    const source = plainObject(value);
+    switch (source?.type) {
+      case "domain":
+      case "url":
+        return typeof source.value === "string" ? { type: source.type, value: source.value } : null;
+      case "modifier":
+        return PROFILE_RULE_MODIFIERS.includes(source.key) ? { type: "modifier", key: source.key } : null;
+      case "popupLevel":
+        return PROFILE_RULE_COMPARISONS.includes(source.comparison) && Number.isInteger(source.level)
+          && source.level >= 0
+          ? { type: "popupLevel", comparison: source.comparison, level: source.level } : null;
+      default:
+        return null;
+    }
+  }
+
+  function normaliseProfileRules(value) {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(item => {
+      const source = plainObject(item);
+      if (!validIdentifier(source?.profileId) || !Array.isArray(source.conditions)) return [];
+      const conditions = source.conditions.map(normaliseRuleCondition).filter(condition => condition !== null);
+      return conditions.length === 0 ? [] : [{ profileId: source.profileId, conditions }];
+    });
+  }
+
+  function ruleDomains(text) {
+    return text.toLowerCase().split(/[\s,]+/u).map(domain => domain.replace(/^\*?\./u, "")).filter(Boolean);
+  }
+
+  function conditionMatches(condition, { hostname = "", href = "", modifiers = [], popupLevel = 0 }) {
+    switch (condition.type) {
+      case "domain": {
+        const host = hostname.toLowerCase();
+        return ruleDomains(condition.value).some(domain => host === domain || host.endsWith(`.${domain}`));
+      }
+      case "url":
+        return condition.value !== "" && href.includes(condition.value);
+      case "modifier":
+        return modifiers.includes(condition.key);
+      default:
+        if (condition.comparison === "atLeast") return popupLevel >= condition.level;
+        if (condition.comparison === "atMost") return popupLevel <= condition.level;
+        return popupLevel === condition.level;
+    }
+  }
+
+  /**
+   * The profile the first matching rule names among `profileIds`, or null.
+   * `context` is `{hostname, href, modifiers, popupLevel}` of the lookup.
+   */
+  function matchProfileRule(selection, profileIds, context) {
+    for (const rule of normaliseLanguageSelection(selection).rules ?? []) {
+      if (profileIds.includes(rule.profileId)
+          && rule.conditions.every(condition => conditionMatches(condition, context))) return rule.profileId;
+    }
+    return null;
   }
 
   // Advanced → Experimental features → Multiple languages (section 16.3).
@@ -1494,5 +1565,6 @@
     hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
     languageDescriptor, optionRequirementMet, packSettingValue,
     LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId, languagesEnabled,
+    PROFILE_RULE_MODIFIERS, PROFILE_RULE_COMPARISONS, normaliseProfileRules, matchProfileRule,
   };
 }());

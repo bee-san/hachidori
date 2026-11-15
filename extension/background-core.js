@@ -28,7 +28,7 @@ const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
   validateOptionsPatch, JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, profiles: optionProfiles,
   applyOptionsPatch, applyPackSettingsPatch, projectDictionaryState, languageDescriptor, packSettingValue,
-  LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
+  LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, normaliseProfileRules,
 } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
 const { pruneGroupMemberships } = globalThis.HDDictionaryGroups;
@@ -676,4 +676,5 @@ export {
   optionProfiles, applyOptionsPatch, projectDictionaryState, profileError, requestProfileId, profileLanguages,
   assertPersonalPlacement, assertOrdinaryPersonalTransition, assertProfileDictionaryState, profileDictionaryCommit,
   profileViewCommit, updateLookupProfiles, languageDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection,
+  normaliseProfileRules,
 };
