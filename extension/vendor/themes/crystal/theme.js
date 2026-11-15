@@ -328,16 +328,8 @@ export function createView(options) {
     const found = [];
     for (let text = walker.nextNode(); text; text = walker.nextNode()) if (CIRCLED.test(text.data)) found.push(text);
     for (const text of found) {
-      let offset = 0;
-      text.replaceWith(...text.data.split(CIRCLED).filter(Boolean).map(part => {
-        const fragment = document.createTextNode(part);
-        options.copyGlossaryTextSource?.(text, fragment, offset);
-        offset += part.length;
-        if (!CIRCLED.test(part)) return fragment;
-        const circled = node("span", "crystal-circled");
-        circled.append(fragment);
-        return circled;
-      }));
+      text.replaceWith(...text.data.split(CIRCLED).filter(Boolean).map(part => CIRCLED.test(part)
+        ? node("span", "crystal-circled", part) : document.createTextNode(part)));
     }
   }
   function formattedGlossary(parent, glossary, dictionary, context, owner, direction = undefined) {
@@ -385,8 +377,6 @@ export function createView(options) {
         sense.append(chips);
       }
       formattedGlossary(sense, row.glossary, dictionary, context, owner, direction);
-      options.onGlossaryRendered?.({ parent: sense, content: sense.querySelector(".gsm-hoshidicts-glossary-content"), glossary: row, result,
-        dictionaryName: row === rows[0] ? owner.querySelector(".crystal-dictionary") : null });
     }
   }
 

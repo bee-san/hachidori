@@ -386,7 +386,6 @@
         if (!needsCheck(record) || record.viewChecked) continue;
         const result = await requestCachedView(record);
         if (result === null || !owns() || !boundHere(record)) continue;
-        if (result.selectionDependent === true) record.selectionDependent = true;
         const configKey = configKeys.get(targetKey(record)) ?? null;
         const checked = checkedConfigKey(configKey, result);
         if (checked.changed) {
@@ -434,10 +433,7 @@
         restartChecks(records);
         return;
       }
-      for (const record of records) {
-        record.configKey = status.configKey;
-        record.selectionDependent = status.selectionDependent === true;
-      }
+      for (const record of records) record.configKey = status.configKey;
       available(records, status.available, status.error, status.emptyDeck === true);
       if (!status.available) return;
       onChange(group.owner);
@@ -850,21 +846,6 @@
       return Array.isArray(noteIds) && noteIds.length > 0 ? record : null;
     }
     return { bind, retire,
-      selectionChanged(owner) {
-        const group = owners.get(owner);
-        const records = group?.records.filter(record => !record.busy && !record.terminal && record.selectionDependent !== false) ?? [];
-        if (!records.length) return;
-        group.epoch++;
-        // The group's old epoch also owns ordinary checks still in flight.
-        // Requeue those unfinished checks while retaining completed readiness.
-        for (const record of group.records) {
-          if (record.busy || record.terminal || (record.selectionDependent === false
-              && !record.needsCheck && record.add?.dataset.state !== "checking")) continue;
-          record.viewChecked = true;
-          record.needsCheck = true;
-        }
-        refresh(group);
-      },
       refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
       canViewNotes: (owner, item) => viewableRecord(owner, item) !== null,
       // Opens the entry's notes in Anki's browser; false when it has none.
