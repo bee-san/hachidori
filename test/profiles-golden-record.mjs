@@ -36,7 +36,8 @@
 // gained Convert romaji to kana, each recorded result gained
 // `searchRomajiConversion: true` after `searchClickLookup` in the same way,
 // checked against reader-options.js for every record (and the old hashes once
-// the key is taken out).
+// the key is taken out). Anki's Mine as kana switch added
+// `showMineAsKanaButton: false` after `showPopupAudioButton` the same way.
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one

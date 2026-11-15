@@ -58,6 +58,29 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
+## Mine as kana
+
+A kana spelling and its kanji spelling can be separate results with different
+definitions: こじれる from one dictionary, 拗れる with definitions from others.
+**Settings → Anki → Mine as kana → Show the Mine as kana button**
+(`showMineAsKanaButton`, off by default) adds a か button after the Anki
+button of each Japanese result whose headword is not its reading. It adds a
+note with the first Template, as the Anki button does, from the same result:
+its definitions, sentence, pronunciation, frequencies, pitch and media are the
+result's, and only the headword is the reading. `{expression}` writes
+こじれる, `{furigana}` and `{furigana-plain}` write the kana without ruby, and
+`{reading}` is unchanged. The note's duplicate check, View and the word index
+key it by the reading, so the 拗れる note and the こじれる note are two words
+to Anki. Pressing the Anki button still mines 拗れる.
+
+The button is a mining action with its own readiness, duplicate state and
+outcome beside the Anki button's, labelled *Mine as kana* for screen readers.
+Its request carries `headword: "reading"`; nothing else in it changes. The
+switch belongs to the profile and shows only for Japanese, whose script is
+`Jpan`. A kana-only result, or one without a reading, has no button. In a
+linked browser the request needs a host advertising `linked-anki-kana-v1`, so
+an older host refuses it rather than adding the kanji headword.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,

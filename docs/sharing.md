@@ -166,7 +166,9 @@ After linking, the page reloads, and from then on:
   older reading browsers. A current host applies a legacy flat Anki write only
   to the first Template and applies a legacy custom-link write without removing
   custom Anki buttons. It rejects rich Template or custom-button writes from a
-  client that did not advertise v2;
+  client that did not advertise v2. A Mine as kana request, which names the
+  reading as its headword, goes only to a host advertising
+  `linked-anki-kana-v1`: an older host would add the kanji headword instead;
 - a mining screenshot and explicitly selected capture clip still come from the
   linked browser's page or capture session. Immediately before submission it
   sends the final JPEG bytes to the host, which validates and uploads

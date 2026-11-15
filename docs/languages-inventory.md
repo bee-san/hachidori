@@ -54,6 +54,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `popupOpacityPercent` (85) | Design (theme-declared) | None | P |
 | `sourceHighlightEnabled` (true) | Design | None | G |
 | `showPopupAudioButton` (true) | Audio | None | P |
+| `showMineAsKanaButton` (false) | Anki → Mine as kana | Japanese: the reading becomes the headword | P; requires the `Jpan` script, neutral false |
 | `popupColumns` (1) | Design (Default) | None | P |
 | `videoAudioFormat` (mp3) | Anki → Video mining | Shared by YouTube and Netflix | G; media encoding is independent of the language |
 | `videoAudioBitrate` (64) | Anki → Video mining | kbit/s | G; media encoding is independent of the language |
