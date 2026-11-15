@@ -379,26 +379,28 @@
     return profilesSwitchable() && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).rules !== undefined;
   }
 
-  // The modifier keys held now, by the names profile rules use.
-  let heldModifiers = [];
+  // The last key or pointer event, whose modifier flags say which keys are
+  // held now; read only when a language rule is checked.
+  let modifierEvent = null;
 
-  function noteModifiers(event) {
-    heldModifiers = [...MODIFIER_PROPERTIES].filter(([, property]) => event[property] === true).map(([key]) => key);
+  function heldModifiers() {
+    return modifierEvent === null ? []
+      : [...MODIFIER_PROPERTIES].filter(([, property]) => modifierEvent[property] === true).map(([key]) => key);
   }
 
   // The profile the first matching rule names for a lookup that starts at
   // `popupLevel` (8.1 rule 0), or null. Word marks pass no modifiers: no key
   // is held for them.
-  function ruleProfile(popupLevel, modifiers = heldModifiers) {
+  function ruleProfile(popupLevel, modifiers = null) {
     if (!profileRulesApply()) return null;
     const id = globalThis.HDReaderOptions.matchProfileRule(languageSelection, [...readingProfiles.keys()],
-      { hostname: location.hostname, href: location.href, modifiers, popupLevel });
+      { hostname: location.hostname, href: location.href, modifiers: modifiers ?? heldModifiers(), popupLevel });
     return readingProfiles.get(id) ?? null;
   }
 
   // The profile in effect for a lookup at `element` (8.1): a rule's, else with
   // automatic switching the one the nearest `lang` names, else the active one.
-  function profileForElement(element, modifiers = heldModifiers) {
+  function profileForElement(element, modifiers = null) {
     if (readingProfiles === null) return null;
     const ruled = ruleProfile(0, modifiers);
     if (ruled) return ruled;
@@ -4158,7 +4160,7 @@
   }
 
   function updateModifierState(event) {
-    noteModifiers(event);
+    modifierEvent = event;
     const property = MODIFIER_PROPERTIES.get(options.activationKey);
     if (property) activationPressed = event[property] === true;
     // Every mouse event reports the held buttons, so a release the page never
@@ -4964,7 +4966,7 @@
   function onWindowBlur() {
     stopPopupResize();
     // A key released while the window had no focus is never reported.
-    heldModifiers = [];
+    modifierEvent = null;
     if (!disposed && overlayMode) {
       // An overlay host moves focus between itself and the game while the
       // reader stays in the page (#403), so blur dismisses nothing and keeps a

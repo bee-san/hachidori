@@ -338,16 +338,15 @@ function convertedBackRemovals(values, document, stored) {
 // the language back later does not make it active again.
 function selectionAfterRemoval(stored, profileId, options) {
   const selection = stored[LANGUAGE_SELECTION_KEY];
-  const current = normaliseLanguageSelection(selection);
-  const rules = current.rules?.filter(rule => rule.profileId !== profileId) ?? [];
-  if (selection === undefined || profileId === undefined
-      || (current.activeProfileId !== profileId && rules.length === (current.rules?.length ?? 0))) return {};
-  const { rules: _removed, ...kept } = current;
+  if (selection === undefined || profileId === undefined) return {};
+  const { rules = [], ...current } = normaliseLanguageSelection(selection);
+  const kept = rules.filter(rule => rule.profileId !== profileId);
+  if (current.activeProfileId !== profileId && kept.length === rules.length) return {};
   const left = optionProfiles(options);
-  const next = current.activeProfileId !== profileId ? current.activeProfileId
-    : left.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? left[0]?.id ?? null;
-  return { [LANGUAGE_SELECTION_KEY]: { ...kept, revision: current.revision + 1, activeProfileId: next,
-    ...(rules.length === 0 ? {} : { rules }) } };
+  const activeProfileId = current.activeProfileId === profileId
+    ? left.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? left[0]?.id ?? null : current.activeProfileId;
+  return { [LANGUAGE_SELECTION_KEY]: { ...current, revision: current.revision + 1, activeProfileId,
+    ...(kept.length === 0 ? {} : { rules: kept }) } };
 }
 
 async function removeErasedLookupRows() {
@@ -923,8 +922,8 @@ const WORKER_HANDLERS = {
     if (message.baseRevision !== current.revision) {
       return { ok: false, conflict: true, error: "The language changed in another page.", selection: current };
     }
-    if (message.activeProfileId !== undefined
-        && !optionProfiles(stored[OPTIONS_KEY]).some(profile => profile.id === message.activeProfileId)) {
+    const profileIds = new Set(optionProfiles(stored[OPTIONS_KEY]).map(profile => profile.id));
+    if (message.activeProfileId !== undefined && !profileIds.has(message.activeProfileId)) {
       throw profileError(PROFILE_REMOVED, "profile-missing");
     }
     if (message.autoSwitch !== undefined && typeof message.autoSwitch !== "boolean") {
@@ -935,8 +934,7 @@ const WORKER_HANDLERS = {
     if (message.rules !== undefined && JSON.stringify(rules) !== JSON.stringify(message.rules)) {
       throw new TypeError("the language selection write carried an invalid rule");
     }
-    if (message.rules !== undefined && rules.some(rule => !optionProfiles(stored[OPTIONS_KEY])
-      .some(profile => profile.id === rule.profileId))) throw profileError(PROFILE_REMOVED, "profile-missing");
+    if (rules.some(rule => !profileIds.has(rule.profileId))) throw profileError(PROFILE_REMOVED, "profile-missing");
     const next = { revision: current.revision + 1, activeProfileId: message.activeProfileId ?? current.activeProfileId,
       autoSwitch: message.autoSwitch ?? current.autoSwitch, ...(rules.length === 0 ? {} : { rules }) };
     if (stored[LANGUAGE_SELECTION_KEY] !== undefined && next.activeProfileId === current.activeProfileId
