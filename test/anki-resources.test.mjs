@@ -71,3 +71,16 @@ test("Smaller Anki cards compacts rich glossaries only and keeps their planned i
   for (const { filename } of compact.media) assert.ok(compact.fields.Front.includes(`src="${filename}"`));
   assert.equal(document.body.children.length, 0, "the cascade mount is removed");
 });
+
+test("selected glossary plans only its own media without narrowing legacy fields", async t => {
+  const { document, request } = fixture(t);
+  request.glossarySelection = { dictionary: "B", index: 0 };
+  const resources = { document, dictionaryPaths: { A: "/dicts/a", B: "/dicts/b" }, styles: async () => [] };
+  const chosen = await buildAnkiResourceFields(request, { Back: template("{selected-glossary}") }, resources);
+  assert.deepEqual(chosen.media.map(item => [item.dictionary, item.path]), [["B", "unused.png"]]);
+  assert.doesNotMatch(chosen.fields.Back, /data-dictionary="A"/u);
+  const mixed = await buildAnkiResourceFields(request, { Front: template("{glossary}"), Back: template("{selected-glossary}") }, resources);
+  assert.equal(mixed.media.length, 2);
+  assert.match(mixed.fields.Front, /data-dictionary="A"/u);
+  assert.match(mixed.fields.Back, /data-dictionary="B"/u);
+});

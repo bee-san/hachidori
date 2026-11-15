@@ -10,6 +10,7 @@ import { cropOf } from "./background-video.js";
 import { YOUTUBE_PAGE_URL } from "./background-youtube.js";
 import {
   LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, LINKED_BUTTONS_CAPABILITY, LINKED_BUTTONS_UNSUPPORTED,
+  SELECTED_GLOSSARY_CAPABILITY,
 } from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
@@ -338,10 +339,13 @@ async function handleAnkiRequest(message, sender) {
   });
 }
 
-// A request that names a custom button with marker substitutions needs a
-// host that mines with them (More custom buttons); an older host would use
-// the Template alone.
+// A chosen definition needs a host that exports it rather than discarding the
+// choice. A request that names a custom button with marker substitutions
+// needs a host that mines with them (More custom buttons); an older host would
+// use the Template alone. Each capability is newer than the next, so a host
+// with the first that applies has the rest.
 function linkedAnkiCapability(message) {
+  if (message.request?.glossarySelection) return { capability: SELECTED_GLOSSARY_CAPABILITY };
   return [message, message.request].some(value => value?.buttonId !== undefined)
     ? { capability: LINKED_BUTTONS_CAPABILITY, unsupported: LINKED_BUTTONS_UNSUPPORTED }
     : { capability: LINKED_ANKI_CAPABILITY };

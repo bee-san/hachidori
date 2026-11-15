@@ -34,7 +34,7 @@ function partOfSpeechLabels(language) {
   if (labels && typeof labels === "object" && !Array.isArray(labels)) return labels;
   return language.code === "ja" ? PARTS_OF_SPEECH : {};
 }
-const VALUE_ALIASES = { definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
+const VALUE_ALIASES = { "glossary-selection": "selected-glossary", definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
   frequency: "frequencies", "pitch-accent-positions": "pitch-position", "pitch-categories": "pitch-accent-categories" };
 const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, dictionary)
   ? request.dictionaryAliases[dictionary] : dictionary;
@@ -266,6 +266,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),
     "glossary-plain-no-dictionary": () => definition({ plain: true, noDictionary: true }),
+    "selected-glossary": () => definition({ selectedOnly: true, selection: request.glossarySelection,
+      brief: request.glossarySelectionFallback !== "first" }),
     "glossary-first": () => definition({ firstOnly: true }),
     "glossary-first-brief": () => definition({ firstOnly: true, brief: true }),
     "glossary-first-no-dictionary": () => definition({ firstOnly: true, noDictionary: true }),

@@ -1,0 +1,708 @@
+{
+  "comparisons": [
+    {
+      "iteration": 1,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              1505.483581999999,
+              1179.4723860000013,
+              346.1365880000012,
+              568.3164160000015,
+              704.159807,
+              899.4832149999966,
+              1137.1654170000002,
+              1048.046843,
+              1991.7156780000005,
+              721.617041999998,
+              348.0816700000032,
+              503.08775700000115,
+              535.7077659999995,
+              833.2928019999999,
+              728.1330400000006,
+              1119.627786000001,
+              1594.6111410000012,
+              1317.6101099999978,
+              244.83008900000277,
+              471.4953280000045
+            ],
+            "medianMs": 728.1330400000006,
+            "p95Ms": 1594.6111410000012,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 1,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              464.46484599999894,
+              196.1253140000008,
+              417.6778660000018,
+              519.5969110000005,
+              456.3465269999979,
+              601.4373300000007,
+              246.01278099999763,
+              497.3614259999995,
+              347.36422500000117,
+              347.92619299999933,
+              380.187754999999,
+              260.81626699999833,
+              658.4706729999998,
+              145.46885900000052,
+              612.1350420000017,
+              407.77129200000127,
+              655.7355050000006,
+              327.4839200000024,
+              367.34217700000227,
+              672.4767150000007
+            ],
+            "medianMs": 407.77129200000127,
+            "p95Ms": 658.4706729999998,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 1,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              40.18409100000008,
+              36.26697899999999,
+              42.44521600000007,
+              33.14895000000024,
+              39.55610400000023,
+              34.51944400000002,
+              42.15772500000003,
+              36.779515000000174,
+              63.63141399999995,
+              38.28462200000013,
+              42.43504200000007,
+              40.88251299999956,
+              35.75710500000059,
+              37.586481999999705,
+              32.263324999999895,
+              36.34825300000011,
+              39.14581199999975,
+              53.036222000000635,
+              54.32827199999974,
+              49.79276699999991
+            ],
+            "medianMs": 39.14581199999975,
+            "p95Ms": 54.32827199999974,
+            "media": 0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 1,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              41.81106499999987,
+              46.64484399999992,
+              45.17534799999976,
+              42.912373000000116,
+              36.662401000000045,
+              49.135017999999945,
+              42.95865099999992,
+              41.48692899999969,
+              35.91619700000001,
+              40.35571400000026,
+              40.6171260000001,
+              40.254057999999986,
+              40.36264900000015,
+              34.84089099999983,
+              33.147263000000294,
+              40.74929599999996,
+              43.93008400000008,
+              41.22732799999994,
+              56.2585710000003,
+              77.99192700000003
+            ],
+            "medianMs": 41.22732799999994,
+            "p95Ms": 56.2585710000003,
+            "media": 0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              437.45265800000016,
+              350.13964699999997,
+              296.0029370000002,
+              220.96105799999987,
+              236.85200600000007,
+              226.24809800000003,
+              210.36795599999914,
+              209.33241799999996,
+              215.01665400000002,
+              233.6757950000001,
+              281.7463509999998,
+              155.55193099999997,
+              320.09954800000014,
+              236.43795899999986,
+              238.83644800000002,
+              144.0974559999995,
+              179.8464270000004,
+              192.90490599999976,
+              206.73967400000038,
+              246.8602350000001
+            ],
+            "medianMs": 226.24809800000003,
+            "p95Ms": 350.13964699999997,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              207.86908199999925,
+              199.55426699999953,
+              171.6619899999996,
+              139.0686109999997,
+              164.13113799999974,
+              130.25481200000013,
+              132.50429900000017,
+              166.73655000000053,
+              130.99532999999974,
+              132.86313100000007,
+              150.2964149999998,
+              158.460736,
+              153.66238299999986,
+              200.20189699999992,
+              243.35711900000024,
+              165.98999000000003,
+              120.83483799999976,
+              101.45025100000021,
+              93.54951399999936,
+              69.20071300000018
+            ],
+            "medianMs": 150.2964149999998,
+            "p95Ms": 207.86908199999925,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              24.925844000000097,
+              21.321731,
+              23.793297000000166,
+              29.163698000000068,
+              28.905980999999883,
+              33.01331200000004,
+              28.738031999999976,
+              27.246570999999904,
+              30.14210100000014,
+              27.93211999999994,
+              27.698020999999926,
+              49.331353000000036,
+              30.50187800000026,
+              31.02241200000026,
+              36.10576200000014,
+              21.660800999999992,
+              27.586651000000074,
+              30.15038000000004,
+              44.69024499999978,
+              31.25213900000017
+            ],
+            "medianMs": 28.905980999999883,
+            "p95Ms": 44.69024499999978,
+            "media": 0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              17.907965000000104,
+              23.376631999999972,
+              36.112948999999844,
+              28.552595999999994,
+              28.302711000000045,
+              26.83166899999992,
+              27.10964399999989,
+              27.24668200000019,
+              28.0830390000001,
+              27.278368,
+              27.605936000000156,
+              29.34783900000002,
+              28.661188999999922,
+              27.6975309999998,
+              24.97049099999981,
+              23.03748500000006,
+              18.310866000000033,
+              24.885549000000083,
+              28.88603299999977,
+              26.73954599999979
+            ],
+            "medianMs": 27.24668200000019,
+            "p95Ms": 29.34783900000002,
+            "media": 0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              64.94713200000001,
+              58.40121699999986,
+              56.69474200000013,
+              69.74754800000005,
+              58.36405500000001,
+              59.48844000000008,
+              53.63970399999994,
+              73.76049899999998,
+              67.34031400000003,
+              54.6876249999998,
+              45.176412000000255,
+              41.38204199999973,
+              66.07642000000033,
+              71.95728099999997,
+              42.070268999999826,
+              62.740424000000075,
+              55.9363400000002,
+              56.69484199999988,
+              42.259277999999995,
+              41.86213199999975
+            ],
+            "medianMs": 56.69484199999988,
+            "p95Ms": 71.95728099999997,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --legacy-only",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+        "results": {
+          "legacy": {
+            "samplesMs": [
+              75.67960700000003,
+              71.8868030000001,
+              67.02582600000005,
+              48.499911999999995,
+              45.63547900000003,
+              63.003463999999894,
+              42.475212000000056,
+              49.50305800000001,
+              51.37730099999999,
+              53.89207099999999,
+              45.08466300000009,
+              56.431475999999975,
+              53.26467099999991,
+              37.37929199999985,
+              41.65152900000021,
+              41.070188000000144,
+              43.77183700000023,
+              37.64725299999964,
+              37.31891500000029,
+              36.35817300000008
+            ],
+            "medianMs": 45.63547900000003,
+            "p95Ms": 71.8868030000001,
+            "media": 60
+          }
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "label": "before",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain --source /tmp/hachidori-681-export-baseline --revision 8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+      "report": {
+        "commit": "8f2ddb184b019f21814f39145a4d2afbe05ba5e8",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              20.823208999999906,
+              19.436232999999902,
+              18.880255000000034,
+              18.190311000000065,
+              19.201888999999937,
+              17.762534999999843,
+              18.071726999999782,
+              18.226994999999988,
+              20.30251599999997,
+              19.939716999999973,
+              21.807030000000168,
+              20.99549499999989,
+              20.12109899999996,
+              20.811815999999908,
+              18.823133000000098,
+              17.946079999999938,
+              18.49652100000003,
+              18.95006699999999,
+              18.48070800000005,
+              18.943525000000136
+            ],
+            "medianMs": 18.943525000000136,
+            "p95Ms": 20.99549499999989,
+            "media": 0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "label": "after",
+      "command": "benchmark/glossary-selection.mjs --runs 20 --plain",
+      "report": {
+        "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+        "node": "v22.23.1",
+        "os": "linux/x64",
+        "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+        "runs": 20,
+        "input": {
+          "dictionaries": 20,
+          "rowsPerDictionary": 3,
+          "sensesPerRow": 4,
+          "imageReferencesPerRow": 1
+        },
+        "boundary": "production glossaryToPlainText, 2000 conversions per sample; no DOM or media",
+        "results": {
+          "plain": {
+            "samplesMs": [
+              17.166625000000067,
+              17.29073500000004,
+              19.184987999999976,
+              18.222045999999864,
+              19.40333899999996,
+              19.068003999999974,
+              18.33488299999999,
+              17.564814999999953,
+              18.464018000000124,
+              18.235918000000083,
+              18.366946000000098,
+              17.321391000000176,
+              17.70053699999994,
+              17.149375999999847,
+              18.057459000000108,
+              22.74691900000016,
+              23.00055199999997,
+              17.396862000000056,
+              17.743199000000004,
+              17.25857700000006
+            ],
+            "medianMs": 18.057459000000108,
+            "p95Ms": 22.74691900000016,
+            "media": 0
+          }
+        }
+      }
+    }
+  ],
+  "selection": {
+    "commit": "329baf1353088ecd59aab3d6bfe72a618179b102",
+    "node": "v22.23.1",
+    "os": "linux/x64",
+    "cpu": "Intel(R) Core(TM) Ultra 7 165U",
+    "runs": 30,
+    "input": {
+      "dictionaries": 20,
+      "rowsPerDictionary": 3,
+      "sensesPerRow": 4,
+      "imageReferencesPerRow": 1
+    },
+    "boundary": "production buildAnkiResourceFields, DOM export and media-reference planning; no lookup, capture, network or Anki",
+    "results": {
+      "legacy": {
+        "samplesMs": [
+          92.58063599999991,
+          89.52877399999988,
+          74.91767000000004,
+          74.71276799999987,
+          70.64991699999996,
+          74.15501200000017,
+          74.48667100000011,
+          52.4403490000002,
+          56.671769999999924,
+          61.818063000000166,
+          68.48590599999989,
+          69.24391000000014,
+          64.18684100000019,
+          62.312676999999894,
+          43.55029000000013,
+          52.866591999999855,
+          53.06666700000005,
+          39.55351399999972,
+          48.40974899999992,
+          44.77211899999975,
+          42.608482000000095,
+          43.43545200000017,
+          56.71464500000002,
+          48.94964699999991,
+          40.17254600000024,
+          40.065442000000075,
+          44.856694999999945,
+          61.783682999999655,
+          70.55496300000004,
+          55.16435900000033
+        ],
+        "medianMs": 56.671769999999924,
+        "p95Ms": 89.52877399999988,
+        "media": 60
+      },
+      "selected": {
+        "samplesMs": [
+          8.998393000000078,
+          7.464217999999846,
+          6.892954000000145,
+          6.8627500000000055,
+          15.309985000000097,
+          6.99742399999991,
+          5.805976000000101,
+          4.877390999999989,
+          5.216759000000366,
+          6.60580200000004,
+          6.331447999999909,
+          5.892117000000326,
+          6.55931499999997,
+          6.926806999999826,
+          6.002724999999828,
+          5.944437000000107,
+          4.877250000000004,
+          9.574472000000242,
+          4.955305999999837,
+          4.9920029999998405,
+          5.065915000000132,
+          5.690857999999935,
+          8.454475999999886,
+          5.783070999999836,
+          4.9180529999998726,
+          4.892326000000139,
+          5.139860000000226,
+          7.717281000000185,
+          6.2545130000003155,
+          6.1428820000001
+        ],
+        "medianMs": 6.002724999999828,
+        "p95Ms": 9.574472000000242,
+        "media": 1
+      },
+      "fallback": {
+        "samplesMs": [
+          7.5814510000000155,
+          6.737615000000005,
+          6.076607000000195,
+          6.4897430000000895,
+          8.493071999999984,
+          6.7572059999999965,
+          9.38479499999994,
+          5.520163000000139,
+          4.75396899999987,
+          4.963082999999642,
+          5.898327000000336,
+          6.814571999999771,
+          6.599658999999974,
+          5.46971399999984,
+          4.974690999999893,
+          4.627699000000121,
+          4.608534999999847,
+          5.6397830000000795,
+          6.7889219999997295,
+          4.233600000000024,
+          4.569916999999805,
+          5.957656000000043,
+          7.454349000000093,
+          6.669142999999622,
+          4.985932999999932,
+          5.1879899999999,
+          4.453566000000137,
+          4.842559000000165,
+          6.000325999999859,
+          12.529455999999755
+        ],
+        "medianMs": 5.898327000000336,
+        "p95Ms": 9.38479499999994,
+        "media": 1
+      }
+    }
+  },
+  "limitations": "Synthetic dictionary data and jsdom; sequential child processes, alternating order each repetition on a machine doing other work. DOM export/media planning and plain conversion timings exclude lookup, capture, upload, Anki and external APIs."
+}

@@ -84,6 +84,8 @@ test("configuration includes every current default, migrated userscripts and bun
   assert.equal(configuration.activeProfileId, "ja");
   assert.equal(configuration.optionsRevision, 3);
   assert.deepEqual(configuration.experimentalFeatures, EXPERIMENTAL_FEATURES);
+  assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "selected-glossary"));
+  assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "glossary-selection"));
   const profile = configuration.profiles[0];
   assert.deepEqual(Object.keys(profile.effectiveOptions).sort(), Object.keys(DEFAULT_OPTIONS).sort());
   assert.equal(profile.effectiveOptions.userScripts[0].name, "Custom JavaScript");

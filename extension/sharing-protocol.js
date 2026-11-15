@@ -25,10 +25,12 @@ export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
 // host keeps those buttons when a reading browser without it saves its list.
 export const LINKED_BUTTONS_CAPABILITY = "linked-buttons-v1";
 export const LINKED_BUTTONS_UNSUPPORTED = "Update the linked Hachidori to use this button.";
+export const SELECTED_GLOSSARY_CAPABILITY = "selected-glossary-v1";
 export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
   LINKED_BUTTONS_CAPABILITY,
+  SELECTED_GLOSSARY_CAPABILITY,
 ]);
 // The relay's own client for its Yomitan-compatible API (hachidori-anki
 // docs/host-contract.md). Never a remote computer, never a linked browser.
@@ -193,7 +195,7 @@ export function assertLinkedAnkiFrame(text) {
 }
 
 const MINING_REQUEST_FIELDS = [
-  "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText",
+  "term", "trace", "generation", "sentence", "matchOffset", "matched", "popupSelectionText", "glossarySelection",
   "searchQuery", "documentTitle", "pageUrl", "audioSelection", "dictionaryAliases", "dictionaryIds",
   // A profile's notes follow each dictionary's direction and target language (docs/languages.md 12).
   "dictionaryDirections", "dictionaryTargetLanguages",
