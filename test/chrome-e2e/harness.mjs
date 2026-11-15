@@ -203,6 +203,7 @@ const PLANNED = [
   "Anki readiness uses an enabled accessible Arrow Clockwise before Add and View resolve",
   "clicking the Anki spinner adds a duplicate before its pending preflight resolves",
   "a keyboard Add keeps the popup open and returns focus to its action, and a mouse click does not",
+  "Mine as kana follows the Anki button in every renderer and adds the reading as the headword with the result's sentence",
   "Anki reader controls stay absent until configured and keep ruby context without its reading through one confirmed Add and View",
   "a mined screenshot is the reading page without Hachidori's overlays and its upload cannot fail the note",
   "Anki screenshot mining works after history.pushState and history.replaceState change the reading page URL",

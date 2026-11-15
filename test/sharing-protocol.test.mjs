@@ -2,13 +2,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
+  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_ANKI_KANA_CAPABILITY,
   LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   assertLinkedAnkiFrame, browserName,
   formatHostAddress, formatLinkAddress, forwardableRequest, mutatingForwardedRequest,
   parseClientFrame, parseHostFrame,
-  parseLinkAddress, sharingPort,
+  linkedAnkiCapability, parseLinkAddress, sharingPort,
 } from "../extension/sharing-protocol.js";
 
 test("a sharing port is a whole number from 1 to 65535", () => {
@@ -104,7 +104,11 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
     capabilities: SHARING_CAPABILITIES })),
   { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [...SHARING_CAPABILITIES] });
-  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_ANKI_KANA_CAPABILITY]);
+  // Mine as kana (#770) goes only to a host that writes the reading as the headword.
+  assert.equal(linkedAnkiCapability({ type: "hd_anki_submit", request: { templateId: "default" } }), LINKED_ANKI_CAPABILITY);
+  assert.equal(linkedAnkiCapability({ type: "hd_anki_preflight", request: { headword: "reading" } }),
+    LINKED_ANKI_KANA_CAPABILITY);
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
     { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),
@@ -181,6 +185,9 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
     },
     clientMedia: media,
   });
+  // Mine as kana (#770): the headword choice crosses with the request.
+  assert.equal(allowLinkedAnkiRequest({ target: "hachidori-anki", type: "hd_anki_preflight", requestId: 7,
+    request: { ...request, headword: "reading" } }).request.headword, "reading");
   assert.deepEqual(allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_browse", requestId: 4,
     request: { expression: "猫", noteIds: [1, 2], configKey: "linked:host:key",

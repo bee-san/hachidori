@@ -947,6 +947,11 @@ async function popupReader(page, depth = 0, documentUrl = null) {
         };
         return { rect: this.getBoundingClientRect().toJSON(), hidden: this.hidden,
           order: primaryActions ? [...primaryActions.children].map(actionKind) : [],
+          // Mine as kana (#770), after its result's Anki button.
+          kana: [...this.querySelectorAll(".gsm-hoshidicts-mine-kana-button")].map(add => ({ hidden: add.hidden,
+            text: add.textContent, lang: add.lang, state: add.dataset.state, disabled: add.disabled,
+            ariaLabel: add.getAttribute("aria-label"), visible: add.getClientRects().length > 0,
+            afterAnki: add.previousElementSibling?.classList.contains("gsm-hoshidicts-mine-button") === true })),
           feedback: feedback ? { hidden: feedback.hidden, text: feedback.textContent, kind: feedback.dataset.kind ?? null } : null,
           controls: adds.map((add, index) => {
             const control = controls[index];

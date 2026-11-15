@@ -780,6 +780,50 @@ test("built-in and custom Anki buttons keep independent Template status, preflig
     .map(call => call.fields.request.templateId), ["sentence", "default"]);
 });
 
+// Issue #770: Mine as kana is a second action after the Anki button of a
+// result whose headword is not its reading. Its requests carry the reading as
+// the headword; the Anki button's do not.
+test("Mine as kana mines a kanji result with its reading as the headword, beside the Anki button", async t => {
+  const calls = [];
+  const f = fixture(t, handlesBatches(handlesAnkiView(async (type, fields = {}) => {
+    calls.push({ type, fields: structuredClone(fields) });
+    if (type === "hd_anki_view") return { state: "unknown", canAdd: false, noteIds: [], configKey: "current", cached: false };
+    if (type === "hd_anki_status") return { available: true, configKey: "current" };
+    if (type === "hd_anki_preflight_batch") return { replies: fields.requests.map(() => ({ state: "addable", canAdd: true })) };
+    if (type === "hd_anki_submit") return { state: "added", noteId: fields.request.headword === "reading" ? 22 : 11, warnings: [] };
+    if (type === "hd_anki_browse") return { opened: true, noteIds: fields.request.noteIds };
+    throw new Error(`Unexpected ${type}`);
+  })));
+  f.items[0].result.term = { expression: "拗れる", reading: "こじれる" };
+  f.items[1].result.term = { expression: "ねこ", reading: "ねこ" };
+  const kana = item => item.actions.querySelector(".gsm-hoshidicts-mine-kana-button");
+  f.controller.update({ ...configured, showMineAsKanaButton: true });
+  f.controller.bind(f.items, f.context);
+  await until(() => f.items.every(item => item.add?.dataset.state === "ready") && kana(f.items[0])?.dataset.state === "ready");
+  const button = kana(f.items[0]);
+  assert.equal(f.items[0].add.nextElementSibling, button, "after the Anki button");
+  assert.deepEqual([button.textContent, button.lang, button.hidden, button.disabled, button.getAttribute("aria-label")],
+    ["か", "ja", false, false, "Mine as kana: Mine to Anki"]);
+  assert.deepEqual(f.items.slice(1).map(kana), [null, null], "a kana headword or no reading has none");
+  const viewed = calls.filter(call => call.type === "hd_anki_view").map(call => call.fields.request.term.expression);
+  assert.deepEqual(viewed.toSorted(), ["こじれる", "拗れる", "ねこ", "鳥"].toSorted(), "the kana action asks Anki about the reading");
+  const preflights = calls.filter(call => call.type === "hd_anki_preflight_batch").flatMap(call => call.fields.requests)
+    .map(request => [request.term.expression, request.headword ?? null]);
+  assert.deepEqual(preflights.toSorted(), [["拗れる", "reading"], ["拗れる", null], ["ねこ", null], ["鳥", null]].toSorted());
+
+  button.click();
+  await until(() => button.dataset.state === "success");
+  assert.equal(f.items[0].add.dataset.state, "ready", "the Anki button keeps its own state");
+  const submitted = calls.filter(call => call.type === "hd_anki_submit").map(call => call.fields.request);
+  assert.deepEqual(submitted.map(request => [request.term.expression, request.headword]), [["拗れる", "reading"]]);
+  button.click();
+  await until(() => calls.some(call => call.type === "hd_anki_browse"));
+  assert.deepEqual(calls.find(call => call.type === "hd_anki_browse").fields.request.expression, "こじれる");
+
+  f.controller.update({ ...configured, showMineAsKanaButton: false });
+  assert.equal(kana(f.items[0]), null, "switched off, the button goes");
+});
+
 // Issue #488: the Default renderer shows one result's actions in the shared
 // lookup toolbar and names that result as the owner of its custom buttons.
 test("custom Anki buttons in a shared toolbar mine the item a renderer names as their owner", async t => {

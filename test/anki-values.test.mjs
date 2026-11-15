@@ -27,6 +27,14 @@ test("Anki values escape literal data, reuse lookup furigana and preserve UTF-16
   assert.equal(await render(request(), "{sentence-furigana}|{sentence-furigana-plain}"), "🍵 <b>食べます</b>。|🍵 <b>食べます</b>。");
 });
 
+// Issue #770: Mine as kana keeps the result and writes its reading as the headword.
+test("mined as kana, {expression} and {furigana} write the reading and every other marker stays the result's", async () => {
+  const kana = request({ headword: "reading" });
+  assert.equal(await render(kana, "{expression}|{reading}|{furigana}|{furigana-plain}|{sentence}|{cloze-body}"),
+    "たべる|たべる|たべる|たべる|🍵 <b>食べます</b>。|食べます");
+  assert.equal(await render(request({ headword: "expression" }), "{expression}"), "食べる", "only the reading is a headword choice");
+});
+
 test("{sentence-furigana} reads the match as its result and the rest from the engine's segment spans", async () => {
   const word = (start, length, expression, reading) => ({ start, length, candidates: [{ expression, reading }] });
   const source = request({ sentence: "今日は食べますと言った。", matchOffset: 3,

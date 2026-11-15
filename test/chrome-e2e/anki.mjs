@@ -509,6 +509,40 @@ async function checkAnkiReader(tab, popup, configure, calls, notes, files, contr
         && !keyboard.clicked.hidden && keyboard.clicked.controls[0]?.state === "success" && !keyboard.clicked.controls[0].focused
         && keyboard.adds === 2,
       JSON.stringify(keyboard));
+    // Mine as kana (#770): in every bundled renderer the か button follows
+    // the Anki button, and it adds the reading as the note's headword with
+    // the result's own sentence.
+    const kana = { themes: {} };
+    const { popupTheme } = await writeOptions({ showMineAsKanaButton: true });
+    try {
+      await configure(false, { fieldTemplates: { Front: template("{expression}"),
+        Back: template("{furigana}|{reading}|{sentence}"), Audio: template("") } });
+      for (const theme of ["jl", "bee", "nazeka", "crystal", "default"]) {
+        await writeOptions({ popupTheme: theme });
+        await tab.keyboard.press("Escape");
+        await hoverForPopup(tab, popup, "#verb");
+        const shown = await settled(state => state?.kana?.[0]?.state === "ready" && state.kana[0].visible)
+          .catch(() => popup.anki());
+        kana.themes[theme] = shown?.kana ?? null;
+        if (process.env.HACHIDORI_MINE_AS_KANA_SCREENSHOTS && shown?.kana?.[0]?.visible) {
+          await tab.screenshot({ path: `${process.env.HACHIDORI_MINE_AS_KANA_SCREENSHOTS}/mine-as-kana-${theme}.png`,
+            clip: await popup.rect() });
+        }
+      }
+      const addsBefore = calls.filter(call => call.action === "addNote").length;
+      await popup.click(".gsm-hoshidicts-mine-kana-button");
+      kana.saved = await settled(state => state?.kana?.[0]?.state === "success").catch(() => popup.anki());
+      kana.note = [...notes.values()].at(-1);
+      kana.adds = calls.filter(call => call.action === "addNote").length - addsBefore;
+    } finally {
+      await writeOptions({ showMineAsKanaButton: false, popupTheme });
+    }
+    check("Mine as kana follows the Anki button in every renderer and adds the reading as the headword with the result's sentence",
+      Object.values(kana.themes).every(buttons => buttons?.length === 1 && buttons[0].visible && buttons[0].afterAnki
+        && buttons[0].text === "か" && buttons[0].lang === "ja" && buttons[0].ariaLabel === "Mine as kana: Mine to Anki")
+        && kana.saved?.kana?.[0]?.state === "success" && kana.adds === 1
+        && kana.note?.Front === "たべる" && kana.note.Back === "たべる|たべる|<b>食べる</b>。",
+      JSON.stringify(kana));
     await checkScreenshotMining({ tab, popup, configure, calls, notes, files, control, settled });
     await checkSentenceMining({ tab, popup, configure, calls, notes, settled });
     await checkSearchPageUpdate({ tab, popup, configure, calls, notes, settled });

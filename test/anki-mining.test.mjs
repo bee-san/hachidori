@@ -96,6 +96,26 @@ test("explicit add-anyway skips indexed and native duplicate checks without chan
   }
 });
 
+// Issue #770: a note mined as kana is the reading's note in the word index.
+test("a note mined as kana is checked, recorded and named by its reading", async () => {
+  const f = fixture();
+  const looked = [], written = [];
+  const duplicateIndex = { ...f.dependencies.duplicateIndex,
+    async lookup(config, expression) {
+      looked.push(expression);
+      return { wordKey: expression, mature: false, noteIds: [], cached: false };
+    },
+    async recordWrite(config, expression) { written.push(expression); } };
+  const service = createAnkiMiningService({ ...f.dependencies, duplicateIndex,
+    buildFields: async request => ({ fields: { Front: request.term.reading, Back: "to get complicated" } }) });
+  const { configKey } = await service.status();
+  const request = { term: { expression: "拗れる", reading: "こじれる" }, headword: "reading", configKey };
+  assert.equal((await service.preflight(request)).canAdd, true);
+  assert.equal((await service.submit(request)).state, "added");
+  assert.deepEqual([...new Set(looked)], ["こじれる"]);
+  assert.deepEqual(written, ["こじれる"]);
+});
+
 test("mining readiness shares its configuration cache and skips Anki when no model is configured", async () => {
   const f = fixture();
   const [a, b] = await Promise.all([f.service.status(), f.service.status()]);
