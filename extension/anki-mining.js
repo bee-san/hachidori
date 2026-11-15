@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
-import { ankiCaptureRequirements, resolveAnkiTemplates } from "./anki-templates.js";
+import { ankiCaptureRequirements, resolveAnkiTemplates, substituteAnkiMarkers } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiListedFamily } from "./anki-setup.js";
@@ -296,7 +296,7 @@ export function createAnkiMiningService({
       const { configKey } = current;
       if (!config.model) return { config, configKey, configJson, errors: ["Choose an Anki note type in Settings."] };
       const discovery = await gateway.discover(config);
-      const resolved = resolveAnkiTemplates(config, discovery.fields);
+      const resolved = substituteAnkiMarkers(resolveAnkiTemplates(config, discovery.fields), config.markerSubstitutions);
       return { config, configKey, configJson, discovery, resolved, errors: ankiAvailability(config, discovery, resolved) };
     })();
     // Metadata belongs to this worker and configuration. Anki validates the
@@ -326,7 +326,9 @@ export function createAnkiMiningService({
       configKey: current.configKey,
       cached: false,
     };
-    if (current.config.duplicateBehavior !== "prevent") return unknown;
+    // The cached index holds the Template's own expressions, which a button
+    // with marker substitutions may not write.
+    if (current.config.duplicateBehavior !== "prevent" || current.config.markerSubstitutions) return unknown;
     const duplicate = await duplicateIndex.peek(current.config, expression);
     if (!duplicate.noteIds.length) return unknown;
     return {

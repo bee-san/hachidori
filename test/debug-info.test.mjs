@@ -98,6 +98,20 @@ test("configuration includes every current default, migrated userscripts and bun
   assert.equal(env.storageReads(), 1, "configuration and storage use the same snapshot");
 });
 
+test("configuration lists the button actions and the custom buttons a popup shows", async () => {
+  const stored = structuredClone(STORED);
+  const buttons = [{ id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" },
+    { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" }];
+  stored.options = { ...stored.options, customButtons: buttons };
+  const off = await collectDebugInfo({ ...host({ stored }), targets: TARGETS });
+  assert.deepEqual(off.configuration.buttonActions, globalThis.HDReaderOptions.BUTTON_ACTIONS.map(action => action.id));
+  assert.deepEqual(off.configuration.profiles[0].shownCustomButtonIds, ["jisho"]);
+  assert.deepEqual(off.configuration.profiles[0].effectiveOptions.customButtons, buttons);
+  stored.options.experimental = { popupActions: true };
+  const on = await collectDebugInfo({ ...host({ stored }), targets: TARGETS });
+  assert.deepEqual(on.configuration.profiles[0].shownCustomButtonIds, ["jisho", "view"]);
+});
+
 test("each language keeps its stored and effective settings, selected theme, scripts and pack defaults", async () => {
   const stored = structuredClone(STORED);
   stored.options = { revision: 7, experimental: { multipleLanguages: true },

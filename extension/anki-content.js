@@ -176,11 +176,20 @@
       || (!record.terminal && !record.opensSettings && record.add.dataset.state !== "checking"
         && (record.needsCheck || (!record.decision?.canAdd && !views(record))));
   }
+  // The Template a record mines with and, for a button that renders other
+  // markers than its Template (More custom buttons), the button the worker
+  // reads them from. The worker resolves both from its own settings.
+  function target(record) {
+    return record.buttonId === undefined ? { templateId: record.templateId }
+      : { templateId: record.templateId, buttonId: record.buttonId };
+  }
+  // Records that share a target share its status and configuration key.
+  const targetKey = record => JSON.stringify([record.templateId, record.buttonId ?? null]);
   function payload(record) {
     return {
       ...record.group.getRequest(record.result),
       configKey: record.configKey,
-      templateId: record.templateId,
+      ...target(record),
     };
   }
   function decisionState(value) {
@@ -209,16 +218,17 @@
   }
   function reusableRecord(record, group, spec) {
     return record?.group === group && record.result === spec.item.result
-      && record.custom === spec.custom && record.templateId === spec.templateId;
+      && record.custom === spec.custom && record.templateId === spec.templateId && record.buttonId === spec.buttonId;
   }
   function createRecord(group, spec) {
-    const { item, binding, custom, templateId, label, add } = spec;
+    const { item, binding, custom, templateId, buttonId, label, add } = spec;
     return {
       ...item,
       binding,
       group,
       custom,
       templateId,
+      ...(buttonId === undefined ? {} : { buttonId }),
       label,
       ...(add ? { add } : {}),
       configKey: null,
@@ -268,7 +278,7 @@
         expression: record.result.term.expression,
         reading: record.result.term.reading,
       },
-      templateId: record.templateId,
+      ...target(record),
     } };
   }
   function cachedView(value) {
@@ -376,15 +386,15 @@
         if (!needsCheck(record) || record.viewChecked) continue;
         const result = await requestCachedView(record);
         if (result === null || !owns() || !boundHere(record)) continue;
-        const configKey = configKeys.get(record.templateId) ?? null;
+        const configKey = configKeys.get(targetKey(record)) ?? null;
         const checked = checkedConfigKey(configKey, result);
         if (checked.changed) {
           return {
             configKeys,
-            changed: records.filter(candidate => candidate.templateId === record.templateId),
+            changed: records.filter(candidate => targetKey(candidate) === targetKey(record)),
           };
         }
-        if (checked.configKey !== null) configKeys.set(record.templateId, checked.configKey);
+        if (checked.configKey !== null) configKeys.set(targetKey(record), checked.configKey);
         record.configKey = checked.configKey;
         applyCachedView(group, record, result);
       }
@@ -410,15 +420,15 @@
     function recordsByTemplate(records) {
       const byTemplate = new Map();
       for (const record of records) {
-        if (!byTemplate.has(record.templateId)) byTemplate.set(record.templateId, []);
-        byTemplate.get(record.templateId).push(record);
+        if (!byTemplate.has(targetKey(record))) byTemplate.set(targetKey(record), []);
+        byTemplate.get(targetKey(record)).push(record);
       }
       return byTemplate;
     }
-    async function checkTemplateRecords(group, templateId, records, configKeys, owns) {
-      const status = await send("hd_anki_status", { templateId });
+    async function checkTemplateRecords(group, key, records, configKeys, owns) {
+      const status = await send("hd_anki_status", target(records[0]));
       if (!owns()) return;
-      const cachedKey = configKeys.get(templateId) ?? null;
+      const cachedKey = configKeys.get(key) ?? null;
       if (status.available && cachedKey !== null && status.configKey !== cachedKey) {
         restartChecks(records);
         return;
@@ -445,8 +455,8 @@
         }
         if (!group.records.some(needsCheck)) return;
         const byTemplate = recordsByTemplate(group.records.filter(needsCheck));
-        for (const [templateId, records] of byTemplate) {
-          await checkTemplateRecords(group, templateId, records, cached.configKeys, owns);
+        for (const [key, records] of byTemplate) {
+          await checkTemplateRecords(group, key, records, cached.configKeys, owns);
           if (!owns()) return;
         }
       } catch (error) {
@@ -623,7 +633,7 @@
       if (request.allowDuplicate !== true) return request;
       let checkedRequest = request;
       if (checkedRequest.configKey === null) {
-        const status = await send("hd_anki_status", { templateId: record.templateId });
+        const status = await send("hd_anki_status", target(record));
         if (!status.available) throw new Error(status.error || "Anki mining is unavailable.");
         checkedRequest = { ...checkedRequest, configKey: status.configKey };
       }
@@ -680,7 +690,7 @@
           noteIds: Array.isArray(noteIds) ? noteIds : [],
           expression: record.result.term.expression,
           configKey: record.configKey,
-          templateId: record.templateId,
+          ...target(record),
         } });
         if (current(record) && Array.isArray(result?.noteIds)) {
           if (record.terminal) record.noteIds = result.noteIds;
@@ -774,6 +784,7 @@
             add,
             custom: true,
             templateId: descriptor.templateId,
+            ...(descriptor.buttonId === undefined ? {} : { buttonId: descriptor.buttonId }),
             label: descriptor.label,
           });
         }
@@ -825,8 +836,25 @@
         for (const record of group.records) if (record.control) showControls(record, false);
       }
     }
+    // The built-in Anki record of a rendered entry (`item` from bind), while it
+    // has notes to show: the one it wrote, or the duplicates it found, also
+    // when the Template allows adding another or overwriting (#555, #765).
+    function viewableRecord(owner, item) {
+      const record = owners.get(owner)?.records.find(candidate => !candidate.custom && candidate.actions === item?.actions);
+      if (!record?.add || !current(record) || record.busy || record.add.disabled) return null;
+      const noteIds = record.terminal ? record.noteIds : record.decision?.noteIds;
+      return Array.isArray(noteIds) && noteIds.length > 0 ? record : null;
+    }
     return { bind, retire,
       refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
+      canViewNotes: (owner, item) => viewableRecord(owner, item) !== null,
+      // Opens the entry's notes in Anki's browser; false when it has none.
+      viewNotes(owner, item) {
+        const record = viewableRecord(owner, item);
+        if (record === null) return false;
+        void browse(record);
+        return true;
+      },
       update(options, ready = true) {
         const anki = globalThis.HDReaderOptions.normaliseAnki(options.anki);
         const customButtons = globalThis.HDReaderOptions.normaliseCustomButtons(options.customButtons);
@@ -836,7 +864,8 @@
         primaryTemplateId = anki.templates[0].id;
         templateIds = new Set(anki.templates.map(template => template.id));
         customButtonTemplates = new Map(customButtons.filter(button => button.type === "anki")
-          .map(button => [button.id, { templateId: button.templateId, label: button.label }]));
+          .map(button => [button.id, { templateId: button.templateId, label: button.label,
+            ...(button.markers ? { buttonId: button.id } : {}) }]));
         enabled = ready && (anki.templates.some(template => Boolean(template.model))
           || customButtonTemplates.size > 0);
         for (const group of owners.values()) {

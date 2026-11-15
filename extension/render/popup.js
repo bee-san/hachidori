@@ -2533,11 +2533,47 @@
         };
         custom.addEventListener("click", activate);
         custom.addEventListener("auxclick", activate);
-      } else {
+      } else if (value.type === "anki") {
         custom.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button";
         custom.disabled = true;
+      } else {
+        // More custom buttons: a keybind action or a user script's button.
+        // The reader decides what the press does for the entry it belongs to.
+        custom.className = `gsm-hoshidicts-custom-${value.type}-button gsm-hoshidicts-text-action-button`;
+        custom.addEventListener("click", event => {
+          if (event.defaultPrevented || event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const current = customButtons.find(candidate => candidate.id === custom.dataset.customButtonId);
+          if (!current || custom.disabled || !custom.isConnected || popup.hidden || !popup.contains(actions)
+              || renderContext.isCurrentRequest?.() === false) return;
+          options.onCustomActionClick?.({ button: custom, value: current, prefill: readPrefill() || {} });
+        });
       }
       return custom;
+    }
+
+    // A button's icon replaces its name on screen, which stays its accessible
+    // name. The name element becomes the icon, as the JL and Crystal themes
+    // make their first two custom buttons' names icons.
+    function applyIcon(custom, value) {
+      const label = custom.firstElementChild;
+      if (value.icon) {
+        custom.dataset.customButtonIcon = value.icon;
+        label.classList.add("hd-icon", "gsm-hoshidicts-custom-action-icon");
+        label.dataset.icon = value.icon;
+        label.setAttribute("aria-hidden", "true");
+      } else if (custom.dataset.customButtonIcon) {
+        delete custom.dataset.customButtonIcon;
+        label.classList.remove("hd-icon", "gsm-hoshidicts-custom-action-icon");
+        delete label.dataset.icon;
+        label.removeAttribute("aria-hidden");
+      }
+    }
+
+    function customTitle(value) {
+      if (value.type === "anki") return `Send to Anki with ${value.label}`;
+      return value.label;
     }
 
     function updateButtons() {
@@ -2545,7 +2581,7 @@
       const ordered = [];
       for (const value of customButtons) {
         let custom = buttonNodes.get(value.id);
-        const expectedType = value.type === "anki" ? "anki" : "link";
+        const expectedType = value.type;
         if (custom && custom.dataset.customButtonType !== expectedType) {
           custom.remove();
           buttonNodes.delete(value.id);
@@ -2558,10 +2594,13 @@
         }
         custom.firstElementChild.textContent = value.label;
         custom.dataset.customButtonLabel = value.label;
-        custom.title = value.type === "anki" ? `Send to Anki with ${value.label}` : value.label;
+        custom.title = customTitle(value);
         custom.setAttribute("aria-label", custom.title);
+        applyIcon(custom, value);
         if (value.type === "anki") custom.dataset.ankiTemplateId = value.templateId;
         else delete custom.dataset.ankiTemplateId;
+        if (value.type === "action") custom.dataset.customAction = value.action;
+        else delete custom.dataset.customAction;
         retained.add(value.id);
         ordered.push(custom);
       }
@@ -3643,11 +3682,12 @@
 
       function updateShownEntry({ navigated = false } = {}) {
         // A Note draft, a pending save or a child popup hold the header, and so
-        // does a focused custom Anki button: re-checking it for another result
-        // would disable it and take its focus.
+        // does a focused custom Anki or action button: re-checking it for
+        // another result would disable or hide it and take its focus.
         const focused = popup.getRootNode().activeElement;
         if (popup.hidden || !isCurrent() || options.canProjectDictionaryPresentation?.() === false
-            || (lookupActions.contains(focused) && focused.matches(".gsm-hoshidicts-custom-anki-button"))) return;
+            || (lookupActions.contains(focused)
+              && focused.matches(".gsm-hoshidicts-custom-anki-button, .gsm-hoshidicts-custom-action-button"))) return;
         const top = contentScroll.getBoundingClientRect().top + 1;
         // A header without a box (no layout yet) has not scrolled anywhere.
         const above = index => {
@@ -3661,8 +3701,9 @@
         showEntry(index);
         // Navigation chose its own current entry, which may be beyond reach.
         if (!navigated) currentEntry = entryMetadata[index].entry;
-        if (lookupActions.querySelector(":scope > .gsm-hoshidicts-custom-anki-button")) {
-          // Same arrays; the custom Anki buttons now belong to another entry.
+        if (lookupActions.querySelector(
+          ":scope > :is(.gsm-hoshidicts-custom-anki-button, .gsm-hoshidicts-custom-action-button)")) {
+          // Same arrays; the custom Anki and action buttons now belong to another entry.
           onResultsExpanded({ audioButtons, miningActions });
         }
       }
