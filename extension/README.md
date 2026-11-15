@@ -299,7 +299,10 @@ stores it as `rank-based` when its values are ranks (#684).
   pins (the User scripts editor), with their licences in `LICENSE` beside it.
   `vendor/yomitan/structured-content-style.js` is Yomitan's
   `structured-content-style.json` as an ES module, its revision and checksum
-  in `vendor/yomitan/source.json`. `vendor/kanjidic/kanji-readings.json` is
+  in `vendor/yomitan/source.json`. `vendor/yomitan/language/` holds Yomitan's
+  romaji converter (`ja/japanese-wanakana.js`) and the files it imports, at the
+  same revision, unchanged, for the search page's romaji input.
+  `vendor/kanjidic/kanji-readings.json` is
   KANJIDIC2's kanji readings for the furigana split (CC BY-SA 4.0), which
   `scripts/kanji-readings.mjs` regenerates from the archive pinned in
   `vendor/kanjidic/source.json`. `vendor/kanwa/kanwa-readings.json` is the
