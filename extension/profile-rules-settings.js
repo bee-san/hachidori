@@ -162,7 +162,7 @@ export function createProfileRules({ document, create, readSelection, profileLis
     const wanted = focus ?? (focused === null ? null
       : { key: focused.closest("[data-focus-key]")?.dataset.focusKey, role: focused.dataset.role });
     shown = shownKey();
-    list.replaceChildren(...rules.map(buildRule));
+    list.replaceChildren(...rules.map((rule, index) => buildRule(rule, index)));
     list.hidden = rules.length === 0;
     if (wanted === null) return;
     const target = [...list.querySelectorAll("[data-focus-key]")].find(node => node.dataset.focusKey === wanted.key);
