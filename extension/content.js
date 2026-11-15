@@ -676,8 +676,8 @@
 
   function applyHostCapabilities(projected) {
     // Without More custom buttons the popup has only the original kinds.
-    const effective = globalThis.HDReaderOptions.effectiveCustomButtons(projected.customButtons, projected.experimental);
-    if (effective !== projected.customButtons) projected = { ...projected, customButtons: effective };
+    projected = { ...projected,
+      customButtons: globalThis.HDReaderOptions.effectiveCustomButtons(projected.customButtons, projected.experimental) };
     if (!hostCapabilities.linkButtons) projected = {
       ...projected,
       customLinks: [],

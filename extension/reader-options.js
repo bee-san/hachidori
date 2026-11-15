@@ -520,16 +520,21 @@
     });
   }
 
-  // Whether a button needs More custom buttons: a kind, icon or marker
-  // substitution that the original link and Anki buttons do not have. A
-  // linked browser that cannot keep these may not write them (sharing.md).
-  const extendedCustomButton = button => !["link", "anki"].includes(button.type)
-    || Object.hasOwn(button, "icon") || Object.hasOwn(button, "markers");
+  // A button that only More custom buttons shows: an action or script
+  // button, or an Anki button with marker substitutions, which its Template
+  // alone would mine differently.
+  const popupActionsButton = button => !["link", "anki"].includes(button.type) || Object.hasOwn(button, "markers");
 
-  // The buttons the popup shows: all of them with More custom buttons on, and
-  // only the original kinds without it. A hidden button keeps its settings.
+  // Whether a button has anything the original link and Anki buttons do not:
+  // such a button, or an icon. A linked browser that cannot keep these may
+  // not write them (sharing.md).
+  const extendedCustomButton = button => popupActionsButton(button) || Object.hasOwn(button, "icon");
+
+  // The buttons the popup shows: all of them with More custom buttons on;
+  // without it, the others by name. A hidden button keeps its settings.
   function effectiveCustomButtons(buttons, experimental) {
-    return experimental?.popupActions === true ? buttons : buttons.filter(button => !extendedCustomButton(button));
+    if (experimental?.popupActions === true) return buttons;
+    return buttons.filter(button => !popupActionsButton(button)).map(({ icon: _icon, ...button }) => button);
   }
 
   // An installed Script Store package's slug and version, which Update compares
@@ -1610,7 +1615,8 @@
     EXPERIMENTAL_FEATURES,
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
-    normaliseCustomButtons, BUTTON_ACTIONS, BUTTON_ICONS, CUSTOM_BUTTON_TYPES, extendedCustomButton, effectiveCustomButtons,
+    normaliseCustomButtons, BUTTON_ACTIONS, BUTTON_ICONS, CUSTOM_BUTTON_TYPES, popupActionsButton, extendedCustomButton,
+    effectiveCustomButtons,
     normaliseUserScripts, javaScriptUserScripts, userPopupStyles, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,

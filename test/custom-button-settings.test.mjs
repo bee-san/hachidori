@@ -198,7 +198,7 @@ test("global Settings search reaches Custom buttons with keyboard-focusable nati
 });
 
 test("More custom buttons: action, script, icon and marker fields are stored, and validated as written", () => {
-  const { normaliseCustomButtons, effectiveCustomButtons, extendedCustomButton } = globalThis.HDReaderOptions;
+  const { normaliseCustomButtons, effectiveCustomButtons, extendedCustomButton, popupActionsButton } = globalThis.HDReaderOptions;
   const buttons = normaliseCustomButtons([
     { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "x", icon: "book-search" },
     { id: "next", type: "action", label: "Next", action: "nextEntry", argument: "3" },
@@ -216,7 +216,12 @@ test("More custom buttons: action, script, icon and marker fields are stored, an
     { id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" },
   ], "search-page actions are not button actions, and unknown icons and no-op substitutions drop");
   assert.deepEqual(buttons.map(extendedCustomButton), [true, true, true, true, false]);
+  assert.deepEqual(buttons.map(popupActionsButton), [true, true, true, true, false]);
   assert.deepEqual(effectiveCustomButtons(buttons, {}).map(button => button.id), ["jisho"]);
+  // Off, a link or plain Anki button with an icon shows by its name.
+  assert.deepEqual(effectiveCustomButtons([{ ...buttons[4], icon: "search" }], {}), [buttons[4]]);
+  assert.equal(extendedCustomButton({ ...buttons[4], icon: "search" }), true);
+  assert.equal(popupActionsButton({ ...buttons[4], icon: "search" }), false);
   assert.equal(effectiveCustomButtons(buttons, { popupActions: true }), buttons);
   assert.deepEqual(validateOptionsPatch({ customButtons: buttons }).customButtons, buttons);
   assert.throws(() => validateOptionsPatch({ customButtons: [{ ...buttons[2], markers: { Expression: "reading" } }] }),

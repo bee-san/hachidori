@@ -102,9 +102,10 @@ Design → Custom CSS, for example
 `.gsm-hoshidicts-mine-button { display: none; }` beside a custom button that
 mines with the same Template.
 
-Turning the switch off hides every button that needs it, and the icons and
-marker substitutions of the others, in the popup and the Design preview;
-Settings lists those buttons with a note and keeps them for the next time.
+Turning the switch off hides action and script buttons and Anki buttons with
+other markers, in the popup and the Design preview, and shows the other
+buttons by name instead of their icons. Settings lists the hidden buttons with
+a note and keeps them, and every icon, for the next time.
 
 ## Japanese pitch accent graphs
 

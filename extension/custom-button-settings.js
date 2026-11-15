@@ -64,7 +64,7 @@ export function createCustomButtonSettings({
   createId = () => document.defaultView.crypto.randomUUID(),
 }) {
   const { BUTTON_ACTIONS, BUTTON_ICONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS,
-    extendedCustomButton } = document.defaultView.HDReaderOptions ?? globalThis.HDReaderOptions;
+    popupActionsButton } = document.defaultView.HDReaderOptions ?? globalThis.HDReaderOptions;
   const list = document.getElementById("custom-button-list");
   const empty = document.getElementById("custom-button-empty");
   const form = document.getElementById("custom-button-form");
@@ -235,7 +235,7 @@ export function createCustomButtonSettings({
     summary.append(kind, " · ", detail);
     // A button More custom buttons shows stays in the list while it is off,
     // hidden from the popup, and comes back when it is turned on.
-    const off = extendedCustomButton(value) && !extended();
+    const off = popupActionsButton(value) && !extended();
     const note = document.createElement("span");
     note.className = "field-hint";
     note.textContent = "Hidden: turn on More custom buttons in Advanced → Experimental features to show and edit it.";
