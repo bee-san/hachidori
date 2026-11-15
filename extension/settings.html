@@ -1383,7 +1383,7 @@
             <legend>Definition selection</legend>
             <p class="field-hint">Use <code>{selected-glossary}</code> to export the entry you choose in the popup. Group fields use your selection only when it belongs to that group; otherwise they use the first available entry in the group's order. Create and order groups in <a href="#dictionaries">Dictionaries</a>.</p>
             <div class="anki-destination-grid">
-              <label class="anki-setting-col"><span class="field-label">Selected definition fallback</span><select id="opt-anki-glossary-fallback"><option value="first-brief">First available, brief</option><option value="first">First available, full</option></select><span class="field-hint">Brief leaves out dictionary labels and tags.</span></label>
+              <label class="anki-setting-col"><span class="field-label">Selected definition fallback</span><select id="opt-anki-glossary-fallback"><option value="first-brief">First available, brief</option><option value="first">First available, full</option><option value="all">All definitions</option></select><span class="field-hint">Used when no definition is chosen in the popup. Brief leaves out dictionary labels and tags.</span></label>
               <label class="anki-setting-col"><span class="field-label">Monolingual group</span><select id="opt-anki-monolingual-group"></select><span class="field-hint">Used by <code>{monolingual-definition}</code>.</span></label>
               <label class="anki-setting-col"><span class="field-label">Bilingual group</span><select id="opt-anki-bilingual-group"></select><span class="field-hint">Used by <code>{bilingual-definition}</code>. An empty group gives an empty field.</span></label>
             </div>

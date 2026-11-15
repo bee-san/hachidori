@@ -51,6 +51,16 @@ test("named mono/bilingual markers use explicit Template groups and never leak a
   assert.equal((await fields(request(), "{glossary-selection-group-deleted}")).Back, "");
 });
 
+test("the All definitions fallback exports every definition until one is chosen (#764)", async () => {
+  const all = patch => fields(request({ glossarySelectionFallback: "all", ...patch }), "{selected-glossary}|{monolingual-definition}");
+  const [unchosen, group] = (await all()).Back.split("|").map(parsed);
+  assert.deepEqual(unchosen, {});
+  assert.deepEqual(group, { selectedOnly: true, selection: { dictionary: "Mono A", index: 0 }, brief: false });
+  const selection = { dictionary: "Mono B", index: 0 };
+  assert.deepEqual(parsed((await all({ glossarySelection: selection })).Back.split("|")[0]),
+    { selectedOnly: true, selection, brief: false });
+});
+
 test("Anki group choices normalize, reject invalid writes and preserve legacy Template records", () => {
   const options = globalThis.HDReaderOptions;
   const legacy = structuredClone(options.DEFAULT_OPTIONS.anki);

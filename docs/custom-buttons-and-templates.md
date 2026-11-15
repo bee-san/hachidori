@@ -202,7 +202,11 @@ visible as unavailable so they can be corrected without silently changing a
 card's contents.
 
 **First available, brief** omits labels and tags; **First available, full**
-keeps them. These formats apply to selected and group definitions; existing
+keeps them. These formats apply to selected and group definitions. **All
+definitions** exports the chosen entry in full and, with nothing chosen, every
+definition, as `{glossary}` does, so a Template can keep today's cards until a
+definition is chosen (#764); a group marker then exports its first available
+entry in full. Existing
 `{glossary}`, `{glossary-first}` and dictionary-specific mappings are unchanged.
 Group settings belong to each Template in its language profile and travel
 through backups and linked browsers. The sharing host applies its saved group

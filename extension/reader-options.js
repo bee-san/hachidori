@@ -9,7 +9,7 @@
   const ANKI_DUPLICATE_SCOPES = ["model", "deck", "all"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
-  const ANKI_GLOSSARY_FALLBACKS = ["first-brief", "first"];
+  const ANKI_GLOSSARY_FALLBACKS = ["first-brief", "first", "all"];
   const ANKI_GLOSSARY_CONFIG_KEYS = ["glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"];
   const STABLE_ID_MAX_LENGTH = 256;
   const ANKI_TEMPLATE_CONFIG_KEYS = ["deck", "model", "tags", "fields", "duplicateScope", "duplicateBehavior",

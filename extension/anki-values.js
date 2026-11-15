@@ -250,6 +250,8 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     return `${prefix}<b>${body}</b>${suffix}`;
   };
   const firstDictionary = () => term.glossaries[0]?.dictionary || "";
+  // A request without a fallback (the relay API, older linked browsers) is brief.
+  const selectionBrief = !["first", "all"].includes(request.glossarySelectionFallback);
   const groupDefinition = groupId => {
     const group = request.glossaryGroups?.find(group => group.id === groupId);
     if (!group) return "";
@@ -262,7 +264,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     if (!dictionary) return "";
     return definition({ selectedOnly: true,
       selection: selectionAvailable ? selected : { dictionary, index: 0 },
-      brief: request.glossarySelectionFallback !== "first" });
+      brief: selectionBrief });
   };
   // The relay API and older linked browsers send no address. Like Yomitan's
   // anki-note-data-creator.js, a missing or non-string one is blank.
@@ -280,8 +282,10 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),
     "glossary-plain-no-dictionary": () => definition({ plain: true, noDictionary: true }),
-    "selected-glossary": () => definition({ selectedOnly: true, selection: request.glossarySelection,
-      brief: request.glossarySelectionFallback !== "first" }),
+    // With no choice, the All definitions fallback exports what {glossary} does (#764).
+    "selected-glossary": () => (!request.glossarySelection && request.glossarySelectionFallback === "all" ? definition({})
+      : definition({ selectedOnly: true, selection: request.glossarySelection,
+        brief: selectionBrief })),
     "glossary-first": () => definition({ firstOnly: true }),
     "glossary-first-brief": () => definition({ firstOnly: true, brief: true }),
     "glossary-first-no-dictionary": () => definition({ firstOnly: true, noDictionary: true }),
