@@ -1027,3 +1027,33 @@ test("selection-dependent first fields bypass expression-only View and report th
   assert.equal((await f.service.status()).selectionDependent, false,
     "a selected Back field never changes the first field's duplicate identity");
 });
+
+test("preparation defers readiness without rendering or external work and checks the final returned identity", async () => {
+  const f = fixture();
+  const preparationScript = { scriptId: "sentences", handlerId: "prepare" };
+  f.change({ preparationScript, preparationSource: "registered source", fieldTemplates: {
+    Front: { value: "{preparation-identity}", overwriteMode: "coalesce" }, Back: { value: "{preparation-example}", overwriteMode: "coalesce" },
+  } });
+  let builds = 0;
+  const resourceOwners = new WeakSet();
+  const service = createAnkiMiningService({ ...f.dependencies, buildFields: async request => {
+    assert.equal(resourceOwners.has(request), true, "prepared requests retain linked media/speech ownership");
+    builds++;
+    return { fields: { Front: request.preparation.identity, Back: request.preparation.example } };
+  } });
+  const { configKey } = await service.status();
+  const request = { expression: "猫", configKey };
+  const ready = await service.preflight(request);
+  assert.equal(ready.canAdd, true);
+  assert.deepEqual(ready.preparationScript, preparationScript);
+  assert.equal(ready.deferred, true);
+  assert.equal(builds, 0);
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(service.submit(request), /preparation script/u);
+  const prepared = { ...request, preparationScript, preparation: { identity: "custom identity", example: "a new sentence" } };
+  resourceOwners.add(prepared);
+  assert.equal((await service.preflight(prepared)).canAdd, true);
+  assert.equal((await service.submit(prepared)).state, "added");
+  assert.equal(builds, 2);
+  await assert.rejects(service.submit({ ...prepared, preparationScript: { ...preparationScript, handlerId: "other" } }), /configuration changed/u);
+});
