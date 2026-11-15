@@ -4,6 +4,9 @@
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
 
   const FEEDBACK_PRIORITY = { info: 0, success: 1, warning: 2, error: 3 };
+  // The Mine as kana button's text (#770), one kana that fits the icon-sized
+  // buttons of every renderer; its name says what it does.
+  const KANA_LABEL = "か";
   // Why a Netflix, YouTube or Crunchyroll note has no sentence audio or GIF, by
   // the reason the reader, the page or the worker reported. Tab capture and the
   // line audio report these the same way on every site.
@@ -132,19 +135,19 @@
       duplicate: "Note already exists",
       unavailable: "Anki mining is unavailable",
     }[state] || "Mine to Anki";
-    const title = record.custom && !message ? `${record.label}: ${actionTitle}` : actionTitle;
+    const title = (record.custom || record.kana) && !message ? `${record.label}: ${actionTitle}` : actionTitle;
     button.title = title;
     button.setAttribute("aria-label", title);
     button.setAttribute("aria-busy", String(state === "checking" || state === "mining"));
     button.dataset.action = views(record) ? "view" : "add";
-    if (record.custom) {
+    if (record.custom || record.kana) {
       let label = button.querySelector(".gsm-hoshidicts-text-action-label");
       if (!label) {
         label = button.ownerDocument.createElement("span");
         label.className = "gsm-hoshidicts-text-action-label";
         button.replaceChildren(label);
       }
-      text(label, record.label);
+      text(label, record.kana ? KANA_LABEL : record.label);
       return;
     }
     const iconName = {
@@ -164,6 +167,12 @@
     icon.dataset.icon = iconName;
     button.replaceChildren(icon);
   }
+  // The Anki buttons lead a result's actions, after its close or back button.
+  function leadAction(actions, button) {
+    const leadingAction = actions.firstElementChild;
+    if (leadingAction?.matches(".gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back")) leadingAction.after(button);
+    else actions.prepend(button);
+  }
   // The one Anki button opens Anki instead of adding once there is a note to
   // show: the note it wrote, the write it could not confirm, or the duplicates
   // that block adding.
@@ -181,7 +190,13 @@
       ...record.group.getRequest(record.result),
       configKey: record.configKey,
       templateId: record.templateId,
+      ...(record.kana ? { headword: "reading" } : {}),
     };
+  }
+  // The word a record's note is keyed and found by in Anki: the headword, or
+  // the reading of a note mined as kana.
+  function minedExpression(record) {
+    return record.kana ? record.result.term.reading : record.result.term.expression;
   }
   function decisionState(value) {
     if (value.action === "overwrite" && value.canAdd) return "overwrite";
@@ -209,15 +224,16 @@
   }
   function reusableRecord(record, group, spec) {
     return record?.group === group && record.result === spec.item.result
-      && record.custom === spec.custom && record.templateId === spec.templateId;
+      && record.custom === spec.custom && record.kana === (spec.kana === true) && record.templateId === spec.templateId;
   }
   function createRecord(group, spec) {
-    const { item, binding, custom, templateId, label, add } = spec;
+    const { item, binding, custom, kana = false, templateId, label, add } = spec;
     return {
       ...item,
       binding,
       group,
       custom,
+      kana,
       templateId,
       label,
       ...(add ? { add } : {}),
@@ -265,7 +281,7 @@
   function cachedViewRequest(record) {
     return { request: {
       term: {
-        expression: record.result.term.expression,
+        expression: minedExpression(record),
         reading: record.result.term.reading,
       },
       templateId: record.templateId,
@@ -331,11 +347,12 @@
     // null where the page cannot open Settings.
     openSettings = null,
   }) {
-    const owners = new Map(), bound = new WeakMap();
+    const owners = new Map(), bound = new WeakMap(), kanaButtons = new WeakMap();
     let enabled = false, settingsKey = "", checks = Promise.resolve();
     let primaryTemplateId = "default";
     let templateIds = new Set(["default"]);
     let customButtonTemplates = new Map();
+    let mineAsKana = false;
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
     const boundHere = record => bound.get(record.binding) === record && record.binding.isConnected;
     const current = record => live(record.group) && boundHere(record);
@@ -678,7 +695,7 @@
       try {
         const result = await send("hd_anki_browse", { request: {
           noteIds: Array.isArray(noteIds) ? noteIds : [],
-          expression: record.result.term.expression,
+          expression: minedExpression(record),
           configKey: record.configKey,
           templateId: record.templateId,
         } });
@@ -716,7 +733,7 @@
       const control = document.createElement("div");
       control.className = "gsm-hoshidicts-anki-control";
       const add = record.add || document.createElement("button");
-      if (!record.custom) {
+      if (!record.custom && !record.kana) {
         add.type = "button";
         add.className = "gsm-hoshidicts-mine-button";
       }
@@ -726,14 +743,7 @@
       control.append(output);
       control.hidden = true;
       feedback.append(control);
-      if (!record.custom) {
-        const leadingAction = record.actions.firstElementChild;
-        if (leadingAction?.matches(".gsm-hoshidicts-popup-close, .gsm-hoshidicts-kanji-back")) {
-          leadingAction.after(add);
-        } else {
-          record.actions.prepend(add);
-        }
-      }
+      if (!record.custom && !record.kana) leadAction(record.actions, add);
       Object.assign(record, { feedback, control, add, output, hidden: false });
       setMiningButtonState(record, "checking");
       record.onMouseDown = event => {
@@ -752,6 +762,22 @@
       add.addEventListener("click", record.onClick);
       disabled(record);
     }
+    // Mine as kana (#770): the result's own button, after its Anki button,
+    // made here while the option is on and the headword is not its reading.
+    function kanaButton(actions) {
+      const kept = kanaButtons.get(actions);
+      if (kept?.parentNode === actions) return kept;
+      const add = actions.ownerDocument.createElement("button");
+      add.type = "button";
+      add.className = "gsm-hoshidicts-custom-anki-button gsm-hoshidicts-text-action-button gsm-hoshidicts-mine-kana-button";
+      add.lang = "ja";
+      add.hidden = true;
+      const anki = actions.querySelector(":scope > .gsm-hoshidicts-mine-button");
+      if (anki) anki.after(add);
+      else leadAction(actions, add);
+      kanaButtons.set(actions, add);
+      return add;
+    }
     function recordSpecs(group) {
       const specs = [];
       for (const item of group.items) {
@@ -762,6 +788,12 @@
           templateId: primaryTemplateId,
           label: "Anki",
         });
+        const term = item.result?.term;
+        if (mineAsKana && term?.reading && term.reading !== term.expression) {
+          const add = kanaButton(item.actions);
+          specs.push({ item, binding: add, add, custom: false, kana: true, templateId: primaryTemplateId,
+            label: "Mine as kana" });
+        }
         // A renderer that shows one entry's actions in a shared toolbar names
         // the entry its custom buttons mine; otherwise they are in its row.
         const customActions = "customActions" in item ? item.customActions : item.actions;
@@ -830,10 +862,11 @@
       update(options, ready = true) {
         const anki = globalThis.HDReaderOptions.normaliseAnki(options.anki);
         const customButtons = globalThis.HDReaderOptions.normaliseCustomButtons(options.customButtons);
-        const key = JSON.stringify([ready, anki, customButtons, options.audioSources]);
+        const key = JSON.stringify([ready, anki, customButtons, options.audioSources, options.showMineAsKanaButton]);
         if (key === settingsKey) return;
         settingsKey = key;
         primaryTemplateId = anki.templates[0].id;
+        mineAsKana = options.showMineAsKanaButton === true;
         templateIds = new Set(anki.templates.map(template => template.id));
         customButtonTemplates = new Map(customButtons.filter(button => button.type === "anki")
           .map(button => [button.id, { templateId: button.templateId, label: button.label }]));

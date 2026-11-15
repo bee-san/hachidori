@@ -191,6 +191,9 @@
     popupOpacityPercent: 85,
     sourceHighlightEnabled: true,
     showPopupAudioButton: true,
+    // Anki → Mine as kana (#770): a second Anki button on a Japanese result
+    // whose headword is not its reading, which puts the reading on the card.
+    showMineAsKanaButton: false,
     popupColumns: 1,
     // Yomitan's general.glossaryLayoutMode: "compact" puts a definition's
     // glosses on one line, separated by " | ", in the popup (CSS only);
@@ -1108,6 +1111,7 @@
     wordHighlightKnown: { requires: "wordHighlighting", neutral: false },
     wordHighlightIgnored: { requires: "wordHighlighting", neutral: false },
     wordHighlightStyle: { requires: "wordHighlighting", neutral: "underline" },
+    showMineAsKanaButton: { requires: { scripts: ["Jpan"] }, neutral: false },
   });
 
   function plainObject(value) {

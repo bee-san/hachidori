@@ -12,6 +12,7 @@ export const KEYBIND_OPTION_LABELS = {
   audioAutoplay: "Automatically play the first lookup result",
   sourceHighlightEnabled: "Highlight the word on the page",
   showPopupAudioButton: "Show the audio button",
+  showMineAsKanaButton: "Show the Mine as kana button",
   showLookupCounts: "Record and show lookup counts",
   definitionBlurCountEnabled: "Blur definitions by lookup count",
   definitionBlurAnkiMature: "Blur definitions of mature Anki cards",

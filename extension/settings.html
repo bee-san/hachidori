@@ -1247,6 +1247,14 @@
             </label>
             <p id="smaller-anki-cards-help" class="field-hint">Remove dictionary styling and keep the text, line breaks, lists, tables, furigana and images. Links become plain text. Applies to every Template when adding or updating notes.</p>
           </fieldset>
+          <fieldset class="lookup-group" id="anki-mine-as-kana" data-requires='{"scripts":["Jpan"]}'>
+            <legend data-search-keywords="kana reading headword hiragana katakana spelling">Mine as kana</legend>
+            <label class="lookup-enable">
+              <span>Show the Mine as kana button</span>
+              <input id="opt-mine-as-kana" type="checkbox" aria-describedby="mine-as-kana-help">
+            </label>
+            <p id="mine-as-kana-help" class="field-hint">Adds a か button beside the Anki button of each Japanese result whose headword is written with kanji, such as 拗れる. It adds a note with your first Template whose {expression} and {furigana} are the reading, こじれる, and keeps the result's definitions, sentence, audio and other fields. Duplicates are checked by the reading.</p>
+          </fieldset>
           <fieldset class="lookup-group" id="video-mining-settings">
             <legend data-search-keywords="youtube netflix captions subtitles sentence audio gif">Video mining</legend>
             <label class="lookup-enable">
