@@ -550,7 +550,9 @@ These run separately:
   AnkiConnect with its earlier line as the sentence; the keys follow a rebound
   keybind and leave other controls alone; the history's switch, which ends a
   visit, and a walk in the box on its draft, when turned off; a second page in
-  the popup window; Settings → Advanced's count, lowered limit (a refused save
+  the popup window, where Tab past the result comes back to the box with its
+  text selected, Shift+Tab keeps its order, and the popup window shortcut
+  brings the window forward with the box's text selected (#768); Settings → Advanced's count, lowered limit (a refused save
   deletes nothing) and Clear history, whose status stays off Reading's rail
   link; and `HDSearchHistory`, which lists, edits and removes lines, tells of
   each change, pauses the Clipboard monitor's text and looks a word up.

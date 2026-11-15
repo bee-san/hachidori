@@ -21,9 +21,16 @@ async function searchWindow(api) {
   return { type: "popup", width, height };
 }
 
+// The page brought forward focuses its box and selects the box's text, so the
+// next keystroke replaces the last query (#768): search-shell.js hands the
+// message to its frame as an Escape. A page still starting has no listener
+// yet, and focuses its empty box itself as it starts.
+export const FOCUS_SEARCH_BOX = "hachidori-search-focus";
+
 async function bringForward(api, { tabId, windowId }) {
   await api.tabs.update(tabId, { active: true });
   await api.windows.update(windowId, { focused: true });
+  await api.runtime.sendMessage({ target: FOCUS_SEARCH_BOX, tabId }).catch(() => {});
 }
 
 // `mode` is Yomitan's: "existingOrNewTab" (Open the search page in a new tab),

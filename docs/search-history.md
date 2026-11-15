@@ -130,7 +130,8 @@ the newest line unless it is the newest already.
 ### In the searched text
 
 After a search the searched text has focus, unless focus was in the popup or
-another control. A click or Tab gives it focus too. It is a read-only text
+another control. A click or Tab gives it focus too, and Tab past the
+result's last control comes back to the box, its text selected. It is a read-only text
 box, so a screen reader passes it the arrow keys, and each word the cursor
 reaches is read out from a polite live region once its lookup answers, and
 again when focus comes to the text; a click that moves the cursor reads out

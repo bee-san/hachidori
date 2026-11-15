@@ -671,8 +671,46 @@ try {
     { polling: 50, timeout: 15_000 });
   assert.deepEqual((await lines()).at(-1).page, "popup");
   assert.deepEqual(await lines(windowFrame), await lines());
-  await popupWindow.close();
   console.log("PASS: the popup window's lines are kept with its window, and the search page in a tab hears them");
+
+  // Tab from the searched text, past the result's controls, comes back to the
+  // box with its text selected; Shift+Tab keeps its order. The shortcut that
+  // brings the window forward selects the box's text too, and leaves the
+  // other search page's focus alone (#768).
+  const focusIn = target => target.evaluate(() => {
+    const box = document.getElementById("search-input");
+    return { focused: document.activeElement?.id || document.activeElement?.localName,
+      selected: box.selectionStart === 0 && box.selectionEnd === box.value.length && box.value !== "" };
+  });
+  await windowFrame.waitForFunction(() => document.activeElement?.id === "search-query", { polling: 50, timeout: 15_000 });
+  await popupWindow.bringToFront();
+  await popupWindow.keyboard.down("Shift");
+  await popupWindow.keyboard.press("Tab");
+  await popupWindow.keyboard.up("Shift");
+  assert.equal((await focusIn(windowFrame)).focused, "search-submit", "Shift+Tab from the searched text");
+  await windowFrame.focus("#search-query");
+  const stops = [];
+  for (let state = await focusIn(windowFrame); state.focused !== "search-input"; state = await focusIn(windowFrame)) {
+    assert.ok(stops.length < 40, `Tab reaches the box: ${stops.join(", ")}`);
+    await popupWindow.keyboard.press("Tab");
+    stops.push(state.focused);
+  }
+  assert.ok((await focusIn(windowFrame)).selected, `the box's text is selected after ${stops.join(", ")}`);
+  await windowFrame.focus("#search-query");
+  const tabFocus = await focusIn(frame);
+  await settings.evaluate(async () => {
+    const { openSearchPage } = await import(chrome.runtime.getURL("search-window.js"));
+    await openSearchPage(chrome, "popup");
+  });
+  await windowFrame.waitForFunction(() => {
+    const box = document.getElementById("search-input");
+    return document.activeElement === box && box.selectionStart === 0 && box.selectionEnd === box.value.length;
+  }, { polling: 50, timeout: 15_000 });
+  assert.deepEqual(await focusIn(frame), tabFocus, "the search page in a tab keeps its focus");
+  if (SCREENSHOTS) await popupWindow.screenshot({ path: resolve(SCREENSHOTS, "search-window-box-selected.png") });
+  await popupWindow.close();
+  console.log("PASS: Tab past the result comes back to the box with its text selected, Shift+Tab keeps its order,"
+    + " and the shortcut brings the window forward with the box's text selected");
 
   // Settings counts the lines, applies a lowered limit at once and clears them.
   await settings.goto(`chrome-extension://${extensionId}/settings.html#advanced`, { waitUntil: "domcontentloaded" });
