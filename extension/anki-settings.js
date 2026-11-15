@@ -128,10 +128,11 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
       });
       option.addEventListener("pointerdown", event => event.preventDefault());
       option.addEventListener("click", () => select(index));
+      const groupName = marker.marker.startsWith("glossary-selection-group-") ? ` ${marker.description}` : "";
       return {
         ...marker,
         element: option,
-        search: `${marker.marker} ${marker.value}${marker.marker.startsWith("glossary-selection-group-") ? ` ${marker.description}` : ""}`.toLocaleLowerCase(),
+        search: `${marker.marker} ${marker.value}${groupName}`.toLocaleLowerCase(),
       };
     });
     listbox.replaceChildren(...options.map(option => option.element), empty);
