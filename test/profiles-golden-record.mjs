@@ -38,7 +38,9 @@
 // checked against reader-options.js for every record (and the old hashes once
 // the key is taken out). When More custom buttons joined Experimental
 // features, each recorded result gained `popupActions: false` after
-// `multipleLanguages` in `experimental` the same way.
+// `multipleLanguages` in `experimental` the same way. When Word highlighting
+// gained Other note types (#700), each recorded result gained
+// `wordHighlightNoteTypes: []` after `wordHighlightStyle` the same way.
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one
