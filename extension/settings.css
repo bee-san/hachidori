@@ -2497,6 +2497,10 @@ textarea {
 }
 .custom-button-actions { display: flex; gap: 6px; }
 .custom-button-form { display: grid; gap: 8px; }
+.custom-button-form textarea { width: 100%; font-family: ui-monospace, monospace; }
+.custom-button-presets { display: grid; gap: 6px; min-width: 0; margin: 6px 0; padding: 0; border: 0; }
+.custom-button-presets > legend { padding: 0; }
+.custom-button-preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .custom-button-form input[type="text"] { width: 100%; }
 
 /* Advanced → User scripts: a switch, the package and its actions on a row; an

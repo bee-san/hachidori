@@ -45,6 +45,44 @@ list order, top to bottom.
   share the page's own world and its globals; in GameSentenceMiner's overlay
   window, that includes Node.
 
+## Custom buttons
+
+With Experimental features → **More custom buttons** on, Design → Custom
+buttons can add a button of the kind **Tell a user script**. The popup shows it
+like any custom button and leaves its press to the user's scripts:
+
+- A press dispatches `hachidori-button` on the button, inside the popup's
+  root, bubbling. Its `detail` is a JSON string `{ id, label, entry, word,
+  reading, sentence }`: the button's stored id and name, the index of the
+  result whose row holds it, and the word, reading and sentence a custom link
+  gets for `%w`, `%r` and `%s`.
+- A script runs a button action by dispatching `hachidori-action` on an
+  element inside the popup's root, with `detail` the JSON string `{ action,
+  argument }`. `action` is one a button may run (Settings → Keybinds' popup
+  actions), and the action acts on the result whose row holds the element, or
+  else on the current result. The reader ignores the event while More custom
+  buttons is off.
+
+Both events stay inside the closed root, which the page cannot reach, and
+their `detail` is a string for the same reason as Crunchyroll mining's events.
+
+```js
+let root = null;
+window.addEventListener("hachidori-popup-shown", () => {
+  const shown = document.querySelector("hachidori-host")?.shadowRoot;
+  if (!shown || shown === root) return;
+  root = shown;
+  root.addEventListener("hachidori-button", event => {
+    const { label, word, reading } = JSON.parse(event.detail);
+    if (label !== "Speak") return;
+    speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(reading || word), { lang: "ja-JP" }));
+    // Then open the word's notes in Anki, as a View in Anki button would.
+    event.target.dispatchEvent(new CustomEvent("hachidori-action", { bubbles: true,
+      detail: JSON.stringify({ action: "viewNotes" }) }));
+  });
+});
+```
+
 ## Settings
 
 Settings → Advanced → User scripts lists the user's packages under **Your

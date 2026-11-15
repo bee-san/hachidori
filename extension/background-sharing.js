@@ -9,6 +9,7 @@ import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./s
 import {
   MCP_CAPABILITY, API_CAPABILITY, API_CLIENT_ORIGIN, FORWARDED_REQUESTS, LANGUAGE_PROFILES_CAPABILITY, LANGUAGE_PROFILES_OPT_IN,
   LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
+  LINKED_BUTTONS_CAPABILITY,
   browserName, mutatingForwardedRequest, parseLinkAddress, sharingPort,
 } from "./sharing-protocol.js";
 import {
@@ -436,10 +437,15 @@ function sharingStatus() {
     client: { ...client, display: client.address === null ? null : parseLinkAddress(client.address).display } };
 }
 
+const UNSUPPORTED_BY_CAPABILITY = {
+  [LINKED_IMPORT_CAPABILITY]: LINKED_IMPORT_UNSUPPORTED,
+  [LINKED_BUTTONS_CAPABILITY]: "Update the linked Hachidori before saving these custom buttons.",
+};
+
 function forwardToHost(message, capability = null) {
   return getSharingClient().forward(message, {
     capability,
-    unsupported: capability === LINKED_IMPORT_CAPABILITY ? LINKED_IMPORT_UNSUPPORTED : LINKED_ANKI_UNSUPPORTED,
+    unsupported: UNSUPPORTED_BY_CAPABILITY[capability] ?? LINKED_ANKI_UNSUPPORTED,
     mutation: mutatingForwardedRequest(message),
   }).catch(error => failureReply(message, error));
 }
@@ -474,10 +480,37 @@ async function forwardProfileRequest(message) {
 function linkedOptionsCapability(message) {
   if (message?.type !== "hd_options_write") return null;
   const patch = message.options;
-  return patch && typeof patch === "object"
-    && (Object.hasOwn(patch, "anki") || Object.hasOwn(patch, "customButtons"))
-    ? LINKED_ANKI_CAPABILITY
-    : null;
+  if (!patch || typeof patch !== "object") return null;
+  // A host without More custom buttons would drop these buttons, or mine an
+  // Anki button's substitutions with its Template alone.
+  if (Array.isArray(patch.customButtons) && validateOptionsPatch({ customButtons: patch.customButtons })
+    .customButtons.some(extendedCustomButton)) return LINKED_BUTTONS_CAPABILITY;
+  return Object.hasOwn(patch, "anki") || Object.hasOwn(patch, "customButtons") ? LINKED_ANKI_CAPABILITY : null;
+}
+
+const extendedCustomButton = button => globalThis.HDReaderOptions.extendedCustomButton(button);
+
+// A reading browser without More custom buttons saves the buttons it knows:
+// link and plain Anki buttons. Its list replaces those; this host's action and
+// script buttons stay where they were, and a button it saved keeps the icon
+// and marker substitutions it could not see.
+function mergeCustomButtonsFromOlderReader(currentButtons, incoming) {
+  const current = new Map(currentButtons.map(button => [button.id, button]));
+  const kept = incoming.map(button => {
+    const stored = current.get(button.id);
+    if (stored?.type !== button.type) return button;
+    return { ...button, ...(stored.icon ? { icon: stored.icon } : {}),
+      ...(stored.markers && button.type === "anki" && stored.templateId === button.templateId ? { markers: stored.markers } : {}) };
+  });
+  const known = button => button.type === "link" || button.type === "anki";
+  let index = 0;
+  const merged = [];
+  for (const button of currentButtons) {
+    if (!known(button)) merged.push(button);
+    else if (index < kept.length) merged.push(kept[index++]);
+  }
+  merged.push(...kept.slice(index));
+  return merged;
 }
 
 const LINKED_SETTINGS_UPDATE_REQUIRED =
@@ -552,7 +585,8 @@ function mergeLegacyAnki(current, legacy) {
 async function compatibleLinkedWorkerMessage(message, sender) {
   const capabilities = sender.linkedCapabilities;
   if (message.type !== "hd_options_write" || !Array.isArray(capabilities)
-      || capabilities.includes(LINKED_ANKI_CAPABILITY)) return message;
+      || capabilities.includes(LINKED_BUTTONS_CAPABILITY)) return message;
+  if (capabilities.includes(LINKED_ANKI_CAPABILITY)) return olderReaderButtons(message);
   const patch = message.options;
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return message;
   const richAnki = patch.anki && typeof patch.anki === "object"
@@ -572,6 +606,18 @@ async function compatibleLinkedWorkerMessage(message, sender) {
     compatible.anki = mergeLegacyAnki(stored.anki, legacy);
   }
   return { ...message, options: compatible };
+}
+
+// A reading browser with Templates and custom buttons but not More custom
+// buttons (linked-anki-v2 without linked-buttons-v1).
+async function olderReaderButtons(message) {
+  const patch = message.options;
+  if (!patch || typeof patch !== "object" || !Array.isArray(patch.customButtons)) return message;
+  const incoming = validateOptionsPatch({ customButtons: patch.customButtons }).customButtons;
+  const stored = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
+  const current = globalThis.HDReaderOptions.projectOptions(stored, message.profileId ?? JAPANESE_PROFILE_ID,
+    { masked: false }).customButtons;
+  return { ...message, options: { ...patch, customButtons: mergeCustomButtonsFromOlderReader(current, incoming) } };
 }
 
 function forwardWorkerRequest(message) {

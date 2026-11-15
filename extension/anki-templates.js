@@ -277,6 +277,28 @@ export function ankiPresetCoreMapped(fieldTemplates, family) {
     && values.has(table.sentence ?? table.Sentence);
 }
 
+// More custom buttons: an Anki button that renders other markers than its
+// Template, as { [Template marker]: marker }, so { expression: "reading" }
+// writes the reading wherever the Template writes {expression}. A marker the
+// substitution introduces is checked as the Template's own are.
+export function substituteAnkiMarkers(resolved, substitutions) {
+  if (!substitutions) return resolved;
+  const substitute = value => value.replace(MARKER_PATTERN, (match, name) => {
+    const lower = name.toLowerCase();
+    const key = Object.hasOwn(substitutions, lower) ? lower : MARKER_ALIASES.get(lower);
+    return key !== undefined && Object.hasOwn(substitutions, key) ? `{${substitutions[key]}}` : match;
+  });
+  const templates = Object.fromEntries(Object.entries(resolved.templates)
+    .map(([field, template]) => [field, { ...template, value: substitute(template.value) }]));
+  const errors = [...resolved.errors];
+  for (const [field, template] of Object.entries(templates)) {
+    for (const error of ankiTemplateErrors(template.value).map(text => `Field “${field}”: ${text}`)) {
+      if (!errors.includes(error)) errors.push(error);
+    }
+  }
+  return { ...resolved, templates, errors };
+}
+
 export function resolveAnkiTemplates(config, fields) {
   if (config.fieldTemplates === null) return basicTemplates(config, fields);
   const saved = config.fieldTemplates;

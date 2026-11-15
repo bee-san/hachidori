@@ -2035,13 +2035,13 @@ html[data-hoshidicts-theme="girlypop"],
 /* With labelled custom buttons the toolbar would wrap above the headword at
    its natural width; keep the shared row by letting it shrink from a fixed
    basis instead (the labels truncate, see .gsm-hoshidicts-text-action-label). */
-.gsm-hoshidicts-entry-header:has(> .gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button)
+.gsm-hoshidicts-entry-header:has(> .gsm-hoshidicts-entry-actions
+    > .gsm-hoshidicts-text-action-button:not([data-custom-button-icon]))
   > .gsm-hoshidicts-entry-actions {
   flex: 1 1 270px;
 }
 
-.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-external-link-button,
-.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-custom-anki-button {
+.gsm-hoshidicts-entry-actions > .gsm-hoshidicts-text-action-button {
   /* Natural width, but still able to shrink so the row never overflows. */
   flex: 0 1 auto;
   min-width: var(--hd-control-size);
@@ -2240,6 +2240,22 @@ html[data-hoshidicts-theme="girlypop"],
   border-radius: 50%;
   content: "";
   animation: gsm-hoshidicts-spin 0.8s linear infinite;
+}
+
+/* A custom button with an icon (More custom buttons) is square, like the
+   built-in actions; its name stays its accessible name. */
+.gsm-hoshidicts-text-action-button[data-custom-button-icon] {
+  flex: 0 0 var(--hd-control-size);
+  width: var(--hd-control-size);
+  padding: 0;
+}
+
+.gsm-hoshidicts-text-action-button[hidden] {
+  display: none;
+}
+
+.gsm-hoshidicts-text-action-label.gsm-hoshidicts-custom-action-icon {
+  font-size: 0;
 }
 
 .gsm-hoshidicts-text-action-label {

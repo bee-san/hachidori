@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "../extension/reader-options.js";
-import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { createAnkiWorkerService, profileTemplateKey } from "../extension/anki-worker.js";
 import { buildAnkiFields } from "../extension/anki-values.js";
 import { AnkiTransportError } from "../extension/anki.js";
 
@@ -1091,4 +1091,60 @@ test("pronunciation enrichment keeps a refused or replaced GIF out of its field,
     if (outcome === "stored") assert.deepEqual(result.warnings, []);
     else assert.match(result.warnings.join(" "), /GIF: /u);
   });
+});
+
+// #770: Mine as kana. The worker reads the button's substitutions from its
+// own settings; a request cannot supply them, and a button that lost them is
+// unavailable rather than mining with its Template alone.
+test("a custom Anki button's marker substitutions apply to its Template's fields, from the worker's own settings", async () => {
+  const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
+  let options = globalThis.HDReaderOptions.normaliseOptions({
+    anki: { url: "http://127.0.0.1:8765", apiKey: "", templates: [
+      { ...base, id: "default", name: "Word", model: "Word", deck: "Words", duplicateBehavior: "new", duplicateScope: "deck",
+        fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
+          Back: { value: "{reading}", overwriteMode: "overwrite" } } }] },
+    customButtons: [{ id: "kana", type: "anki", label: "Mine as kana", templateId: "default",
+      markers: { expression: "reading" } }],
+  });
+  const writes = [];
+  const gateway = {
+    async discover(config) { return { connected: true, model: config.model, models: [config.model],
+      decks: [config.deck], fields: ["Front", "Back"], errors: [] }; },
+    async invoke(action, params) {
+      if (action === "canAddNotesWithErrorDetail") return [{ canAdd: true, error: null }];
+      if (action === "findNotes") return [];
+      if (action === "addNote") { writes.push(params.note.fields); return 100 + writes.length; }
+      if (action === "notesInfo") return params.notes.map(noteId => ({ noteId, modelName: "Word",
+        fields: Object.fromEntries(Object.entries(writes[noteId - 101]).map(([field, value]) => [field, { value }])) }));
+      throw new Error(`Unexpected ${action}`);
+    },
+  };
+  // The word index holds the note Anki has for 拗れる, keyed by its {expression}.
+  const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
+    duplicateIndex: testIndex(async (_config, expression) => (expression === "拗れる" ? [55] : [])),
+    readDictionaries: async () => [],
+    engine: async () => ({ generation: 9, ready: true, loading: false }),
+    offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates,
+      { audio: message.audio }), media: [] }),
+  });
+  const request = (templateId, configKey) => ({ templateId, configKey,
+    term: { expression: "拗れる", reading: "こじれる" }, sentence: "話が拗れる。", generation: 9,
+    trace: [], matched: "拗れる", matchOffset: 2, popupSelectionText: "", searchQuery: "拗れる",
+    documentTitle: "Test", dictionaryAliases: {}, frequencyDictionaries: [], markers: { expression: "sentence" } });
+  const kana = profileTemplateKey(undefined, "default", "kana");
+  const plain = await service.status("default");
+  const status = await service.status(kana);
+  assert.equal(status.available, true);
+  assert.notEqual(status.configKey, plain.configKey, "the button's configuration is its own");
+  // The index answers for the Template's {expression}; the button writes the
+  // reading, which Anki's own search finds no note for.
+  assert.deepEqual((await service.preflight(request("default", plain.configKey))).noteIds, [55]);
+  const kanaDecision = await service.preflight(request(kana, status.configKey));
+  assert.equal(kanaDecision.state, "addable");
+  assert.equal(kanaDecision.noteIds ?? undefined, undefined);
+  assert.equal((await service.submit(request(kana, status.configKey))).state, "added");
+  assert.equal((await service.submit(request("default", plain.configKey))).state, "added");
+  assert.deepEqual(writes, [{ Front: "こじれる", Back: "こじれる" }, { Front: "拗れる", Back: "こじれる" }]);
+  options = { ...options, customButtons: [{ id: "kana", type: "anki", label: "Mine as kana", templateId: "default" }] };
+  await assert.rejects(service.status(kana), /no longer available/u);
 });

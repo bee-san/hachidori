@@ -149,7 +149,7 @@ async function sharingHostStage() {
       && JSON.stringify(listening.sharing.clients[0].capabilities) === JSON.stringify(["linked-anki-v1"])
       && listening.sharing.clients[0].address === "127.0.0.1" && listening.sharing.clients[0].local === true
       && hello?.kind === "hello" && hello.protocol === 1 && hello.version === "0.0.0-smoke" && hello.name === "another browser" && hello.dictionaryCount === 1
-      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"])
+      && JSON.stringify(hello.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "linked-buttons-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"])
       && JSON.stringify(Object.keys(hello.snapshot).sort()) === JSON.stringify(["customDictionarySource", "dictionaryState", "dictionaryUpdates", "lookupStats", "options",
         "wordStatusOverrides"])
       && hello.snapshot.options === null,
@@ -322,6 +322,41 @@ async function sharingHostStage() {
       && /Update the linked Hachidori/u.test(legacyRichReply.response.error)
       && JSON.stringify(storage.raw.get("options")) === beforeRichWrite,
     JSON.stringify({ legacyLinksReply, legacyAnkiReply, legacyRichReply, afterLegacyLinks, afterLegacyAnki }));
+
+  // A reader with Templates and custom buttons but not More custom buttons
+  // (linked-anki-v2 without linked-buttons-v1) saves the buttons it knows.
+  const moreButtons = { ...storage.raw.get("options"), revision: storage.raw.get("options").revision + 1,
+    customButtons: [
+      { id: "host-view", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" },
+      { id: "host-link-a", type: "link", label: "A", url: "https://a.example/%w", icon: "search" },
+      { id: "host-kana", type: "anki", label: "Kana", templateId: "word-template", markers: { expression: "reading" } },
+      { id: "host-speak", type: "script", label: "Speak" },
+    ] };
+  await storage.api().local.set({ options: moreButtons });
+  socket.receive({ kind: "client-open", clientId: "client-2", origin: "chrome-extension://olderbrowser", address: "127.0.0.1" });
+  socket.receive({ kind: "client-text", clientId: "client-2", text: JSON.stringify({ kind: "hello", protocol: 1,
+    version: "0.5.2", name: "Older", capabilities: ["linked-anki-v1", "linked-anki-v2"] }) });
+  const toOlder = () => socket.sent.filter(frame => frame.kind === "send" && frame.clientId === "client-2")
+    .map(frame => JSON.parse(frame.text));
+  await settle(() => toOlder().some(frame => frame.kind === "hello"));
+  socket.receive({ kind: "client-text", clientId: "client-2", text: JSON.stringify({ kind: "request", id: "older-buttons",
+    message: { target: "hoshidicts-worker", type: "hd_options_write", requestId: "older-buttons-write",
+      baseRevision: moreButtons.revision, options: { customButtons: [
+        { id: "host-kana", type: "anki", label: "Kana card", templateId: "word-template" },
+        { id: "older-link", type: "link", label: "New", url: "https://new.example/%w" },
+        { id: "host-link-a", type: "link", label: "A", url: "https://a.example/%w" },
+      ] } } }) });
+  await settle(() => toOlder().some(frame => frame.kind === "reply" && frame.id === "older-buttons"));
+  const olderReply = toOlder().find(frame => frame.kind === "reply" && frame.id === "older-buttons");
+  const afterOlder = storage.raw.get("options").customButtons;
+  check("an older linked reader's button list keeps the host's action and script buttons, icons and marker substitutions",
+    olderReply.response?.ok === true && JSON.stringify(afterOlder) === JSON.stringify([
+      { id: "host-view", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" },
+      { id: "host-kana", type: "anki", label: "Kana card", templateId: "word-template", markers: { expression: "reading" } },
+      { id: "older-link", type: "link", label: "New", url: "https://new.example/%w" },
+      { id: "host-speak", type: "script", label: "Speak" },
+      { id: "host-link-a", type: "link", label: "A", url: "https://a.example/%w", icon: "search" },
+    ]), JSON.stringify({ olderReply, afterOlder }));
 
   const currentOptions = storage.raw.get("options");
   const setupBase = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
@@ -628,9 +663,9 @@ async function sharingClientStage() {
   const mirrorSet = storage.sets.find(keys => keys.includes("dictionaryState") && keys.includes("options") && keys.includes("lookupStats"));
   check("linking keeps this install's shared state aside and mirrors the host's snapshot in one write",
     probe.url === "ws://127.0.0.1:9100/link" && probe.sent[0]?.kind === "hello"
-      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"]) && probe.readyState === 3
+      && JSON.stringify(probe.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "linked-buttons-v1"]) && probe.readyState === 3
       && socket.sent[0]?.kind === "hello" && socket.sent[0].protocol === 1
-      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2"])
+      && JSON.stringify(socket.sent[0]?.capabilities) === JSON.stringify(["linked-anki-v1", "linked-anki-v2", "linked-buttons-v1"])
       && linkedReply.ok === true && linkedReply.sharing.client.linked === true && linkedReply.sharing.client.address === "ws://127.0.0.1:9100/link"
       && linkedReply.sharing.client.display === "this computer"
       && linkedStatus.sharing.client.connected === true && linkedStatus.sharing.client.host?.name === "Chrome"

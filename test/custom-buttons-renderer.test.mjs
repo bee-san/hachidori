@@ -24,6 +24,7 @@ function fixture(t) {
   }
   const popup = document.getElementById("popup");
   const opened = [];
+  const pressed = [];
   const links = [{ id: "lookup", type: "link", label: "Look up", url: "https://example.test/search?word=%w&reading=%r&sentence=%s" }];
   const view = window.HDPopup.createPopupView({ document, window, popup,
     appendExpressionRuby: window.HDGlossary.appendExpressionRuby,
@@ -31,12 +32,13 @@ function fixture(t) {
     appendTextOnlyGlossary: window.HDGlossary.appendTextOnlyGlossary,
     parseTagList: window.HDGlossary.parseTagList, positionPopup() {}, customButtons: links,
     onCustomLinkClick: link => opened.push({ ...link }),
+    onCustomActionClick: press => pressed.push(press),
   });
   const anchor = document.querySelector("p");
   const candidate = { anchor, query: "食べる", sentence: anchor.textContent,
     sourceElements: [anchor], matchOffset: 3 };
   t.after(() => { view.destroy(); window.close(); });
-  return { popup, view, window, candidate, opened, links,
+  return { popup, view, window, candidate, opened, pressed, links,
     link: () => popup.querySelector(".gsm-hoshidicts-external-link-button") };
 }
 
@@ -128,4 +130,38 @@ test("still-mounted links from an obsolete term, kanji or selection request cann
     f.link().click();
     assert.equal(f.opened.length, 0, kind);
   }
+});
+
+test("action and script buttons hand their press and entry to the reader, and an icon replaces the name", t => {
+  const f = fixture(t);
+  f.view.setCustomButtons([
+    { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" },
+    { id: "speak", type: "script", label: "Speak" },
+  ]);
+  f.view.renderResults([result("食べる", "たべる", "A")], f.candidate,
+    { dictionaryPresentation: [{ title: "A", favorite: true }] });
+  const action = f.popup.querySelector(".gsm-hoshidicts-custom-action-button");
+  const script = f.popup.querySelector(".gsm-hoshidicts-custom-script-button");
+  assert.equal(action.dataset.customAction, "viewNotes");
+  assert.equal(action.dataset.customButtonIcon, "book-search");
+  assert.equal(action.getAttribute("aria-label"), "View in Anki");
+  const icon = action.firstElementChild;
+  assert.ok(icon.classList.contains("hd-icon"));
+  assert.equal(icon.dataset.icon, "book-search");
+  assert.equal(icon.getAttribute("aria-hidden"), "true");
+  assert.equal(script.dataset.customButtonIcon, undefined);
+  assert.equal(script.textContent, "Speak");
+  action.click();
+  script.click();
+  assert.deepEqual(f.pressed.map(press => [press.button, press.value.id, press.prefill.term]),
+    [[action, "view", "食べる"], [script, "speak", "食べる"]]);
+  // Removing the icon brings the name back in place.
+  f.view.setCustomButtons([{ id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "" }]);
+  assert.equal(action.dataset.customButtonIcon, undefined);
+  assert.ok(!action.firstElementChild.classList.contains("hd-icon"));
+  assert.equal(action.textContent, "View in Anki");
+  // A hidden button (View notes with nothing to view) does nothing.
+  action.disabled = true;
+  action.click();
+  assert.equal(f.pressed.length, 2);
 });

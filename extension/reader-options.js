@@ -39,6 +39,10 @@
     // switches language; the profiles and this browser's choice are kept.
     { id: "multipleLanguages", label: "Multiple languages", section: "languages",
       description: "Read other languages besides Japanese, such as English, Korean, Spanish or Arabic, each with its own dictionaries, settings, Anki Templates and pronunciation sources. Adds Languages under Advanced, where you add a language and choose the one lookups use; with two or more, the toolbar switches between them. Turning this off returns lookups to Japanese and keeps the languages you added, with their settings and dictionaries, for the next time you turn it on." },
+    // docs/custom-buttons-and-templates.md. Off, the popup shows only link and
+    // plain Anki buttons; the other buttons are kept for the next time.
+    { id: "popupActions", label: "More custom buttons",
+      description: "Adds more kinds of button under Design → Custom buttons: any keybind action, such as View notes in Anki on a word that is already in Anki, or Play audio; Anki buttons that use other markers than their Template, such as Mine as kana; buttons your user scripts answer; icons; and ready-made buttons to start from. Turning this off hides those buttons and keeps them." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -83,6 +87,15 @@
     { id: "searchRowDown", label: "Row below, or the later line", scopes: ["search"] },
   ].map(action => ({ scopes: ["popup"], ...action }));
   const KEYBIND_ARGUMENT_DEFAULTS = { count: "1", audioSource: "", option: "" };
+  // The actions a custom button may run (More custom buttons): the popup's
+  // keybind actions, which act on the entry whose row holds the button.
+  const BUTTON_ACTIONS = KEYBIND_ACTIONS.filter(action => action.id !== "" && action.scopes.includes("popup"));
+  // The icons a custom button may show instead of its name (icons.css).
+  const BUTTON_ICONS = ["book-search", "search", "open", "add", "document-add", "speaker-2", "checkmark",
+    "prohibited", "star", "edit", "arrow-sync", "key", "settings"];
+  // A custom button's kinds. `link` and `anki` are the original two; the rest
+  // and a button's `icon` and `markers` are More custom buttons.
+  const CUSTOM_BUTTON_TYPES = ["link", "anki", "action", "script"];
   // Yomitan's popup scope, adapted: Hachidori's hover popup never takes focus,
   // so it means "while a popup is open or opening". Search is the search page,
   // as Yomitan's; web is anywhere on the page.
@@ -460,6 +473,39 @@
     }));
   }
 
+  // A marker's name as a substitution names it: what is between its braces.
+  const validMarkerName = value => typeof value === "string" && value.trim() !== ""
+    && value.length <= STABLE_ID_MAX_LENGTH && !/[{}\u0000-\u001f\u007f]/u.test(value);
+
+  // An Anki button's marker substitutions: { [Template marker]: marker it renders
+  // as }, so { expression: "reading" } mines the reading where the Template says
+  // {expression}. Null when there are none.
+  function normaliseButtonMarkers(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const entries = Object.entries(value).filter(([from, to]) => validMarkerName(from) && validMarkerName(to)
+      && from.trim().toLowerCase() !== to.trim().toLowerCase())
+      .map(([from, to]) => [from.trim().toLowerCase(), to.trim().toLowerCase()]);
+    return entries.length ? Object.fromEntries(entries) : null;
+  }
+
+  function normaliseCustomButton(button) {
+    const base = { id: button.id, type: button.type, label: button.label };
+    let normalized = null;
+    if (button.type === "link" && typeof button.url === "string" && button.url.trim()) {
+      normalized = { ...base, url: button.url };
+    } else if (button.type === "anki" && validIdentifier(button.templateId)) {
+      normalized = { ...base, templateId: button.templateId };
+      const markers = normaliseButtonMarkers(button.markers);
+      if (markers !== null) normalized.markers = markers;
+    } else if (button.type === "action" && BUTTON_ACTIONS.some(action => action.id === button.action)) {
+      normalized = { ...base, action: button.action, argument: keybindArgument(button.action, button.argument) };
+    } else if (button.type === "script") {
+      normalized = base;
+    }
+    if (normalized !== null && BUTTON_ICONS.includes(button.icon)) normalized.icon = button.icon;
+    return normalized;
+  }
+
   function normaliseCustomButtons(value) {
     if (!Array.isArray(value)) return [];
     const ids = new Set();
@@ -467,17 +513,28 @@
       if (!button || !validIdentifier(button.id) || ids.has(button.id)
           || typeof button.label !== "string" || !button.label.trim()
           || /[\u0000-\u001f\u007f]/u.test(button.label)) return [];
-      let normalized;
-      if (button.type === "link" && typeof button.url === "string" && button.url.trim()) {
-        normalized = { id: button.id, type: "link", label: button.label, url: button.url };
-      } else if (button.type === "anki" && validIdentifier(button.templateId)) {
-        normalized = { id: button.id, type: "anki", label: button.label, templateId: button.templateId };
-      } else {
-        return [];
-      }
+      const normalized = normaliseCustomButton(button);
+      if (normalized === null) return [];
       ids.add(button.id);
       return [normalized];
     });
+  }
+
+  // A button that only More custom buttons shows: an action or script
+  // button, or an Anki button with marker substitutions, which its Template
+  // alone would mine differently.
+  const popupActionsButton = button => !["link", "anki"].includes(button.type) || Object.hasOwn(button, "markers");
+
+  // Whether a button has anything the original link and Anki buttons do not:
+  // such a button, or an icon. A linked browser that cannot keep these may
+  // not write them (sharing.md).
+  const extendedCustomButton = button => popupActionsButton(button) || Object.hasOwn(button, "icon");
+
+  // The buttons the popup shows: all of them with More custom buttons on;
+  // without it, the others by name. A hidden button keeps its settings.
+  function effectiveCustomButtons(buttons, experimental) {
+    if (experimental?.popupActions === true) return buttons;
+    return buttons.filter(button => !popupActionsButton(button)).map(({ icon: _icon, ...button }) => button);
   }
 
   // An installed Script Store package's slug and version, which Update compares
@@ -991,7 +1048,9 @@
         && Object.keys(raw[index]).length === Object.keys(script).length
         && JSON.stringify(script) === JSON.stringify(Object.fromEntries(Object.keys(script).map(field => [field, raw[index][field]]))));
     if (key === "audioSources" || key === "customLinks" || key === "customButtons") return Array.isArray(raw) && raw.length === normalized.length
-      && normalized.every((source, index) => Object.entries(source).every(([field, value]) => raw[index][field] === value));
+      && normalized.every((source, index) => Object.entries(source).every(([field, value]) =>
+        // An Anki button's marker substitutions are the one field that is an object.
+        (field === "markers" ? JSON.stringify(raw[index][field]) === JSON.stringify(value) : raw[index][field] === value)));
     return typeof raw === typeof DEFAULT_OPTIONS[key] && raw === normalized;
   }
 
@@ -1556,7 +1615,9 @@
     EXPERIMENTAL_FEATURES,
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
-    normaliseCustomButtons, normaliseUserScripts, javaScriptUserScripts, userPopupStyles, normaliseExperimental, ankiTemplateConfig,
+    normaliseCustomButtons, BUTTON_ACTIONS, BUTTON_ICONS, CUSTOM_BUTTON_TYPES, popupActionsButton, extendedCustomButton,
+    effectiveCustomButtons,
+    normaliseUserScripts, javaScriptUserScripts, userPopupStyles, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,
     GLOSSARY_LAYOUT_MODES, PITCH_ACCENT_FURIGANA_STYLES, WORD_HIGHLIGHT_STYLES,

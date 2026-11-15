@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY,
+  DEFAULT_SHARING_PORT, LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_BUTTONS_CAPABILITY,
   LINKED_IMPORT_TARGET, MAX_LINKED_ANKI_FRAME_BYTES, SHARING_CAPABILITIES,
   allowLinkedAnkiDiscoveryRequest, allowLinkedAnkiRequest, allowLinkedAnkiSetupRequest, allowLinkedImportRequest,
   assertLinkedAnkiFrame, browserName,
@@ -104,7 +104,7 @@ test("frames are validated on both sides", () => {
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "0.1.0", name: "GSM",
     capabilities: SHARING_CAPABILITIES })),
   { kind: "hello", version: "0.1.0", name: "GSM", capabilities: [...SHARING_CAPABILITIES] });
-  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY]);
+  assert.deepEqual(SHARING_CAPABILITIES, [LEGACY_LINKED_ANKI_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_BUTTONS_CAPABILITY]);
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "hello", protocol: 1, version: "old", name: "Old" })),
     { kind: "hello", version: "old", name: "Old", capabilities: [] });
   assert.deepEqual(parseClientFrame(JSON.stringify({ kind: "request", id: 3, message: { target: "hoshidicts-offscreen", type: "hd_status" } })),
@@ -205,6 +205,22 @@ test("the host allowlists linked Anki operations and strips endpoint credentials
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_status", templateId: "\n",
   }), /Template/u);
+  // A button with marker substitutions names itself; the host reads its own.
+  assert.deepEqual(allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_status", requestId: 7, templateId: "default", buttonId: "kana",
+  }), { target: "hachidori-anki", type: "hd_anki_status", requestId: 7, templateId: "default", buttonId: "kana" });
+  for (const type of ["hd_anki_preflight", "hd_anki_submit"]) {
+    assert.equal(allowLinkedAnkiRequest({ target: "hachidori-anki", type,
+      request: { term: { expression: "猫", reading: "ねこ" }, templateId: "default", buttonId: "kana", markers: { x: "y" } },
+    }).request.buttonId, "kana");
+  }
+  assert.equal(allowLinkedAnkiRequest({ target: "hachidori-anki", type: "hd_anki_view",
+    request: { term: { expression: "猫", reading: "ねこ" }, templateId: "default", buttonId: "kana" } }).request.buttonId, "kana");
+  assert.equal(allowLinkedAnkiRequest({ target: "hachidori-anki", type: "hd_anki_browse",
+    request: { noteIds: [1], expression: "猫", templateId: "default", buttonId: "kana" } }).request.buttonId, "kana");
+  assert.throws(() => allowLinkedAnkiRequest({
+    target: "hachidori-anki", type: "hd_anki_status", templateId: "default", buttonId: "",
+  }), /custom button/u);
   assert.throws(() => allowLinkedAnkiRequest({
     target: "hachidori-anki", type: "hd_anki_status", templateId: "x".repeat(257),
   }), /Template/u);

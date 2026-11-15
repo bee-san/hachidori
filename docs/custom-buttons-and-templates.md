@@ -58,6 +58,55 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
+## More custom buttons (experimental)
+
+Settings → Advanced → Experimental features → **More custom buttons**
+(`options.experimental.popupActions`, off by default) makes the popup's action
+row hold any button rather than a fixed set, so a request for one more button
+is a button someone adds in Settings rather than code in Hachidori. Switched
+on, Design → Custom buttons offers:
+
+- **Ready-made buttons.** *View in Anki*, *Mine as kana* and *Search Jisho*
+  fill the form with a complete button to change or add as it is.
+- **Run an action.** Any keybind action of the popup (Settings → Keybinds) as
+  a button, with its argument: View notes, Add note, Play audio or Play audio
+  from source, Mark as known, Ignore, Toggle option, moving between entries
+  and dictionaries, Back and Forward, Close. The button acts on the result
+  whose row holds it, as the key acts on the current one. A button whose
+  action has nothing to act on hides: **View notes** shows only on a result
+  that is already in Anki, so it sits beside Overwrite or Add duplicate and
+  opens the notes in Anki's browser (#555, #765); Play audio shows only where
+  the result has pronunciation. The View notes keybind opens those notes too,
+  not only when the Anki button itself has become View.
+- **Other markers** on a Send to Anki button: lines of `{marker} → {marker}`,
+  each a marker the button's Template uses and the marker it writes in its
+  place. The button keeps the Template's deck, note type, fields and duplicate
+  policy. *Mine as kana* (#770) writes `{reading}` in place of `{expression}`,
+  `{furigana}` and `{furigana-plain}`, so `拗れる` is mined as `こじれる` with
+  the definitions gathered under `拗れる`. `{glossary} →
+  {single-glossary-jitendex}` makes a button that mines one dictionary's
+  definitions, and a button per dictionary chooses the dictionary for each
+  card. Settings refuses a marker it does not know.
+- **Tell a user script.** A button that does nothing itself: a user script
+  answers it ([User scripts → Custom buttons](user-scripts.md#custom-buttons)).
+- **Icon.** Any button may show an icon in place of its name, which stays its
+  accessible name and tooltip.
+
+Default places custom buttons after the built-in actions, in list order. JL
+and Crystal, which come from
+[hachidori-themes](https://github.com/bee-san/hachidori-themes), show their
+first two custom buttons as their own icons (Open for a link, an Anki card
+otherwise) and the rest under More; a chosen icon is on the button as
+`data-custom-button-icon` for a theme to use. To hide a built-in button, use
+Design → Custom CSS, for example
+`.gsm-hoshidicts-mine-button { display: none; }` beside a custom button that
+mines with the same Template.
+
+Turning the switch off hides action and script buttons and Anki buttons with
+other markers, in the popup and the Design preview, and shows the other
+buttons by name instead of their icons. Settings lists the hidden buttons with
+a note and keeps them, and every icon, for the next time.
+
 ## Japanese pitch accent graphs
 
 Import a Japanese pitch-accent dictionary under **Settings → Dictionaries**,
@@ -102,10 +151,18 @@ anki: {
 }
 
 customButtons: [
-  { id, type: "link", label, url },
-  { id, type: "anki", label, templateId }
+  { id, type: "link", label, url, icon? },
+  { id, type: "anki", label, templateId, markers?, icon? },
+  { id, type: "action", label, action, argument, icon? },
+  { id, type: "script", label, icon? }
 ]
 ```
+
+`action` and `script` buttons, `icon` and `markers` belong to More custom
+buttons. `action` is an id from `BUTTON_ACTIONS` in `reader-options.js`, the
+keybind actions whose scopes include the popup, and `argument` is normalised as
+a keybind's. `icon` is one of `BUTTON_ICONS`. `markers` maps a lower-case marker
+name to the one written in its place and is left out when empty.
 
 Normalization performs both legacy migrations:
 
@@ -154,6 +211,23 @@ Template. Legacy `customLinks` edits replace only the link-button subsequence,
 preserving custom Anki buttons and stable IDs for retained links. A legacy
 client that tries to write the richer Template or custom-button representation
 is rejected.
+
+A custom Anki button with `markers` names itself beside its Template as
+`buttonId` in every readiness, write and browse request. The worker reads the
+button from its own saved settings and renders the Template's fields with its
+substitutions, as part of the configuration digest, so a reply checked for the
+plain Template cannot be submitted through the button. A button removed, moved
+to another Template or left without substitutions is unavailable rather than
+mining with the Template alone. The cache-only View check does not answer for
+such a button, since the index holds the Template's own expressions.
+
+A reading browser forwards a request naming a button only to a host that
+advertises `linked-buttons-v1`; an older host reports the button unavailable
+instead of mining with the Template alone. Saving a button list that holds
+More custom buttons' kinds, icons or substitutions also needs that capability.
+When a reading browser with `linked-anki-v2` but not `linked-buttons-v1` saves
+its list, the host keeps its action and script buttons where they were and the
+icons and substitutions of the buttons that list still has.
 
 Overlay hosts can independently advertise link-button support. Link buttons
 use the existing host-opened external URL boundary. Anki buttons remain ordinary

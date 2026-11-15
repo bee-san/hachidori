@@ -18,9 +18,17 @@ export function canDiscoverSharingHost(sharing) {
 // reader silently sending a custom button through the wrong destination.
 export const LEGACY_LINKED_ANKI_CAPABILITY = "linked-anki-v1";
 export const LINKED_ANKI_CAPABILITY = "linked-anki-v2";
+// More custom buttons: a host that keeps action and script buttons, icons and
+// Anki buttons' marker substitutions in its settings, and mines with a
+// button's substitutions when a request names the button. A reading browser
+// sends neither the buttons nor such a request to a host without it, and a
+// host keeps those buttons when a reading browser without it saves its list.
+export const LINKED_BUTTONS_CAPABILITY = "linked-buttons-v1";
+export const LINKED_BUTTONS_UNSUPPORTED = "Update the linked Hachidori to use this button.";
 export const SHARING_CAPABILITIES = Object.freeze([
   LEGACY_LINKED_ANKI_CAPABILITY,
   LINKED_ANKI_CAPABILITY,
+  LINKED_BUTTONS_CAPABILITY,
 ]);
 // The relay's own client for its Yomitan-compatible API (hachidori-anki
 // docs/host-contract.md). Never a remote computer, never a linked browser.
@@ -190,7 +198,7 @@ const MINING_REQUEST_FIELDS = [
   // A profile's notes follow each dictionary's direction and target language (docs/languages.md 12).
   "dictionaryDirections", "dictionaryTargetLanguages",
   "frequencyDictionaries", "configKey", "screenshot", "captureUnavailable",
-  "clientSpeech", "templateId", "allowDuplicate",
+  "clientSpeech", "templateId", "buttonId", "allowDuplicate",
 ];
 
 function selectedFields(value, fields) {
@@ -198,13 +206,22 @@ function selectedFields(value, fields) {
   return Object.fromEntries(fields.filter(field => Object.hasOwn(value, field)).map(field => [field, value[field]]));
 }
 
+const linkedIdentifier = value => typeof value === "string" && value !== "" && value.length <= 256
+  && !/[\u0000-\u001f\u007f]/u.test(value);
+
+// The Template a request mines with, and the custom button whose marker
+// substitutions it renders with (LINKED_BUTTONS_CAPABILITY).
 function selectedTemplateId(value) {
-  if (!Object.hasOwn(value ?? {}, "templateId")) return {};
-  if (typeof value.templateId !== "string" || value.templateId === "" || value.templateId.length > 256
-      || /[\u0000-\u001f\u007f]/u.test(value.templateId)) {
-    throw new Error("malformed linked Anki Template");
+  const selected = {};
+  if (Object.hasOwn(value ?? {}, "templateId")) {
+    if (!linkedIdentifier(value.templateId)) throw new Error("malformed linked Anki Template");
+    selected.templateId = value.templateId;
   }
-  return { templateId: value.templateId };
+  if (Object.hasOwn(value ?? {}, "buttonId")) {
+    if (!linkedIdentifier(value.buttonId)) throw new Error("malformed linked custom button");
+    selected.buttonId = value.buttonId;
+  }
+  return selected;
 }
 
 // The profile a linked request is for (docs/languages.md 5.4, 17.3 item 5):
@@ -231,7 +248,7 @@ export function allowLinkedAnkiRequest(message) {
   const base = { target: "hachidori-anki", type: message.type, requestId, ...selectedProfileId(message) };
   if (message.type === "hd_anki_status") return { ...base, ...selectedTemplateId(message) };
   if (message.type === "hd_anki_view") {
-    const request = selectedFields(message.request, ["term", "templateId"]);
+    const request = selectedFields(message.request, ["term", "templateId", "buttonId"]);
     Object.assign(request, selectedTemplateId(request));
     request.term = selectedFields(request.term, ["expression", "reading"]);
     return { ...base, request };
@@ -245,7 +262,7 @@ export function allowLinkedAnkiRequest(message) {
     return { ...base, request: selectedFields(message.request, ["headwords"]) };
   }
   if (message.type === "hd_anki_browse") {
-    const request = selectedFields(message.request, ["noteIds", "expression", "configKey", "templateId"]);
+    const request = selectedFields(message.request, ["noteIds", "expression", "configKey", "templateId", "buttonId"]);
     Object.assign(request, selectedTemplateId(request));
     return { ...base, request };
   }

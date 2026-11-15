@@ -77,7 +77,7 @@ test("GSM word, reading and sentence link markers encode once and reject unsafe 
   assert.match(validateLinkButton("", "https://example.test/%w"), /name/u);
 });
 
-function fixture(t) {
+function fixture(t, { experimental = {} } = {}) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { pretendToBeVisual: true, url: "https://extension.test/settings.html" });
   const { document } = dom.window;
@@ -88,6 +88,8 @@ function fixture(t) {
   let nextId = 0;
   const controller = createCustomButtonSettings({ document, readButtons: () => buttons,
     readTemplates: () => templates, createId: () => `button-${++nextId}`,
+    readExperimental: () => experimental,
+    readAudioSources: () => [{ id: "jpod", type: "jpod101", enabled: true }],
     saveButtons(value) { saves.push(value); buttons = value; } });
   function change(id, value, event = "input") {
     el(id).value = value;
@@ -113,6 +115,7 @@ function fixture(t) {
     get buttons() { return buttons; },
     receive(value) { buttons = value; controller.render(); },
     templates(value) { templates = value; controller.render(); },
+    experimental(value) { experimental = value; controller.render(); },
   };
 }
 
@@ -192,4 +195,115 @@ test("global Settings search reaches Custom buttons with keyboard-focusable nati
   assert.equal(f.document.activeElement, f.el("opt-custom-button-name"));
   assert.equal(f.el("opt-custom-button-name").value, "Unfinished link");
   assert.equal(f.el("custom-button-submit").type, "submit");
+});
+
+test("More custom buttons: action, script, icon and marker fields are stored, and validated as written", () => {
+  const { normaliseCustomButtons, effectiveCustomButtons, extendedCustomButton, popupActionsButton } = globalThis.HDReaderOptions;
+  const buttons = normaliseCustomButtons([
+    { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "x", icon: "book-search" },
+    { id: "next", type: "action", label: "Next", action: "nextEntry", argument: "3" },
+    { id: "kana", type: "anki", label: "Mine as kana", templateId: "default",
+      markers: { " Expression ": "READING", glossary: "glossary", "{bad}": "reading" } },
+    { id: "speak", type: "script", label: "Speak", icon: "not-an-icon" },
+    { id: "search", type: "action", label: "Search line", action: "searchNextLine" },
+    { id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" },
+  ]);
+  assert.deepEqual(buttons, [
+    { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" },
+    { id: "next", type: "action", label: "Next", action: "nextEntry", argument: "3" },
+    { id: "kana", type: "anki", label: "Mine as kana", templateId: "default", markers: { expression: "reading" } },
+    { id: "speak", type: "script", label: "Speak" },
+    { id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" },
+  ], "search-page actions are not button actions, and unknown icons and no-op substitutions drop");
+  assert.deepEqual(buttons.map(extendedCustomButton), [true, true, true, true, false]);
+  assert.deepEqual(buttons.map(popupActionsButton), [true, true, true, true, false]);
+  assert.deepEqual(effectiveCustomButtons(buttons, {}).map(button => button.id), ["jisho"]);
+  // Off, a link or plain Anki button with an icon shows by its name.
+  assert.deepEqual(effectiveCustomButtons([{ ...buttons[4], icon: "search" }], {}), [buttons[4]]);
+  assert.equal(extendedCustomButton({ ...buttons[4], icon: "search" }), true);
+  assert.equal(popupActionsButton({ ...buttons[4], icon: "search" }), false);
+  assert.equal(effectiveCustomButtons(buttons, { popupActions: true }), buttons);
+  assert.deepEqual(validateOptionsPatch({ customButtons: buttons }).customButtons, buttons);
+  assert.throws(() => validateOptionsPatch({ customButtons: [{ ...buttons[2], markers: { Expression: "reading" } }] }),
+    /invalid reader option/u);
+  assert.equal(globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental.popupActions, false);
+});
+
+test("More custom buttons off: only link and Anki kinds are offered, and its buttons stay listed but cannot be edited", t => {
+  const f = fixture(t);
+  const offered = () => [...f.el("opt-custom-button-type").options].filter(option => !option.disabled).map(option => option.value);
+  assert.deepEqual(offered(), ["link", "anki"]);
+  assert.equal(f.el("custom-button-presets").hidden, true);
+  assert.equal(f.el("custom-button-icon-field").hidden, true);
+  f.change("opt-custom-button-type", "anki", "change");
+  assert.equal(f.el("custom-button-markers-field").hidden, true);
+  f.receive([{ id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "" },
+    { id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" }]);
+  assert.equal(f.action("View in Anki", "Edit").disabled, true);
+  assert.match(f.row("View in Anki").textContent, /Hidden: turn on More custom buttons/u);
+  assert.equal(f.action("Jisho", "Edit").disabled, false);
+  f.experimental({ popupActions: true });
+  assert.deepEqual(offered(), ["link", "anki", "action", "script"]);
+  assert.equal(f.action("View in Anki", "Edit").disabled, false);
+  assert.doesNotMatch(f.row("View in Anki").textContent, /Hidden/u);
+});
+
+test("ready-made buttons fill the form for View in Anki, Mine as kana and Jisho; action arguments and markers save", t => {
+  const f = fixture(t, { experimental: { popupActions: true } });
+  const preset = id => f.el("custom-button-preset-list").querySelector(`[data-preset="${id}"]`);
+  preset("view-notes").click();
+  assert.equal(f.el("opt-custom-button-type").value, "action");
+  assert.equal(f.el("opt-custom-button-action").value, "viewNotes");
+  assert.equal(f.el("opt-custom-button-icon").value, "book-search");
+  f.el("custom-button-submit").click();
+  preset("mine-kana").click();
+  assert.equal(f.el("opt-custom-button-markers").value,
+    "{expression} → {reading}\n{furigana} → {reading}\n{furigana-plain} → {reading}");
+  f.el("custom-button-submit").click();
+  preset("jisho").click();
+  f.el("custom-button-submit").click();
+  assert.deepEqual(f.buttons, [
+    { id: "button-1", type: "action", label: "View in Anki", action: "viewNotes", argument: "", icon: "book-search" },
+    { id: "button-2", type: "anki", label: "Mine as kana", templateId: "default",
+      markers: { expression: "reading", furigana: "reading", "furigana-plain": "reading" } },
+    { id: "button-3", type: "link", label: "Jisho", url: "https://jisho.org/search/%w", icon: "search" },
+  ]);
+  assert.match(f.row("Mine as kana").textContent, /Default · \{expression\} → \{reading\}/u);
+
+  f.change("opt-custom-button-name", "Two on");
+  f.change("opt-custom-button-type", "action", "change");
+  f.change("opt-custom-button-action", "nextEntry", "change");
+  assert.equal(f.el("custom-button-count-field").hidden, false);
+  f.change("opt-custom-button-count", "0");
+  f.el("custom-button-submit").click();
+  assert.match(f.el("custom-buttons-status").textContent, /count of 1 or more/u);
+  f.change("opt-custom-button-count", "2");
+  f.el("custom-button-submit").click();
+  f.change("opt-custom-button-name", "Pronounce");
+  f.change("opt-custom-button-type", "action", "change");
+  f.change("opt-custom-button-action", "playAudioFromSource", "change");
+  f.el("custom-button-submit").click();
+  assert.match(f.el("custom-buttons-status").textContent, /pronunciation source/u);
+  f.change("opt-custom-button-source", "jpod", "change");
+  f.el("custom-button-submit").click();
+  f.change("opt-custom-button-name", "Speak");
+  f.change("opt-custom-button-type", "script", "change");
+  assert.equal(f.el("custom-button-script-help").hidden, false);
+  f.el("custom-button-submit").click();
+  f.change("opt-custom-button-name", "Broken");
+  f.change("opt-custom-button-type", "anki", "change");
+  f.change("opt-custom-button-markers", "{expression} → {nope}");
+  f.el("custom-button-submit").click();
+  assert.match(f.el("custom-buttons-status").textContent, /Unknown marker: \{nope\}/u);
+  f.change("opt-custom-button-markers", "expression reading");
+  f.el("custom-button-submit").click();
+  assert.match(f.el("custom-buttons-status").textContent, /\{marker\} → \{marker\}/u);
+  assert.deepEqual(f.buttons.slice(3), [
+    { id: "button-4", type: "action", label: "Two on", action: "nextEntry", argument: "2" },
+    { id: "button-5", type: "action", label: "Pronounce", action: "playAudioFromSource", argument: "jpod" },
+    { id: "button-6", type: "script", label: "Speak" },
+  ]);
+  f.action("Two on", "Edit").click();
+  assert.equal(f.el("opt-custom-button-count").value, "2");
+  assert.equal(f.controller.dirty(), false);
 });

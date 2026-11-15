@@ -8,7 +8,9 @@ import { captureNetflixPreview } from "./netflix-preview.js";
 import { captureYouTubeFrame } from "./youtube-frame.js";
 import { cropOf } from "./background-video.js";
 import { YOUTUBE_PAGE_URL } from "./background-youtube.js";
-import { LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED } from "./sharing-protocol.js";
+import {
+  LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, LINKED_BUTTONS_CAPABILITY, LINKED_BUTTONS_UNSUPPORTED,
+} from "./sharing-protocol.js";
 import { MINING_CAPABILITIES } from "./overlay-mode.js";
 import { capabilityAnkiOptions } from "./setup-state.js";
 import { profileTemplateKey } from "./anki-worker.js";
@@ -336,9 +338,18 @@ async function handleAnkiRequest(message, sender) {
   });
 }
 
+// A request that names a custom button with marker substitutions needs a
+// host that mines with them (More custom buttons); an older host would use
+// the Template alone.
+function linkedAnkiCapability(message) {
+  return [message, message.request].some(value => value?.buttonId !== undefined)
+    ? { capability: LINKED_BUTTONS_CAPABILITY, unsupported: LINKED_BUTTONS_UNSUPPORTED }
+    : { capability: LINKED_ANKI_CAPABILITY };
+}
+
 async function forwardLinkedAnki(message) {
   try {
-    const reply = await getSharingClient().forward(message, { capability: LINKED_ANKI_CAPABILITY });
+    const reply = await getSharingClient().forward(message, linkedAnkiCapability(message));
     if (message.type === "hd_anki_preflight" && reply?.ok !== false && reply?.clientSpeech) {
       await getAnkiMining().preflightClientSpeech({
         ...message.request,
@@ -347,8 +358,9 @@ async function forwardLinkedAnki(message) {
     }
     return reply;
   } catch (error) {
-    if (message.type === "hd_anki_status" && describeErrorOrJson(error) === LINKED_ANKI_UNSUPPORTED) {
-      return workerReply(message, { available: false, configKey: "", error: LINKED_ANKI_UNSUPPORTED });
+    const unsupported = describeErrorOrJson(error);
+    if (message.type === "hd_anki_status" && [LINKED_ANKI_UNSUPPORTED, LINKED_BUTTONS_UNSUPPORTED].includes(unsupported)) {
+      return workerReply(message, { available: false, configKey: "", error: unsupported });
     }
     return failureReply(message, error);
   }
@@ -399,7 +411,7 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
   let reply;
   try {
     reply = await getSharingClient().forward({ ...message, clientMedia }, {
-      capability: LINKED_ANKI_CAPABILITY,
+      ...linkedAnkiCapability(message),
       mutation: true,
       onSent: () => { sent = true; },
     });
@@ -441,14 +453,28 @@ async function submitToLinkedAnki(message) { // NOSONAR: moved verbatim (#533)
 // requests that read no Template carry the profile itself.
 function withAnkiProfile(message) {
   const { profileId } = message;
-  if (profileId === undefined) return message;
-  if (typeof profileId !== "string" || profileId === "") throw new TypeError("the Anki request named an invalid profile");
+  const buttons = [message, message.request, ...(Array.isArray(message.requests) ? message.requests : [])]
+    .some(value => value?.buttonId !== undefined);
+  if (profileId === undefined && !buttons) return message;
+  if (profileId !== undefined && (typeof profileId !== "string" || profileId === "")) {
+    throw new TypeError("the Anki request named an invalid profile");
+  }
+  // A custom Anki button with marker substitutions names itself beside its
+  // Template (More custom buttons); its configuration is the Template's with
+  // the button's substitutions, read from this browser's settings.
+  const key = value => {
+    if (value.buttonId !== undefined && (typeof value.buttonId !== "string" || value.buttonId === "")) {
+      throw new TypeError("the Anki request named an invalid button");
+    }
+    return profileId === undefined && value.buttonId === undefined ? value.templateId
+      : profileTemplateKey(profileId, value.templateId, value.buttonId);
+  };
   const scoped = request => request && typeof request === "object" && !Array.isArray(request)
-    ? { ...request, templateId: profileTemplateKey(profileId, request.templateId), profileId } : request;
+    ? { ...request, templateId: key(request), ...(profileId === undefined ? {} : { profileId }) } : request;
   return {
     ...message,
     ...(Object.hasOwn(message, "templateId") || message.type === "hd_anki_status" || message.type === "hd_anki_screenshot"
-      ? { templateId: profileTemplateKey(profileId, message.templateId) } : {}),
+      ? { templateId: key(message) } : {}),
     ...(message.request === undefined ? {} : { request: scoped(message.request) }),
     ...(message.type === "hd_anki_browse" && message.request === undefined && typeof message.expression === "string"
       ? { request: scoped({ expression: message.expression }) } : {}),

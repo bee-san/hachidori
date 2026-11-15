@@ -33,6 +33,12 @@
   const HOST_TAG = "hachidori-host";
   const POPUP_SHOWN_EVENT = "hachidori-popup-shown";
   const POPUP_HIDDEN_EVENT = "hachidori-popup-hidden";
+  // More custom buttons (docs/user-scripts.md): a script button's press, which
+  // the reader dispatches on the button, and a user script's request to run a
+  // button action, dispatched inside the popup's closed root. Each `detail`
+  // is a JSON string, as the other events between the worlds.
+  const SCRIPT_BUTTON_EVENT = "hachidori-button";
+  const SCRIPT_ACTION_EVENT = "hachidori-action";
   // Asks the user scripts' bridge (custom-javascript-bridge.js) to attach the
   // popup's closed root from the user-script world.
   const POPUP_ROOT_EVENT = "hachidori-popup-root";
@@ -669,6 +675,9 @@
   }
 
   function applyHostCapabilities(projected) {
+    // Without More custom buttons the popup has only the original kinds.
+    projected = { ...projected,
+      customButtons: globalThis.HDReaderOptions.effectiveCustomButtons(projected.customButtons, projected.experimental) };
     if (!hostCapabilities.linkButtons) projected = {
       ...projected,
       customLinks: [],
@@ -2420,6 +2429,7 @@
     applyPageZoom();
     mountHost();
     shadow = attachPopupRoot();
+    shadow.addEventListener(SCRIPT_ACTION_EVENT, onScriptAction);
     appearance = globalThis.HDPopup.createPopupAppearance(host);
     appearance.update(options);
     customStyle = globalThis.HDPopup.createCustomPopupStyle(shadow);
@@ -2447,7 +2457,10 @@
         const { emptyDeck: _emptyDeck, ...today } = reply;
         return today;
       },
-      onChange: owner => positionPopup(owner),
+      onChange: owner => {
+        syncCustomActions(owner);
+        positionPopup(owner);
+      },
       conceal: concealReader,
       // The site's reader records a line through its page, and frames the
       // screenshot of a note from its subtitles (netflix-content.js).
@@ -2468,6 +2481,8 @@
       bind: (items, context) => set.of(levelProfile(context.owner)).bind(items, context),
       retire: owner => set.each(controller => controller.retire(owner)),
       refresh: owner => set.each(controller => controller.refresh(owner)),
+      canViewNotes: (owner, item) => set.of(levelProfile(owner)).canViewNotes(owner, item),
+      viewNotes: (owner, item) => set.of(levelProfile(owner)).viewNotes(owner, item),
       update: (next, ready) => set.update(next, ready),
     };
   }
@@ -2629,6 +2644,11 @@
             || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
         openExternalLink(link);
       },
+      onCustomActionClick(press) {
+        if (!level.currentViewRequest || level.retainedView
+            || !requestCanRender(level.lookupToken, level.activeCandidate, level)) return;
+        pressCustomAction(level, press);
+      },
       onKanjiClick: (character, result, candidate, link) => showKanji(character, result, candidate, link, level),
       onNoteEditingChange: (editing) => onNoteEditingChange(editing, level),
       onResultsRendered: rendered => bindResultActions(rendered, level),
@@ -2713,6 +2733,67 @@
     wordStatusActions.bind(rendered.miningActions, { ...context, buttons: themeHost.renderer === "default",
       ...(readingProfiles === null ? {} : { fields: profileFields(requestProfile(request)),
         language: requestProfile(request)?.language ?? "ja" }) });
+    syncCustomActions(level);
+  }
+
+  // More custom buttons (docs/custom-buttons-and-templates.md). The entry a
+  // custom button acts on: the one whose row holds it, which in Default is the
+  // result its shared header shows.
+  function customButtonEntry(level, button) {
+    return (level.entryMining ?? []).findIndex(item =>
+      ("customActions" in item ? item.customActions : item.actions)?.contains(button) === true);
+  }
+
+  // An action button shows only where its action has something to act on:
+  // View notes on an entry with notes in Anki, a pronunciation button where
+  // the entry has pronunciation.
+  function syncCustomActions(level) {
+    if (!level?.popup || !level.entryMining) return;
+    for (const button of level.popup.querySelectorAll(".gsm-hoshidicts-custom-action-button")) {
+      const index = customButtonEntry(level, button);
+      const item = level.entryMining[index];
+      const action = button.dataset.customAction;
+      let available = index >= 0;
+      if (available && action === "viewNotes") available = mining.canViewNotes(level, item);
+      else if (available && (action === "playAudio" || action === "playAudioFromSource")) {
+        available = level.entryAudio?.[index]?.button?.isConnected === true;
+      }
+      if (button.hidden === !available) continue;
+      // A button that hides under the keyboard hands its focus to the row.
+      const focused = shadow?.activeElement === button;
+      button.hidden = !available;
+      if (focused && !available) button.parentElement?.querySelector("button:not([hidden]):not(:disabled)")?.focus();
+    }
+  }
+
+  function pressCustomAction(level, { button, value, prefill }) {
+    const entry = customButtonEntry(level, button);
+    if (entry < 0) return;
+    if (value.type === "action") {
+      runKeybindAction(value, { preventDefault() {}, stopPropagation() {} }, level, entry);
+      return;
+    }
+    // A script button: user scripts listen inside the popup's root and read
+    // the entry from `detail` (docs/user-scripts.md).
+    button.dispatchEvent(new CustomEvent(SCRIPT_BUTTON_EVENT, { bubbles: true, detail: JSON.stringify({
+      id: value.id, label: value.label, entry,
+      word: String(prefill.term ?? ""), reading: String(prefill.reading ?? ""), sentence: String(prefill.sentence ?? ""),
+    }) }));
+  }
+
+  // A user script runs a button action as a press of that button would, on
+  // the entry whose row holds the event's target, or the current entry.
+  function onScriptAction(event) {
+    if (options.experimental?.popupActions !== true || typeof event.detail !== "string") return;
+    let request;
+    try { request = JSON.parse(event.detail); } catch { return; }
+    if (!globalThis.HDReaderOptions.BUTTON_ACTIONS.some(action => action.id === request?.action)) return;
+    const level = levels.find(candidate => candidate.popup?.contains(event.target) && !candidate.popup.hidden);
+    if (!level?.view || !level.currentViewRequest || level.retainedView) return;
+    const entry = customButtonEntry(level, event.target);
+    const argument = typeof request.argument === "string" ? request.argument : "";
+    runKeybindAction({ action: request.action, argument }, { preventDefault() {}, stopPropagation() {} },
+      level, entry >= 0 ? entry : undefined);
   }
 
   // Counts are kept per language (docs/languages.md 4.3): Japanese's
@@ -4783,8 +4864,9 @@
     return (activeReadingProfile()?.text ?? JAPANESE_TEXT_RULES).isText(text);
   }
 
+  // `entry` is the entry a custom button acts on; a key acts on the current one.
   function runKeybindAction({ action, argument }, event,
-    level = levels.findLast((item) => item.popup && !item.popup.hidden)) {
+    level = levels.findLast((item) => item.popup && !item.popup.hidden), entryIndex = undefined) {
     if (action === "close") return closeFromKeybind(event);
     if (action === "scanSelectedText" || action === "scanTextAtSelection") {
       if (!options.hoverEnabled) return false;
@@ -4820,7 +4902,7 @@
       return true;
     }
     if (!level?.view || level.popup.inert) return false;
-    const entry = level.view.currentEntryIndex();
+    const entry = entryIndex ?? level.view.currentEntryIndex();
     switch (action) {
       case "nextEntry":
       case "previousEntry":
@@ -4836,13 +4918,13 @@
       case "historyForward":
         return navigateForward(level);
       case "addNote":
-      case "viewNotes": {
         // The entry's own button: the lookup row may also hold a shown result's row.
         // A click on the pending spinner adds anyway; Add note waits for the check.
-        const state = action === "addNote" ? "add" : "view";
         return clickKeybindControl([...(level.entryMining?.[entry]?.actions.children ?? [])]
-          .find(child => child.matches(`.gsm-hoshidicts-mine-button[data-action="${state}"]:not([data-state="checking"])`)));
-      }
+          .find(child => child.matches('.gsm-hoshidicts-mine-button[data-action="add"]:not([data-state="checking"])')));
+      // The notes the entry found or wrote, also beside Overwrite or Add duplicate.
+      case "viewNotes":
+        return mining.viewNotes(level, level.entryMining?.[entry]);
       case "playAudio":
       case "playAudioFromSource": {
         const button = level.entryAudio?.[entry]?.button;

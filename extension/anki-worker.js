@@ -36,21 +36,25 @@ const CAPTURED_MEDIA = {
     replaced: "the recorded GIF was replaced before this note was saved." },
 };
 
-// A Template of a named profile (docs/languages.md 5.4). Once the records have
-// profiles, background-anki.js gives the mining service this key in place of
-// the Template id, so its caches and configuration digests belong to the
-// profile; a plain id is the single-profile shape. Ids hold no control
-// characters, so the key cannot be mistaken for one.
+// A Template of a named profile (docs/languages.md 5.4), and the custom Anki
+// button whose marker substitutions it renders with (More custom buttons).
+// Once the records have profiles, or for such a button, background-anki.js
+// gives the mining service this key in place of the Template id, so its
+// caches and configuration digests belong to the profile and the button; a
+// plain id is the single-profile shape. Ids hold no control characters, so the
+// key cannot be mistaken for one.
 const PROFILE_TEMPLATE_SEPARATOR = "\u0000";
 
-export function profileTemplateKey(profileId, templateId) {
-  return `${PROFILE_TEMPLATE_SEPARATOR}${profileId}${PROFILE_TEMPLATE_SEPARATOR}${templateId ?? ""}`;
+export function profileTemplateKey(profileId, templateId, buttonId = undefined) {
+  return `${PROFILE_TEMPLATE_SEPARATOR}${profileId ?? ""}${PROFILE_TEMPLATE_SEPARATOR}${templateId ?? ""}`
+    + (buttonId === undefined ? "" : `${PROFILE_TEMPLATE_SEPARATOR}${buttonId}`);
 }
 
 function profileTemplateTarget(key) {
   if (typeof key !== "string" || !key.startsWith(PROFILE_TEMPLATE_SEPARATOR)) return { profileId: undefined, templateId: key };
-  const [, profileId, templateId] = key.split(PROFILE_TEMPLATE_SEPARATOR);
-  return { profileId, templateId: templateId === "" ? undefined : templateId };
+  const [, profileId, templateId, buttonId] = key.split(PROFILE_TEMPLATE_SEPARATOR);
+  return { profileId: profileId === "" ? undefined : profileId, templateId: templateId === "" ? undefined : templateId,
+    buttonId };
 }
 
 // The profile a mining request is for: its Template key's, or the one a
@@ -291,12 +295,19 @@ export function createAnkiWorkerService({
 
   const mining = createAnkiMiningService({ gateway,
     readConfig: async key => {
-      const { profileId, templateId } = profileTemplateTarget(key);
+      const { profileId, templateId, buttonId } = profileTemplateTarget(key);
       const [options, profile] = await readOptionsAndProfile(profileId);
       const template = globalThis.HDReaderOptions.ankiTemplateConfig(options.anki, templateId);
       if (template === null) return null;
+      // The button's substitutions as saved here: a button since removed,
+      // moved to another Template or left without them is unavailable rather
+      // than mining with its Template alone.
+      const button = buttonId === undefined ? null
+        : options.customButtons.find(candidate => candidate.id === buttonId && candidate.type === "anki");
+      if (buttonId !== undefined && (button?.templateId !== templateId || !button.markers)) return null;
       return {
         ...inLanguage(template, profile),
+        ...(button === null ? {} : { markerSubstitutions: button.markers }),
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards or
         // Compact popup and Anki between a preflight and Add refuses the stale Add.
