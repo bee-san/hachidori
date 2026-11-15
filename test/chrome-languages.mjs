@@ -24,6 +24,7 @@ import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { languageFiles } from "../scripts/sync-languages.mjs";
 import { ARABIC, ENGLISH, buildLanguageFixtureZip } from "./make-language-fixtures.mjs";
 import { buildFixtureZip } from "./make-fixture.mjs";
@@ -639,9 +640,9 @@ try {
     await change("Rule 1, condition 1: domains", "127.0.0.1");
     await settings.evaluate(() => document.querySelector('[aria-label="Add a condition to rule 1"]').click());
     await change("Rule 1, condition 2: type", "modifier");
-    const wanted = JSON.stringify([{ profileId: "en", conditions: [{ type: "domain", value: "127.0.0.1" },
-      { type: "modifier", key: "Shift" }] }]);
-    const saved = await until(async () => JSON.stringify(await rules()) === wanted);
+    // chrome.storage hands objects back with their keys sorted.
+    const wanted = [{ profileId: "en", conditions: [{ type: "domain", value: "127.0.0.1" }, { type: "modifier", key: "Shift" }] }];
+    const saved = await until(async () => isDeepStrictEqual(await rules(), wanted));
     if (saved) await screenshot(settings, "settings-language-rules", "#language-rules");
     await reading.keyboard.down("Shift");
     let english;
