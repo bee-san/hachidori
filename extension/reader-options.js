@@ -1077,8 +1077,8 @@
     "videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality",
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
-    "showToolbarSearchButton", "searchClickLookup", "searchRomajiConversion", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",
-    "searchHistoryEnabled", "searchHistoryLimit",
+    "showToolbarSearchButton", "searchClickLookup", "searchRomajiConversion", "searchWindowWidthPx",
+    "searchWindowHeightPx", "keybinds", "searchHistoryEnabled", "searchHistoryLimit",
   ]);
   const GLOBAL_KEYS = new Set(GLOBAL_OPTION_KEYS);
   const PROFILE_OPTION_KEYS = Object.freeze(OPTION_KEYS.filter(key => !GLOBAL_KEYS.has(key) && key !== "anki"));
