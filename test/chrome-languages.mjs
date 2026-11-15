@@ -643,6 +643,8 @@ try {
     // chrome.storage hands objects back with their keys sorted.
     const wanted = [{ profileId: "en", conditions: [{ type: "domain", value: "127.0.0.1" }, { type: "modifier", key: "Shift" }] }];
     const saved = await until(async () => isDeepStrictEqual(await rules(), wanted));
+    // A background tab cannot be captured; hoverAt brings the reading page back.
+    await settings.bringToFront();
     if (saved) await screenshot(settings, "settings-language-rules", "#language-rules");
     await reading.keyboard.down("Shift");
     let english;
