@@ -82,7 +82,16 @@ function storedState(state, keys) {
   return { version: 1, configurationRevision, rowRevision, snapshot: only(state.snapshots), attempt: only(state.attempts) };
 }
 
-const wordStatusSource = config => ankiIndexSource({ ...config, duplicateScope: "all" });
+// Word status reads All of Anki, plus the note types Word highlighting names
+// (`wordStatusNoteTypes`, #700), which mining's duplicate checks never read.
+const wordStatusSource = config => ankiIndexSource({ ...config, duplicateScope: "all" },
+  { noteTypes: config.wordStatusNoteTypes ?? [] });
+
+// Mining's source and, when it differs, word status's.
+async function miningAndStatusSources(config) {
+  const [mining, status] = await Promise.all([ankiIndexSource(config), wordStatusSource(config)]);
+  return status === null || status.key === mining?.key ? [mining] : [mining, status];
+}
 
 // [profile id, its sources] for every profile, each
 // keyed with its language's note-type families (docs/languages.md 12); an
@@ -93,9 +102,9 @@ async function profileSources(options) {
   const list = layer.hasProfiles(options) ? layer.profiles(options) : [{ id: layer.JAPANESE_PROFILE_ID, language: "ja" }];
   return Promise.all(list.map(async profile => {
     const projected = layer.projectOptions(options, profile.id);
-    const config = ankiLanguageConfig(projected.anki, profile.language);
-    const sources = [await ankiIndexSource(config)];
-    if (projected.wordHighlightEnabled && config.duplicateScope !== "all") sources.push(await wordStatusSource(config));
+    const config = { ...ankiLanguageConfig(projected.anki, profile.language),
+      wordStatusNoteTypes: projected.wordHighlightNoteTypes };
+    const sources = projected.wordHighlightEnabled ? await miningAndStatusSources(config) : [await ankiIndexSource(config)];
     return [profile.id, sources.filter(source => source !== null)];
   }));
 }
@@ -449,10 +458,8 @@ export function createAnkiDuplicateIndex({
     repair: (config, expression, invoke) => find(config, expression, invoke, true),
     async recordWrite(config, expression, noteId, { mature = false } = {}) {
       if (!positiveId(noteId)) throw new Error("Anki returned an invalid written note ID.");
-      const [source, wordKey] = await Promise.all([ankiIndexSource(config), Promise.resolve(ankiWordKey(expression))]);
-      if (source === null || wordKey === null) return;
-      const sources = [source];
-      if (config.duplicateScope !== "all") sources.push(await wordStatusSource(config));
+      const [sources, wordKey] = await Promise.all([miningAndStatusSources(config), Promise.resolve(ankiWordKey(expression))]);
+      if (sources[0] === null || wordKey === null) return;
       await updateRow(sources, wordKey, previous => ({
         mature: previous?.mature ?? mature,
         noteIds: [...(previous?.noteIds ?? []), noteId],
