@@ -4,7 +4,7 @@ import "./reader-options.js";
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
   "definition", "glossary", "glossary-brief", "glossary-no-dictionary", "glossary-plain", "glossary-plain-no-dictionary",
-  "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
+  "selected-glossary", "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
   "url", "url-plain", "miscInfo",
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
@@ -12,7 +12,7 @@ const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
   "pitch-accent-categories", "pitch-accent-graphs", "pitch-accent-graphs-jj",
   "audio", "screenshot", "sentence-audio", "gif"];
-const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"]]);
+const MARKER_ALIASES = new Map([["glossary-selection", "selected-glossary"], ["pitch-accent", "pitch"], ["pitch-accents", "pitch"]]);
 const MARKER_DESCRIPTIONS = {
   expression: "Dictionary form of the selected term",
   reading: "Reading of the selected term",
@@ -30,6 +30,7 @@ const MARKER_DESCRIPTIONS = {
   "glossary-no-dictionary": "All definitions without dictionary names",
   "glossary-plain": "Plain-text definitions with dictionary names",
   "glossary-plain-no-dictionary": "Plain-text definitions without dictionary names",
+  "selected-glossary": "Chosen definition with selected text highlighted; otherwise the first available definition",
   "glossary-first": "First available definition",
   "glossary-first-brief": "Brief form of the first definition",
   "glossary-first-no-dictionary": "First definition without its dictionary name",
