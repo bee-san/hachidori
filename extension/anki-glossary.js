@@ -156,7 +156,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
   // differs from the dictionary's target language, which the body carries.
   // Under the right-to-left rules each block of the other direction keeps its
   // own, a row's text that sits in the body itself included (10.2).
-  function content(glossary, pending, rtlRules = false, selection) {
+  function content(glossary, pending, { rtlRules = false, selection } = {}) {
     const body = inert.createElement("div");
     body.className = "gsm-hoshidicts-glossary-content";
     body.dataset.hoshidictsDictionary = glossary.dictionary;
@@ -218,7 +218,7 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
       meta.normalize();
       wrapper.append(meta, " ");
     }
-    wrapper.append(replaceNewlines(content(glossary, pending, rtlRules, selection)));
+    wrapper.append(replaceNewlines(content(glossary, pending, { rtlRules, selection })));
     return wrapper;
   }
 
@@ -267,33 +267,36 @@ export function createAnkiDefinitionRenderer(document, request, filenameFor,
     return { root, list, rtlRules, mixed };
   }
 
+  // The chosen term-bank row, or else the first row of the first dictionary.
+  function chosenRow(selected, selection) {
+    if (!selection) return selected.length ? [[selected[0][0], selected[0][1].slice(0, 1)]] : [];
+    if (typeof selection.dictionary !== "string" || !Number.isSafeInteger(selection.index) || selection.index < 0) {
+      throw new Error("The selected dictionary entry is invalid. Choose its definition again.");
+    }
+    const row = groups.get(selection.dictionary)?.[selection.index];
+    if (!row) throw new Error("The selected dictionary entry is no longer available. Look it up again.");
+    return [[selection.dictionary, [row]]];
+  }
+
   return async ({ dictionary, firstOnly = false, brief = false, noDictionary = false, plain = false, selectedOnly = false, selection }) => {
     let selected = [...groups].filter(([name]) => dictionary === undefined || name === dictionary);
     if (firstOnly) selected = selected.slice(0, 1);
-    if (selectedOnly) {
-      if (selection) {
-        if (typeof selection.dictionary !== "string" || !Number.isSafeInteger(selection.index) || selection.index < 0) {
-          throw new Error("The selected dictionary entry is invalid. Choose its definition again.");
-        }
-        const row = groups.get(selection.dictionary)?.[selection.index];
-        if (!row) throw new Error("The selected dictionary entry is no longer available. Look it up again.");
-        selected = [[selection.dictionary, [row]]];
-      } else selected = selected.length ? [[selected[0][0], selected[0][1].slice(0, 1)]] : [];
-    }
+    if (selectedOnly) selected = chosenRow(selected, selection);
     if (!selected.length) return "";
     if (plain) return plainDefinition(selected, noDictionary);
     const pending = [];
     const { root, list, rtlRules, mixed } = glossaryRoot(selected.map(([name]) => name));
+    const ranges = selectedOnly ? selection?.ranges : undefined;
     // One item per term-bank row, as Yomitan's {glossary} template emits: note
     // types page by li[data-dictionary] and pad any nested list (#359).
     for (const [name, glossaries] of selected) {
-      for (const glossary of glossaries) {
+      list.append(...glossaries.map((glossary) => {
         const page = inert.createElement("li");
         page.dataset.dictionary = name;
         if (mixed) page.dir = directionOf(name);
-        page.append(entry(glossary, brief, noDictionary, pending, rtlRules, selectedOnly ? selection?.ranges : undefined));
-        list.append(page);
-      }
+        page.append(entry(glossary, brief, noDictionary, pending, rtlRules, ranges));
+        return page;
+      }));
     }
     root.append(list);
     appendStyles(root, selected);
