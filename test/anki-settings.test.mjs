@@ -910,3 +910,22 @@ test("the video mining markers are suggested like any other and are a valid mapp
   assert.deepEqual([...owner.querySelectorAll(".anki-template-error")].map(error => error.textContent), [""],
     "a saved {sentence-audio} mapping is valid");
 });
+
+test("field syntax is explicit and keeps authored cloze text byte-for-byte across syntax changes", async t => {
+  const f = fixture(t);
+  f.controller.render();
+  discovery(f.sent[0]);
+  await tick();
+  const value = "{{c1::{expression}}}";
+  f.adopt({ fieldTemplates: { Front: { value, overwriteMode: "coalesce" }, Back: { value: "", overwriteMode: "coalesce" } } });
+  const syntax = row(f, "Front").querySelector(".anki-template-syntax");
+  syntax.value = "handlebars";
+  syntax.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.deepEqual(f.read().fieldTemplates.Front, { value, overwriteMode: "coalesce", syntax: "handlebars" });
+  assert.equal(row(f, "Front").querySelector(".anki-template-preview").hidden, false);
+  assert.match(row(f, "Front").querySelector(".anki-template-error").textContent, /Parse error/u);
+  syntax.value = "markers";
+  syntax.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.deepEqual(f.read().fieldTemplates.Front, { value, overwriteMode: "coalesce" });
+  assert.equal(row(f, "Front").querySelector(".anki-template-preview").hidden, true);
+});

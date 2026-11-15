@@ -2,7 +2,7 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
-import { ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiTemplateDependencies, ankiTemplateMarkerNames } from "./anki-templates.js";
 import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
@@ -127,7 +127,7 @@ export function createAnkiWorkerService({
   // them, for templates that ask for the sentence with furigana. A language
   // without ruby has none, so its sentence stays plain (docs/languages.md 12).
   async function sentenceSegments(request, templates, profile) {
-    if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template.value)
+    if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template)
       .some(name => SENTENCE_FURIGANA_MARKERS.has(name)))) return null;
     if (profile !== null && !globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings)) {
       return null;
@@ -249,7 +249,7 @@ export function createAnkiWorkerService({
     // Only ordinary non-first-field audio reaches this path. Resolve it once
     // and put it in the original note, avoiding a second field mutation.
     const audioTemplates = Object.fromEntries(Object.entries(resolved.templates)
-      .filter(([, template]) => ankiTemplateMarkerNames(template.value).includes("audio")));
+      .filter(([, template]) => ankiTemplateMarkerNames(template).includes("audio")));
     if (Object.keys(audioTemplates).length && config.audioSources.length) {
       try {
         const file = await audio(request, config);
@@ -290,7 +290,7 @@ export function createAnkiWorkerService({
   // until the user submits.
   async function prepareFirstFieldAudio(request, current, resources, preflight) {
     const first = current.resolved.templates[current.discovery.fields[0]];
-    if (!ankiTemplateMarkerNames(first.value).includes("audio") || !current.config.audioSources.length) return;
+    if (!ankiTemplateMarkerNames(first).includes("audio") || !current.config.audioSources.length) return;
     const prepared = await audio(request, current.config, { recordSpeech: !preflight });
     if (prepared?.recordingRequired === true) {
       if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
@@ -315,9 +315,8 @@ export function createAnkiWorkerService({
         : options.customButtons.find(candidate => candidate.id === buttonId && candidate.type === "anki");
       if (buttonId !== undefined && (button?.templateId !== templateId || !button.markers)) return null;
       // A button's markers may write a group marker its Template does not use.
-      const needsGroups = [...Object.values(template.fieldTemplates ?? {}).flatMap(field => ankiTemplateMarkerNames(field.value)),
-        ...Object.values(button?.markers ?? {})].some(name => name === "monolingual-definition"
-        || name === "bilingual-definition" || name.startsWith("glossary-selection-group-"));
+      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).groups)
+        || Object.values(button?.markers ?? {}).some(name => ankiTemplateDependencies(`{${name}}`).groups);
       return {
         ...inLanguage(template, profile),
         ...(button === null ? {} : { markerSubstitutions: button.markers }),
@@ -356,6 +355,7 @@ export function createAnkiWorkerService({
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
       if (preflight && Object.values(current.resolved.templates).length === 1
+          && current.resolved.templates[current.discovery.fields[0]]?.syntax !== "handlebars"
           && /^\{expression\}$/iu.test(current.resolved.templates[current.discovery.fields[0]]?.value ?? "")) {
         // No offscreen document, dictionary reads or engine wake-up just to
         // ask Anki about a word already supplied by this lookup.
@@ -381,7 +381,7 @@ export function createAnkiWorkerService({
       if (prepared.resources.clientSpeech) return { clientSpeech: prepared.resources.clientSpeech };
       if (prepared.resources.audioPrepared || !applied
           || !Object.values(applied.templates).some(template =>
-            ankiTemplateMarkerNames(template.value).includes("audio"))
+            ankiTemplateMarkerNames(template).includes("audio"))
           || prepared.config.audioSources.length === 0) return {};
       try {
         const planned = await audio(request, prepared.config, { recordSpeech: false });

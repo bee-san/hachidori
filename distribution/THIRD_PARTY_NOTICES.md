@@ -54,3 +54,8 @@ the shipped file is unchanged ([source-build.md](../docs/source-build.md#codemir
 
 User-selected dictionaries, media, and external audio services are separate
 from this distribution. Their licenses and terms are supplied by their owners.
+
+Handlebars 4.7.10 (MIT), by Yehuda Katz and contributors, supplies Anki field
+parsing and sandboxed compilation. The bundled parser and compiler are in
+`vendor/handlebars/`, with their MIT text in `vendor/handlebars/LICENSE`.
+`scripts/handlebars/build.mjs` reproduces them from its pinned npm lockfile.
