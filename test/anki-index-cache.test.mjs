@@ -304,6 +304,26 @@ test("highlighting indexes all decks independently of mining scope and reuses th
   assert.equal(f.state.snapshot.sourceKey, f.refreshes[0].key, "disabling evicts the extra snapshot");
 });
 
+test("Other note types give highlighting its own source, also beside All of Anki mining, and confirmed writes reach it (#700)", async () => {
+  const f = fixture(undefined, { anki: { model: "Japanese", fields: { expression: "Expression" }, duplicateScope: "all" },
+    wordHighlightEnabled: true });
+  f.setRows(source => (source.noteTypes ? [["可愛い", true, [10]]] : [["猫", false, [7]]]));
+  await f.service.reconcile();
+  assert.equal((await ankiIndexSources(f.options)).size, 1, "without note types highlighting shares mining's snapshot");
+  await f.change({ wordHighlightNoteTypes: [{ noteType: "Kaishi 1.5k", field: "Word" }] });
+  const sources = [...(await ankiIndexSources(f.options)).values()];
+  assert.deepEqual(sources.map(source => source.noteTypes ?? null), [null, [{ model: "Kaishi 1.5k", field: "word" }]]);
+  assert.deepEqual(f.refreshes.map(source => Boolean(source.noteTypes)), [false, true]);
+  const config = { ...f.options.anki, wordStatusNoteTypes: f.options.wordHighlightNoteTypes };
+  assert.deepEqual((await f.service.statuses(config, ["可愛い", "猫"])).statuses, ["known", "unknown"]);
+  assert.equal((await f.service.peek(f.options.anki, "可愛い")).cached, false, "mining's duplicate checks stay as they were");
+  await f.service.recordWrite(config, "鳥", 30);
+  assert.deepEqual((await f.service.statuses(config, ["鳥"])).statuses, ["learning"]);
+  assert.deepEqual((await f.service.peek(f.options.anki, "鳥")).noteIds, [30]);
+  await f.change({ wordHighlightEnabled: false });
+  assert.equal((await ankiIndexSources(f.options)).size, 1, "turning highlighting off drops its source");
+});
+
 test("the complete index refreshes every 30 minutes and retries if a post-write update races its pull", async () => {
   const f = fixture(), hold = f.hold();
   const refresh = f.service.reconcile();

@@ -109,6 +109,42 @@ test("a complete refresh stores compact sorted rows across recognized note types
     /Basic/u);
 });
 
+test("word highlighting's own note types index their word field in every deck, and a missing one is skipped (#700)", async () => {
+  const mining = await ankiIndexSource(baseConfig({ duplicateScope: "all" }));
+  const noteTypes = [{ noteType: "Kaishi 1.5k", field: "Word" }, { noteType: "Core 2k", field: "Vocab" },
+    { noteType: "Gone", field: "Word" }, { noteType: "Japanese", field: "Kana" }, { noteType: "Kaishi 1.5k", field: "Word" }];
+  const source = await ankiIndexSource(baseConfig({ duplicateScope: "all" }), { noteTypes });
+  assert.notEqual(source.key, mining.key);
+  assert.deepEqual(source.noteTypes, [{ model: "Core 2k", field: "vocab" }, { model: "Gone", field: "word" },
+    { model: "Japanese", field: "kana" }, { model: "Kaishi 1.5k", field: "word" }]);
+  assert.equal((await ankiIndexSource(baseConfig({ duplicateScope: "all" }), { noteTypes: [] })).key, mining.key,
+    "no note types keep mining's source");
+  const calls = [];
+  const invoke = ankiInvokeFake(async (action, params) => {
+    calls.push({ action, params });
+    if (action === "modelNamesAndIds") return { Japanese: 1, "Kaishi 1.5k": 2, "Core 2k": 3 };
+    if (action === "modelFieldNames") {
+      return { Japanese: ["Expression", "Kana", "Sentence"], "Kaishi 1.5k": ["Word", "Word Reading"],
+        "Core 2k": ["Vocab-Kanji"] }[params.modelName];
+    }
+    if (action === "findNotes") return params.query.includes("is:review") ? [2] : [1, 2, 3];
+    if (action === "notesInfo") {
+      return [
+        note(1, "Japanese", { Expression: "猫", Kana: "ねこ", Sentence: "ignored" }),
+        note(2, "Kaishi 1.5k", { Word: "可愛い", "Word Reading": "かわいい" }),
+        note(3, "Japanese", { Expression: "犬", Kana: "いぬ", Sentence: "ignored" }),
+      ];
+    }
+    throw new Error(`Unexpected ${action}`);
+  });
+  assert.deepEqual(await fetchAnkiIndex(invoke, source), [
+    ["いぬ", false, [3]], ["ねこ", false, [1]], ["可愛い", true, [2]], ["犬", false, [3]], ["猫", false, [1]],
+  ]);
+  const query = calls.find(call => call.action === "findNotes").params.query;
+  assert.match(query, /"note:Kaishi 1\.5k"/u);
+  assert.doesNotMatch(query, /Core 2k|Gone|deck:/u, "a note type without its field, or gone from Anki, is skipped");
+});
+
 test("live lookup filters the configured deck and subdecks, verifies exact field values and batches maturity with the candidate search", async () => {
   const source = await ankiIndexSource(baseConfig({ duplicateScope: "deck" }));
   const calls = [];
