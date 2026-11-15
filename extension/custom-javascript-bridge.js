@@ -11,7 +11,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 (function () {
   "use strict";
-  globalThis.HDAnkiPreparation?.enableNative();
   const roots = new WeakMap();
   // Taken before the saved code runs, so a script wrapping attachShadow cannot
   // open the reader's root.

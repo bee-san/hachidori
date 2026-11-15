@@ -76,7 +76,6 @@ const MARKER_DESCRIPTIONS = {
   gif: "Netflix, YouTube or Crunchyroll subtitle line's animation in the selected format, otherwise the page screenshot",
 };
 const DYNAMIC_MARKER_OPTIONS = [
-  ["preparation-NAME", "Named text returned by this Template’s preparation script"],
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],
   ["single-glossary-DICTIONARY-brief", "Brief definitions from one dictionary"],
   ["single-glossary-DICTIONARY-no-dictionary", "Definitions from one dictionary without its name"],
@@ -117,7 +116,7 @@ export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   })),
 ]);
 const MARKERS = new Set([...CORE_MARKERS.map(marker => marker.toLowerCase()), ...MARKER_ALIASES.keys()]);
-const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-", "preparation-"];
+const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-"];
 const MARKER_PATTERN = /\{([^{}]+)\}/gu;
 const BREAK_PATTERN = /<br\s*\/?>/giu;
 const genericAliases = {

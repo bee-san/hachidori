@@ -911,7 +911,6 @@ function updateAnkiSettings() {
     readProfile: () => editedProfile,
     readGroups: () => dictionaryState.groups,
     readButtons: () => options.customButtons,
-    readScripts: () => options.userScripts,
     editAnki: anki => {
       options.anki = anki;
       customButtonController?.render();
