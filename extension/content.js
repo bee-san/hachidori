@@ -365,15 +365,43 @@
     return null;
   }
 
-  function autoSwitching() {
-    return readingProfiles !== null && !READER_PAGE && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)
-      && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
+  // Whether the page's lookups may leave the active profile (8.1): never on
+  // the search and startup pages, or while Multiple languages is off.
+  function profilesSwitchable() {
+    return readingProfiles !== null && !READER_PAGE && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord);
   }
 
-  // The profile in effect for a lookup at `element` (8.1): the active profile,
-  // or with automatic switching the one the nearest `lang` names.
-  function profileForElement(element) {
+  function autoSwitching() {
+    return profilesSwitchable() && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
+  }
+
+  function profileRulesApply() {
+    return profilesSwitchable() && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).rules !== undefined;
+  }
+
+  // The modifier keys held now, by the names profile rules use.
+  let heldModifiers = [];
+
+  function noteModifiers(event) {
+    heldModifiers = [...MODIFIER_PROPERTIES].filter(([, property]) => event[property] === true).map(([key]) => key);
+  }
+
+  // The profile the first matching rule names for a lookup that starts at
+  // `popupLevel` (8.1 rule 0), or null. Word marks pass no modifiers: no key
+  // is held for them.
+  function ruleProfile(popupLevel, modifiers = heldModifiers) {
+    if (!profileRulesApply()) return null;
+    const id = globalThis.HDReaderOptions.matchProfileRule(languageSelection, [...readingProfiles.keys()],
+      { hostname: location.hostname, href: location.href, modifiers, popupLevel });
+    return readingProfiles.get(id) ?? null;
+  }
+
+  // The profile in effect for a lookup at `element` (8.1): a rule's, else with
+  // automatic switching the one the nearest `lang` names, else the active one.
+  function profileForElement(element, modifiers = heldModifiers) {
     if (readingProfiles === null) return null;
+    const ruled = ruleProfile(0, modifiers);
+    if (ruled) return ruled;
     const active = activeReadingProfile();
     if (!autoSwitching()) return active;
     const labelled = element?.closest?.("[lang]") ?? element?.ownerDocument?.documentElement;
@@ -477,11 +505,13 @@
     void themeHost.sync();
   }
 
-  // A lookup inside a popup uses its parent's profile, or with automatic
-  // switching the one the nearest `lang` inside the popup's content names
-  // (8.1 rule 3). The popup's own `lang="en"` is its interface, not content.
+  // A lookup inside a popup uses a rule's profile, else its parent's, or with
+  // automatic switching the one the nearest `lang` inside the popup's content
+  // names (8.1 rule 3). The popup's own `lang="en"` is its interface, not content.
   function profileForDefinition(element, level) {
     if (readingProfiles === null) return null;
+    const ruled = ruleProfile((level?.depth ?? 0) + 1);
+    if (ruled) return ruled;
     const parent = requestProfile(level?.currentViewRequest);
     if (!autoSwitching()) return parent;
     const labelled = element?.closest?.("[lang]");
@@ -879,7 +909,7 @@
   // The profile a lookup in a block of text would use (8.5), for its marks: none
   // when that profile does not mark words.
   function highlightProfileOf(element) {
-    const profile = profileForElement(element);
+    const profile = profileForElement(element, []);
     if (!profile || !profile.options.wordHighlightEnabled) return null;
     return { key: profile.id, language: profile.language, fields: profileFields(profile), options: profile.options,
       isText: profile.text.isText, breaks: profile.text.highlightBreaks ?? undefined };
@@ -888,7 +918,7 @@
   // Blocks with text in a language the frame's lookups may use.
   function highlightText(text) {
     if (readingProfiles === null) return JAPANESE_CHARACTER_PATTERN.test(text);
-    const candidates = autoSwitching() ? readingProfiles.values() : [activeReadingProfile()];
+    const candidates = autoSwitching() || profileRulesApply() ? readingProfiles.values() : [activeReadingProfile()];
     for (const profile of candidates) if (profile?.text.isText(text)) return true;
     return false;
   }
@@ -4128,6 +4158,7 @@
   }
 
   function updateModifierState(event) {
+    noteModifiers(event);
     const property = MODIFIER_PROPERTIES.get(options.activationKey);
     if (property) activationPressed = event[property] === true;
     // Every mouse event reports the held buttons, so a release the page never
@@ -4932,6 +4963,8 @@
 
   function onWindowBlur() {
     stopPopupResize();
+    // A key released while the window had no focus is never reported.
+    heldModifiers = [];
     if (!disposed && overlayMode) {
       // An overlay host moves focus between itself and the game while the
       // reader stays in the page (#403), so blur dismisses nothing and keeps a
