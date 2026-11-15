@@ -314,9 +314,10 @@ export function createAnkiWorkerService({
       const button = buttonId === undefined ? null
         : options.customButtons.find(candidate => candidate.id === buttonId && candidate.type === "anki");
       if (buttonId !== undefined && (button?.templateId !== templateId || !button.markers)) return null;
-      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field =>
-        ankiTemplateMarkerNames(field.value).some(name => name === "monolingual-definition"
-          || name === "bilingual-definition" || name.startsWith("glossary-selection-group-")));
+      // A button's markers may write a group marker its Template does not use.
+      const needsGroups = [...Object.values(template.fieldTemplates ?? {}).flatMap(field => ankiTemplateMarkerNames(field.value)),
+        ...Object.values(button?.markers ?? {})].some(name => name === "monolingual-definition"
+        || name === "bilingual-definition" || name.startsWith("glossary-selection-group-"));
       return {
         ...inLanguage(template, profile),
         ...(button === null ? {} : { markerSubstitutions: button.markers }),

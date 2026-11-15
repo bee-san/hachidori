@@ -4,7 +4,7 @@ import test from "node:test";
 import { buildAnkiFields } from "../extension/anki-values.js";
 import { ankiTemplateErrors } from "../extension/anki-templates.js";
 import "../extension/reader-options.js";
-import { createAnkiWorkerService } from "../extension/anki-worker.js";
+import { createAnkiWorkerService, profileTemplateKey } from "../extension/anki-worker.js";
 import { ankiRequestFixture } from "./anki-request-fixture.mjs";
 
 const row = dictionary => ({ dictionary, glossary: '["definition"]', definitionTags: "", termTags: "" });
@@ -110,4 +110,28 @@ test("the worker binds group order and installed package IDs to its checked conf
   assert.notEqual((await service.status()).configKey, configKey);
   await assert.rejects(service.submit(source), /configuration changed/iu);
   assert.equal(f.calls.filter(call => call.action === "addNote").length, 1);
+});
+
+// More custom buttons (#774): a button's markers can write a group marker its
+// Template does not use, so the button's configuration binds the groups too.
+test("a custom Anki button that writes a group marker binds the host's groups", async () => {
+  const f = ankiRequestFixture();
+  f.options.anki = globalThis.HDReaderOptions.normaliseAnki({ model: "Basic", monolingualGroupId: "mono",
+    fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
+      Back: { value: "{glossary}", overwriteMode: "coalesce" } } });
+  const templateId = f.options.anki.templates[0].id;
+  f.options.customButtons = [{ id: "mono", type: "anki", label: "Monolingual", templateId,
+    markers: { glossary: "monolingual-definition" } }];
+  let groups = [{ id: "mono", dictionaryIds: ["a", "b"] }];
+  const service = createAnkiWorkerService({ gateway: f.gateway, readOptions: async () => f.options,
+    readGroups: async () => structuredClone(groups), readDictionaries: async () => [],
+    duplicateIndex: { async recordWrite() {} },
+    engine: async () => ({ ready: true, loading: false, generation: 3 }),
+    offscreen: async () => ({ media: [], fields: {} }),
+  });
+  const button = profileTemplateKey(undefined, templateId, "mono");
+  const [plain, first] = [(await service.status(templateId)).configKey, (await service.status(button)).configKey];
+  groups = [{ id: "mono", dictionaryIds: ["b", "a"] }];
+  assert.equal((await service.status(templateId)).configKey, plain, "the Template alone does not use the groups");
+  assert.notEqual((await service.status(button)).configKey, first);
 });
