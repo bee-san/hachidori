@@ -106,6 +106,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `dictionaryIndexStorage` (auto) | Advanced → Memory | None | G |
 | `showToolbarSearchButton` (true) | Reading → Search page | None | G |
 | `searchClickLookup` (false) | Reading → Search page | None | G |
+| `searchRomajiConversion` (true) | Reading → Search page | Japanese (applies only while the search page reads Japanese) | G |
 | `searchWindowWidthPx` (600) | Reading → Search page | None | G |
 | `searchWindowHeightPx` (640) | Reading → Search page | None | G |
 | `searchHistoryEnabled` (false) | Advanced → Search history | None; the history keeps lines of every language | G |
@@ -235,7 +236,7 @@ top level of a single-profile record.
 | Netflix `japanese(track)`, lines joined with `""`, invisible marks stripped, "no Japanese subtitle track" | netflix-page.js:113; netflix-subtitles.js | Japanese subtitles | Pack `bcp47` and `lineJoiner` |
 | Practice passage and probe | startup-practice.js; startup.js:710-740 | Japanese | Pack `sample.practice` |
 | Grammar dictionary: Bee's Ultimate Grammar Dictionary (catalogue source), its `～ている` pointer entries, its own chevron styles | recommended-dictionaries.js; search.js leading `～`; dictionary `styles.css` | Japanese grammar points | Japanese catalogue unchanged; the search page's `～` skip stays for every language (it is punctuation elsewhere) |
-| Yomitan scanner features absent here: word scan resolution, per-language preprocessors, text replacements, configurable sentence terminators, romaji input | yomitan text-scanner.js, translator.js | — | Word resolution and pack preprocessors adopted; the rest not ported |
+| Yomitan scanner features absent here: word scan resolution, per-language preprocessors, text replacements, configurable sentence terminators, romaji input | yomitan text-scanner.js, translator.js | — | Word resolution and pack preprocessors adopted; romaji input on the Japanese search page (#769); the rest not ported |
 
 ## G. Engine and data path
 

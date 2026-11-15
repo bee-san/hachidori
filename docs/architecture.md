@@ -1073,6 +1073,21 @@ nothing up; links, buttons and disclosures in the results keep their own click;
 a Note being written or saved keeps the result; and a click on the word
 already shown looks nothing up again. A **Toggle option** keybind can switch it.
 
+**Romaji.** **Settings → Reading → Search page → Convert romaji to kana**
+(`searchRomajiConversion`, #769) is on by default, as Yomitan's
+`general.enableWanakana` is. While the search page reads Japanese, Latin
+letters typed or pasted into the box become hiragana as they go in, and
+capitals katakana: `taberu` shows たべる, and Enter searches it. The
+conversion is Yomitan's own (`ext/js/language/ja/japanese-wanakana.js` and the
+files it imports, unchanged in `extension/vendor/yomitan/language/`), with
+its table after Mozc's: doubled consonants make っ, and an `n` or `ny` just
+before the caret waits for the next letter, so `nn` or `n'` make ん before a
+vowel, and a search turns an `n` still waiting into ん. An input method's
+composition is its own, and is not converted. Lines walked from the history,
+the Clipboard monitor's text and a paste outside the box are searched as they
+are. In another language the box keeps Latin letters as typed, and so does a
+Japanese box with the option off.
+
 **Dismissal.** The docked result is the page's content rather than a popup over
 a word, so what would close a popup closes only the child popups opened from
 it: a click outside, the pointer leaving, the hide delays, a changed selection
@@ -1222,8 +1237,7 @@ backup. [Search history](search-history.md) has the details.
 Not ported: Yomitan's background clipboard monitor, which opens the search
 page when text is copied; its clipboard search mode (Update query only) and
 the setting for the maximum clipboard search length; profiles, and so the
-profile switch (#640);
-automatic kana conversion; the query parser's word
+profile switch (#640); the query parser's word
 segmentation and readings; going back and forward between searches in the
 browser's history; the popup window's position and state settings;
 Shift-, Ctrl- and middle-clicks on the menu's Search; and focusing the results

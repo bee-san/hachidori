@@ -262,6 +262,16 @@ test("hover scan delays stay immediate by default and the definition delay follo
   assert.ok(!KEYBIND_TOGGLE_OPTIONS.includes("scanDelayMs") && !KEYBIND_TOGGLE_OPTIONS.includes("definitionScanDelayMs"));
 });
 
+// Issue #769: Reading → Search page → Convert romaji to kana, on as Yomitan's
+// general.enableWanakana is, and global like the page's other options.
+test("the search page converts romaji until switched off", () => {
+  assert.equal(DEFAULT_OPTIONS.searchRomajiConversion, true);
+  assert.equal(normaliseOptions({ searchRomajiConversion: "no" }).searchRomajiConversion, true, "garbage");
+  assert.deepEqual(validateOptionsPatch({ searchRomajiConversion: false }), { searchRomajiConversion: false });
+  assert.ok(globalThis.HDReaderOptions.GLOBAL_OPTION_KEYS.includes("searchRomajiConversion"));
+  assert.ok(KEYBIND_TOGGLE_OPTIONS.includes("searchRomajiConversion"), "Toggle option can flip it");
+});
+
 // Issue #656: Reading → Search page's click lookups, off as Yomitan's
 // scanning.enablePopupSearch is, and the popup window's size, 600 × 640 as
 // before the setting.

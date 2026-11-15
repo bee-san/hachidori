@@ -31,6 +31,7 @@ export const KEYBIND_OPTION_LABELS = {
   // Stored inverted; named like the Settings checkbox it flips.
   hidePopupGrammarTags: "Show grammar tags",
   searchClickLookup: "Look up words with a click on the search page",
+  searchRomajiConversion: "Convert romaji to kana on the search page",
 };
 const MODIFIER_NAMES = { meta: "Meta", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
 const SCOPE_LABELS = { popup: "While a popup is open", search: "On the search page", web: "Anywhere on the page" };

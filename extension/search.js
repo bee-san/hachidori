@@ -23,6 +23,7 @@ import { loadReaderScripts } from "./reader-page.js";
 import { createNavigation, firstSelectable, ROW_STAY, rowKey, stopAt, textRows } from "./search-lines.js";
 import { renderTemplateChoices } from "./search-templates.js";
 import { applyPageTheme } from "./settings-dom.js";
+import { convertToKana, convertToKanaIME } from "./vendor/yomitan/language/ja/japanese-wanakana.js";
 
 const bridge = globalThis.HDSearchBridge;
 // Settings → Advanced → Get debug info includes what failed here.
@@ -300,6 +301,20 @@ async function walkHistory(direction) {
 }
 input.addEventListener("input", () => { walk = null; });
 
+// Reading → Search page → Convert romaji to kana (#769), Yomitan's
+// enableWanakana and its converter: while the page reads Japanese, Latin
+// letters typed or pasted into the box become hiragana, capitals katakana, as
+// they go in. An n or ny just before the caret waits for the next letter, so
+// nn and n' make ん before a vowel. An IME's composition is left to it.
+const convertsRomaji = () => options.searchRomajiConversion && (input.dataset.language ?? "ja") === "ja";
+input.addEventListener("input", (event) => {
+  if (event.isComposing || !convertsRomaji()) return;
+  const { kanaString, newSelectionStart } = convertToKanaIME(input.value, input.selectionStart);
+  if (kanaString === input.value) return;
+  input.value = kanaString;
+  input.setSelectionRange(newSelectionStart, newSelectionStart);
+});
+
 // The search page's keybinds (Settings → Keybinds, On the search page), each
 // where it applies: the history's lines in the box, the cursor in the searched
 // text, and there also a reader action such as Add note. Held, the moves repeat.
@@ -365,6 +380,9 @@ function describeKeys() {
 // somewhere else of the user's choosing. The results cover the hint, which
 // would show through a translucent popup. The line goes into the history.
 function search(source = "typed") {
+  // A typed search ends the romaji: the n left waiting becomes ん. A line from
+  // the history, the clipboard or a paste outside the box is searched as it is.
+  if (source === "typed" && walk === null && convertsRomaji()) input.value = convertToKana(input.value);
   const text = input.value.trim();
   if (!reader || !text) return;
   walk = null;

@@ -551,6 +551,7 @@ function renderOptions() {
   element("opt-popup-audio-button").checked = options.showPopupAudioButton;
   element("opt-toolbar-search").checked = options.showToolbarSearchButton;
   element("opt-search-click-lookup").checked = options.searchClickLookup;
+  element("opt-search-romaji").checked = options.searchRomajiConversion;
   element("opt-search-history").checked = options.searchHistoryEnabled;
   void renderSearchHistory();
   element("opt-audio-autoplay").checked = options.audioAutoplay;
@@ -628,6 +629,10 @@ function attachOptionHandlers() {
   });
   element("opt-search-click-lookup").addEventListener("change", (event) => {
     options.searchClickLookup = event.target.checked;
+    writeOptions();
+  });
+  element("opt-search-romaji").addEventListener("change", (event) => {
+    options.searchRomajiConversion = event.target.checked;
     writeOptions();
   });
   element("opt-search-history").addEventListener("change", (event) => {

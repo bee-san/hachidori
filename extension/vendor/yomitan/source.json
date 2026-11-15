@@ -6,6 +6,22 @@
     "structured-content-style.js": {
       "path": "ext/data/structured-content-style.json",
       "sha256": "ee1c85aba5916e4b4a5310a6b46bb4d063ceca3fcb08931e440b73419a6bc808"
+    },
+    "language/CJK-util.js": {
+      "path": "ext/js/language/CJK-util.js",
+      "sha256": "68f7128e343dbc3c8deb4bd3747a46eb9403be5f9b8a09004b3d97d4328d562a"
+    },
+    "language/ja/japanese.js": {
+      "path": "ext/js/language/ja/japanese.js",
+      "sha256": "73360f4dd47278dc7ca35a2ff8a88b35bab589d4670394ae16f6f5637119410f"
+    },
+    "language/ja/japanese-kana-romaji-dicts.js": {
+      "path": "ext/js/language/ja/japanese-kana-romaji-dicts.js",
+      "sha256": "7033507222695ac9a497bf2ff15ba54027d68389881e7ffae87b5b69006d9674"
+    },
+    "language/ja/japanese-wanakana.js": {
+      "path": "ext/js/language/ja/japanese-wanakana.js",
+      "sha256": "19ef24c15b41a3340dc3205fbbc694c11bd1edb0fffa4860c5e62274a1dfbbcd"
     }
   }
 }
