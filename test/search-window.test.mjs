@@ -3,7 +3,7 @@
 // forward instead of opening a second.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { openSearchPage, SEARCH_PAGE } from "../extension/search-window.js";
+import { FOCUS_SEARCH_BOX, openSearchPage, SEARCH_PAGE } from "../extension/search-window.js";
 
 const PAGE_URL = "chrome-extension://hachidori/search.html";
 
@@ -13,6 +13,7 @@ function browser({ pages = [], windowTypes = {}, options } = {}) {
     runtime: {
       getURL: path => `chrome-extension://hachidori/${path}`,
       async getContexts(filter) { calls.push(["getContexts", filter]); return pages; },
+      async sendMessage(message) { calls.push(["runtime.sendMessage", message]); },
     },
     storage: { local: { async get(keys) { calls.push(["storage.get", keys]); return options === undefined ? {} : { options }; } } },
     tabs: {
@@ -29,6 +30,8 @@ function browser({ pages = [], windowTypes = {}, options } = {}) {
 }
 
 const lookedUp = ["getContexts", { contextTypes: ["TAB"], documentUrls: [PAGE_URL] }];
+// The page brought forward focuses its box and selects its text (#768).
+const focused = tabId => ["runtime.sendMessage", { target: FOCUS_SEARCH_BOX, tabId }];
 
 test("a new-tab or current-tab search opens one search page and brings an open one forward", async () => {
   assert.equal(SEARCH_PAGE, "search.html");
@@ -49,8 +52,8 @@ test("a new-tab or current-tab search opens one search page and brings an open o
   for (const mode of ["existingOrNewTab", "existingOrCurrentTab"]) {
     const open = browser({ pages: [{ tabId: 7, windowId: 2 }], windowTypes: { 2: "popup" } });
     await openSearchPage(open.api, mode, { id: 3 });
-    assert.deepEqual(open.calls, [lookedUp, ["tabs.update", 7, { active: true }], ["windows.update", 2, { focused: true }]],
-      mode);
+    assert.deepEqual(open.calls, [lookedUp, ["tabs.update", 7, { active: true }], ["windows.update", 2, { focused: true }],
+      focused(7)], mode);
   }
 });
 
@@ -63,7 +66,8 @@ test("the popup window shortcut reuses only a search page in a popup window", as
 
   const popup = browser({ pages: [{ tabId: 7, windowId: 2 }, { tabId: 8, windowId: 5 }], windowTypes: { 5: "popup" } });
   await openSearchPage(popup.api, "popup");
-  assert.deepEqual(popup.calls, [lookedUp, ["tabs.update", 8, { active: true }], ["windows.update", 5, { focused: true }]]);
+  assert.deepEqual(popup.calls, [lookedUp, ["tabs.update", 8, { active: true }], ["windows.update", 5, { focused: true }],
+    focused(8)]);
 });
 
 test("the popup window opens at the size Reading → Search page sets", async () => {
