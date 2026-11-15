@@ -268,11 +268,36 @@ describe("search page", () => {
     const pastedPage = await pageState(searchTab);
     await searchFor(searchTab, "ぬるぽ");
     const missed = await popup.waitForVisible(15_000, state => state.text.includes("No definition found"));
-    check("a key typed elsewhere on the search page goes into its box, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
-      typed.focused && typed.value === "食べたかったa" && cleared.focused && cleared.value === ""
+    check("a key typed elsewhere on the search page goes into its box, as kana, Ctrl+U clears it, text pasted outside it is searched, and a miss says so in the results area",
+      typed.focused && typed.value === "食べたかったあ" && cleared.focused && cleared.value === ""
         && pasted !== null && pasted.plain.includes("漢字") && pastedPage.value === "漢字" && pastedPage.query === "漢字"
         && missed !== null && fills(await popup.rect(), (await pageState(searchTab)).area),
       JSON.stringify({ typed, cleared, pasted: pasted?.plain.slice(0, 120), pastedPage, missed: missed?.text.slice(0, 120) }));
+
+    // Convert romaji to kana (#769), on by default: letters typed into the box
+    // become kana as they go in, an n before the caret waits for the next
+    // letter until Enter, and off they stay as typed.
+    const typeInBox = async (text) => {
+      await frame.$eval("#search-input", (box) => { box.value = ""; box.focus(); });
+      await searchTab.keyboard.type(text);
+      return (await pageState(searchTab)).value;
+    };
+    const romaji = await typeInBox("taberu");
+    await searchTab.keyboard.press("Enter");
+    const romajiResult = await popup.waitForVisible(15_000, state => state.plain.includes("食べる") && state.text.includes("to eat"));
+    const romajiQuery = (await pageState(searchTab)).query;
+    const waitingN = await typeInBox("kan");
+    await searchTab.keyboard.press("Enter");
+    const endedN = await pageState(searchTab);
+    await writeOptions({ searchRomajiConversion: false });
+    await frame.waitForFunction(async () => (await chrome.storage.local.get("options")).options.searchRomajiConversion === false,
+      { polling: 100, timeout: 10_000 });
+    const literal = await typeInBox("taberu");
+    await writeOptions({ searchRomajiConversion: true });
+    check("Convert romaji to kana is on: taberu typed into the box shows たべる and Enter searches it, an n before the caret waits until Enter makes it ん, and switched off, letters stay as typed",
+      romaji === "たべる" && romajiResult !== null && romajiQuery === "たべる" && waitingN === "かn"
+        && endedN.query === "かん" && endedN.value === "かん" && literal === "taberu",
+      JSON.stringify({ romaji, romajiResult: romajiResult?.plain.slice(0, 60), romajiQuery, waitingN, endedN, literal }));
 
     await searchFor(searchTab, "食べる");
     await popup.waitForVisible(15_000, state => state.plain.includes("食べる") && state.text.includes("to eat"));
