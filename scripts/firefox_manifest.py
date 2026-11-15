@@ -25,7 +25,8 @@ CHROME_ONLY_KEYS = ("minimum_chrome_version", "cross_origin_embedder_policy", "c
 # romaji converter (#769) imports its neighbours in vendor/yomitan/language/.
 SANDBOX_RESOURCES = ("settings.css", "search.css", "content.css", "search.js", "debug-log.js", "error-text.js",
                      "keybind-settings.js", "reader-options.js", "reader-page.js", "search-lines.js",
-                     "search-templates.js", "settings-dom.js", "vendor/yomitan/language/*")
+                     "search-templates.js", "settings-dom.js", "vendor/yomitan/language/*",
+                     "anki-template-frame.js", "anki-marker-name.js", "vendor/handlebars/compiler.js")
 
 
 def firefox_manifest(chrome):

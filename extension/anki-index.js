@@ -20,7 +20,7 @@ function directExpressionFields(config, names = config.fieldTemplates === null
   ? Object.values(config.fields).filter(Boolean) : Object.keys(config.fieldTemplates)) {
   const { templates } = resolveAnkiTemplates(config, names);
   return [...new Set(Object.entries(templates)
-    .filter(([field, template]) => /^\{expression\}$/iu.test(template.value)
+    .filter(([field, template]) => template.syntax !== "handlebars" && /^\{expression\}$/iu.test(template.value)
       && !SEARCH_OPERATORS.has(field.toLowerCase()))
     .map(([field]) => nameKey(field)))].sort(compare);
 }

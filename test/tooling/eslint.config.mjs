@@ -39,6 +39,8 @@ const MAIN_WORLD = ["google-docs-flag.js", "netflix-page.js", "custom-javascript
 // The service worker serializes these modules' functions into Netflix's and
 // YouTube's pages.
 const INJECTED = ["netflix-preview.js", "youtube-frame.js"];
+// The template compiler frame is an unprivileged sandboxed ES module.
+const SANDBOX_MODULES = ["anki-template-frame.js"];
 // The MV3 service worker module and the modules only it loads.
 const SERVICE_WORKER = [
   manifest.background.service_worker, "anki-client-media.js", "anki-duplicates.js", "anki-enrichment.js",
@@ -75,12 +77,13 @@ export default defineConfig([
   // Extension pages, and the modules several contexts share.
   {
     files: ["extension/**"],
-    ignores: extension([...MAIN_WORLD, ...INJECTED, ...SERVICE_WORKER, ...WORKERS]),
+    ignores: extension([...MAIN_WORLD, ...INJECTED, ...SANDBOX_MODULES, ...SERVICE_WORKER, ...WORKERS]),
     languageOptions: { globals: { ...globals.browser, ...chrome } },
   },
   { files: extension(CLASSIC), languageOptions: { sourceType: "script", globals: published } },
   { files: extension(MAIN_WORLD), languageOptions: { sourceType: "script", globals: globals.browser } },
   { files: extension(INJECTED), languageOptions: { globals: globals.browser } },
+  { files: extension(SANDBOX_MODULES), languageOptions: { sourceType: "module", globals: globals.browser } },
   { files: extension(SERVICE_WORKER), languageOptions: { globals: { ...globals.serviceworker, ...chrome } } },
   { files: extension(WORKERS), languageOptions: { globals: globals.worker } },
   // Also runs in the engine workers, where the IDBFS mirror reads with

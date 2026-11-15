@@ -26,6 +26,9 @@ import {
 } from "../../extension/anki-index-cache.js";
 import { lookupAnkiIndex } from "../../extension/anki-index.js";
 import { ankiSetupFamily } from "../../extension/anki-setup.js";
+import { inspectHandlebars } from "../../extension/anki-handlebars.js";
+import { normaliseAnkiMarkerName } from "../../extension/anki-marker-name.js";
+import { renderHandlebars } from "../../extension/anki-template-sandbox.js";
 import { createAnkiWorkerService } from "../../extension/anki-worker.js";
 import { createBackupDownloads } from "../../extension/backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "../../extension/backup-state.js";
@@ -792,6 +795,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
     preserveLinkedAnkiTemplateFields,
+    inspectHandlebars,
+    markerName: normaliseAnkiMarkerName,
     lookupAnkiIndex,
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
@@ -906,6 +911,9 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.chrome.runtime.sendMessage = message => message.type === "hd_setup_install"
     ? recommendedInstall(message) : originalSend(message);
   window.ankiSetupFamily = ankiSetupFamily;
+  window.inspectHandlebars = inspectHandlebars;
+  window.markerName = normaliseAnkiMarkerName;
+  window.renderHandlebars = renderHandlebars;
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const customButtonSettings = readFileSync(resolve(EXTENSION, "custom-button-settings.js"), "utf8")
