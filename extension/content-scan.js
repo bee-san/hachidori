@@ -722,9 +722,12 @@
         : candidate.scanEntries[0];
     }
 
+    // A profile rule can look the same word up in another profile (a held
+    // key), so the profile in effect is part of the word's identity.
     function candidateSignature(candidate) {
       const first = candidateStart(candidate);
-      return `${candidate.exactSelection === true}\u001f${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
+      const signature = `${candidate.exactSelection === true}\u001f${first.offset}\u001f${candidate.matchOffset}\u001f${candidate.query}`;
+      return candidate.profile ? `${signature}\u001f${candidate.profile.id}` : signature;
     }
 
     function sameAnchorNode(candidate, other) {

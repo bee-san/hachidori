@@ -571,6 +571,49 @@ test("the language choice is installation-local and written only once the record
   assert.deepEqual(stored("languageSelection"), { revision: 2, activeProfileId: "ar", autoSwitch: true });
 });
 
+// Design 4.4 and 8.1: language rules are part of this browser's selection,
+// written whole, in their stored shape, and only for profiles that exist.
+test("language rules are written whole with the language selection and name existing profiles", async () => {
+  const { worker, stored } = backgroundWorker(profileRecords());
+  const rules = [{ profileId: "ar", conditions: [{ type: "domain", value: "example.com" },
+    { type: "popupLevel", comparison: "atLeast", level: 1 }] }];
+  let reply = await worker({ type: "hd_language_selection_write", baseRevision: 0, rules });
+  assert.equal(reply.ok, true, reply.error);
+  assert.deepEqual(stored("languageSelection"), { revision: 1, activeProfileId: null, autoSwitch: false, rules });
+  reply = await worker({ type: "hd_language_selection_write", baseRevision: 1, autoSwitch: true });
+  assert.deepEqual(stored("languageSelection").rules, rules, "another field's write keeps the rules");
+  for (const invalid of [[{ profileId: "ar", conditions: [] }], [{ profileId: "ar", conditions: [{ type: "modifier", key: "Fn" }] }],
+    [{ profileId: "ar", conditions: [{ type: "popupLevel", comparison: "atLeast", level: -1 }] }], "ar"]) {
+    reply = await worker({ type: "hd_language_selection_write", baseRevision: 2, rules: invalid });
+    assert.equal(reply.ok, false, JSON.stringify(invalid));
+  }
+  reply = await worker({ type: "hd_language_selection_write", baseRevision: 2,
+    rules: [{ profileId: "en", conditions: [{ type: "modifier", key: "Alt" }] }] });
+  assert.equal(reply.errorCode, "profile-missing");
+  reply = await worker({ type: "hd_language_selection_write", baseRevision: 2, rules: [] });
+  assert.deepEqual(stored("languageSelection"), { revision: 3, activeProfileId: null, autoSwitch: true }, "no rules, no key");
+});
+
+test("the first rule whose conditions all match names the profile of a lookup", () => {
+  const { matchProfileRule } = readerOptions(LANGUAGES);
+  const selection = { revision: 1, rules: [
+    { profileId: "gone", conditions: [{ type: "domain", value: "example.com" }] },
+    { profileId: "en", conditions: [{ type: "domain", value: "*.example.com, youtube.com" }, { type: "modifier", key: "Alt" }] },
+    { profileId: "ar", conditions: [{ type: "url", value: "/arabic/" }] },
+    { profileId: "ja", conditions: [{ type: "popupLevel", comparison: "atLeast", level: 1 }] },
+  ] };
+  const ids = ["ja", "en", "ar"];
+  const at = (href, extra = {}) => matchProfileRule(selection, ids,
+    { hostname: new URL(href).hostname, href, modifiers: [], popupLevel: 0, ...extra });
+  assert.equal(at("https://www.example.com/arabic/", { modifiers: ["Alt"] }), "en", "a subdomain, with the key held");
+  assert.equal(at("https://www.example.com/arabic/"), "ar", "without the key, the next rule");
+  assert.equal(at("https://notexample.com/", { modifiers: ["Alt"] }), null, "a domain matches whole labels");
+  assert.equal(at("https://YouTube.com/watch", { modifiers: ["Shift", "Alt"] }), "en");
+  assert.equal(at("https://other.org/", { popupLevel: 1 }), "ja", "a lookup in the first popup");
+  assert.equal(at("https://other.org/"), null, "no match leaves the choice to the active profile");
+  assert.equal(matchProfileRule({ revision: 1 }, ids, { hostname: "example.com", href: "https://example.com/" }), null);
+});
+
 // Design 16.3: while Multiple languages is off, lookups use the Japanese
 // profile whatever this browser chose, and the choice is kept for when it is
 // on again.
@@ -766,17 +809,19 @@ test("an erase whose confirmed document revision is older keeps the document", a
 // Design 4.4 and 16.5: removing the active profile moves lookups to Japanese
 // in the same write, so adding the language back does not make it active
 // (audit-hachi-lang-multi MINOR-1).
-test("removing the active profile moves lookups to Japanese", async () => {
+test("removing the active profile moves lookups to Japanese and removes its language rules", async () => {
   const records = profileRecords();
   records.options.profiles.push({ id: "en", language: "en", settings: {}, packSettings: {} });
   records.dictionaryState.profiles.en = { dictionaries: [], groups: [] };
-  records.languageSelection = { revision: 3, activeProfileId: "en", autoSwitch: true };
+  records.languageSelection = { revision: 3, activeProfileId: "en", autoSwitch: true,
+    rules: [{ profileId: "en", conditions: [{ type: "modifier", key: "Alt" }] }] };
   const { fromEngine, stored } = backgroundWorker(records);
   const state = stored("dictionaryState");
   const reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "en", language: "en",
     baseRevision: state.revision, state: { dictionaries: state.dictionaries, profiles: { ja: state.profiles.ja, ar: state.profiles.ar } } });
   assert.equal(reply.ok, true, reply.error);
-  assert.deepEqual(stored("languageSelection"), { revision: 4, activeProfileId: "ja", autoSwitch: true });
+  assert.deepEqual(stored("languageSelection"), { revision: 4, activeProfileId: "ja", autoSwitch: true },
+    "its language rules go with it");
 });
 
 // The Japanese view is today's shape, without `targetLanguage`; an older

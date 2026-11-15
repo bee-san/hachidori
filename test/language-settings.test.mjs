@@ -401,6 +401,57 @@ test("automatic switching is this browser's choice, written through the language
   assert.equal(writesOf(settings, "hd_options_write").length, 0, "not an option");
 });
 
+// Language rules (docs/languages.md 8.1, 16.3): each edit writes every rule
+// through the language selection, and a rebuild keeps keyboard focus.
+test("language rules are written whole through the language selection and keep focus as they change", async t => {
+  const settings = await open(t, { hash: "#languages", stored: withProfiles() });
+  const { document, el, records, window } = settings;
+  const control = label => el("language-rules-list").querySelector(`[aria-label="${label}"]`);
+  const change = async (label, value) => {
+    control(label).value = value;
+    control(label).dispatchEvent(new window.Event("change"));
+    await settle();
+  };
+  assert.equal(el("language-rules").previousElementSibling.id, "language-settings", "a card after Your languages");
+  assert.equal(el("language-rules-list").hidden, true);
+  el("language-rules-add").click();
+  await settle();
+  assert.equal(document.activeElement, control("Rule 1, condition 1: type"), "the new rule's first condition");
+  await change("Language of rule 1", "ar");
+  await change("Rule 1, condition 1: domains", " youtube.com, netflix.com ");
+  control("Add a condition to rule 1").click();
+  await settle();
+  await change("Rule 1, condition 2: type", "popupLevel");
+  assert.equal(document.activeElement, control("Rule 1, condition 2: type"), "a new type keeps its menu focused");
+  await change("Rule 1, condition 2: level", "2");
+  el("language-rules-add").click();
+  await settle();
+  await change("Rule 2, condition 1: type", "modifier");
+  await change("Rule 2, condition 1: key", "Alt");
+  const rules = [
+    { profileId: "ar", conditions: [{ type: "domain", value: "youtube.com, netflix.com" },
+      { type: "popupLevel", comparison: "atLeast", level: 2 }] },
+    { profileId: "ja", conditions: [{ type: "modifier", key: "Alt" }] },
+  ];
+  assert.deepEqual(records.languageSelection.rules, rules);
+  const writes = writesOf(settings, "hd_language_selection_write");
+  const { baseRevision, rules: written, activeProfileId, autoSwitch } = writes.at(-1);
+  assert.deepEqual({ baseRevision, rules: written, activeProfileId, autoSwitch },
+    { baseRevision: records.languageSelection.revision - 1, rules, activeProfileId: undefined, autoSwitch: undefined });
+  control("Move rule 2 up").click();
+  await settle();
+  assert.deepEqual(records.languageSelection.rules, [rules[1], rules[0]]);
+  assert.equal(document.activeElement, control("Move rule 1 down"), "the moved rule's other order button");
+  control("Remove rule 1").click();
+  await settle();
+  assert.deepEqual(records.languageSelection.rules, [rules[0]]);
+  control("Remove rule 1").click();
+  await settle();
+  assert.equal(records.languageSelection.rules, undefined, "no rules, no key");
+  assert.equal(document.activeElement, el("language-rules-add"));
+  assert.equal(writesOf(settings, "hd_options_write").length, 0, "not an option");
+});
+
 test("Add a language copies the edited profile, edits the new one and offers Use for lookups", async t => {
   const settings = await open(t, { hash: "#languages", stored: withProfiles() });
   const { document, el, page, records, window } = settings;
@@ -502,7 +553,7 @@ test("a pack's display setting shows under Advanced → Languages for a theme th
   await settle();
   const fieldset = el("language-display-settings");
   assert.ok(fieldset);
-  assert.equal(fieldset.previousElementSibling, el("language-settings"), "after Your languages");
+  assert.equal(fieldset.previousElementSibling, el("language-rules"), "after Your languages and Language rules");
   assert.equal(el("design").querySelector("[data-language-settings]"), null);
   assert.equal(fieldset.querySelector("legend").textContent, "Arabic display");
   assert.equal(fieldset.hidden, false);

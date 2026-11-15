@@ -113,7 +113,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `searchHistoryLimit` (10000) | Advanced → Search history | None | G |
 | `keybinds` (Yomitan defaults) | Keybinds | Toggle option may name gated keys | G; gated keys not offered (7.3) |
 | new `profiles` (not an option key) | Advanced → Languages | — | structure of `options` (4.1) |
-| new `languageSelection.activeProfileId`, `.autoSwitch` | toolbar, shortcut, Advanced → Languages (**Use for lookups**, Switch language automatically) | — | installation-local key (4.4) |
+| new `languageSelection.activeProfileId`, `.autoSwitch`, `.rules` | toolbar, shortcut, Advanced → Languages (**Use for lookups**, Switch language automatically, Language rules) | — | installation-local key (4.4) |
 
 Retired keys (`modifier`, `definitionBlurEnabled`, `hoverDelayMs`,
 `experimental.smallerAnkiCards`) keep their migrations and are read from the

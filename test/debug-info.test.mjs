@@ -109,7 +109,8 @@ test("each language keeps its stored and effective settings, selected theme, scr
       { id: "ar", language: "ar", settings: { showPitchAccentColors: true, maxResults: 8 }, packSettings: {} },
       { id: "zz", language: "zz", settings: {}, packSettings: { preserved: true } },
     ] };
-  stored.languageSelection = { revision: 2, activeProfileId: "ar", autoSwitch: true };
+  stored.languageSelection = { revision: 2, activeProfileId: "ar", autoSwitch: true,
+    rules: [{ profileId: "ar", conditions: [{ type: "domain", value: "example.com" }, { type: "modifier", key: "Alt" }] }] };
   const env = host({ stored });
   const registration = { id: "layout", matches: ["<all_urls>"], allFrames: true, matchOriginAsFallback: true,
     runAt: "document_idle", world: "USER_SCRIPT", js: [{ file: "custom-javascript-bridge.js" }, { code: "const apiKey = 'script-key';" }] };

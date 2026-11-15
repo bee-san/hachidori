@@ -340,6 +340,17 @@ button,
 .language-actions select { flex: 1 1 12em; width: auto; min-width: 0; }
 /* The card's status is a row of its own, so its rule spans the card. */
 #settings-language-status { display: block; }
+/* Language rules (section 8.1): a rule's language and order buttons, then its
+   conditions, each a row of controls that wraps on a phone. */
+.language-row.language-rule { display: grid; justify-content: stretch; }
+.language-row.language-rule > button { justify-self: start; margin-inline-start: 0; }
+.language-rule-head select { flex: 1 1 10em; width: auto; min-width: 0; }
+.language-rule-conditions { display: grid; gap: 6px; margin: 0; padding: 0; padding-inline-start: 16px; list-style: none; }
+.language-rule-condition { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.language-rule-condition select { flex: 0 1 12em; width: auto; min-width: 0; }
+.language-rule-condition input[type="text"] { flex: 1 1 14em; width: auto; min-width: 0; }
+.language-rule-condition input[type="number"] { flex: 0 0 5em; width: 5em; }
+.language-rule-condition > button { margin-inline-start: auto; }
 /* Settings every language shares (section 16.4). */
 .scope-note { color: var(--text-dim); }
 .field-hint > .scope-note { display: block; }

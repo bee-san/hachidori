@@ -13,6 +13,7 @@
 import { describeErrorOrJson } from "./error-text.js";
 import { customDictionaryDocumentFor, languageEntryCount } from "./custom-dictionary.js";
 import { heldLanguages } from "./profile-state.js";
+import { createProfileRules } from "./profile-rules-settings.js";
 
 const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, languagesEnabled,
   profiles: optionProfiles } = globalThis.HDReaderOptions;
@@ -54,7 +55,7 @@ function rowNamed(container, attribute, key) {
 
 export function createProfileSettings({ document, element, send, setStatus, readEditedProfile, readActiveProfileId,
   readOptionsRecord, readDictionaryState, readSelection, readRecords, languageName, chooseEditedProfile,
-  useEditedProfileForLookups, writeAutoSwitch, settleEdits, afterProfileChange, openLanguages, isLinked = () => false }) {
+  useEditedProfileForLookups, writeAutoSwitch, writeRules, settleEdits, afterProfileChange, openLanguages, isLinked = () => false }) {
   const registry = globalThis.HDLanguages;
   const originals = new Map();
   let busy = false;
@@ -205,7 +206,24 @@ export function createProfileSettings({ document, element, send, setStatus, read
     return { nodes: [picker, row, help], select, use, input, help, hint: picker.querySelector(".field-hint") };
   }
 
+  // Language rules (section 8.1), a card of its own after this one.
+  let rules = null;
+
+  function renderRules(several) {
+    if (!several) {
+      rules?.card.remove();
+      rules = null;
+      return;
+    }
+    if (rules === null) {
+      rules = createProfileRules({ document, create, readSelection, profileList, optionLabel, writeRules, setStatus });
+      card.after(rules.card);
+    }
+    rules.render();
+  }
+
   function renderEdited(several) {
+    renderRules(several);
     if (!several) {
       for (const node of edited?.nodes ?? []) node.remove();
       edited = null;
@@ -227,7 +245,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
       + ` Lookups in this browser use ${activeName()}.`);
     if (input !== document.activeElement) input.checked = readSelection().autoSwitch === true;
     setText(help, "Each lookup uses the language the page or the hovered element declares, when it is one of yours;"
-      + ` otherwise ${activeName()}. This setting applies to this browser only.`);
+      + ` otherwise ${activeName()}. Language rules below come first. This setting applies to this browser only.`);
   }
 
   // The sidebar names the edited language once there is a choice (section

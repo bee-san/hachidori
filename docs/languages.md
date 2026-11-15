@@ -59,7 +59,8 @@ are recorded in [`docs/decisions/`](decisions/).
   shortcut **Switch to the next language** (suggested Alt+Shift+L) cycles
   them; the toolbar badge shows the active one when there is more than one.
   Each browser keeps its own active language. Optionally, Hachidori picks the
-  profile for each lookup from the page's or element's `lang` attribute.
+  profile for each lookup from the page's or element's `lang` attribute, or
+  by language rules: the website, a held key or the popup level.
 - **Settings follow the language you edit.** Settings shows one profile at a
   time, chosen in Advanced → Languages, without changing the language you
   read in. A
@@ -92,7 +93,8 @@ The user interface stays in English.
   starts as the active profile and changes only in that page's **Settings
   shows** menu (Advanced → Languages).
 - **Profile in effect**: the profile a particular lookup uses: the active
-  profile, unless automatic switching picked another for that page element.
+  profile, unless a language rule or automatic switching picked another for
+  that lookup.
 - **Capability**: a feature a language has (section 7.1). Packs declare
   them; settings and popup features require them.
 - **Language-scoped data**: user data that belongs to a language rather than
@@ -112,7 +114,7 @@ The user interface stays in English.
 | Profile | Dictionaries enabled, their order and tab groups; scan length, maximum results, the language text gate, personal-dictionary switches, metadata-only results; frequency sorting and its dictionary; definition blur; word highlighting; lookup-count display; Anki Templates; pronunciation sources, autoplay and the audio button; popup theme, colours, opacity, columns and every Design content setting; custom buttons and links; the clicked-character dictionary; pack settings | These differ by language: a Japanese and an English dictionary, a JLPT deck and a vocabulary deck, a Japanese and an English voice. |
 | Language | Personal dictionary source and its package; lookup counts; words marked known or ignored | They are facts about words of a language, shared by every profile of it. |
 | Package | Title, files, revision, update source and schedule, display name, favourite, source and target language | A dictionary is one thing however many profiles use it. |
-| Installation | Active profile; automatic switching | Each browser, and GameSentenceMiner's overlay, reads its own language. |
+| Installation | Active profile; automatic switching; language rules | Each browser, and GameSentenceMiner's overlay, reads its own language. |
 | Global | Enable lookups; Google Docs; lookup mode, activation key and delays; hide-on-exit; nesting depth; keybinds; popup width, height, scale and toolbar position; source highlight; Custom CSS and JavaScript; AnkiConnect address and key; smaller Anki cards; YouTube mining; experimental flags; memory and storage modes; automatic backups; the update schedule; sharing; search button | They describe the reader's hands, screen and machine, not a language. |
 
 Appendix A lists every option key with its scope and reason.
@@ -237,8 +239,30 @@ is added.
 ### 4.4 `languageSelection` (installation-local)
 
 ```json
-{"revision": 4, "activeProfileId": "ar", "autoSwitch": false}
+{"revision": 4, "activeProfileId": "ar", "autoSwitch": false,
+ "rules": [{"profileId": "en", "conditions": [{"type": "domain", "value": "youtube.com, netflix.com"},
+   {"type": "modifier", "key": "Alt"}]}]}
 ```
+
+`rules` are the language rules (section 8.1), present only while there is
+at least one, so a selection without rules keeps its earlier shape. A rule
+names a profile and one or more conditions:
+
+- `{"type": "domain", "value"}`: the page's host is one of the domains in
+  `value`, separated by commas or spaces, or a subdomain of one (`*.` and a
+  leading `.` are ignored, case is not significant);
+- `{"type": "url", "value"}`: the page's address contains `value`, which
+  never matches while empty;
+- `{"type": "modifier", "key"}`: `Shift`, `Control`, `Alt` or `Meta` is held
+  as the word is scanned;
+- `{"type": "popupLevel", "comparison", "level"}`: the level the lookup starts
+  in, 0 on the page and 1 in the first popup, is `equal` to, `atLeast` or
+  `atMost` `level`.
+
+The page is the document the text is in, a frame's own address for text in a
+frame. `normaliseLanguageSelection` drops a condition that is not one of these
+and a rule left without conditions. Removing a profile removes its rules in
+the same write as its other records (section 16.5).
 
 A new key, written only once the records have profiles, by
 `hd_language_selection_write` (section 5.2). It is not in the sharing mirror
@@ -475,9 +499,11 @@ a held language that has no profile (section 16.3). An erase carries the
 document revision the confirmation read, and the engine refuses it with
 today's "The personal dictionary changed after you confirmed" when the
 document is newer, as today's erase does.
-`hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch? }`
+`hd_language_selection_write { baseRevision, activeProfileId?, autoSwitch?, rules? }`
 writes the installation-local `languageSelection` and is never forwarded to a
-sharing host.
+sharing host. `rules` replaces every rule, in their stored shape (section 4.4);
+a write whose rules are not in that shape, or name a profile that does not
+exist, is refused.
 
 ### 5.3 Settings edits one profile
 
@@ -783,6 +809,14 @@ Pinyin / Zhuyin* (display, with a pinyin-to-zhuyin `map` step).
 The content script holds the projection of every profile. For each candidate
 it chooses the profile in effect:
 
+0. While Multiple languages is on, the profile of the first **language rule**
+   (section 4.4) whose conditions all match the lookup: the page's address,
+   the modifier keys held as the word is scanned, and the level the lookup
+   starts in (0 for a word on the page, the parent popup's depth plus one for
+   a word in a popup). A rule whose profile is gone is skipped. Rules come
+   before rules 1-3 below, which apply when none matches. A changed held key
+   takes effect at the next scan; the same word scanned in another profile is
+   a new lookup.
 1. With **Switch language automatically** off (the default), or Multiple
    languages off (section 16.3): the active profile.
 2. With it on: the nearest `lang` attribute of the hovered element, or of the
@@ -795,7 +829,8 @@ it chooses the profile in effect:
    pass, or the block's default) is matched as in rule 2, and no match leaves
    the parent's profile.
 4. The search page, the startup exercise and keybind scans use the active
-   profile.
+   profile; language rules do not apply to them. Word highlighting (8.5)
+   applies the rules with no key held.
 
 The popup shows the profile in effect only when it differs from the active
 one, as a small language label on a line of its own at the top of the popup.
@@ -1670,6 +1705,18 @@ The tab's first card, **Your languages**, holds:
 - **Switch language automatically from the page's language**
   (`languageSelection.autoSwitch`, per installation, off, written by
   `hd_language_selection_write`), below it, with two or more profiles.
+
+With two or more profiles, a second card, **Language rules**, follows Your
+languages (and comes before the pack's cards): the rules of section 8.1, per
+installation, as an ordered list. Each rule has a menu of the profiles,
+**Move up**, **Move down** and **Remove**, and its conditions, each a type
+menu (Website domain, Address contains, Key held, Popup level) with its value
+and **Remove** (disabled for a rule's only condition), then **Add condition**.
+**Add a rule** adds one for the first profile with an empty Website domain
+condition. Every change writes all the rules with `hd_language_selection_write`;
+text fields write when they change. A rebuild keeps keyboard focus on the
+same control of the same rule, or on the other order button when a move
+disabled it, and Remove moves focus to Add a rule.
 - **Your languages**: a row per profile with its native name and dictionary
   count, and **Remove** while there are two or more (section 16.5). Remove
   asks first in a row below the list, with **Cancel** first and **Also
@@ -2104,7 +2151,11 @@ language** (with Multiple languages on) and in every theme.
 ## 21. Known limits
 
 - The user interface is English; only content follows the language.
-- One profile per language in version 1.
+- One profile per language in version 1. Language rules (section 8.1) choose
+  between languages, so they cannot pick, for one language, a monolingual
+  profile on the page and a bilingual one in nested popups, or different
+  scanning keys per site: the activation key and the other scanning settings
+  are global (section 3).
 - Recommended dictionaries for other languages are links, not one-click
   installs.
 - Downgrading is not supported once a second language is added: older builds
