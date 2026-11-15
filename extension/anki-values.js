@@ -250,22 +250,6 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     return `${prefix}<b>${body}</b>${suffix}`;
   };
   const firstDictionary = () => term.glossaries[0]?.dictionary || "";
-  // A request without a fallback (the relay API, older linked browsers) is brief.
-  const selectionBrief = !["first", "all"].includes(request.glossarySelectionFallback);
-  const groupDefinition = groupId => {
-    const group = request.glossaryGroups?.find(group => group.id === groupId);
-    if (!group) return "";
-    const selected = request.glossarySelection;
-    const selectionAvailable = selected && Number.isSafeInteger(selected.index) && selected.index >= 0
-      && group.dictionaryIds.includes(request.dictionaryIds?.[selected.dictionary])
-      && term.glossaries.filter(row => row.dictionary === selected.dictionary)[selected.index];
-    const dictionary = selectionAvailable ? selected.dictionary : group.dictionaryIds.map(id =>
-      term.glossaries.find(row => request.dictionaryIds?.[row.dictionary] === id)?.dictionary).find(Boolean);
-    if (!dictionary) return "";
-    return definition({ selectedOnly: true,
-      selection: selectionAvailable ? selected : { dictionary, index: 0 },
-      brief: selectionBrief });
-  };
   // The relay API and older linked browsers send no address. Like Yomitan's
   // anki-note-data-creator.js, a missing or non-string one is blank.
   const pageUrl = () => typeof request.pageUrl === "string" ? escape(request.pageUrl) : "";
@@ -282,15 +266,11 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),
     "glossary-plain-no-dictionary": () => definition({ plain: true, noDictionary: true }),
-    // With no choice, the All definitions fallback exports what {glossary} does (#764).
-    "selected-glossary": () => (!request.glossarySelection && request.glossarySelectionFallback === "all" ? definition({})
-      : definition({ selectedOnly: true, selection: request.glossarySelection,
-        brief: selectionBrief })),
+    "selected-glossary": () => definition({ selectedOnly: true, selection: request.glossarySelection,
+      brief: request.glossarySelectionFallback !== "first" }),
     "glossary-first": () => definition({ firstOnly: true }),
     "glossary-first-brief": () => definition({ firstOnly: true, brief: true }),
     "glossary-first-no-dictionary": () => definition({ firstOnly: true, noDictionary: true }),
-    "monolingual-definition": () => groupDefinition(request.monolingualGroupId),
-    "bilingual-definition": () => groupDefinition(request.bilingualGroupId),
     conjugation: () => request.trace.map(step => escape(step.name)).join(" « ") || escape(term.rules),
     "part-of-speech": () => {
       partsOfSpeech ??= partOfSpeechLabels(language);
@@ -358,9 +338,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     if (values.has(name)) return values.get(name);
     let value = "";
     if (Object.hasOwn(table, name)) value = table[name]();
-    else if (name.startsWith("glossary-selection-group-")) {
-      value = groupDefinition(name.slice("glossary-selection-group-".length));
-    } else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
+    else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
       glossaries ??= dynamicGlossaries(request, glossaryMarkerNames);
       if (glossaries.has(name)) value = definition(glossaries.get(name));
     } else if (name.startsWith("single-frequency-")) {

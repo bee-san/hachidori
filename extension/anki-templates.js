@@ -5,7 +5,6 @@ const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
   "definition", "glossary", "glossary-brief", "glossary-no-dictionary", "glossary-plain", "glossary-plain-no-dictionary",
   "selected-glossary", "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
-  "monolingual-definition", "bilingual-definition",
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
   "url", "url-plain", "miscInfo",
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
@@ -37,8 +36,6 @@ const MARKER_DESCRIPTIONS = {
   "glossary-first-no-dictionary": "First definition without its dictionary name",
   "main-definition": "First available definition",
   "jpmn-primary-definition": "First available definition",
-  "monolingual-definition": "Selected or first available definition in this Template's monolingual group",
-  "bilingual-definition": "Selected or first available definition in this Template's bilingual group",
   conjugation: "Deinflection and conjugation path",
   "part-of-speech": "Readable part-of-speech names",
   "phonetic-transcriptions": "Available phonetic transcriptions",
@@ -80,7 +77,6 @@ const DYNAMIC_MARKER_OPTIONS = [
   ["single-glossary-DICTIONARY-plain", "Plain-text definitions from one dictionary"],
   ["single-glossary-DICTIONARY-plain-no-dictionary", "Plain-text definitions from one dictionary without its name"],
   ["single-glossary-id--PACKAGE-ID", "Definitions selected by the dictionary package ID"],
-  ["glossary-selection-group-GROUP", "Selected or first available definition in a dictionary group; choose its marker below"],
   ["single-frequency-DICTIONARY", "Formatted values from one frequency dictionary"],
   ["single-frequency-number-DICTIONARY", "Numeric value from one frequency dictionary"],
 ];
@@ -114,11 +110,8 @@ export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   })),
 ]);
 const MARKERS = new Set([...CORE_MARKERS.map(marker => marker.toLowerCase()), ...MARKER_ALIASES.keys()]);
-const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-"];
+const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-"];
 const MARKER_PATTERN = /\{([^{}]+)\}/gu;
-// Group IDs are opaque and case-sensitive even though marker names are not.
-const markerName = name => name.toLowerCase().startsWith("glossary-selection-group-")
-  ? `glossary-selection-group-${name.slice("glossary-selection-group-".length)}` : name.toLowerCase();
 const BREAK_PATTERN = /<br\s*\/?>/giu;
 const genericAliases = {
   expression: ["Expression", "Word", "Term", "Front"], reading: ["Reading", "Word Reading", "WordReading", "Kana"],
@@ -205,7 +198,7 @@ export function ankiMappedFieldNames(config, fields = []) {
 
 export function ankiTemplateMarkerNames(template) {
   return [...template.matchAll(MARKER_PATTERN)].map(match => {
-    const name = markerName(match[1]);
+    const name = match[1].toLowerCase();
     return MARKER_ALIASES.get(name) ?? name;
   });
 }
@@ -242,7 +235,7 @@ export function renderAnkiTemplate(template, values) {
   return template.split(BREAK_PATTERN).flatMap(segment => {
     const markers = [...segment.matchAll(MARKER_PATTERN)];
     const rendered = segment.replace(MARKER_PATTERN, (_, name) => {
-      const key = markerName(name);
+      const key = name.toLowerCase();
       return encodeAnkiClozeBraces(values[key] ?? values[MARKER_ALIASES.get(key)] ?? "");
     });
     return markers.length && !rendered.trim() ? [] : [rendered];
