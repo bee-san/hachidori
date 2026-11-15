@@ -38,7 +38,7 @@ export function createProfileRules({ document, create, readSelection, profileLis
       conditions all match. Website domains match their subdomains too, Key held is checked as each word is scanned,
       and popup level 0 is the page, 1 the first popup. When no rule matches, the language is chosen as above.</p>
     <ol class="language-list language-rule-list" id="language-rules-list"></ol>
-    <div class="options-actions"><button type="button" class="ghost" id="language-rules-add">Add a rule</button></div>`;
+    <div class="options-actions"><button type="button" class="ghost" id="language-rules-add" aria-describedby="language-rules-help">Add a rule</button></div>`;
   const list = card.querySelector("#language-rules-list");
   const add = card.querySelector("#language-rules-add");
   let rules = [];
