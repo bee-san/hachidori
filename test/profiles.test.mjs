@@ -16,12 +16,19 @@ const golden = JSON.parse(read("test/data/profiles-golden.json"));
 const LANGUAGES = JSON.parse(read("test/data/profile-languages.json"));
 
 const plain = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
-// These shared media settings were added after the pre-profile recording.
+// These media and Anki definition settings were added after the pre-profile recording.
 // Keep its original values and hashes authoritative for every older key.
 function beforeVideoFormats(value) {
   const options = Object.fromEntries(Object.entries(plain(value))
     .filter(([key]) => !["videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality"].includes(key)));
   delete options.experimental?.avifScreenshots;
+  if (options.anki) {
+    for (const anki of [options.anki, ...(options.anki.templates ?? [])]) {
+      delete anki.glossarySelectionFallback;
+      delete anki.monolingualGroupId;
+      delete anki.bilingualGroupId;
+    }
+  }
   return options;
 }
 

@@ -9,16 +9,19 @@
   const ANKI_DUPLICATE_SCOPES = ["model", "deck", "all"];
   const ANKI_DUPLICATE_BEHAVIORS = ["prevent", "new", "overwrite"];
   const ANKI_OVERWRITE_MODES = ["coalesce", "coalesce-new", "skip", "append", "prepend", "overwrite"];
+  const ANKI_GLOSSARY_FALLBACKS = new Set(["first-brief", "first", "all"]);
+  const ANKI_GLOSSARY_CONFIG_KEYS = new Set(["glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"]);
   const STABLE_ID_MAX_LENGTH = 256;
   const ANKI_TEMPLATE_CONFIG_KEYS = ["deck", "model", "tags", "fields", "duplicateScope", "duplicateBehavior",
-    "captureScreenshot", "fieldTemplates"];
+    "captureScreenshot", "fieldTemplates", ...ANKI_GLOSSARY_CONFIG_KEYS];
   // `captureScreenshot` only matters once a mapped field asks for {screenshot},
   // so it is on by default: a note type with a picture field gets the viewport
   // screenshot the mining request was made from, and nothing else changes.
   const DEFAULT_ANKI_TEMPLATE = { id: "default", name: "Default", deck: "Default", model: "", tags: ["hachidori"],
     fields: Object.fromEntries(ANKI_FIELDS.map(key => [key, ""])),
     duplicateScope: "model", duplicateBehavior: "prevent",
-    captureScreenshot: true, fieldTemplates: null };
+    captureScreenshot: true, fieldTemplates: null,
+    glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "" };
   const DEFAULT_ANKI = {
     url: "http://127.0.0.1:8765",
     apiKey: "",
@@ -637,17 +640,25 @@
       : [...DEFAULT_ANKI_TEMPLATE.tags];
     result.fields = Object.fromEntries(ANKI_FIELDS.map(key => [key,
       typeof source.fields?.[key] === "string" ? source.fields[key] : ""]));
-    if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) {
-      result.duplicateScope = source.duplicateScope;
-    } else if (source.duplicateScope === "deck-root") {
-      result.duplicateScope = "deck";
-    } else if (source.duplicateScope === "collection") {
-      result.duplicateScope = source.duplicateScopeCheckAllModels === true ? "all" : "model";
-    }
+    result.duplicateScope = normaliseDuplicateScope(source) ?? result.duplicateScope;
     if (ANKI_DUPLICATE_BEHAVIORS.includes(source.duplicateBehavior)) result.duplicateBehavior = source.duplicateBehavior;
     if (source.checkForDuplicates === false) result.duplicateBehavior = "new";
     result.fieldTemplates = normaliseAnkiFieldTemplates(source.fieldTemplates);
+    if (ANKI_GLOSSARY_FALLBACKS.has(source.glossarySelectionFallback)) {
+      result.glossarySelectionFallback = source.glossarySelectionFallback;
+    }
+    for (const key of ["monolingualGroupId", "bilingualGroupId"]) {
+      if (validIdentifier(source[key])) result[key] = source[key];
+    }
     return result;
+  }
+
+  // A saved scope, or the scope an older setting meant; undefined keeps the default.
+  function normaliseDuplicateScope(source) {
+    if (ANKI_DUPLICATE_SCOPES.includes(source.duplicateScope)) return source.duplicateScope;
+    if (source.duplicateScope === "deck-root") return "deck";
+    if (source.duplicateScope === "collection") return source.duplicateScopeCheckAllModels === true ? "all" : "model";
+    return undefined;
   }
 
   function normaliseAnkiTemplate(value, index = 0) {
@@ -667,28 +678,36 @@
     return ANKI_TEMPLATE_CONFIG_KEYS.every(key => JSON.stringify(left[key]) === JSON.stringify(right[key]));
   }
 
+  function normaliseAnkiTemplateList(source) {
+    const ids = new Set();
+    const templates = source.templates.map((template, index) => normaliseAnkiTemplate(template, index))
+      .filter(template => {
+        if (ids.has(template.id)) return false;
+        ids.add(template.id);
+        return true;
+      });
+    if (templates.length === 0) templates.push(cloneAnkiTemplate());
+    // A legacy caller may spread the normalized object and edit its
+    // first-Template compatibility fields. Keep that edit lossless.
+    const projected = normaliseAnkiTemplateConfig(source);
+    // Older projected writers know only the original keys. Apply their edits
+    // while retaining definition settings that only the Template carries.
+    for (const key of ANKI_GLOSSARY_CONFIG_KEYS) {
+      if (!Object.hasOwn(source, key)) projected[key] = templates[0][key];
+    }
+    const carriesProjection = ANKI_TEMPLATE_CONFIG_KEYS.every(key =>
+      ANKI_GLOSSARY_CONFIG_KEYS.has(key) || Object.hasOwn(source, key));
+    if (carriesProjection && !sameAnkiTemplateConfig(projected, templates[0])) {
+      templates[0] = { id: templates[0].id, name: templates[0].name, ...projected };
+    }
+    return templates;
+  }
+
   function normaliseAnki(value) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    let templates;
-    if (Array.isArray(source.templates) && source.templates.length > 0) {
-      const ids = new Set();
-      templates = source.templates.map((template, index) => normaliseAnkiTemplate(template, index))
-        .filter(template => {
-          if (ids.has(template.id)) return false;
-          ids.add(template.id);
-          return true;
-        });
-      if (templates.length === 0) templates = [cloneAnkiTemplate()];
-      // A legacy caller may spread the normalized object and edit its
-      // first-Template compatibility fields. Keep that edit lossless.
-      const projected = normaliseAnkiTemplateConfig(source);
-      const carriesProjection = ANKI_TEMPLATE_CONFIG_KEYS.every(key => Object.hasOwn(source, key));
-      if (carriesProjection && !sameAnkiTemplateConfig(projected, templates[0])) {
-        templates[0] = { id: templates[0].id, name: templates[0].name, ...projected };
-      }
-    } else {
-      templates = [{ id: "default", name: "Default", ...normaliseAnkiTemplateConfig(source) }];
-    }
+    const templates = Array.isArray(source.templates) && source.templates.length > 0
+      ? normaliseAnkiTemplateList(source)
+      : [{ id: "default", name: "Default", ...normaliseAnkiTemplateConfig(source) }];
     const first = templates[0];
     const result = {
       url: DEFAULT_ANKI.url,
@@ -715,6 +734,7 @@
     if (Object.keys(value).some(key => !keys.has(key))
         || value.id !== normalized.id || value.name !== normalized.name) return false;
     return ANKI_TEMPLATE_CONFIG_KEYS.every(key => {
+      if (ANKI_GLOSSARY_CONFIG_KEYS.has(key) && !Object.hasOwn(value, key)) return true;
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates)
         && JSON.stringify(value.fieldTemplates) === JSON.stringify(normalized.fieldTemplates);
       if (key === "fields") return value.fields && !Array.isArray(value.fields)
@@ -726,6 +746,7 @@
 
   function validAnkiProjection(value, normalized) {
     return Object.entries(normalized).filter(([key]) => key !== "templates").every(([key, expected]) => {
+      if (ANKI_GLOSSARY_CONFIG_KEYS.has(key) && !Object.hasOwn(value, key)) return true;
       if (key === "url") return !Object.hasOwn(value, key)
         || (normaliseAnkiConnectUrl(value.url) !== null && normaliseAnkiConnectUrl(value.url) === expected);
       if (key === "fieldTemplates") return validAnkiTemplates(value.fieldTemplates);
