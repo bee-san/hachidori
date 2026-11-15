@@ -22,6 +22,7 @@ const KEY_CONTROLS = {
   wordHighlightKnown: "opt-word-highlight-known",
   wordHighlightIgnored: "opt-word-highlight-ignored",
   wordHighlightStyle: "opt-word-highlight-style",
+  wordHighlightNoteTypes: "word-highlight-note-type",
 };
 const REQUIREMENT_KINDS = new Set(["readings", "ruby", "pitchAccent", "characterView", "wordHighlighting",
   "ankiNoteTypeFamilies"]);
@@ -157,6 +158,44 @@ test("a language without word highlighting hides the whole section, its tab and 
   assert.equal(option().hidden, false);
   settings.navigate("word-highlighting");
   assert.equal(page.activeSection(), "word-highlighting");
+});
+
+test("Other note types lists Anki's note types and the chosen one's fields, and adds and removes a choice (#700)", async t => {
+  const discovered = [];
+  const settings = openSettings(t, { hash: "#word-highlighting", stored: { options: { revision: 1,
+    anki: { url: "http://127.0.0.1:8766", apiKey: "k", templates: [{ id: "default", name: "Default", model: "Japanese" }] } } },
+  onMessage: (message) => {
+    if (message.type !== "hd_anki_discover") return undefined;
+    discovered.push([message.model, message.url, message.apiKey]);
+    return { ok: true, connected: true, model: message.model, decks: [], models: ["Japanese", "Kaishi 1.5k"],
+      fields: message.model === "Kaishi 1.5k" ? ["Word", "Word Reading"] : [], errors: [] };
+  } });
+  await settings.page.start();
+  await settle();
+  const { el } = settings;
+  const choose = async (id, value) => {
+    el(id).value = value;
+    el(id).dispatchEvent(new settings.window.Event("change", { bubbles: true }));
+    await settle();
+  };
+  const optionsOf = id => [...el(id).options].map(option => option.value);
+  assert.deepEqual(optionsOf("word-highlight-note-type"), ["", "Japanese", "Kaishi 1.5k"]);
+  assert.equal(el("word-highlight-note-field").disabled, true);
+  await choose("word-highlight-note-type", "Kaishi 1.5k");
+  assert.deepEqual(optionsOf("word-highlight-note-field"), ["", "Word", "Word Reading"]);
+  assert.equal(el("word-highlight-note-type-add").disabled, true, "a note type needs its word field");
+  await choose("word-highlight-note-field", "Word");
+  el("word-highlight-note-type-add").click();
+  await settle(250);
+  assert.deepEqual(settings.records.options.wordHighlightNoteTypes, [{ noteType: "Kaishi 1.5k", field: "Word" }]);
+  assert.equal(el("word-highlight-note-type-add").disabled, true, "a listed choice is not added twice");
+  assert.deepEqual([...el("word-highlight-note-type-list").querySelectorAll("li > span")].map(item => item.textContent),
+    ["Kaishi 1.5k: Word"]);
+  assert.deepEqual(discovered, [["", "http://127.0.0.1:8766", "k"], ["Kaishi 1.5k", "http://127.0.0.1:8766", "k"]]);
+  el("word-highlight-note-type-list").querySelector("button").click();
+  await settle(250);
+  assert.deepEqual(settings.records.options.wordHighlightNoteTypes, []);
+  assert.equal(el("word-highlight-note-type-list").children.length, 0);
 });
 
 test("an optional capability turned on by a pack setting shows the settings that require it", async t => {

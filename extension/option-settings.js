@@ -18,7 +18,8 @@ import {
   renderCurrentOptions, renderExperimentalSettings, renderLanguageCapabilities, renderLowMemoryMode, renderPackSettings,
   savedOptions, send, setSectionStatus,
   syncNavigationStatus, themeStore, updateAnkiSettings, updateAudioSettings, updateDesignPreview,
-  scriptStoreController, updateKeybindSettings, userScriptController, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET,
+  scriptStoreController, updateKeybindSettings, updateWordHighlightSettings, userScriptController, WORD_HIGHLIGHT_SWITCHES,
+  WORKER_TARGET,
 } from "./settings.js";
 import { dictionaries, dictionaryLabel, dictionaryState } from "./library-settings.js";
 import {
@@ -584,6 +585,7 @@ function renderOptions() {
   updateDesignPreview();
   updateAudioSettings();
   updateAnkiSettings();
+  updateWordHighlightSettings();
   updateKeybindSettings();
 }
 
