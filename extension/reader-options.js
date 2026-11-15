@@ -264,6 +264,9 @@
     // scanning.enablePopupSearch is; and the size of the popup window its
     // shortcut opens, Yomitan's popupWindow width and height.
     searchClickLookup: false,
+    // Reading → Search page (#769): in Japanese, romaji typed into the search
+    // box becomes kana as it is typed, on as Yomitan's enableWanakana is.
+    searchRomajiConversion: true,
     searchWindowWidthPx: 600,
     searchWindowHeightPx: 640,
     // Advanced → Search history (docs/search-history.md), off until switched
@@ -1074,7 +1077,7 @@
     "videoAudioFormat", "videoAudioBitrate", "videoImageFormat", "videoImageQuality",
     "popupWidthPx", "popupHeightPx", "popupScalePercent", "sourceHighlightEnabled", "automaticBackupDays",
     "useLessRamByDefault", "lowMemoryMode", "dictionaryEntryStorage", "dictionaryIndexStorage",
-    "showToolbarSearchButton", "searchClickLookup", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",
+    "showToolbarSearchButton", "searchClickLookup", "searchRomajiConversion", "searchWindowWidthPx", "searchWindowHeightPx", "keybinds",
     "searchHistoryEnabled", "searchHistoryLimit",
   ]);
   const GLOBAL_KEYS = new Set(GLOBAL_OPTION_KEYS);
