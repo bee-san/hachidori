@@ -659,6 +659,17 @@ These run separately:
   (`xvfb-run -a`) and on Chrome 152, it also clicks the toolbar button through
   CDP and checks a `{gif}` note's GIF has the player's shape, writing
   `test/tmp/ci/youtube-line.gif`.
+- **`chrome-more-buttons.mjs`**, included in `test:chrome`, checks More custom
+  buttons against a fake AnkiConnect that holds a note for 漢字, with a Template
+  that overwrites. Design → Custom buttons adds View in Anki, Mine as kana and
+  a script button through its form; on 漢字 View in Anki shows beside
+  Overwrite and opens the note in Anki's browser, Mine as kana adds a note whose
+  Front is かんじ with 漢字's definitions, and a user script hears the script
+  button and runs View notes through `hachidori-action`, which a page's own
+  event cannot. View in Anki hides on 読む, which Anki lacks, and with the
+  switch off the popup shows none of these buttons. It writes
+  `test/tmp/ci/more-buttons-settings.png` and `more-buttons-popup.png`, with
+  `-dark` and `-forced-colors` copies of the popup.
 - **`chrome-crunchyroll.mjs`**, included in `test:chrome`, mines a fixture page
   served at a Crunchyroll watch address by request interception, with a
   Bitmovin-style player around a `<video>` that plays one tone until 2.75 s and

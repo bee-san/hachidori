@@ -126,6 +126,7 @@ try {
       await run("chrome-netflix-subtitle-drag", ["test/chrome-netflix-subtitle-drag.mjs"]);
       await run("chrome-youtube", ["test/chrome-youtube.mjs"]);
       await run("chrome-crunchyroll", ["test/chrome-crunchyroll.mjs"]);
+      await run("chrome-more-buttons", ["test/chrome-more-buttons.mjs"]);
       await run("chrome-popup-scale", ["test/chrome-popup-scale.mjs"]);
       await run("chrome-bulk-import", ["test/chrome-bulk-import.mjs"]);
     }

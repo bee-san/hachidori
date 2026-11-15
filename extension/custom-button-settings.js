@@ -3,21 +3,21 @@ import "./external-links.js";
 import { ankiTemplateErrors } from "./anki-templates.js";
 import { KEYBIND_OPTION_LABELS } from "./keybind-settings.js";
 
-const ICON_LABELS = {
+const BUTTON_ICON_LABELS = {
   "book-search": "Book with magnifier", search: "Magnifier", open: "Open in new tab", add: "Plus",
   "document-add": "Card with plus", "speaker-2": "Speaker", checkmark: "Check mark", prohibited: "No entry",
   star: "Star", edit: "Pencil", "arrow-sync": "Arrows", key: "Key", settings: "Gear",
 };
 
 // The markers a Mine as kana button writes the reading for (#770).
-const KANA_MARKERS = { expression: "reading", furigana: "reading", "furigana-plain": "reading" };
+const KANA_BUTTON_MARKERS = { expression: "reading", furigana: "reading", "furigana-plain": "reading" };
 
 // More custom buttons' ready-made buttons: each fills the form, to change
 // before Add button saves it.
-const PRESETS = [
+const BUTTON_PRESETS = [
   { id: "view-notes", label: "View in Anki", button: { type: "action", label: "View in Anki", action: "viewNotes",
     argument: "", icon: "book-search" } },
-  { id: "mine-kana", label: "Mine as kana", button: { type: "anki", label: "Mine as kana", markers: KANA_MARKERS } },
+  { id: "mine-kana", label: "Mine as kana", button: { type: "anki", label: "Mine as kana", markers: KANA_BUTTON_MARKERS } },
   { id: "jisho", label: "Search Jisho", button: { type: "link", label: "Jisho", url: "https://jisho.org/search/%w",
     icon: "search" } },
 ];
@@ -104,8 +104,8 @@ export function createCustomButtonSettings({
   option.add(new Option("Choose an option", ""));
   for (const key of KEYBIND_TOGGLE_OPTIONS) option.add(new Option(KEYBIND_OPTION_LABELS[key] ?? key, key));
   icon.add(new Option("None: show the name", ""));
-  for (const name of BUTTON_ICONS) icon.add(new Option(ICON_LABELS[name] ?? name, name));
-  for (const preset of PRESETS) {
+  for (const name of BUTTON_ICONS) icon.add(new Option(BUTTON_ICON_LABELS[name] ?? name, name));
+  for (const preset of BUTTON_PRESETS) {
     const node = document.createElement("button");
     node.type = "button";
     node.className = "ghost";

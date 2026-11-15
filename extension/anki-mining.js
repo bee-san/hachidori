@@ -267,8 +267,14 @@ export function createAnkiMiningService({
   afterRejected = async () => {},
   preflightExtra = async () => ({}),
   enrich,
-  duplicateIndex,
+  duplicateIndex: wordIndex,
 }) {
+  // The word index keys each Template's notes by its own {expression}. A
+  // custom button with marker substitutions may write another first field, so
+  // its duplicates are Anki's exact first-field search, as for a Template the
+  // index cannot key.
+  const duplicateIndex = Object.create(wordIndex, { source: { value:
+    config => (config.markerSubstitutions ? Promise.resolve(null) : wordIndex.source(config)) } });
   const cached = new Map();
   let mutations = Promise.resolve();
   const invokeFor = config => (action, params, timeoutMs) => gateway.invoke(action, params, config.apiKey, timeoutMs, config.url);
