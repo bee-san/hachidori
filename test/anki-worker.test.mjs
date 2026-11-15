@@ -1100,7 +1100,7 @@ test("a custom Anki button's marker substitutions apply to its Template's fields
   const base = globalThis.HDReaderOptions.DEFAULT_ANKI_TEMPLATE;
   let options = globalThis.HDReaderOptions.normaliseOptions({
     anki: { url: "http://127.0.0.1:8765", apiKey: "", templates: [
-      { ...base, id: "default", name: "Word", model: "Word", deck: "Words", duplicateBehavior: "new",
+      { ...base, id: "default", name: "Word", model: "Word", deck: "Words", duplicateBehavior: "new", duplicateScope: "deck",
         fieldTemplates: { Front: { value: "{expression}", overwriteMode: "overwrite" },
           Back: { value: "{reading}", overwriteMode: "overwrite" } } }] },
     customButtons: [{ id: "kana", type: "anki", label: "Mine as kana", templateId: "default",
@@ -1119,8 +1119,10 @@ test("a custom Anki button's marker substitutions apply to its Template's fields
       throw new Error(`Unexpected ${action}`);
     },
   };
+  // The word index holds the note Anki has for 拗れる, keyed by its {expression}.
   const service = createAnkiWorkerService({ gateway, readOptions: async () => options,
-    duplicateIndex: testIndex(), readDictionaries: async () => [],
+    duplicateIndex: testIndex(async (_config, expression) => (expression === "拗れる" ? [55] : [])),
+    readDictionaries: async () => [],
     engine: async () => ({ generation: 9, ready: true, loading: false }),
     offscreen: async message => ({ fields: await buildAnkiFields(message.request, message.templates,
       { audio: message.audio }), media: [] }),
@@ -1134,6 +1136,12 @@ test("a custom Anki button's marker substitutions apply to its Template's fields
   const status = await service.status(kana);
   assert.equal(status.available, true);
   assert.notEqual(status.configKey, plain.configKey, "the button's configuration is its own");
+  // The index answers for the Template's {expression}; the button writes the
+  // reading, which Anki's own search finds no note for.
+  assert.deepEqual((await service.preflight(request("default", plain.configKey))).noteIds, [55]);
+  const kanaDecision = await service.preflight(request(kana, status.configKey));
+  assert.equal(kanaDecision.state, "addable");
+  assert.equal(kanaDecision.noteIds ?? undefined, undefined);
   assert.equal((await service.submit(request(kana, status.configKey))).state, "added");
   assert.equal((await service.submit(request("default", plain.configKey))).state, "added");
   assert.deepEqual(writes, [{ Front: "こじれる", Back: "こじれる" }, { Front: "拗れる", Back: "こじれる" }]);
