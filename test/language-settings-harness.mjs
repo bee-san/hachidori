@@ -211,6 +211,7 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
     ["dictionary-import-errors.js", ["dictionaryImportError"]],
     ["dictionary-import-attempts.js", ["IMPORT_ATTEMPTS", "importWithRetries"]],
     ["profile-rules-settings.js", ["createProfileRules"]],
+    ["word-highlight-note-types.js", ["createWordHighlightNoteTypes"]],
   ]) {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }

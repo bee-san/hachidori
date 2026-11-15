@@ -245,7 +245,8 @@ stores it as `rank-based` when its values are ranks (#684).
   before them, whose IndexedDB request and transaction promises the search
   history (`search-history.js`) shares;
   `activation-settings.js` the Reading → Activation key or button picker and
-  its *Press to set* recorder;
+  its *Press to set* recorder; `word-highlight-note-types.js` Word
+  highlighting's Other note types, read from Anki through Settings' discovery;
   `keybind-settings.js`, `custom-button-settings.js` and `external-links.js`
   the keybinds and custom buttons in the popup; `local-file-access.js` the
   notice about Chrome's *Allow access to file URLs* permission;

@@ -36,7 +36,18 @@ function storedWordKey(value) {
   return typeof value === "string" && value ? foldAscii(value) : null;
 }
 
-export async function ankiIndexSource(config) {
+// Word highlighting's own note types (#700): each a note type and the field
+// that holds its word, keyed as direct fields are, once each.
+function extraNoteTypes(noteTypes) {
+  const keyed = noteTypes.map(({ noteType, field }) => ({ model: noteType, field: nameKey(field) }))
+    .filter(({ field }) => !SEARCH_OPERATORS.has(field));
+  return [...new Map(keyed.map(entry => [JSON.stringify(entry), entry])).values()]
+    .sort((left, right) => compare(left.model, right.model) || compare(left.field, right.field));
+}
+
+// `noteTypes`, given only for word status, adds notes of those note types in
+// every deck; mining's duplicate checks never read them.
+export async function ankiIndexSource(config, { noteTypes = [] } = {}) {
   if (!config.model) return null;
   const url = globalThis.HDReaderOptions.normaliseAnkiConnectUrl(
     config.url === undefined ? globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki.url : config.url
@@ -44,6 +55,7 @@ export async function ankiIndexSource(config) {
   if (!url) return null;
   const fields = directExpressionFields(config);
   if (!fields.length) return null;
+  const extras = extraNoteTypes(noteTypes);
   const source = {
     url,
     apiKey: config.apiKey,
@@ -55,6 +67,7 @@ export async function ankiIndexSource(config) {
     // configured note type (docs/languages.md 12).
     ...(Array.isArray(config.noteTypeFamilies) && config.duplicateScope !== "model"
       ? { families: config.noteTypeFamilies } : {}),
+    ...(extras.length ? { noteTypes: extras } : {}),
   };
   return { key: await ankiDigest(new TextEncoder().encode(JSON.stringify(source))), ...source };
 }
@@ -71,20 +84,31 @@ async function recognizedModels(invoke, source) {
     const family = model === source.model || !positiveId(id) ? null : ankiListedFamily(model, families);
     return family === null ? [] : [{ model, family }];
   });
-  if (!candidates.length) return models;
+  // Word highlighting's own note types count where Anki still has them and
+  // their word field.
+  const extras = (source.noteTypes ?? []).filter(({ model }) => positiveId(available[model]));
+  const names = [...new Set([...candidates.map(({ model }) => model), ...extras.map(({ model }) => model)])];
+  if (!names.length) return models;
   // Each AnkiConnect request costs one poll interval, so every recognized note
   // type's fields arrive in one `multi`. A sub-action error, such as a note
   // type deleted since `modelNamesAndIds`, rejects as a direct request would.
-  const replies = ankiMultiResults(await invoke("multi", { actions: candidates.map(({ model }) =>
+  const replies = ankiMultiResults(await invoke("multi", { actions: names.map(model =>
     ({ action: "modelFieldNames", params: { modelName: model } })) }));
+  const fieldsOf = new Map(names.map((model, index) => [model, fieldList(replies[index])]));
   const base = globalThis.HDReaderOptions.DEFAULT_OPTIONS.anki;
-  candidates.forEach(({ model, family }, index) => {
-    const fields = fieldList(replies[index]);
+  for (const { model, family } of candidates) {
+    const fields = fieldsOf.get(model);
     const templates = ankiSetupTemplates(family, model, source.deck ?? "Default", fields, base);
-    if (templates === null) return;
+    if (templates === null) continue;
     const expressionFields = directExpressionFields({ ...base, model, fieldTemplates: templates }, fields);
     if (expressionFields.length) models.push({ name: model, fields: expressionFields });
-  });
+  }
+  for (const { model, field } of extras) {
+    if (!fieldsOf.get(model).some(name => nameKey(name) === field)) continue;
+    const known = models.find(entry => entry.name === model);
+    if (!known) models.push({ name: model, fields: [field] });
+    else if (!known.fields.includes(field)) known.fields = [...known.fields, field].sort(compare);
+  }
   return models;
 }
 

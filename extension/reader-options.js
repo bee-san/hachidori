@@ -230,6 +230,9 @@
     // Words set to Ignore from the popup, which are otherwise left unmarked.
     wordHighlightIgnored: false,
     wordHighlightStyle: "underline",
+    // Note types beside the first Template's whose notes, in any deck, give a
+    // word its status (#700): [{ noteType, field }], the field holding the word.
+    wordHighlightNoteTypes: [],
     showCompactDefinitionSummary: false,
     compactDefinitionSummaryCount: 3,
     compactDefinitionSummaryDictionary: "",
@@ -426,6 +429,20 @@
       ids.add(source.id);
       return [{ id: source.id, type: source.type, enabled: typeof source.enabled === "boolean" ? source.enabled : true,
         url: typeof source.url === "string" ? source.url : "", voice: typeof source.voice === "string" ? source.voice : "" }];
+    });
+  }
+
+  // Each note type once with each field, both named.
+  function normaliseWordHighlightNoteTypes(value) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set();
+    return value.flatMap((entry) => {
+      const { noteType, field } = entry ?? {};
+      if (typeof noteType !== "string" || !noteType || typeof field !== "string" || !field) return [];
+      const key = JSON.stringify([noteType, field]);
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ noteType, field }];
     });
   }
 
@@ -865,6 +882,7 @@
       case "kanjiClickDictionary": return normaliseKanjiSelection(value);
       case "popupImageSource": return normalisePopupImageSource(value);
       case "audioSources": return normaliseAudioSources(value);
+      case "wordHighlightNoteTypes": return normaliseWordHighlightNoteTypes(value);
       case "customLinks": return normaliseCustomLinks(value);
       case "customButtons": return normaliseCustomButtons(value);
       case "userScripts": return normaliseUserScripts(value);
@@ -1047,7 +1065,7 @@
       && normalized.every((script, index) => raw[index] && typeof raw[index] === "object"
         && Object.keys(raw[index]).length === Object.keys(script).length
         && JSON.stringify(script) === JSON.stringify(Object.fromEntries(Object.keys(script).map(field => [field, raw[index][field]]))));
-    if (key === "audioSources" || key === "customLinks" || key === "customButtons") return Array.isArray(raw) && raw.length === normalized.length
+    if (key === "audioSources" || key === "customLinks" || key === "customButtons" || key === "wordHighlightNoteTypes") return Array.isArray(raw) && raw.length === normalized.length
       && normalized.every((source, index) => Object.entries(source).every(([field, value]) =>
         // An Anki button's marker substitutions are the one field that is an object.
         (field === "markers" ? JSON.stringify(raw[index][field]) === JSON.stringify(value) : raw[index][field] === value)));
@@ -1167,6 +1185,7 @@
     wordHighlightKnown: { requires: "wordHighlighting", neutral: false },
     wordHighlightIgnored: { requires: "wordHighlighting", neutral: false },
     wordHighlightStyle: { requires: "wordHighlighting", neutral: "underline" },
+    wordHighlightNoteTypes: { requires: "wordHighlighting", neutral: [] },
   });
 
   function plainObject(value) {

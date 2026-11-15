@@ -63,6 +63,11 @@ function requestProfile(request) {
   return profileTemplateTarget(request?.templateId).profileId ?? request?.profileId;
 }
 
+// Present only when Word highlighting names note types, so a Template's
+// checked configuration stays as it was without them.
+const wordStatusNoteTypes = options => (options.wordHighlightNoteTypes.length
+  ? { wordStatusNoteTypes: options.wordHighlightNoteTypes } : {});
+
 export function createAnkiWorkerService({
   gateway,
   readOptions,
@@ -320,6 +325,9 @@ export function createAnkiWorkerService({
         crunchyrollMining: options.experimental.crunchyrollMining === true,
         // And for the profile's language, which decides how the note is written.
         ...(profile === null ? {} : { profile }),
+        // Word highlighting's note types (#700), so a confirmed write also
+        // reaches the word-status snapshot that reads them.
+        ...wordStatusNoteTypes(options),
       };
     },
     buildFields: async (request, current, { preflight = false } = {}) => {
@@ -597,6 +605,6 @@ export function createAnkiWorkerService({
       }
       const profileId = requestProfile(request);
       const [options, profile] = await readOptionsAndProfile(profileId);
-      return duplicateIndex.statuses(inLanguage(options.anki, profile), headwords);
+      return duplicateIndex.statuses({ ...inLanguage(options.anki, profile), ...wordStatusNoteTypes(options) }, headwords);
     } };
 }

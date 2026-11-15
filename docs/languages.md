@@ -701,6 +701,7 @@ const OPTION_REQUIREMENTS = {
   wordHighlightKnown: { requires: "wordHighlighting", neutral: false },
   wordHighlightIgnored: { requires: "wordHighlighting", neutral: false },
   wordHighlightStyle: { requires: "wordHighlighting", neutral: "underline" },
+  wordHighlightNoteTypes: { requires: "wordHighlighting", neutral: [] },
 };
 ```
 
@@ -1482,8 +1483,9 @@ separate change for the owner to decide.
   first-Template source of any profile changes, compared profile by profile.
   The index keeps one row revision across its snapshots and the word-status
   signal carries it; a reader re-reads every status when it changes. Word
-  status uses that Template's **All of Anki** source while highlighting is
-  enabled, sharing mining's snapshot if its scope is already All of Anki.
+  status uses that Template's **All of Anki** source, with the profile's Other
+  note types (`wordHighlightNoteTypes`), while highlighting is enabled, sharing
+  mining's snapshot if its scope is already All of Anki and it names none.
   Maturity blur retains the Template's selected duplicate scope.
 - **Markers.** The marker list in Settings hides markers whose capability the
   edited profile lacks (`{furigana*}` and `{sentence-furigana*}` without ruby,

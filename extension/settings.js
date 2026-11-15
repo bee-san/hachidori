@@ -14,6 +14,7 @@ import "./reader-options.js";
 import { createAudioSettingsController } from "./audio-settings.js";
 import { createKeybindSettingsController } from "./keybind-settings.js";
 import { createAnkiTemplateSettingsController } from "./anki-settings.js";
+import { createWordHighlightNoteTypes } from "./word-highlight-note-types.js";
 import { createLocalAudioSetup } from "./local-audio-setup.js";
 import { createBackupSettingsController } from "./backup-settings.js";
 import { createExperimentalSettings } from "./experimental-settings.js";
@@ -193,6 +194,7 @@ let requestCounter = 0;
 let audioController;
 let keybindController;
 let ankiController;
+let wordHighlightNoteTypes;
 let localAudioSetup;
 let sharingController;
 // The address of the Hachidori this install is linked to, or null.
@@ -804,6 +806,7 @@ function showSettingsSection(focus = false) {
   updateDesignPreview();
   updateAudioSettings();
   updateAnkiSettings();
+  updateWordHighlightSettings();
   updateKeybindSettings();
   updateBackupSettings();
   updateSharingSettings();
@@ -912,17 +915,34 @@ function updateAnkiSettings() {
       customButtonController?.render();
       writeOptions();
     },
-    send: async (type, fields) => {
-      // Linked checks cannot forward draft endpoint credentials or mappings.
-      // Commit them to the host first, then let the host read its saved copy.
-      if (["hd_anki_discover", "hd_anki_setup"].includes(type) && sharingLinkedAddress !== null) {
-        await flushOptionsUntilIdle();
-      }
-      // Every Anki request is for the edited profile's Templates (docs/languages.md 5.4).
-      return send(type, { ...fields, ...profileFields() }, WORKER_TARGET);
-    },
+    send: sendAnkiRequest,
   });
   ankiController.render();
+}
+
+async function sendAnkiRequest(type, fields) {
+  // Linked checks cannot forward draft endpoint credentials or mappings.
+  // Commit them to the host first, then let the host read its saved copy.
+  if (["hd_anki_discover", "hd_anki_setup"].includes(type) && sharingLinkedAddress !== null) {
+    await flushOptionsUntilIdle();
+  }
+  // Every Anki request is for the edited profile's Templates (docs/languages.md 5.4).
+  return send(type, { ...fields, ...profileFields() }, WORKER_TARGET);
+}
+
+// Reading → Word highlighting → Other note types (#700) asks Anki for its note
+// types and their fields at the saved address.
+function updateWordHighlightSettings() {
+  if (activeSection !== "word-highlighting" || optionsRevision < 0) return;
+  wordHighlightNoteTypes ??= createWordHighlightNoteTypes({ document,
+    readNoteTypes: () => options.wordHighlightNoteTypes,
+    editNoteTypes: (noteTypes) => {
+      options.wordHighlightNoteTypes = noteTypes;
+      writeOptions();
+    },
+    send: (type, fields) => sendAnkiRequest(type, { ...fields, apiKey: options.anki.apiKey, url: options.anki.url }),
+  });
+  wordHighlightNoteTypes.render();
 }
 
 // While linked, imported archives go to the host and backups belong to it; the notices say so.
@@ -1544,7 +1564,7 @@ export {
   savedOptions, scheduleStatusPoll, send, storedOptionsRecord,
   setSectionStatus, setStatus, sharingLinkedAddress, syncNavigationStatus, TARGET, themeStore, UPDATE_TARGET,
   scriptStoreController, updateAnkiSettings, updateAudioSettings, updateDesignPreview, updateKeybindSettings, userScriptController,
-  WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET
+  updateWordHighlightSettings, WORD_HIGHLIGHT_SWITCHES, WORKER_TARGET
 };
 
 await start();

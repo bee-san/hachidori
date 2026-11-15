@@ -805,7 +805,27 @@
               <span>Highlight words by status</span>
               <input type="checkbox" id="opt-word-highlight" aria-describedby="word-highlight-help" />
             </label>
-            <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser. Status uses all decks, independently of the duplicate scope in <a href="#anki">Anki settings</a>: the first Template's note type and supported Kiku, Lapis and Senren note types, with a plain {expression} field. Other custom note types are not detected automatically. The index refreshes every 30 minutes while highlighting is enabled; opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. Mark as known and Ignore in the popup set a word's status yourself, over its Anki status and without adding anything to Anki; in <a href="#keybinds">Keybinds</a> they are Mark word as known and Ignore word. To show or hide the marks on one page, bind Toggle word highlights.</p>
+            <p class="field-hint" id="word-highlight-help">A word takes the status of the card for the first result its popup shows, so 食べなかった is marked by a card for 食べる. Your dictionaries split each page into words in this browser. Status uses all decks, independently of the duplicate scope in <a href="#anki">Anki settings</a>: the first Template's note type and supported Kiku, Lapis and Senren note types, with a plain {expression} field, and the note types under Other note types below. The index refreshes every 30 minutes while highlighting is enabled; opening a page never contacts Anki. Particles and other function words are left unmarked, as is text in text boxes. Mark as known and Ignore in the popup set a word's status yourself, over its Anki status and without adding anything to Anki; in <a href="#keybinds">Keybinds</a> they are Mark word as known and Ignore word. To show or hide the marks on one page, bind Toggle word highlights.</p>
+          </fieldset>
+          <fieldset class="lookup-group" id="word-highlight-note-types">
+            <legend id="word-highlight-note-types-heading"
+              data-search-keywords="deck decks premade core vocabulary Kaishi note type field known Anki">Other note types</legend>
+            <p class="field-hint" id="word-highlight-note-types-help">Notes of these note types, in any deck, also give words their status: a premade or older deck whose note type is not the first Template's, for example. Choose the field that holds the word alone, without its reading.</p>
+            <ul id="word-highlight-note-type-list" class="word-note-type-list" aria-labelledby="word-highlight-note-types-heading"></ul>
+            <div class="fields">
+              <label class="field">
+                <span class="field-label">Other note type</span>
+                <select id="word-highlight-note-type" aria-describedby="word-highlight-note-types-help"></select>
+              </label>
+              <label class="field">
+                <span class="field-label">Word field</span>
+                <select id="word-highlight-note-field" disabled></select>
+              </label>
+            </div>
+            <div class="options-actions">
+              <button type="button" class="ghost" id="word-highlight-note-type-add" disabled>Add note type</button>
+              <output class="custom-dictionary-status" id="word-highlight-note-type-status" aria-live="polite"></output>
+            </div>
           </fieldset>
           <fieldset class="lookup-group">
             <legend id="known-words-heading" data-search-keywords="paste import list vocabulary">Known words</legend>

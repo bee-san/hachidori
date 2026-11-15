@@ -77,6 +77,7 @@ requires, or the pack field that replaces a hard-coded Japanese value.
 | `wordHighlightKnown` (false) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral false |
 | `wordHighlightIgnored` (false) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral false |
 | `wordHighlightStyle` (underline) | Reading → Word highlighting | None | P; requires `wordHighlighting`, neutral underline |
+| `wordHighlightNoteTypes` ([]) | Reading → Word highlighting → Other note types | None | P; requires `wordHighlighting`, neutral [] (a language's premade decks are its own) |
 | `showCompactDefinitionSummary` (false) | Design (Default) | Sanseido/Jitendex heuristics; letter class is Latin/kana/Han only (popup.js:163-164) | P; letter class extended with the pack's script |
 | `compactDefinitionSummaryCount` (3) | Design | None | P |
 | `compactDefinitionSummaryDictionary` ("") | Design | Title reference; first install picks Jitendex | P |

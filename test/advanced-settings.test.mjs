@@ -44,6 +44,7 @@ function fixture(t, { hash = "#advanced", stored = {}, overlayMode = false, vers
     ["activation-settings.js", ["createActivationSettings"]],
     ["dictionary-progress.js", ["formatBytes"]],
     ["memory-settings.js", ["createMemorySettings"]],
+    ["word-highlight-note-types.js", ["createWordHighlightNoteTypes"]],
     ["dictionary-name-drafts.js", ["createDictionaryNameDrafts"]],
     ["dictionary-groups.js", ["createDictionaryGroupController"]],
     ["error-text.js", ["describeErrorOrJson"]],

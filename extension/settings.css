@@ -2729,7 +2729,8 @@ textarea {
     white-space: nowrap;
   }
 }
-.browser-shortcut-list {
+.browser-shortcut-list,
+.word-note-type-list {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -2737,7 +2738,9 @@ textarea {
   border-top: 1px solid var(--border);
   list-style: none;
 }
-.browser-shortcut-list li {
+.word-note-type-list:empty { display: none; }
+.browser-shortcut-list li,
+.word-note-type-list li {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
