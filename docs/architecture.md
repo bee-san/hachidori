@@ -1796,10 +1796,16 @@ card data. The index is derived state and is excluded from backups.
 
 `hd_anki_word_status` answers a page's batch of headwords from rows held in
 the worker's memory, using the first Anki Template's source with **All of Anki**
-scope regardless of its mining duplicate scope. Enabling word highlighting
-adds that source to the existing index refresh lifecycle; it shares a snapshot
-if mining already uses All of Anki, and disabling highlighting removes a source
-that mining no longer needs. No second scheduler or storage key is involved.
+scope regardless of its mining duplicate scope. Reading → Word highlighting →
+**Other note types** (`wordHighlightNoteTypes`, #700) adds note types to that
+source, each with the field that holds its word, for notes outside the
+Template's note type and the recognised Kiku, Lapis and Senren families, such
+as a premade core deck; mining's duplicate checks never read them, and a note
+type or field Anki no longer has is skipped at the next refresh. Enabling word
+highlighting adds that source to the existing index refresh lifecycle; it
+shares a snapshot if mining already uses All of Anki and no other note types
+are named, and disabling highlighting removes a source that mining no longer
+needs. No second scheduler or storage key is involved.
 Status batches never read storage or contact Anki: each headword resolves to
 `known` (a mature row), `learning` (an immature row) or `unknown` (no row), and
 the reply carries those rows' `rowRevision`. A source with no cached snapshot
