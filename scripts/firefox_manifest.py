@@ -21,10 +21,11 @@ OPTIONAL_PERMISSIONS = ("userScripts",)
 CHROME_ONLY_KEYS = ("minimum_chrome_version", "cross_origin_embedder_policy", "cross_origin_opener_policy")
 # A sandboxed page may link a stylesheet or import a module in Firefox only if
 # a web page could: the search page's frame (#644) uses these, which Chrome
-# serves it as extension files. Its classic scripts load either way.
+# serves it as extension files. Its classic scripts load either way. Yomitan's
+# romaji converter (#769) imports its neighbours in vendor/yomitan/language/.
 SANDBOX_RESOURCES = ("settings.css", "search.css", "content.css", "search.js", "debug-log.js", "error-text.js",
                      "keybind-settings.js", "reader-options.js", "reader-page.js", "search-lines.js",
-                     "search-templates.js", "settings-dom.js")
+                     "search-templates.js", "settings-dom.js", "vendor/yomitan/language/*")
 
 
 def firefox_manifest(chrome):
