@@ -61,6 +61,7 @@ const PLANNED = [
   "the search page and its frame take the active profile's palette and follow a switch",
   "Multiple languages off returns lookups, the toolbar and the badge to Japanese, and on again brings English back",
   "a page opened while the records had no profiles looks English up once English is added, without a reload",
+  "a language rule made in Advanced → Languages looks English up on this site while Shift is held, and Remove deletes it",
 ];
 const results = new Map();
 function check(name, ok, detail = "") {
@@ -619,6 +620,45 @@ try {
     check(PLANNED[15], english?.plain.includes("English") && !japanese?.plain.includes("English"),
       JSON.stringify({ english: english?.plain, japanese: japanese?.plain }));
     await autoSwitch(false);
+  });
+
+  // Advanced → Languages → Language rules (docs/languages.md 8.1): a rule for
+  // English with a domain and a held key, made with the card's own controls.
+  await step(PLANNED[23], async () => {
+    await chooseInToolbar("ja");
+    await showSection("languages");
+    const rules = async () => (await storage(["languageSelection"])).languageSelection?.rules ?? [];
+    const change = (label, value) => settings.evaluate((wanted, text) => {
+      const control = document.querySelector(`#language-rules-list [aria-label="${wanted}"]`);
+      control.value = text;
+      control.dispatchEvent(new Event("change"));
+    }, label, value);
+    await settings.evaluate(() => document.getElementById("language-rules-add").click());
+    await until(async () => (await rules()).length === 1);
+    await change("Language of rule 1", "en");
+    await change("Rule 1, condition 1: domains", "127.0.0.1");
+    await settings.evaluate(() => document.querySelector('[aria-label="Add a condition to rule 1"]').click());
+    await change("Rule 1, condition 2: type", "modifier");
+    const wanted = JSON.stringify([{ profileId: "en", conditions: [{ type: "domain", value: "127.0.0.1" },
+      { type: "modifier", key: "Shift" }] }]);
+    const saved = await until(async () => JSON.stringify(await rules()) === wanted);
+    if (saved) await screenshot(settings, "settings-language-rules", "#language-rules");
+    await reading.keyboard.down("Shift");
+    let english;
+    try {
+      english = await hoverAt("/english.html", "#sample", 10, current => current.plain.includes("to move swiftly on foot"));
+    } finally {
+      await reading.keyboard.up("Shift");
+    }
+    const japanese = await hoverAt("/japanese.html", "#sample", 0, current => current.plain.includes("食べる"));
+    const active = (await storage(["languageSelection"])).languageSelection?.activeProfileId;
+    await settings.evaluate(() => document.querySelector('[aria-label="Remove rule 1"]').click());
+    const removed = await until(async () => (await rules()).length === 0
+      && await settings.evaluate(() => document.activeElement?.id === "language-rules-add"));
+    // Japanese stays active: the English popup carries its label.
+    check(PLANNED[23], saved && english?.plain.includes("English")
+      && japanese?.plain.includes("食べる") && active === "ja" && removed,
+      JSON.stringify({ saved, english: english?.plain, japanese: japanese?.plain, active, removed }));
   });
 
   await step(PLANNED[16], async () => {

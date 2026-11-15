@@ -83,8 +83,9 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
       case "hd_language_selection_write": {
         const current = reader().normaliseLanguageSelection(records.languageSelection);
         if (message.baseRevision !== current.revision) return { ok: false, conflict: true, error: "conflict", selection: current };
+        const rules = message.rules ?? current.rules ?? [];
         const selection = { revision: current.revision + 1, activeProfileId: message.activeProfileId ?? current.activeProfileId,
-          autoSwitch: message.autoSwitch ?? current.autoSwitch };
+          autoSwitch: message.autoSwitch ?? current.autoSwitch, ...(rules.length === 0 ? {} : { rules }) };
         write({ languageSelection: selection });
         return { ok: true, selection };
       }
@@ -209,6 +210,7 @@ export function openSettings(t, { hash = "#dictionaries", stored = {}, languages
       "compareDictionaryRevisions", "mdxImportNotes"]],
     ["dictionary-import-errors.js", ["dictionaryImportError"]],
     ["dictionary-import-attempts.js", ["IMPORT_ATTEMPTS", "importWithRetries"]],
+    ["profile-rules-settings.js", ["createProfileRules"]],
   ]) {
     window.eval(`{ ${withoutModules(extension(file))}\nObject.assign(globalThis, {${exports.join(",")}}); }`);
   }
