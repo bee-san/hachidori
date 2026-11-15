@@ -455,13 +455,12 @@ async function start() {
   // forward with its box focused and its text selected (search-window.js).
   const tab = chrome.tabs.getCurrent();
   chrome.runtime.onMessage.addListener((message) => {
-    if (message?.target !== FOCUS_SEARCH_BOX) return false;
+    if (message?.target !== FOCUS_SEARCH_BOX) return;
     void tab.then((current) => {
       if (message.tabId !== current?.id) return;
       frame.focus();
       port?.postMessage({ kind: "key", key: "Escape" });
     });
-    return false;
   });
   // The page's own keys work from the switch too, as they did when it shared
   // the page's document (search.js): Escape selects the box's text and Ctrl+U
