@@ -38,7 +38,8 @@ import { YOUTUBE_SCRIPTS } from "../../extension/youtube.js";
 import { CRUNCHYROLL_SCRIPTS } from "../../extension/crunchyroll.js";
 import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
 import { SCRIPT_ID } from "../../extension/custom-javascript.js";
-import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
+import { preserveLinkedAnkiTemplateFields } from "../../extension/linked-anki-options.js";
+import { canDiscoverSharingHost, SHARING_CAPABILITIES } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
@@ -790,6 +791,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
+    preserveLinkedAnkiTemplateFields,
     lookupAnkiIndex,
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
@@ -873,7 +875,7 @@ async function shareWithLinkedReader(storage) {
   const fromReader = frame => host?.receive({ kind: "client-text", clientId: "reader", text: JSON.stringify(frame) });
   const toReader = () => (host?.sent ?? []).filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
   fromReader({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Linked",
-    capabilities: ["linked-anki-v1", "linked-anki-v2"] });
+    capabilities: [...SHARING_CAPABILITIES] });
   await settleSharing(() => toReader().some(frame => frame.kind === "hello"));
   return { host, fromReader, toReader };
 }
