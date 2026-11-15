@@ -286,6 +286,7 @@ describe("search page", () => {
     await searchTab.keyboard.press("Enter");
     const romajiResult = await popup.waitForVisible(15_000, state => state.plain.includes("食べる") && state.text.includes("to eat"));
     const romajiQuery = (await pageState(searchTab)).query;
+    await screenshot(searchTab, "search-romaji");
     const waitingN = await typeInBox("kan");
     await searchTab.keyboard.press("Enter");
     const endedN = await pageState(searchTab);
