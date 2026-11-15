@@ -7,7 +7,7 @@ import test from "node:test";
 import {
   DEBUG_LOG_LIMIT, DEBUG_LOG_MESSAGE_LIMIT, REDACTED, REDACTED_JAPANESE,
   captureDebugLog, captureDocumentActions, formatDebugErrorReport, openDebugLogStore, readDebugLog,
-  recordDebugFailure, recordUserError, redactDebugText,
+  recordDebugFailure, recordUserError, redactDebugText, redactSecrets,
 } from "../extension/debug-log.js";
 import { assembleDebugLog } from "../extension/debug-info.js";
 
@@ -349,4 +349,11 @@ test("a context without a capture reports an empty log", async () => {
   assert.deepEqual(await readDebugLog({}), { context: null, entries: [] });
   recordDebugFailure({}, "hd_status", "ignored");
   assert.equal(recordUserError({}, "status", "ignored"), null);
+});
+
+
+test("preparation results are summarized without retaining named values in any language", () => {
+  const preparationScript = { scriptId: "examples", handlerId: "prepare" };
+  const value = redactSecrets({ preparationScript, preparation: { example: "Private English sentence", summary: "秘密" } });
+  assert.deepEqual(value, { preparationScript, preparation: { valueCount: 2 } });
 });

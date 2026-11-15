@@ -711,7 +711,7 @@ function loadClassicScript(file, sandbox) {
 
 const BACKGROUND_MODULES = ["background-core.js", "background-requests.js", "background-anki.js",
   "background-backup.js", "background-updates.js", "background-sharing.js", "background-video.js", "background-netflix.js",
-  "background-youtube.js", "background-crunchyroll.js", "background.js"];
+  "background-youtube.js", "background-crunchyroll.js", "background-anki-preparation.js", "background.js"];
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview,
@@ -733,6 +733,8 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
+    .replace(/^export\s+/gmu, "");
+  const ankiPreparationService = readFileSync(resolve(EXTENSION, "anki-preparation-service.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -777,7 +779,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   // before the module-load code that reads it.
   const background = BACKGROUND_MODULES.map(file => readFileSync(resolve(EXTENSION, file), "utf8")
     .replace(/^import\s+(?:[^"';]*?\s+from\s+)?"[^"]+";\n/gmu, "")
-    .replace(/^export\s*\{[^}]*\};\n/gmu, "")).join("\n");
+    .replace(/^export\s*\{[^}]*\};\n/gmu, "").replace(/^export\s+/gmu, "")).join("\n");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -790,11 +792,11 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
   Object.assign(sandbox, {
     SCRIPT_ID,
+    preserveLinkedAnkiTemplateFields,
     ANKI_INDEX_ALARM,
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
-    preserveLinkedAnkiTemplateFields,
     inspectHandlebars,
     markerName: normaliseAnkiMarkerName,
     lookupAnkiIndex,
@@ -815,7 +817,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${ankiPreparationService}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n${searchWindow}\n${mcpHostSource}\n`
       + background,
     context,

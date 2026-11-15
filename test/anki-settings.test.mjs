@@ -929,3 +929,20 @@ test("field syntax is explicit and keeps authored cloze text byte-for-byte acros
   assert.deepEqual(f.read().fieldTemplates.Front, { value, overwriteMode: "coalesce" });
   assert.equal(row(f, "Front").querySelector(".anki-template-preview").hidden, true);
 });
+
+test("preparation selection keeps stable script/function identities and shows missing scripts", async t => {
+  const f = fixture(t);
+  f.adopt({ preparationScript: { scriptId: "missing", handlerId: "examples" } });
+  const select = f.el("opt-anki-preparation-script"), handler = f.el("opt-anki-preparation-handler");
+  assert.equal(select.value, "missing");
+  assert.equal(select.selectedOptions[0].textContent, "Missing user script");
+  assert.equal(handler.value, "examples");
+  assert.equal(handler.disabled, false);
+  handler.value = "summary";
+  handler.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.deepEqual(f.read().preparationScript, { scriptId: "missing", handlerId: "summary" });
+  select.value = "";
+  select.dispatchEvent(new f.window.Event("change", { bubbles: true }));
+  assert.equal(f.read().preparationScript, null);
+  assert.equal(handler.disabled, true);
+});
