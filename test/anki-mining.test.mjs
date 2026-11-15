@@ -1010,11 +1010,18 @@ test("a YouTube request is routed like a Netflix one, by YouTube mining's switch
 
 test("selection-dependent first fields bypass expression-only View and report their readiness dependency", async () => {
   const f = fixture();
-  f.change({ fieldTemplates: { Front: { value: "{selected-glossary}", overwriteMode: "coalesce" },
-    Back: { value: "{expression}", overwriteMode: "coalesce" } } });
-  f.dependencies.duplicateIndex.peek = async () => assert.fail("a selected first field cannot use an expression-only cache");
-  assert.equal((await f.service.status()).selectionDependent, true);
-  assert.deepEqual((await f.service.view({ expression: "猫" })).noteIds, []);
+  f.dependencies.duplicateIndex.peek = async () => assert.fail("a selected first field has no expression-only View answer");
+  for (const first of [
+    { value: "{selected-glossary}", overwriteMode: "coalesce" },
+    { value: "{{selection.dictionary}}", syntax: "handlebars", overwriteMode: "coalesce" },
+    { value: '{{marker "glossary-selection-group-Mono"}}', syntax: "handlebars", overwriteMode: "coalesce" },
+  ]) {
+    f.change({ fieldTemplates: { Front: first, Back: { value: "{expression}", overwriteMode: "coalesce" } } });
+    assert.equal((await f.service.status()).selectionDependent, true);
+    const view = await f.service.view({ term: { expression: "猫" } });
+    assert.equal(view.selectionDependent, true);
+    assert.equal(view.cached, false);
+  }
   f.change({ fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" },
     Back: { value: "{selected-glossary}", overwriteMode: "coalesce" } } });
   assert.equal((await f.service.status()).selectionDependent, false,

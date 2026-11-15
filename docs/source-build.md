@@ -128,3 +128,19 @@ extension repository variables documented in
 [the publishing guide](chrome-web-store.md#publish-step-by-step), and the
 addons.mozilla.org submission the two API key secrets in
 [the Firefox guide](firefox.md#packaging-and-addonsmozillaorg).
+
+## Handlebars
+
+The Anki field-template parser and sandbox compiler in
+`extension/vendor/handlebars/` come from Handlebars 4.7.10 (MIT), pinned with
+esbuild in `scripts/handlebars/package-lock.json`:
+
+```sh
+npm ci --prefix scripts/handlebars
+node scripts/handlebars/build.mjs
+node scripts/handlebars/build.mjs --check
+```
+
+The parser-only ESM bundle never evaluates source. Only the dedicated
+`anki-template-frame.html` sandbox loads the full compiler. `LICENSE` accompanies
+both bundles. The same lockfile and build script reproduce the committed bytes.
