@@ -40,7 +40,9 @@
 // features, each recorded result gained `popupActions: false` after
 // `multipleLanguages` in `experimental` the same way. When Word highlighting
 // gained Other note types (#700), each recorded result gained
-// `wordHighlightNoteTypes: []` after `wordHighlightStyle` the same way.
+// `wordHighlightNoteTypes: []` after `wordHighlightStyle` the same way. When
+// More custom buttons left Experimental features, each recorded result lost
+// `popupActions` the same way (42 stored projections held it).
 // The capture is a run of main's suites at that commit;
 // running this on the branch's reader-options.js records that file's
 // behaviour instead. A golden's own inputs and suites make a capture too, one

@@ -58,13 +58,11 @@ they are not rewritten while another setting or Template is edited.
 
 ![A link button, a second-Template Anki button and a missing-Template error in a real lookup](assets/custom-buttons-popup.png)
 
-## More custom buttons (experimental)
+## More custom buttons
 
-Settings → Advanced → Experimental features → **More custom buttons**
-(`options.experimental.popupActions`, off by default) makes the popup's action
-row hold any button rather than a fixed set, so a request for one more button
-is a button someone adds in Settings rather than code in Hachidori. Switched
-on, Design → Custom buttons offers:
+More custom buttons makes the popup's action row hold any button rather than a
+fixed set, so a request for one more button is a button someone adds in
+Settings rather than code in Hachidori. Design → Custom buttons offers:
 
 - **Ready-made buttons.** *View in Anki*, *Mine as kana* and *Search Jisho*
   fill the form with a complete button to change or add as it is.
@@ -101,11 +99,6 @@ otherwise) and the rest under More; a chosen icon is on the button as
 Design → Custom CSS, for example
 `.gsm-hoshidicts-mine-button { display: none; }` beside a custom button that
 mines with the same Template.
-
-Turning the switch off hides action and script buttons and Anki buttons with
-other markers, in the popup and the Design preview, and shows the other
-buttons by name instead of their icons. Settings lists the hidden buttons with
-a note and keeps them, and every icon, for the next time.
 
 ## Japanese pitch accent graphs
 

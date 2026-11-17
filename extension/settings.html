@@ -1109,7 +1109,7 @@
                 <legend>Custom buttons</legend>
                 <p id="custom-buttons-overlay-help" class="section-note" hidden>Link buttons open in your system browser from a real lookup popup. The live preview cannot launch links in this overlay.</p>
                 <p class="field-hint">Add link buttons or Anki buttons that use a chosen Template. Buttons appear in this order after the built-in actions.</p>
-                <fieldset id="custom-button-presets" class="custom-button-presets" hidden>
+                <fieldset id="custom-button-presets" class="custom-button-presets">
                   <legend class="field-label">Start from a ready-made button</legend>
                   <div id="custom-button-preset-list" class="custom-button-preset-list"></div>
                 </fieldset>
@@ -1127,8 +1127,8 @@
                       <select id="opt-custom-button-type">
                         <option value="link">Open a link</option>
                         <option value="anki">Send to Anki</option>
-                        <option value="action" hidden disabled>Run an action</option>
-                        <option value="script" hidden disabled>Tell a user script</option>
+                        <option value="action">Run an action</option>
+                        <option value="script">Tell a user script</option>
                       </select>
                     </label>
                     <label class="field" id="custom-button-link-field">
@@ -1166,7 +1166,7 @@
                       <select id="opt-custom-button-option"></select>
                     </label>
                     <p id="custom-button-script-help" class="field-hint" hidden>Your user scripts in Advanced → User scripts hear a press of this button as a <code>hachidori-button</code> event with the word, its reading and the sentence. <a href="https://github.com/bee-san/hachidori/blob/main/docs/user-scripts.md#custom-buttons" target="_blank" rel="noopener noreferrer">How scripts answer a button</a></p>
-                    <label class="field" id="custom-button-icon-field" hidden>
+                    <label class="field" id="custom-button-icon-field">
                       <span class="field-label">Icon</span>
                       <select id="opt-custom-button-icon" aria-describedby="custom-button-icon-help"></select>
                       <span id="custom-button-icon-help" class="field-hint">An icon takes the place of the name in the popup. Screen readers still read the name.</span>

@@ -127,8 +127,6 @@
     if (popup.dataset.toolbarPosition !== edge) view.setToolbarPosition(edge);
   }
 
-  // The buttons a popup shows, as the reader projects them (More custom buttons).
-  const previewButtons = value => HDReaderOptions.effectiveCustomButtons(value.customButtons, value.experimental);
   const view = themeHost.createView({ document, window, popup, language,
     sourceHighlighter: HDPopup.createSourceHighlighter(window, document, "gsm-hoshidicts-match", shadow),
     appendExpressionRuby: HDGlossary.appendExpressionRuby,
@@ -139,7 +137,7 @@
     getPopupColumns: () => options.popupColumns,
     getImageHoverPreview: () => options.imageHoverPreview,
     getPopupScalePercent: () => options.popupScalePercent,
-    customButtons: previewButtons(options),
+    customButtons: options.customButtons,
     positionPopup, sourceHighlightEnabled: true,
     onKanjiClick(character, result, anchor, link) {
       if (!kanjiCharacter) {
@@ -430,7 +428,7 @@
     const blurChanged = !state || DEFINITION_BLUR_KEYS.some(key => options[key] !== nextOptions[key]);
     options = { ...nextOptions };
     void themeHost.sync();
-    view.setCustomButtons(previewButtons(options));
+    view.setCustomButtons(options.customButtons);
     updateSampleAudio();
     if (geometryChanged) view.hideImagePreview();
     if (geometryChanged || toolbarChanged) positionPopup(toolbarChanged);

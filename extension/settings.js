@@ -817,7 +817,6 @@ function showSettingsSection(focus = false) {
     customButtonController ??= createCustomButtonSettings({ document,
       readButtons: () => options.customButtons,
       readTemplates: () => options.anki.templates,
-      readExperimental: () => options.experimental,
       readAudioSources: () => options.audioSources,
       saveButtons: buttons => {
         options.customButtons = normaliseCustomButtons(buttons);

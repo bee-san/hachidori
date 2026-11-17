@@ -39,10 +39,6 @@
     // switches language; the profiles and this browser's choice are kept.
     { id: "multipleLanguages", label: "Multiple languages", section: "languages",
       description: "Read other languages besides Japanese, such as English, Korean, Spanish or Arabic, each with its own dictionaries, settings, Anki Templates and pronunciation sources. Adds Languages under Advanced, where you add a language and choose the one lookups use; with two or more, the toolbar switches between them. Turning this off returns lookups to Japanese and keeps the languages you added, with their settings and dictionaries, for the next time you turn it on." },
-    // docs/custom-buttons-and-templates.md. Off, the popup shows only link and
-    // plain Anki buttons; the other buttons are kept for the next time.
-    { id: "popupActions", label: "More custom buttons",
-      description: "Adds more kinds of button under Design → Custom buttons: any keybind action, such as View notes in Anki on a word that is already in Anki, or Play audio; Anki buttons that use other markers than their Template, such as Mine as kana; buttons your user scripts answer; icons; and ready-made buttons to start from. Turning this off hides those buttons and keeps them." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -537,7 +533,7 @@
     });
   }
 
-  // A button that only More custom buttons shows: an action or script
+  // A More custom buttons button: an action or script
   // button, or an Anki button with marker substitutions, which its Template
   // alone would mine differently.
   const popupActionsButton = button => !["link", "anki"].includes(button.type) || Object.hasOwn(button, "markers");
@@ -546,13 +542,6 @@
   // such a button, or an icon. A linked browser that cannot keep these may
   // not write them (sharing.md).
   const extendedCustomButton = button => popupActionsButton(button) || Object.hasOwn(button, "icon");
-
-  // The buttons the popup shows: all of them with More custom buttons on;
-  // without it, the others by name. A hidden button keeps its settings.
-  function effectiveCustomButtons(buttons, experimental) {
-    if (experimental?.popupActions === true) return buttons;
-    return buttons.filter(button => !popupActionsButton(button)).map(({ icon: _icon, ...button }) => button);
-  }
 
   // An installed Script Store package's slug and version, which Update compares
   // with the catalogue's; null for the user's own.
@@ -1635,7 +1624,6 @@
     activationLabel, clampOption, normaliseActivationKey, normaliseKanjiSelection, normaliseOptions,
     normaliseAnkiConnectUrl, normaliseAnki,
     normaliseCustomButtons, BUTTON_ACTIONS, BUTTON_ICONS, CUSTOM_BUTTON_TYPES, popupActionsButton, extendedCustomButton,
-    effectiveCustomButtons,
     normaliseUserScripts, javaScriptUserScripts, userPopupStyles, normaliseExperimental, ankiTemplateConfig,
     definitionBlurFrequencyDictionary, definitionBlurFrequencyEvidence, definitionBlurQualifies, frequencyModeOrder,
     DEFINITION_BLUR_DIRECTIONS, DEFINITION_BLUR_REVEALS, DEFINITION_BLUR_FREQUENCY_ORDERS, IMAGE_HOVER_PREVIEWS,

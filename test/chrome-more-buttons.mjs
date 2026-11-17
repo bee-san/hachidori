@@ -3,8 +3,7 @@
 // More custom buttons in a real Chrome (docs/custom-buttons-and-templates.md),
 // against a fake AnkiConnect that already holds a note for 漢字:
 //
-// - Settings → Advanced → Experimental features turns More custom buttons on,
-//   and Design → Custom buttons adds the View in Anki and Mine as kana
+// - Design → Custom buttons adds the View in Anki and Mine as kana
 //   ready-made buttons and a script button through the form.
 // - On 漢字, whose note exists under a Template that overwrites, the built-in
 //   Anki button offers Overwrite and View in Anki shows beside it; pressing it
@@ -12,7 +11,6 @@
 // - Mine as kana adds a note whose Front is the reading, こじれる-style (#770).
 // - A user script hears the script button with the word, and runs View notes
 //   through hachidori-action.
-// - Switched off, the popup shows none of those buttons.
 //
 // Screenshots of Settings and the popup go to test/tmp/ci/:
 //
@@ -184,16 +182,8 @@ try {
   }, origin);
   console.log("fixture imported, Anki Template overwrites");
 
-  // The switch (the complete experimental record, as Settings writes it),
-  // then three buttons from Design's form. The first-run page would keep
+  // Three buttons from Design's form. The first-run page would keep
   // Settings in the background, where nothing paints.
-  const setSwitch = popupActions => settings.evaluate(async popupActions => {
-    const { options } = await chrome.storage.local.get("options");
-    const reply = await chrome.runtime.sendMessage({ target: "hoshidicts-worker", type: "hd_options_write",
-      baseRevision: options.revision, options: { experimental: { ...HDReaderOptions.DEFAULT_OPTIONS.experimental, ...options.experimental, popupActions } } });
-    if (!reply.ok) throw new Error(reply.error);
-  }, popupActions);
-  await setSwitch(true);
   for (const other of await browser.pages()) if (other.url().endsWith("/startup.html")) await other.close();
   await settings.bringToFront();
   const click = selector => settings.evaluate(selector => document.querySelector(selector).click(), selector);
@@ -333,13 +323,6 @@ try {
     { detail: JSON.stringify({ action: "viewNotes" }) })));
   await new Promise(done => setTimeout(done, 500));
   assert.equal(browsed.length, 2, "an action dispatched by the page does nothing");
-
-  await setSwitch(false);
-  await hover("#kanji");
-  await until(async () => (await popupButtons(tab)).some(entry => entry.state === "overwrite"), "the popup shows 漢字 again");
-  assert.deepEqual((await popupButtons(tab)).filter(entry => /custom-/u.test(entry.className)), [],
-    "switched off, the popup shows none of More custom buttons' buttons");
-  console.log("switched off, the popup shows none of them");
   assert.deepEqual([...unexpected].filter(action => !["getDeckConfig", "getEaseFactors"].includes(action)), [],
     "the fake AnkiConnect answered every action Hachidori asked");
   passed = true;
