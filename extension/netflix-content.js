@@ -81,6 +81,9 @@
     // not say (YouTube, whose miniplayer plays on other pages).
     let reported = null;
     let videoInfo = "";
+    // How far the <video> runs from the episode once an ad has played, as
+    // the page says (Netflix).
+    let clockOffsetMs = 0;
     // Hover pause, which content.js turns on with the switch. `held` while
     // the pause this reader asked for, or kept through a recording, is in
     // force; `restoring` from a replay's answer until the page's seek back has
@@ -185,6 +188,10 @@
       if (site.reportsVideo && message.kind === "video") {
         reportVideo(message);
       }
+      if (message.kind === "clock") {
+        if (Number.isFinite(message.offsetMs)) clockOffsetMs = message.offsetMs;
+        return;
+      }
       sync();
       if (message.kind === "replay") {
         settleReplay(message);
@@ -227,7 +234,7 @@
 
     function mediaTimeMs() {
       const video = mainVideo();
-      return video && Number.isFinite(video.currentTime) ? Math.round(video.currentTime * 1000) : null;
+      return video && Number.isFinite(video.currentTime) ? Math.round(video.currentTime * 1000 - clockOffsetMs) : null;
     }
 
     // What the reader saw when the popup opened: the subtitle line under the

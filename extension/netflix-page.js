@@ -369,18 +369,25 @@
 
   const netflixVideo = () => document.querySelector(".watch-video video") ?? document.querySelector("video");
 
+  // The episode's time, which seek and the subtitles use. Once an ad has
+  // played, Netflix's clock and its <video>'s count from the ad; the segment
+  // time stays the episode's. Netflix's two clocks step together every
+  // quarter second, so the <video>'s time carries the segment time between.
+  const episodeMs = (player, video) => video.currentTime * 1000 - player.getCurrentTime() + player.getSegmentTime();
+
   // What the replay, pause and resume do to a site's player: its <video>,
-  // seeking to a media time in ms, playing and pausing, its position (ms) and
-  // speed, and why a replay must stop (an ad on YouTube), or null.
-  // Netflix's go through its player API, falling back to the element's own
-  // play and pause; writing <video>.currentTime would stop Netflix.
+  // seeking to a media time in ms, playing and pausing, its media time and
+  // position (ms) and speed, and why a replay must stop (an ad on YouTube), or
+  // null. Netflix's go through its player API, falling back to the element's
+  // own play and pause; writing <video>.currentTime would stop Netflix.
   function netflixControls(player, video) {
     return {
       video,
       seek: ms => Promise.resolve(player.seek(Math.max(0, Math.round(ms)))).catch(() => {}),
       play: () => Promise.resolve(typeof player.play === "function" ? player.play() : video.play()),
       pause: () => (typeof player.pause === "function" ? player.pause() : video.pause()),
-      position: () => currentPosition(player, video),
+      media: () => episodeMs(player, video),
+      position: () => episodeMs(player, video),
       rate: () => video.playbackRate,
       setRate: rate => { video.playbackRate = rate; },
       interrupted: () => null,
@@ -399,6 +406,7 @@
       },
       play: () => Promise.resolve(typeof api?.playVideo === "function" ? api.playVideo() : video.play()),
       pause: () => (typeof api?.pauseVideo === "function" ? api.pauseVideo() : video.pause()),
+      media: () => video.currentTime * 1000,
       position() {
         const reportedMs = typeof api?.getCurrentTime === "function" ? Number(api.getCurrentTime()) * 1000 : Number.NaN;
         return Number.isFinite(reportedMs) ? reportedMs : video.currentTime * 1000;
@@ -424,6 +432,7 @@
       seek(ms) { video.currentTime = Math.max(0, Math.round(ms)) / 1000; },
       play: () => video.play(),
       pause: () => video.pause(),
+      media: () => video.currentTime * 1000,
       position: () => video.currentTime * 1000,
       rate: () => video.playbackRate,
       setRate(rate) { video.playbackRate = rate; },
@@ -457,7 +466,7 @@
       }, SEEK_TIMEOUT_MS);
       function done() {
         clearTimeout(timer);
-        resolve(video.currentTime * 1000);
+        resolve(controls.media());
       }
       video.addEventListener("seeked", done, { once: true });
       controls.seek(ms);
@@ -482,17 +491,6 @@
     }
   }
 
-  // Where the viewer is, by Netflix's own clock when it answers.
-  function currentPosition(player, video) {
-    try {
-      const reported = typeof player.getCurrentTime === "function" ? player.getCurrentTime() : Number.NaN;
-      if (Number.isFinite(reported)) return reported;
-    } catch {
-      // The element's own time is the position to return to.
-    }
-    return video.currentTime * 1000;
-  }
-
   // (wall-clock ms, media ms) pairs while the video plays forward, until media
   // time `to`; a replay that has not got there by `deadline`, or that its
   // site interrupts, failed.
@@ -508,7 +506,7 @@
           reject(Object.assign(new Error(interruption), { code: interruption }));
           return;
         }
-        const media = video.currentTime * 1000;
+        const media = controls.media();
         if (!video.paused && !video.seeking && previous !== null && media > previous) anchors.push([wallClock(), media]);
         previous = media;
         if (media >= to || video.ended) {
@@ -589,6 +587,19 @@
     } catch {
       // The site's player stays as it was.
     }
+  }
+
+  // The reader times a hovered line by the <video>, which after an ad runs
+  // from the episode by the ad: it is told by how much whenever that changes.
+  if (SITE === "netflix") {
+    let offsetMs = 0;
+    document.addEventListener("timeupdate", () => {
+      const player = netflixPlayer();
+      const offset = player === null ? offsetMs : player.getCurrentTime() - player.getSegmentTime();
+      if (offset === offsetMs) return;
+      offsetMs = offset;
+      post({ kind: "clock", offsetMs });
+    }, true);
   }
 
   document.addEventListener(COMMAND_EVENT, event => {
