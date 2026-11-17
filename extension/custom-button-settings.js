@@ -12,7 +12,7 @@ const BUTTON_ICON_LABELS = {
 // The markers a Mine as kana button writes the reading for (#770).
 const KANA_BUTTON_MARKERS = { expression: "reading", furigana: "reading", "furigana-plain": "reading" };
 
-// More custom buttons' ready-made buttons: each fills the form, to change
+// Ready-made buttons: each fills the form, to change
 // before Add button saves it.
 const BUTTON_PRESETS = [
   { id: "view-notes", label: "View in Anki", button: { type: "action", label: "View in Anki", action: "viewNotes",
@@ -58,13 +58,10 @@ export function createCustomButtonSettings({
   readButtons,
   saveButtons,
   readTemplates,
-  // Settings → Advanced → Experimental features, for More custom buttons.
-  readExperimental = () => ({}),
   readAudioSources = () => [],
   createId = () => document.defaultView.crypto.randomUUID(),
 }) {
-  const { BUTTON_ACTIONS, BUTTON_ICONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS,
-    popupActionsButton } = document.defaultView.HDReaderOptions ?? globalThis.HDReaderOptions;
+  const { BUTTON_ACTIONS, BUTTON_ICONS, KEYBIND_ARGUMENT_DEFAULTS, KEYBIND_TOGGLE_OPTIONS, AUDIO_SOURCE_LABELS } = document.defaultView.HDReaderOptions ?? globalThis.HDReaderOptions;
   const list = document.getElementById("custom-button-list");
   const empty = document.getElementById("custom-button-empty");
   const form = document.getElementById("custom-button-form");
@@ -91,13 +88,10 @@ export function createCustomButtonSettings({
   };
   const scriptHelp = document.getElementById("custom-button-script-help");
   const icon = document.getElementById("opt-custom-button-icon");
-  const iconField = document.getElementById("custom-button-icon-field");
-  const presets = document.getElementById("custom-button-presets");
   const presetList = document.getElementById("custom-button-preset-list");
   const Option = document.defaultView.Option;
   let editing = null;
   let rendered = null;
-  const extended = () => readExperimental()?.popupActions === true;
   const actionById = id => BUTTON_ACTIONS.find(action => action.id === id);
 
   for (const action of BUTTON_ACTIONS) actionSelect.add(new Option(action.label, action.id));
@@ -233,13 +227,7 @@ export function createCustomButtonSettings({
     } else if (value.type === "action") detail.textContent = actionById(value.action)?.label ?? value.action;
     else detail.textContent = "hachidori-button";
     summary.append(kind, " · ", detail);
-    // A button More custom buttons shows stays in the list while it is off,
-    // hidden from the popup, and comes back when it is turned on.
-    const off = popupActionsButton(value) && !extended();
-    const note = document.createElement("span");
-    note.className = "field-hint";
-    note.textContent = "Hidden: turn on More custom buttons in Advanced → Experimental features to show and edit it.";
-    text.append(label, summary, ...(off ? [note] : []));
+    text.append(label, summary);
     const actions = document.createElement("div");
     actions.className = "custom-button-actions";
     const up = button("", `Move up: ${value.label}`, () => move(index, -1), "arrow-up");
@@ -250,7 +238,6 @@ export function createCustomButtonSettings({
     down.disabled = index === count - 1;
     const editButton = button("Edit", `Edit button ${value.label}`, () => edit(index));
     editButton.dataset.action = "edit";
-    editButton.disabled = off;
     actions.append(up, down, editButton, button("Delete", `Delete button ${value.label}`, () => remove(index)));
     row.append(text, actions);
     return row;
@@ -270,23 +257,14 @@ export function createCustomButtonSettings({
 
   function updateForm() {
     renderTemplateChoices();
-    const more = extended();
-    if (!more && !["link", "anki"].includes(type.value)) type.value = "link";
-    for (const choice of type.options) {
-      const offered = more || choice.value === "link" || choice.value === "anki";
-      choice.hidden = !offered;
-      choice.disabled = !offered;
-    }
-    presets.hidden = !more;
     const kind = type.value;
     linkField.hidden = kind !== "link";
     ankiField.hidden = kind !== "anki";
-    markersField.hidden = kind !== "anki" || !more;
+    markersField.hidden = kind !== "anki";
     actionField.hidden = kind !== "action";
     const argument = kind === "action" ? actionById(actionSelect.value)?.argument : undefined;
     for (const [name, field] of Object.entries(argumentFields)) field.hidden = argument !== name;
     scriptHelp.hidden = kind !== "script";
-    iconField.hidden = !more;
     submit.textContent = editing ? "Save button" : "Add button";
     cancel.hidden = !editing;
   }
@@ -305,7 +283,7 @@ export function createCustomButtonSettings({
 
   function render() {
     const buttons = readButtons();
-    const key = JSON.stringify([buttons, templates().map(({ id, name: templateName }) => [id, templateName]), extended()]);
+    const key = JSON.stringify([buttons, templates().map(({ id, name: templateName }) => [id, templateName])]);
     if (key === rendered) return;
     rendered = key;
     list.replaceChildren(...buttons.map((value, index) => createRow(value, index, buttons.length)));
@@ -332,7 +310,7 @@ export function createCustomButtonSettings({
     let error = "";
     if (type.value === "anki") {
       value = { ...base, templateId: template.value };
-      const parsed = extended() ? parseMarkerLines(markers.value) : { markers: editing?.button.markers ?? null };
+      const parsed = parseMarkerLines(markers.value);
       if (parsed.error) error = parsed.error;
       else if (parsed.markers) value.markers = parsed.markers;
     } else if (type.value === "action") {
@@ -342,8 +320,7 @@ export function createCustomButtonSettings({
     } else {
       value = { ...base, url: url.value.trim() };
     }
-    const chosenIcon = extended() ? icon.value : editing?.button.icon ?? "";
-    if (chosenIcon) value.icon = chosenIcon;
+    if (icon.value) value.icon = icon.value;
     return { value, error };
   }
 

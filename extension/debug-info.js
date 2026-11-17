@@ -129,7 +129,7 @@ export function summariseStorage(items) {
 // appear here automatically. The raw stored values stay in storage.local.
 function configuration(items) {
   const { profiles, projectOptions, normaliseLanguageSelection, activeProfileId, LANGUAGE_SELECTION_KEY,
-    EXPERIMENTAL_FEATURES, BUTTON_ACTIONS, effectiveCustomButtons, packSettingValue, popupRenderer } = globalThis.HDReaderOptions;
+    EXPERIMENTAL_FEATURES, BUTTON_ACTIONS, packSettingValue, popupRenderer } = globalThis.HDReaderOptions;
   const stored = items.options;
   const languageSelection = normaliseLanguageSelection(items[LANGUAGE_SELECTION_KEY]);
   const registry = globalThis.HDLanguages;
@@ -150,9 +150,6 @@ function configuration(items) {
         effectivePackSettings: Object.fromEntries((pack?.settings ?? [])
           .map(setting => [setting.id, packSettingValue(pack, profile.packSettings, setting.id)])),
         effectiveOptions,
-        // The custom buttons a popup in this profile shows (More custom buttons).
-        shownCustomButtonIds: effectiveCustomButtons(effectiveOptions.customButtons, effectiveOptions.experimental)
-          .map(button => button.id),
         theme: { selected: effectiveOptions.popupTheme, renderer: popupRenderer(effectiveOptions.popupTheme),
           variant: effectiveOptions.popupThemeVariant },
       };
