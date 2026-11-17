@@ -909,9 +909,7 @@ function updateAnkiSettings() {
     // The edited profile's language decides which markers, note-type
     // families and field-name suggestions Anki offers (docs/languages.md 12).
     readProfile: () => editedProfile,
-    readGroups: () => dictionaryState.groups,
     readButtons: () => options.customButtons,
-    readScripts: () => options.userScripts,
     editAnki: anki => {
       options.anki = anki;
       customButtonController?.render();

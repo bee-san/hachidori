@@ -2,7 +2,7 @@
 import { createAnkiMiningService } from "./anki-mining.js";
 import { enrichAnkiNote } from "./anki-enrichment.js";
 import { attachAnkiAddMedia, createAnkiMediaStore } from "./anki-media.js";
-import { ankiTemplateDependencies, ankiTemplateMarkerNames } from "./anki-templates.js";
+import { ankiTemplateMarkerNames } from "./anki-templates.js";
 import { buildAnkiFields } from "./anki-values.js";
 import { ankiLanguageConfig } from "./anki-setup.js";
 import {
@@ -77,7 +77,6 @@ export function createAnkiWorkerService({
   readProfile = async () => null,
   readOptionsAndProfile = async profileId => Promise.all([readOptions(profileId), readProfile(profileId)]),
   readDictionaries,
-  readGroups = async () => [],
   engine,
   offscreen,
   duplicateIndex,
@@ -127,7 +126,7 @@ export function createAnkiWorkerService({
   // them, for templates that ask for the sentence with furigana. A language
   // without ruby has none, so its sentence stays plain (docs/languages.md 12).
   async function sentenceSegments(request, templates, profile) {
-    if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template)
+    if (!Object.values(templates).some(template => ankiTemplateMarkerNames(template.value)
       .some(name => SENTENCE_FURIGANA_MARKERS.has(name)))) return null;
     if (profile !== null && !globalThis.HDReaderOptions.optionRequirementMet("ruby", profile.language, profile.packSettings)) {
       return null;
@@ -148,10 +147,7 @@ export function createAnkiWorkerService({
   const render = async (request, templates, audio, resources) => {
     const profile = resources.profile ?? null;
     const segments = await sentenceSegments(request, templates, profile);
-    const exportRequest = { ...request, ...resources.glossaryConfiguration,
-      dictionaryIds: resources.dictionaryIds,
-      ...(segments ? { sentenceSegments: segments } : {}) };
-    return offscreen({ type: "hd_anki_fields", request: exportRequest,
+    return offscreen({ type: "hd_anki_fields", request: segments ? { ...request, sentenceSegments: segments } : request,
       templates, audio, dictionaryPaths: resources.dictionaryPaths, compactGlossary: resources.compactGlossary === true,
       compactGlossaries: resources.compactGlossaries === true,
       // The note builder writes the profile's language (docs/languages.md 12).
@@ -249,7 +245,7 @@ export function createAnkiWorkerService({
     // Only ordinary non-first-field audio reaches this path. Resolve it once
     // and put it in the original note, avoiding a second field mutation.
     const audioTemplates = Object.fromEntries(Object.entries(resolved.templates)
-      .filter(([, template]) => ankiTemplateMarkerNames(template).includes("audio")));
+      .filter(([, template]) => ankiTemplateMarkerNames(template.value).includes("audio")));
     if (Object.keys(audioTemplates).length && config.audioSources.length) {
       try {
         const file = await audio(request, config);
@@ -290,7 +286,7 @@ export function createAnkiWorkerService({
   // until the user submits.
   async function prepareFirstFieldAudio(request, current, resources, preflight) {
     const first = current.resolved.templates[current.discovery.fields[0]];
-    if (!ankiTemplateMarkerNames(first).includes("audio") || !current.config.audioSources.length) return;
+    if (!ankiTemplateMarkerNames(first.value).includes("audio") || !current.config.audioSources.length) return;
     const prepared = await audio(request, current.config, { recordSpeech: !preflight });
     if (prepared?.recordingRequired === true) {
       if (!preflight) throw new Error("Browser text-to-speech was not recorded for this note.");
@@ -314,22 +310,14 @@ export function createAnkiWorkerService({
       const button = buttonId === undefined ? null
         : options.customButtons.find(candidate => candidate.id === buttonId && candidate.type === "anki");
       if (buttonId !== undefined && (button?.templateId !== templateId || !button.markers)) return null;
-      // A button's markers may write a group marker its Template does not use.
-      const needsGroups = Object.values(template.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).groups)
-        || Object.values(button?.markers ?? {}).some(name => ankiTemplateDependencies(`{${name}}`).groups);
       return {
         ...inLanguage(template, profile),
         ...(button === null ? {} : { markerSubstitutions: button.markers }),
-        ...(template.preparationScript ? { preparationSource: options.userScripts.find(script =>
-          script.id === template.preparationScript.scriptId && script.enabled && script.javascript.trim())?.javascript ?? null } : {}),
         audioSources: options.audioSources.filter(source => source.enabled),
         // Part of the checked configuration, so toggling Smaller Anki cards or
         // Compact popup and Anki between a preflight and Add refuses the stale Add.
         compactGlossary: options.smallerAnkiCards === true,
         compactGlossaries: options.glossaryLayoutMode === "compact-popup-anki",
-        // The host's current group membership/order owns export policy. Group
-        // edits retire mining preflights without invalidating dictionary lookups.
-        ...(needsGroups ? { glossaryGroups: await readGroups(profileId) } : {}),
         // Likewise for the Netflix and YouTube mining switches,
         // which decide whether a request from the site gets its sentence audio.
         netflixMining: options.experimental.netflixMining === true,
@@ -348,16 +336,9 @@ export function createAnkiWorkerService({
           || typeof request.term.reading !== "string") throw new Error("Mining requires a current dictionary result.");
       const resources = { dictionaryPaths: {}, compactGlossary: current.config.compactGlossary === true,
         compactGlossaries: current.config.compactGlossaries === true,
-        glossaryConfiguration: {
-          glossarySelectionFallback: current.config.glossarySelectionFallback,
-          monolingualGroupId: current.config.monolingualGroupId,
-          bilingualGroupId: current.config.bilingualGroupId,
-          glossaryGroups: current.config.glossaryGroups ?? [],
-        },
         audioPrepared: false, audio: null, deferDuplicateCheck: false,
         ...(current.config.profile ? { profile: current.config.profile } : {}) };
       if (preflight && Object.values(current.resolved.templates).length === 1
-          && current.resolved.templates[current.discovery.fields[0]]?.syntax !== "handlebars"
           && /^\{expression\}$/iu.test(current.resolved.templates[current.discovery.fields[0]]?.value ?? "")) {
         // No offscreen document, dictionary reads or engine wake-up just to
         // ask Anki about a word already supplied by this lookup.
@@ -365,8 +346,6 @@ export function createAnkiWorkerService({
       }
       await currentGeneration(request);
       const dictionaries = await readDictionaries(requestProfile(request));
-      resources.dictionaryIds = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
-        .map(item => [item.title, item.id]));
       resources.dictionaryPaths = Object.fromEntries(dictionaries.filter(item => item.enabled !== false)
         .map(item => [item.title, item.path]));
       await prepareFirstFieldAudio(request, current, resources, preflight);
@@ -383,7 +362,7 @@ export function createAnkiWorkerService({
       if (prepared.resources.clientSpeech) return { clientSpeech: prepared.resources.clientSpeech };
       if (prepared.resources.audioPrepared || !applied
           || !Object.values(applied.templates).some(template =>
-            ankiTemplateMarkerNames(template).includes("audio"))
+            ankiTemplateMarkerNames(template.value).includes("audio"))
           || prepared.config.audioSources.length === 0) return {};
       try {
         const planned = await audio(request, prepared.config, { recordSpeech: false });

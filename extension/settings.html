@@ -1368,14 +1368,6 @@
               </label>
               <p id="anki-screenshot-help" class="field-hint">Appends the visible browser page to fields using <code>{screenshot}</code>.</p>
             </div>
-            <div class="anki-setting-row">
-              <div class="anki-setting-col">
-                <span class="field-label">Preparation script</span>
-                <span class="field-hint" id="anki-preparation-help">Run a function from <a href="#user-scripts">Advanced → User scripts</a> when you press Add. Its named results are available as {preparation-NAME}. The note is sent only after the function succeeds.</span>
-              </div>
-              <label class="anki-setting-col"><span class="field-label">User script</span><select id="opt-anki-preparation-script" aria-describedby="anki-preparation-help"><option value="">None</option></select></label>
-              <label class="anki-setting-col"><span class="field-label">Registered function</span><input id="opt-anki-preparation-handler" type="text" value="prepare" autocomplete="off" spellcheck="false" disabled></label>
-            </div>
             <div class="anki-setting-row anki-duplicate-row">
               <div class="anki-setting-col">
                 <span class="field-label">Duplicate checking</span>
@@ -1385,15 +1377,6 @@
                 <label class="anki-setting-col"><span class="field-label">Check within</span><select id="opt-anki-duplicate-scope"><option value="model">Configured note type</option><option value="deck">Configured deck and subdecks</option><option value="all">All of Anki</option></select></label>
                 <label class="anki-setting-col"><span class="field-label">When found</span><select id="opt-anki-duplicate-behavior"><option value="prevent">Prevent</option><option value="new">Add anyway</option><option value="overwrite">Overwrite</option></select></label>
               </div>
-            </div>
-          </fieldset>
-          <fieldset class="lookup-group anki-panel anki-card" id="anki-glossary-selection">
-            <legend>Definition selection</legend>
-            <p class="field-hint">Use <code>{selected-glossary}</code> to export the entry you choose in the popup. Group fields use your selection only when it belongs to that group; otherwise they use the first available entry in the group's order. Create and order groups in <a href="#dictionaries">Dictionaries</a>.</p>
-            <div class="anki-destination-grid">
-              <label class="anki-setting-col"><span class="field-label">Selected definition fallback</span><select id="opt-anki-glossary-fallback"><option value="first-brief">First available, brief</option><option value="first">First available, full</option><option value="all">All definitions</option></select><span class="field-hint">Used when no definition is chosen in the popup. Brief leaves out dictionary labels and tags.</span></label>
-              <label class="anki-setting-col"><span class="field-label">Monolingual group</span><select id="opt-anki-monolingual-group"></select><span class="field-hint">Used by <code>{monolingual-definition}</code>.</span></label>
-              <label class="anki-setting-col"><span class="field-label">Bilingual group</span><select id="opt-anki-bilingual-group"></select><span class="field-hint">Used by <code>{bilingual-definition}</code>. An empty group gives an empty field.</span></label>
             </div>
           </fieldset>
           <section class="lookup-group anki-panel anki-card" id="anki-field-mapping" aria-labelledby="anki-field-mapping-title">
@@ -1411,7 +1394,7 @@
               <input id="anki-field-filter" type="search" autocomplete="off" placeholder="Filter fields by name…" aria-label="Filter fields by name">
               <output id="anki-field-count" class="field-hint" aria-live="polite">Showing 0 fields</output>
             </div>
-            <div class="anki-mapping-columns" aria-hidden="true"><span>Field name</span><span>Template text</span><span>Field options</span></div>
+            <div class="anki-mapping-columns" aria-hidden="true"><span>Field name</span><span>Markers &amp; text</span><span>On overwrite</span></div>
             <div id="anki-templates" class="anki-templates"></div>
             <details class="anki-marker-reference"><summary>Dictionary-specific markers</summary><p class="field-hint">Replace <code>DICTIONARY</code> in <code>{single-glossary-DICTIONARY}</code>, <code>{single-frequency-DICTIONARY}</code> or <code>{single-frequency-number-DICTIONARY}</code> with the dictionary marker shown in its Details. Single-glossary variants also support <code>-brief</code>, <code>-no-dictionary</code>, <code>-plain</code> and <code>-plain-no-dictionary</code>. Empty, colliding or shadowed names can use <code>{single-glossary-id--PACKAGE-ID}</code>, where <code>PACKAGE-ID</code> is the dictionary's 32-character lowercase hexadecimal ID.</p></details>
           </section>
@@ -1632,7 +1615,7 @@
           <fieldset class="lookup-group" id="debug-info-settings">
             <legend data-search-keywords="debug diagnostics bug report troubleshooting support logs version">Troubleshooting</legend>
             <div class="setting-row">
-              <p class="field-hint" id="debug-info-help">Downloads a JSON file to attach to a bug report: the Hachidori version and install, browser and system including AV1 encoding support, engine status and memory use, installed dictionaries, Anki and sharing status, supported Anki export markers and definition-group availability, Anki field syntax and the template renderer, preparation-script availability and pending-operation counts, MCP support, every setting, language profiles, their effective settings and language rules, the custom buttons each language’s popup shows, themes, Custom CSS, userscript source and registration, what Hachidori stores in this browser, and its debug log. The log keeps warnings, errors and failed requests from this and earlier sessions, the errors Hachidori showed you and, by name only, the buttons and settings you used before them. Your AnkiConnect API key and other credentials are removed, Japanese and other non-Latin study text in the log is replaced with language markers, and your personal dictionary entries, known and ignored words, lookup history and Anki notes are left out.</p>
+              <p class="field-hint" id="debug-info-help">Downloads a JSON file to attach to a bug report: the Hachidori version and install, browser and system including AV1 encoding support, engine status and memory use, installed dictionaries, Anki and sharing status, MCP support, every setting, language profiles, their effective settings and language rules, the custom buttons each language’s popup shows, themes, Custom CSS, userscript source and registration, what Hachidori stores in this browser, and its debug log. The log keeps warnings, errors and failed requests from this and earlier sessions, the errors Hachidori showed you and, by name only, the buttons and settings you used before them. Your AnkiConnect API key and other credentials are removed, Japanese and other non-Latin study text in the log is replaced with language markers, and your personal dictionary entries, known and ignored words, lookup history and Anki notes are left out.</p>
               <div class="options-actions">
                 <button type="button" class="ghost" id="debug-info-download" aria-describedby="debug-info-help">Get debug info</button>
                 <output class="custom-dictionary-status" id="debug-info-status" aria-live="polite"></output>

@@ -26,9 +26,6 @@ import {
 } from "../../extension/anki-index-cache.js";
 import { lookupAnkiIndex } from "../../extension/anki-index.js";
 import { ankiSetupFamily } from "../../extension/anki-setup.js";
-import { inspectHandlebars } from "../../extension/anki-handlebars.js";
-import { normaliseAnkiMarkerName } from "../../extension/anki-marker-name.js";
-import { renderHandlebars } from "../../extension/anki-template-sandbox.js";
 import { createAnkiWorkerService } from "../../extension/anki-worker.js";
 import { createBackupDownloads } from "../../extension/backup-downloads.js";
 import { assertBackupSnapshot, backupRevisions } from "../../extension/backup-state.js";
@@ -41,8 +38,7 @@ import { YOUTUBE_SCRIPTS } from "../../extension/youtube.js";
 import { CRUNCHYROLL_SCRIPTS } from "../../extension/crunchyroll.js";
 import { captureYouTubeFrame } from "../../extension/youtube-frame.js";
 import { SCRIPT_ID } from "../../extension/custom-javascript.js";
-import { preserveLinkedAnkiTemplateFields } from "../../extension/linked-anki-options.js";
-import { canDiscoverSharingHost, SHARING_CAPABILITIES } from "../../extension/sharing-protocol.js";
+import { canDiscoverSharingHost } from "../../extension/sharing-protocol.js";
 import { SETTINGS_PAGE_MODULES } from "../settings-modules.mjs";
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
@@ -711,7 +707,7 @@ function loadClassicScript(file, sandbox) {
 
 const BACKGROUND_MODULES = ["background-core.js", "background-requests.js", "background-anki.js",
   "background-backup.js", "background-updates.js", "background-sharing.js", "background-video.js", "background-netflix.js",
-  "background-youtube.js", "background-crunchyroll.js", "background-anki-preparation.js", "background.js"];
+  "background-youtube.js", "background-crunchyroll.js", "background.js"];
 
 function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   Object.assign(sandbox, { assertBackupSnapshot, backupRevisions, createBackupDownloads, captureNetflixPreview,
@@ -733,8 +729,6 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   const customDictionary = readFileSync(resolve(EXTENSION, "custom-dictionary.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const jsonValue = readFileSync(resolve(EXTENSION, "json-value.js"), "utf8")
-    .replace(/^export\s+/gmu, "");
-  const ankiPreparationService = readFileSync(resolve(EXTENSION, "anki-preparation-service.js"), "utf8")
     .replace(/^export\s+/gmu, "");
   const responseLimits = readFileSync(resolve(EXTENSION, "response-limits.js"), "utf8")
     .replace(/^export\s+/gmu, "");
@@ -779,7 +773,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   // before the module-load code that reads it.
   const background = BACKGROUND_MODULES.map(file => readFileSync(resolve(EXTENSION, file), "utf8")
     .replace(/^import\s+(?:[^"';]*?\s+from\s+)?"[^"]+";\n/gmu, "")
-    .replace(/^export\s*\{[^}]*\};\n/gmu, "").replace(/^export\s+/gmu, "")).join("\n");
+    .replace(/^export\s*\{[^}]*\};\n/gmu, "")).join("\n");
   sandbox.TextEncoder ??= TextEncoder;
   sandbox.AbortController ??= AbortController;
   sandbox.URL ??= URL;
@@ -792,13 +786,10 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   sandbox.WebSocket ??= class { constructor(url) { this.url = url; this.readyState = 0; } send() {} close() {} };
   Object.assign(sandbox, {
     SCRIPT_ID,
-    preserveLinkedAnkiTemplateFields,
     ANKI_INDEX_ALARM,
     ANKI_INDEX_KEY,
     ankiIndexConfigurationChange,
     createAnkiDuplicateIndex: sandbox.createAnkiDuplicateIndex ?? createAnkiDuplicateIndex,
-    inspectHandlebars,
-    markerName: normaliseAnkiMarkerName,
     lookupAnkiIndex,
     detectLocalAudioSource: sandbox.detectLocalAudioSource ?? realDetectLocalAudioSource,
     applyCustomJavaScript: sandbox.applyCustomJavaScript ?? (() => Promise.resolve()),
@@ -817,7 +808,7 @@ function loadBackgroundScript(sandbox, { overlayMode = false } = {}) {
   context.globalThis = context;
   runInContext(
     `${readerOptions}\n${lookupStats}\n${recommended.replace(/^export\s+/gmu, "")}\n`
-      + `${customDictionary}\n${jsonValue}\n${ankiPreparationService}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
+      + `${customDictionary}\n${jsonValue}\n${responseLimits}\n${automaticBackups}\n${overlayModeSource}\n${setupState}\n${localAudioSource}\n${sharingProtocol}\n${sharingHost}\n${sharingClient}\n${ankiTemplates}\n${glossary}\n${apiHost}\n${anki}\n${ankiSetup}\n`
       + `${managedSource.replace(/^export\s+/gmu, "")}\n${externalLinks}\n${groupState}\n${wordStatusOverrides}\n${chromeOffscreen}\n${debugLog}\n${errorText}\n${searchWindow}\n${mcpHostSource}\n`
       + background,
     context,
@@ -882,7 +873,7 @@ async function shareWithLinkedReader(storage) {
   const fromReader = frame => host?.receive({ kind: "client-text", clientId: "reader", text: JSON.stringify(frame) });
   const toReader = () => (host?.sent ?? []).filter(frame => frame.kind === "send").map(frame => JSON.parse(frame.text));
   fromReader({ kind: "hello", protocol: 1, version: "0.0.0-smoke", name: "Linked",
-    capabilities: [...SHARING_CAPABILITIES] });
+    capabilities: ["linked-anki-v1", "linked-anki-v2"] });
   await settleSharing(() => toReader().some(frame => frame.kind === "hello"));
   return { host, fromReader, toReader };
 }
@@ -913,9 +904,6 @@ function loadSettingsScript(window, { overlayMode = false, recommendedInstall = 
   window.chrome.runtime.sendMessage = message => message.type === "hd_setup_install"
     ? recommendedInstall(message) : originalSend(message);
   window.ankiSetupFamily = ankiSetupFamily;
-  window.inspectHandlebars = inspectHandlebars;
-  window.markerName = normaliseAnkiMarkerName;
-  window.renderHandlebars = renderHandlebars;
   window.eval(readFileSync(resolve(EXTENSION, "recommended-install-client.js"), "utf8").replace(/^export\s+/gmu, ""));
   const externalLinks = readFileSync(resolve(EXTENSION, "external-links.js"), "utf8");
   const customButtonSettings = readFileSync(resolve(EXTENSION, "custom-button-settings.js"), "utf8")

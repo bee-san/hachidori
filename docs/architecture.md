@@ -3276,24 +3276,6 @@ link has focus, only unfocused immediate siblings move around its owner: the
 focused subtree is never detached or refocused, preserving continuous keyboard
 interaction and draft selection. Only existing popup actions are shown.
 
-### Selected glossary export
-
-Selection-aware Templates enable the reader's per-entry **Use this definition**
-controls. Renderers report exact row ownership through `onGlossaryRendered`;
-`content.js` keeps the choice on the current view request and captures it for
-mining as `glossarySelection: {dictionary, index, ranges?}`. `index` is the row's
-position among that dictionary's rows in the mined result. `ranges` contain
-`{path, start, end}` for the glossary's source strings. Rich and plain renderers
-share source provenance through `render/glossary.js`; the Anki exporter uses the
-same source paths to bold only those fragments. No popup HTML is trusted or
-copied into a card. Existing glossary markers ignore this selection.
-
-The selection is transient reader state; it survives Back with its request but
-is never persisted as history or included in diagnostic content. Linked
-submissions preserve it through the explicit mining allowlist and require
-`selected-glossary-v1` whenever a choice is present. The host still chooses its
-saved Template, resolves dictionary generations and owns the Anki write.
-
 ## Anki submission
 
 ![Confirmed Anki submission in the reader](assets/anki-reader.png)
@@ -4645,40 +4627,3 @@ For a custom first-field identity without a directly mapped expression,
 exact live `findNotes` query, then opens only the surviving IDs. If none survive,
 it returns `opened: false` so the existing reader controller retires View and
 rechecks Add. No collection-wide cache clear is required.
-
-### User-authored Anki field templates
-
-An advanced field mapping may carry `syntax: "handlebars"`; an absent syntax
-retains marker interpolation and literal Anki cloze source. The official
-parser-only bundle feeds `anki-handlebars.js` in privileged contexts. It parses
-all branches to discover literal `marker` helper dependencies, so the worker's
-existing capture/audio and scene-overwrite planning remains authoritative.
-`anki-values.js` prepares only those marker values, supplies the structured
-lookup context and asks `anki-template-sandbox.js` to render opted-in fields.
-Legacy fields never create a sandbox frame.
-
-The one lazily created frame per rendering document is `anki-template-frame.html`,
-listed in the manifest sandbox and also explicitly sandboxed without
-`allow-same-origin`. Its network policy is `connect-src 'none'`. One private
-MessagePort carries correlated source/data requests and strings/errors; only
-that document's exact parent window and bound effective origin can connect,
-and it connects once. The fragment carries that origin because extension
-sandbox documents have no referrer. `Window.origin` preserves an opaque search
-parent's `null` message origin. Addressing an opaque child requires the wildcard
-target, and compiling Handlebars requires `unsafe-eval`; these two reviewed lines
-are scoped to this API-free, network-free sandbox. The bundled full
-Handlebars compiler is loaded only there, without extension APIs. Firefox exposes
-its script resources as it does the search sandbox's resources. Hosts serving
-the modules on their own origin use the same explicit frame sandbox. Document
-teardown rejects outstanding renders and closes the port. Settings previews use
-this production path with synthetic data and no Anki requests.
-
-`ankiTemplateDependencies` is the shared dependency projection for both field
-syntaxes. Handlebars' official AST identifies marker helpers and raw selection
-and group-context references; mining readiness and authoritative group loading
-use that projection. Reader content scripts use only a conservative selection UI
-hint from the saved source and load no parser. Group IDs are opaque and
-case-sensitive in both syntaxes; `anki-marker-name.js` owns normalization in the
-privileged parser and sandbox helper alike. The sandbox frame's ES module imports
-the compiler before connecting its port, so compiler availability follows module
-dependency ordering rather than two independent deferred script loads.

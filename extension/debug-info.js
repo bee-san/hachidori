@@ -15,7 +15,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { CUSTOM_DICTIONARY_SOURCE_KEY } from "./custom-dictionary.js";
 import { LOOKUP_STATS_ROW_PREFIX } from "./lookup-stats.js";
-import { ANKI_TEMPLATE_MARKER_OPTIONS } from "./anki-templates.js";
 import { ANKI_INDEX_KEY } from "./anki-index-cache.js";
 import { AUTOMATIC_BACKUPS_KEY } from "./backup-automatic.js";
 import { DEBUG_LOG_DATABASE, openDebugLogStore, readDebugLog, redactSecrets } from "./debug-log.js";
@@ -130,7 +129,7 @@ export function summariseStorage(items) {
 // appear here automatically. The raw stored values stay in storage.local.
 function configuration(items) {
   const { profiles, projectOptions, normaliseLanguageSelection, activeProfileId, LANGUAGE_SELECTION_KEY,
-    EXPERIMENTAL_FEATURES, BUTTON_ACTIONS, effectiveCustomButtons, packSettingValue, popupRenderer, projectDictionaryState } = globalThis.HDReaderOptions;
+    EXPERIMENTAL_FEATURES, BUTTON_ACTIONS, effectiveCustomButtons, packSettingValue, popupRenderer } = globalThis.HDReaderOptions;
   const stored = items.options;
   const languageSelection = normaliseLanguageSelection(items[LANGUAGE_SELECTION_KEY]);
   const registry = globalThis.HDLanguages;
@@ -140,10 +139,6 @@ function configuration(items) {
     activeProfileId: activeProfileId(stored, languageSelection),
     experimentalFeatures: EXPERIMENTAL_FEATURES,
     buttonActions: BUTTON_ACTIONS.map(action => action.id),
-    ankiExport: { markers: ANKI_TEMPLATE_MARKER_OPTIONS },
-
-    ankiFieldTemplates: { syntaxes: ["markers", "handlebars"], handlebarsVersion: "4.7.10",
-      compilerContext: "sandbox", dataContexts: ["term", "sentence", "source", "definitions", "selection", "groups", "preparation"] },
     languages: { registryVersion: registry.version, packs: registry.codes.map(code => {
       const { name, nativeName, bcp47, scripts, direction, capabilities, settings } = registry.get(code);
       return { code, name, nativeName, bcp47, scripts, direction, capabilities, settings };
@@ -151,14 +146,6 @@ function configuration(items) {
     profiles: profiles(stored).map(profile => {
       const pack = registry.get(profile.language);
       const effectiveOptions = projectOptions(stored, profile.id);
-      const dictionaryView = projectDictionaryState(items.dictionaryState, profile.id);
-      const groups = dictionaryView?.groups ?? [];
-      const enabled = new Set((dictionaryView?.dictionaries ?? []).filter(item => item.enabled !== false).map(item => item.id));
-      const groupBinding = id => {
-        const group = groups.find(group => group.id === id);
-        return { id, available: group !== undefined,
-          enabledDictionaryCount: group?.dictionaryIds.filter(id => enabled.has(id)).length ?? 0 };
-      };
       return { ...profile, packAvailable: pack !== null,
         effectivePackSettings: Object.fromEntries((pack?.settings ?? [])
           .map(setting => [setting.id, packSettingValue(pack, profile.packSettings, setting.id)])),
@@ -166,9 +153,6 @@ function configuration(items) {
         // The custom buttons a popup in this profile shows (More custom buttons).
         shownCustomButtonIds: effectiveCustomButtons(effectiveOptions.customButtons, effectiveOptions.experimental)
           .map(button => button.id),
-        ankiDefinitionGroups: effectiveOptions.anki.templates.map(template => ({ templateId: template.id,
-          fallback: template.glossarySelectionFallback,
-          monolingual: groupBinding(template.monolingualGroupId), bilingual: groupBinding(template.bilingualGroupId) })),
         theme: { selected: effectiveOptions.popupTheme, renderer: popupRenderer(effectiveOptions.popupTheme),
           variant: effectiveOptions.popupThemeVariant },
       };
@@ -376,7 +360,6 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
     automaticBackups: () => send("hd_backup_auto_list", {}, targets.worker),
     sharing: () => send("hd_sharing_status", {}, targets.sharing),
     anki: () => send("hd_anki_status", {}, targets.anki),
-    ankiPreparation: () => send("hd_anki_preparation_status", {}, targets.anki),
   }, timeoutMs), collectDebugLog({ window, send, targets, timeoutMs })]);
   return {
     schemaVersion: DEBUG_INFO_SCHEMA_VERSION,
@@ -411,7 +394,6 @@ export async function collectDebugInfo({ chrome, window, send, targets, context 
     dictionaries: redactSecrets(results.dictionaryState),
     services: {
       anki: results.anki,
-      ankiPreparation: results.ankiPreparation,
       sharing: redactSecrets(results.sharing),
       mcp: { capability: MCP_CAPABILITY, target: MCP_TARGET, transport: "sharing-relay",
         hostLanguageSelection: true },

@@ -179,7 +179,6 @@ see [benchmark/README.md](../benchmark/README.md).
 | `anki-deck-settings` | A Template that names no deck (docs/languages.md 6.3): the mining service marks that readiness, the popup's Anki button keeps "Choose an available deck." and opens Settings → Anki on the profile in effect through `content.js` and the worker's `hd_open_settings`, Settings starts on the profile its address names, and every other unavailable Template keeps today's button. |
 | `anki-duplicates` | Duplicate options keep Anki's race guard on the configured type; browse searches escape HTML and query syntax. |
 | `anki-enrichment` | Audio enrichment applies overwrite modes once and preserves a late external edit. |
-| `anki-glossary-selection` | Chosen-row export, source-path highlighting across rich/plain layouts, repeated and multibyte text, and marker aliases. |
 | `anki-glossary` | Rich and plain glossary markers: ordered senses, aliases, safe media, `<br>`, one `li[data-dictionary]` per row, image sizes, style escaping, Yomitan's inline structured-content styles at 67db60d, and dictionary CSS scoped by selector prefix (the cascade itself is checked in Chrome). |
 | `anki-index`, `anki-index-cache`, `anki-index-integration` | The duplicate index: scopes, note types, exact word keys, compact rows, maturity, deck filters, malformed replies; warm hits without Anki, miss repair, 30-minute refreshes, retained snapshots, worker restart, linked-role suspension; word status from rows in memory; the offscreen refresh worker returns compact rows and terminates. Never contacts an Anki collection. |
 | `anki-media` | The media transaction: deduplicated PNG/SVG, deterministic names, valid base64, live inventory confirmation, retries without re-upload; bad media never reaches `addNote`. |
@@ -941,61 +940,3 @@ the production gateway, worker and persistent duplicate index. It covers Prevent
 and Overwrite with both direct expression and custom first-field identities.
 Its disposable fake endpoint returns AnkiConnect's actual `{}` missing-note
 placeholder; it does not touch a real Anki collection.
-
-`node test/chrome-glossary-selection.mjs` imports seven small dictionaries and
-with `--firefox` runs the same proof in Firefox. It mines an exact selected entry
-with a bold source passage in Default, JL, Bee,
-Nazeka and Crystal through fake AnkiConnect. It also retains the legacy glossary
-field and captures every popup palette under `test/tmp/ci/glossary-selection/`.
-It also assigns ordered mono/bilingual groups through the worker CAS, proves
-that a selected row cannot enter the other group's field and group edits keep
-the dictionary generation, and captures Definition selection Settings in light,
-dark and high contrast under `test/tmp/ci/anki-glossary-groups/`.
-`benchmark/glossary-selection.mjs --runs 30` measures the production resource-field
-export path for twenty dictionaries, three rows each, and records every sample;
-`--plain` measures ordinary plain-text conversion without tracking.
-`--source PATH --revision SHA --legacy-only` measures the same legacy path from
-an extracted earlier extension. Neither measures lookup, capture or Anki writes.
-
-### Handlebars Anki fields
-
-`node --test test/anki-handlebars.test.mjs` checks the explicit syntax choice,
-legacy cloze mappings, official parser errors, static marker dependencies,
-escaped structured data and production marker values. `anki-settings` checks
-syntax edits without changing authored text; `debug-info` covers the renderer's
-configuration descriptor.
-
-`node test/chrome-anki-handlebars.mjs` loads the production extension and checks
-its CSP sandbox, rich glossary export, sample-preview errors and absence of Anki
-writes. It also runs the sandbox renderer from an overlay host origin.
-`HACHIDORI_TEMPLATE_BROWSER=firefox` runs the same extension assertions in a
-fresh Firefox build. `HACHIDORI_BROWSER_ROOT` selects the shared installed
-browser directory; `HACHIDORI_TEMPLATE_EVIDENCE` saves light/dark Settings
-screenshots. The ordinary Chrome, Firefox and theme-contrast suites still apply.
-
-### Anki preparation scripts
-
-`node --test test/anki-preparation.test.mjs test/linked-anki-options.test.mjs`
-checks named JSON values, stable script/function references, source changes,
-document ownership and cancellation, and preservation of settings older linked
-readers cannot edit. The existing Anki content/mining/settings and debug-report
-contracts cover the preparation boundary and its diagnostic summaries.
-
-`node test/chrome-anki-preparation.mjs` runs an isolated fake Anki endpoint and
-an API on a different origin without CORS headers. It verifies native
-USER_SCRIPT registration/messaging, explicit-Add-only requests, the final card,
-failure without a partial note, the real search sandbox and an overlay host
-adapter using production script injection and the Anki controller. Chrome also
-checks a search HTTP failure and closing that document with a request pending.
-Light/dark Settings screenshots go to `test/tmp/ci/anki-preparation/`.
-
-`HACHIDORI_PREPARATION_BROWSER=firefox node test/chrome-anki-preparation.mjs`
-builds a temporary Firefox extension and runs the same native, search and
-overlay-adapter success paths. Set `HACHIDORI_CHROME` or `HACHIDORI_FIREFOX` to a
-specific browser binary. The adapter proves the production code in a served
-page's own world; it does not launch GameSentenceMiner itself.
-
-`HACHIDORI_PREPARATION_DELAY_MS=35000 node test/chrome-anki-preparation.mjs`
-delays the first API response by 35 seconds and disconnects DevTools while it
-waits for the note. This checks the pending preparation against Chrome's
-service-worker lifecycle without a debugger keeping that worker alive.

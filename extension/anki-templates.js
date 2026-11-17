@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./reader-options.js";
-import { inspectHandlebars } from "./anki-handlebars.js";
-import { normaliseAnkiMarkerName as markerName } from "./anki-marker-name.js";
 
 const { ANKI_FIELDS } = globalThis.HDReaderOptions;
 const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi", "stroke-count", "furigana", "furigana-plain", "dictionary", "dictionary-alias",
   "definition", "glossary", "glossary-brief", "glossary-no-dictionary", "glossary-plain", "glossary-plain-no-dictionary",
-  "selected-glossary", "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
-  "monolingual-definition", "bilingual-definition",
+  "glossary-first", "glossary-first-brief", "glossary-first-no-dictionary", "main-definition", "jpmn-primary-definition",
   "conjugation", "part-of-speech", "phonetic-transcriptions", "tags", "popup-selection-text", "search-query", "document-title",
   "url", "url-plain", "miscInfo",
   "sentence", "sentence-furigana", "sentence-furigana-plain", "cloze-prefix", "cloze-body", "cloze-suffix",
@@ -15,7 +12,7 @@ const CORE_MARKERS = ["expression", "reading", "character", "onyomi", "kunyomi",
   "frequency-average-occurrence", "pitch", "pitch-position", "pitch-accent-positions", "pitch-categories",
   "pitch-accent-categories", "pitch-accent-graphs", "pitch-accent-graphs-jj",
   "audio", "screenshot", "sentence-audio", "gif"];
-const MARKER_ALIASES = new Map([["glossary-selection", "selected-glossary"], ["pitch-accent", "pitch"], ["pitch-accents", "pitch"]]);
+const MARKER_ALIASES = new Map([["pitch-accent", "pitch"], ["pitch-accents", "pitch"]]);
 const MARKER_DESCRIPTIONS = {
   expression: "Dictionary form of the selected term",
   reading: "Reading of the selected term",
@@ -33,14 +30,11 @@ const MARKER_DESCRIPTIONS = {
   "glossary-no-dictionary": "All definitions without dictionary names",
   "glossary-plain": "Plain-text definitions with dictionary names",
   "glossary-plain-no-dictionary": "Plain-text definitions without dictionary names",
-  "selected-glossary": "Chosen definition with selected text highlighted; otherwise the first available definition",
   "glossary-first": "First available definition",
   "glossary-first-brief": "Brief form of the first definition",
   "glossary-first-no-dictionary": "First definition without its dictionary name",
   "main-definition": "First available definition",
   "jpmn-primary-definition": "First available definition",
-  "monolingual-definition": "Selected or first available definition in this Template's monolingual group",
-  "bilingual-definition": "Selected or first available definition in this Template's bilingual group",
   conjugation: "Deinflection and conjugation path",
   "part-of-speech": "Readable part-of-speech names",
   "phonetic-transcriptions": "Available phonetic transcriptions",
@@ -76,14 +70,12 @@ const MARKER_DESCRIPTIONS = {
   gif: "Netflix, YouTube or Crunchyroll subtitle line's animation in the selected format, otherwise the page screenshot",
 };
 const DYNAMIC_MARKER_OPTIONS = [
-  ["preparation-NAME", "Named text returned by this Template’s preparation script"],
   ["single-glossary-DICTIONARY", "Definitions from one dictionary; replace DICTIONARY with its marker name"],
   ["single-glossary-DICTIONARY-brief", "Brief definitions from one dictionary"],
   ["single-glossary-DICTIONARY-no-dictionary", "Definitions from one dictionary without its name"],
   ["single-glossary-DICTIONARY-plain", "Plain-text definitions from one dictionary"],
   ["single-glossary-DICTIONARY-plain-no-dictionary", "Plain-text definitions from one dictionary without its name"],
   ["single-glossary-id--PACKAGE-ID", "Definitions selected by the dictionary package ID"],
-  ["glossary-selection-group-GROUP", "Selected or first available definition in a dictionary group; choose its marker below"],
   ["single-frequency-DICTIONARY", "Formatted values from one frequency dictionary"],
   ["single-frequency-number-DICTIONARY", "Numeric value from one frequency dictionary"],
 ];
@@ -117,7 +109,7 @@ export const ANKI_TEMPLATE_MARKER_OPTIONS = Object.freeze([
   })),
 ]);
 const MARKERS = new Set([...CORE_MARKERS.map(marker => marker.toLowerCase()), ...MARKER_ALIASES.keys()]);
-const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-", "glossary-selection-group-", "preparation-"];
+const DYNAMIC_PREFIXES = ["single-glossary-", "single-frequency-"];
 const MARKER_PATTERN = /\{([^{}]+)\}/gu;
 const BREAK_PATTERN = /<br\s*\/?>/giu;
 const genericAliases = {
@@ -203,24 +195,15 @@ export function ankiMappedFieldNames(config, fields = []) {
   return names;
 }
 
-export function ankiTemplateDependencies(template) {
-  const inspection = template?.syntax === "handlebars" ? inspectHandlebars(template.value) : null;
-  const value = typeof template === "string" ? template : template.value;
-  const markers = (inspection?.markers ?? [...value.matchAll(MARKER_PATTERN)].map(match => markerName(match[1])))
-    .map(name => MARKER_ALIASES.get(name) ?? name);
-  const groupMarker = name => name === "monolingual-definition" || name === "bilingual-definition"
-    || name.startsWith("glossary-selection-group-");
-  return { markers,
-    selection: inspection?.contexts.includes("selection") === true || markers.some(name =>
-      name === "selected-glossary" || name === "glossary-selection" || groupMarker(name)),
-    groups: inspection?.contexts.includes("groups") === true || markers.some(groupMarker),
-  };
+export function ankiTemplateMarkerNames(template) {
+  return [...template.matchAll(MARKER_PATTERN)].map(match => {
+    const name = match[1].toLowerCase();
+    return MARKER_ALIASES.get(name) ?? name;
+  });
 }
 
-export const ankiTemplateMarkerNames = template => ankiTemplateDependencies(template).markers;
-
 export function ankiCaptureRequirements(templates) {
-  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template)));
+  const markers = new Set(Object.values(templates).flatMap(template => ankiTemplateMarkerNames(template.value)));
   return {
     // {gif} falls back to the screenshot's <img> off a subtitle line and on failure,
     // so a mapped {gif} needs the viewport screenshot taken as well.
@@ -231,18 +214,11 @@ export function ankiCaptureRequirements(templates) {
 }
 
 export function ankiTemplateErrors(template) {
-  if (template?.syntax === "handlebars") {
-    const { markers, errors } = inspectHandlebars(template.value);
-    return [...errors, ...markers.filter(name => !knownMarker(name)).map(name => `Unknown marker: {${name}}`)];
-  }
-  template = typeof template === "string" ? template : template.value;
   return [...new Set([...template.matchAll(MARKER_PATTERN)].filter(match => !knownMarker(match[1].toLowerCase()))
     .map(match => `Unknown marker: ${match[0]}`))];
 }
 
 export function isAnkiAudioOnlyTemplate(template) {
-  if (template?.syntax === "handlebars") return false;
-  template = typeof template === "string" ? template : template.value;
   let hasAudio = false;
   const rest = template.replace(MARKER_PATTERN, (match, name) => {
     if (name.toLowerCase() !== "audio") return match;
@@ -258,7 +234,7 @@ export function renderAnkiTemplate(template, values) {
   return template.split(BREAK_PATTERN).flatMap(segment => {
     const markers = [...segment.matchAll(MARKER_PATTERN)];
     const rendered = segment.replace(MARKER_PATTERN, (_, name) => {
-      const key = markerName(name);
+      const key = name.toLowerCase();
       return encodeAnkiClozeBraces(values[key] ?? values[MARKER_ALIASES.get(key)] ?? "");
     });
     return markers.length && !rendered.trim() ? [] : [rendered];
@@ -291,7 +267,7 @@ function basicTemplates(config, fields) {
 export function ankiPresetCoreMapped(fieldTemplates, family) {
   const table = PRESETS[family];
   if (table === undefined) return false;
-  const values = new Set(Object.values(fieldTemplates).filter(template => template.syntax !== "handlebars").map(template => template.value));
+  const values = new Set(Object.values(fieldTemplates).map(template => template.value));
   const expression = table === SENREN ? table.word : table.Expression;
   const reading = table === SENREN ? table.reading : table.ExpressionReading;
   const definition = table === SENREN ? table.definition : table.MainDefinition;
@@ -341,7 +317,7 @@ export function resolveAnkiTemplates(config, fields) {
   const errors = staleFields.map(field =>
     `Template field “${field}” is unavailable in note type “${config.model}”.${availableFields(fields)}`);
   for (const [field, template] of Object.entries(templates)) {
-    errors.push(...ankiTemplateErrors(template).map(error => `Field “${field}”: ${error}`));
+    errors.push(...ankiTemplateErrors(template.value).map(error => `Field “${field}”: ${error}`));
   }
   return { templates, staleFields, errors };
 }

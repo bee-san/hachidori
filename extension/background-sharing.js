@@ -8,8 +8,8 @@ import { createApiHost } from "./api-host.js";
 import { NOT_REACHABLE, SHARING_LOCAL_STATE_KEY, createSharingClient } from "./sharing-client.js";
 import {
   MCP_CAPABILITY, API_CAPABILITY, API_CLIENT_ORIGIN, FORWARDED_REQUESTS, LANGUAGE_PROFILES_CAPABILITY, LANGUAGE_PROFILES_OPT_IN,
-  ANKI_PREPARATION_CAPABILITY, ANKI_GLOSSARY_GROUPS_CAPABILITY, LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY,
-  LINKED_IMPORT_UNSUPPORTED, LINKED_BUTTONS_CAPABILITY,
+  LINKED_ANKI_CAPABILITY, LINKED_ANKI_UNSUPPORTED, SHARING_CAPABILITIES, LINKED_IMPORT_CAPABILITY, LINKED_IMPORT_UNSUPPORTED,
+  LINKED_BUTTONS_CAPABILITY,
   browserName, mutatingForwardedRequest, parseLinkAddress, sharingPort,
 } from "./sharing-protocol.js";
 import {
@@ -24,7 +24,6 @@ import {
   CUSTOM_DICTIONARY_SOURCE_KEY, customDictionaryDocumentFor, customDictionaryDocumentLanguages, personalDictionaryLanguage,
 } from "./custom-dictionary.js";
 import { applyToEveryProfile, singleProfileShape } from "./profile-state.js";
-import { preserveLinkedAnkiTemplateFields } from "./linked-anki-options.js";
 import { sameJsonValue } from "./json-value.js";
 import { OVERLAY_MODE } from "./overlay-mode.js";
 import { OVERLAY_LOCAL_OPTION_KEYS, withOverlayLookupDefault } from "./setup-state.js";
@@ -33,7 +32,7 @@ import {
   TARGET, WORKER_TARGET, DICTIONARY_STATE_KEY, OPTIONS_KEY, UPDATE_SETTINGS_KEY, engineSender, writeLocalState, relay,
   readDictionaryStorage, optionsRevision, optionsWriteConflict, optionsWriteResult, serialiseStorage, workerReply,
   checkedOptionsResult, failureReply, hasProfiles, hasDictionaryProfiles, optionProfiles, projectDictionaryState,
-  JAPANESE_PROFILE_ID, LANGUAGE_SELECTION_KEY, updateLookupProfiles, languageDescriptor, requestProfileId,
+  JAPANESE_PROFILE_ID, LANGUAGE_SELECTION_KEY, updateLookupProfiles, languageDescriptor,
 } from "./background-core.js";
 import { getAnkiDuplicateIndex, WORKER_HANDLERS, dispatchSharedRequest } from "./background-requests.js";
 import {
@@ -478,18 +477,10 @@ async function forwardProfileRequest(message) {
   return forwardToHost(message);
 }
 
-const LEGACY_ANKI_GLOSSARY_DEFAULTS = {
-  glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "",
-};
-
 function linkedOptionsCapability(message) {
   if (message?.type !== "hd_options_write") return null;
   const patch = message.options;
   if (!patch || typeof patch !== "object") return null;
-  if (patch.anki?.templates?.some(template => template.preparationScript)) return ANKI_PREPARATION_CAPABILITY;
-  const templates = Array.isArray(patch.anki?.templates) ? patch.anki.templates : [];
-  if ([patch.anki, ...templates].some(template => template && typeof template === "object"
-      && Object.keys(LEGACY_ANKI_GLOSSARY_DEFAULTS).some(key => Object.hasOwn(template, key)))) return ANKI_GLOSSARY_GROUPS_CAPABILITY;
   // A host without More custom buttons would drop these buttons, or mine an
   // Anki button's substitutions with its Template alone.
   if (Array.isArray(patch.customButtons) && validateOptionsPatch({ customButtons: patch.customButtons })
@@ -591,40 +582,20 @@ function mergeLegacyAnki(current, legacy) {
   };
 }
 
-async function linkedOptionView(message) {
-  const record = (await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY];
-  const profileId = requestProfileId(message, record);
-  return message.profileId === undefined ? normaliseOptions(record)
-    : globalThis.HDReaderOptions.projectOptions(record, profileId, { masked: false });
-}
-
 async function compatibleLinkedWorkerMessage(message, sender) {
   const capabilities = sender.linkedCapabilities;
-  if (message.type !== "hd_options_write" || !Array.isArray(capabilities)) return message;
-  let patch = message.options;
-  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return message;
-  let stored;
-  if (Object.hasOwn(patch, "anki") && !capabilities.includes(ANKI_GLOSSARY_GROUPS_CAPABILITY)) {
-    stored = await linkedOptionView(message);
-    patch = { ...patch, anki: preserveLinkedAnkiTemplateFields(stored.anki, patch.anki, LEGACY_ANKI_GLOSSARY_DEFAULTS,
-      "Update the linked Hachidori before changing Anki dictionary group settings.") };
-    message = { ...message, options: patch };
-  }
-  if (Object.hasOwn(patch, "anki") && !capabilities.includes(ANKI_PREPARATION_CAPABILITY)) {
-    stored ??= await linkedOptionView(message);
-    patch = { ...patch, anki: preserveLinkedAnkiTemplateFields(stored.anki, patch.anki,
-      { preparationScript: null }, "Update the linked Hachidori before changing preparation scripts.") };
-    message = { ...message, options: patch };
-  }
-  if (capabilities.includes(LINKED_BUTTONS_CAPABILITY)) return message;
+  if (message.type !== "hd_options_write" || !Array.isArray(capabilities)
+      || capabilities.includes(LINKED_BUTTONS_CAPABILITY)) return message;
   if (capabilities.includes(LINKED_ANKI_CAPABILITY)) return olderReaderButtons(message);
+  const patch = message.options;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return message;
   const richAnki = patch.anki && typeof patch.anki === "object"
     && Object.hasOwn(patch.anki, "templates");
   if (Object.hasOwn(patch, "customButtons") || richAnki) {
     throw new Error(LINKED_SETTINGS_UPDATE_REQUIRED);
   }
   if (!Object.hasOwn(patch, "customLinks") && !Object.hasOwn(patch, "anki")) return message;
-  stored ??= await linkedOptionView(message);
+  const stored = normaliseOptions((await chrome.storage.local.get(OPTIONS_KEY))[OPTIONS_KEY]);
   const compatible = { ...patch };
   if (Object.hasOwn(patch, "customLinks")) {
     compatible.customButtons = mergeLegacyCustomLinks(stored.customButtons, patch.customLinks);

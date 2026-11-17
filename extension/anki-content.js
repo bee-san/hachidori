@@ -346,7 +346,6 @@
     let primaryTemplateId = "default";
     let templateIds = new Set(["default"]);
     let customButtonTemplates = new Map();
-    let preparationScripts = new Map();
     const live = group => enabled && owners.get(group.owner) === group && !group.popup.hidden && group.isCurrent();
     const boundHere = record => bound.get(record.binding) === record && record.binding.isConnected;
     const current = record => live(record.group) && boundHere(record);
@@ -387,7 +386,6 @@
         if (!needsCheck(record) || record.viewChecked) continue;
         const result = await requestCachedView(record);
         if (result === null || !owns() || !boundHere(record)) continue;
-        if (result.selectionDependent === true) record.selectionDependent = true;
         const configKey = configKeys.get(targetKey(record)) ?? null;
         const checked = checkedConfigKey(configKey, result);
         if (checked.changed) {
@@ -435,10 +433,7 @@
         restartChecks(records);
         return;
       }
-      for (const record of records) {
-        record.configKey = status.configKey;
-        record.selectionDependent = status.selectionDependent === true;
-      }
+      for (const record of records) record.configKey = status.configKey;
       available(records, status.available, status.error, status.emptyDeck === true);
       if (!status.available) return;
       onChange(group.owner);
@@ -648,49 +643,6 @@
       if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
       return checked.clientSpeech ? { ...checkedRequest, clientSpeech: checked.clientSpeech } : checkedRequest;
     }
-    async function prepareScript(record, request, owns) {
-      const script = preparationScripts.get(record.templateId);
-      if (!script) return request;
-      setStatus(record, "Preparing card…");
-      const runtime = globalThis.HDAnkiPreparation;
-      const local = runtime?.describe(script);
-      const lifecycle = local ? globalThis.chrome?.runtime?.connect?.({ name: "hachidori-anki-preparation-document" }) : null;
-      if (!local) globalThis.dispatchEvent?.(new Event("hachidori-anki-preparation-connect"));
-      let operationId;
-      try {
-        ({ operationId } = await send("hd_anki_preparation_begin", { request: { ...request, ...(local ? { source: local.source } : {}) } }));
-        record.preparationOperation = operationId;
-        if (!owns()) return null;
-        let preparation;
-        if (local) {
-          const context = { term: request.term, sentence: request.sentence, matched: request.matched,
-            matchOffset: request.matchOffset, searchQuery: request.searchQuery, pageUrl: request.pageUrl,
-            documentTitle: request.documentTitle, glossarySelection: request.glossarySelection, templateId: request.templateId };
-          let data;
-          try {
-            data = await runtime.execute(script, context, (url, options) =>
-              send("hd_anki_preparation_fetch", { request: { operationId, url, options } }).then(reply => reply.response));
-          } catch { throw new Error("The preparation script failed. No note was sent."); }
-          ({ preparation } = await send("hd_anki_preparation_finish", { request: { operationId, data } }));
-        } else {
-          ({ preparation } = await send("hd_anki_prepare", { request: { ...request, operationId } }));
-        }
-        record.preparationOperation = null;
-        if (!owns()) return null;
-        const prepared = { ...request, preparation, preparationScript: script };
-        const checked = await send("hd_anki_preflight", { request: prepared });
-        if (!owns()) return null;
-        record.decision = checked;
-        if (!checked.canAdd) throw new Error(checked.error || "Anki rejected this note.");
-        return checked.clientSpeech ? { ...prepared, clientSpeech: checked.clientSpeech } : prepared;
-      } finally {
-        if (operationId && record.preparationOperation === operationId) {
-          record.preparationOperation = null;
-          await send("hd_anki_preparation_cancel", { request: { operationId } }).catch(() => {});
-        }
-        lifecycle?.disconnect();
-      }
-    }
     async function submit(record, fromPointer) {
       if (!current(record) || record.add.disabled || record.busy || record.terminal) return;
       const group = record.group, epoch = group.epoch;
@@ -710,8 +662,6 @@
       let writeSent = false;
       try {
         request = await addAnywayRequest(record, request, owns);
-        if (request === null) return;
-        request = await prepareScript(record, request, owns);
         if (request === null) return;
         const screenshotted = await prepareScreenshot(record, request, owns);
         const prepared = await prepareVideoMedia(record, screenshotted, owns);
@@ -883,13 +833,7 @@
       for (const [key, group] of owners) {
         if (owner !== undefined && owner !== key) continue;
         owners.delete(key);
-        for (const record of group.records) {
-          if (record.control) showControls(record, false);
-          if (record.preparationOperation) {
-            void send("hd_anki_preparation_cancel", { request: { operationId: record.preparationOperation } }).catch(() => {});
-            record.preparationOperation = null;
-          }
-        }
+        for (const record of group.records) if (record.control) showControls(record, false);
       }
     }
     // The built-in Anki record of a rendered entry (`item` from bind), while it
@@ -902,21 +846,6 @@
       return Array.isArray(noteIds) && noteIds.length > 0 ? record : null;
     }
     return { bind, retire,
-      selectionChanged(owner) {
-        const group = owners.get(owner);
-        const records = group?.records.filter(record => !record.busy && !record.terminal && record.selectionDependent !== false) ?? [];
-        if (!records.length) return;
-        group.epoch++;
-        // The group's old epoch also owns ordinary checks still in flight.
-        // Requeue those unfinished checks while retaining completed readiness.
-        for (const record of group.records) {
-          if (record.busy || record.terminal || (record.selectionDependent === false
-              && !record.needsCheck && record.add?.dataset.state !== "checking")) continue;
-          record.viewChecked = true;
-          record.needsCheck = true;
-        }
-        refresh(group);
-      },
       refresh(owner) { const group = owners.get(owner); if (group) refresh(group, true); },
       canViewNotes: (owner, item) => viewableRecord(owner, item) !== null,
       // Opens the entry's notes in Anki's browser; false when it has none.
@@ -929,14 +858,11 @@
       update(options, ready = true) {
         const anki = globalThis.HDReaderOptions.normaliseAnki(options.anki);
         const customButtons = globalThis.HDReaderOptions.normaliseCustomButtons(options.customButtons);
-        const key = JSON.stringify([ready, anki, customButtons, options.audioSources,
-          (options.userScripts ?? []).filter(script => anki.templates.some(template => template.preparationScript?.scriptId === script.id))]);
+        const key = JSON.stringify([ready, anki, customButtons, options.audioSources]);
         if (key === settingsKey) return;
         settingsKey = key;
         primaryTemplateId = anki.templates[0].id;
         templateIds = new Set(anki.templates.map(template => template.id));
-        preparationScripts = new Map(anki.templates.filter(template => template.preparationScript)
-          .map(template => [template.id, template.preparationScript]));
         customButtonTemplates = new Map(customButtons.filter(button => button.type === "anki")
           .map(button => [button.id, { templateId: button.templateId, label: button.label,
             ...(button.markers ? { buttonId: button.id } : {}) }]));

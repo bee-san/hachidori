@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import "./render/glossary.js";
 import { ankiPitchGraphs } from "./anki-pitch.js";
-import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape, encodeAnkiClozeBraces, ankiTemplateErrors } from "./anki-templates.js";
+import { ankiTemplateMarkerNames, renderAnkiTemplate, escapeAnkiHtml as escape } from "./anki-templates.js";
 
 // Browser-native port of GSM PR #549's hoshidicts_mining.py marker values.
 // DOM glossary rendering and resource preparation remain separate; only values
@@ -34,18 +34,10 @@ function partOfSpeechLabels(language) {
   if (labels && typeof labels === "object" && !Array.isArray(labels)) return labels;
   return language.code === "ja" ? PARTS_OF_SPEECH : {};
 }
-const VALUE_ALIASES = { "glossary-selection": "selected-glossary", definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
+const VALUE_ALIASES = { definition: "glossary", "main-definition": "glossary-first", "jpmn-primary-definition": "glossary-first",
   frequency: "frequencies", "pitch-accent-positions": "pitch-position", "pitch-categories": "pitch-accent-categories" };
 const alias = (request, dictionary) => Object.hasOwn(request.dictionaryAliases, dictionary)
   ? request.dictionaryAliases[dictionary] : dictionary;
-
-function preparationValue(record, wanted) {
-  if (!record) return "";
-  const key = Object.hasOwn(record, wanted) ? wanted : Object.keys(record).find(key => key.toLowerCase() === wanted);
-  if (key === undefined) return "";
-  const value = record[key];
-  return escape(typeof value === "string" ? value : JSON.stringify(value)).replaceAll("\n", "<br>\n");
-}
 
 function furiganaHtml(segments, plain) {
   return segments.map(({ text, reading }, index) => {
@@ -222,36 +214,10 @@ function dynamicFrequencies(request) {
   return variants;
 }
 
-async function renderPlannedFields(request, planned, handlebars) {
-  const output = {};
-  let context;
-  const rendering = [];
-  for (const { field, template, markers } of planned) {
-    if (template.syntax !== "handlebars") {
-      output[field] = renderAnkiTemplate(template.value, markers);
-      continue;
-    }
-    const errors = ankiTemplateErrors(template);
-    if (errors.length) throw new Error(errors.join("\n"));
-    if (!handlebars) throw new Error("Handlebars fields require the Anki template sandbox.");
-    context ??= { term: request.term,
-      sentence: { text: request.sentence, matched: request.matched, offset: request.matchOffset },
-      source: { title: request.documentTitle, url: request.pageUrl, query: request.searchQuery },
-      definitions: request.term.glossaries, selection: request.glossarySelection ?? null,
-      groups: request.glossaryGroups ?? [],
-      preparation: request.preparation ?? {},
-    };
-    const safeMarkers = Object.fromEntries(Object.entries(markers).map(([name, value]) => [name, encodeAnkiClozeBraces(value)]));
-    rendering.push(Promise.resolve(handlebars(template.value, context, safeMarkers)).then(value => { output[field] = value; }));
-  }
-  if (rendering.length) await Promise.all(rendering);
-  return Object.fromEntries(planned.map(({ field }) => [field, output[field]]));
-}
-
 // `language` is the language object of the profile the note is mined in, once
 // the records have profiles (docs/languages.md 12); without one every value is
 // today's.
-export async function buildAnkiFields(request, templates, { definition, audio = "", language = null, handlebars = null }) {
+export async function buildAnkiFields(request, templates, { definition, audio = "", language = null }) {
   const { term } = request;
   // A note mined in a right-to-left profile follows the right-to-left rules.
   const rtlRules = language?.direction === "rtl";
@@ -284,22 +250,6 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     return `${prefix}<b>${body}</b>${suffix}`;
   };
   const firstDictionary = () => term.glossaries[0]?.dictionary || "";
-  // A request without a fallback (the relay API, older linked browsers) is brief.
-  const selectionBrief = !["first", "all"].includes(request.glossarySelectionFallback);
-  const groupDefinition = groupId => {
-    const group = request.glossaryGroups?.find(group => group.id === groupId);
-    if (!group) return "";
-    const selected = request.glossarySelection;
-    const selectionAvailable = selected && Number.isSafeInteger(selected.index) && selected.index >= 0
-      && group.dictionaryIds.includes(request.dictionaryIds?.[selected.dictionary])
-      && term.glossaries.filter(row => row.dictionary === selected.dictionary)[selected.index];
-    const dictionary = selectionAvailable ? selected.dictionary : group.dictionaryIds.map(id =>
-      term.glossaries.find(row => request.dictionaryIds?.[row.dictionary] === id)?.dictionary).find(Boolean);
-    if (!dictionary) return "";
-    return definition({ selectedOnly: true,
-      selection: selectionAvailable ? selected : { dictionary, index: 0 },
-      brief: selectionBrief });
-  };
   // The relay API and older linked browsers send no address. Like Yomitan's
   // anki-note-data-creator.js, a missing or non-string one is blank.
   const pageUrl = () => typeof request.pageUrl === "string" ? escape(request.pageUrl) : "";
@@ -316,15 +266,9 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     glossary: () => definition({}), "glossary-brief": () => definition({ brief: true }),
     "glossary-no-dictionary": () => definition({ noDictionary: true }), "glossary-plain": () => definition({ plain: true }),
     "glossary-plain-no-dictionary": () => definition({ plain: true, noDictionary: true }),
-    // With no choice, the All definitions fallback exports what {glossary} does (#764).
-    "selected-glossary": () => (!request.glossarySelection && request.glossarySelectionFallback === "all" ? definition({})
-      : definition({ selectedOnly: true, selection: request.glossarySelection,
-        brief: selectionBrief })),
     "glossary-first": () => definition({ firstOnly: true }),
     "glossary-first-brief": () => definition({ firstOnly: true, brief: true }),
     "glossary-first-no-dictionary": () => definition({ firstOnly: true, noDictionary: true }),
-    "monolingual-definition": () => groupDefinition(request.monolingualGroupId),
-    "bilingual-definition": () => groupDefinition(request.bilingualGroupId),
     conjugation: () => request.trace.map(step => escape(step.name)).join(" « ") || escape(term.rules),
     "part-of-speech": () => {
       partsOfSpeech ??= partOfSpeechLabels(language);
@@ -381,7 +325,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   let glossaries, frequencies;
   const glossaryMarkerNames = new Set();
   const planned = Object.entries(templates).map(([field, template]) => {
-    const names = new Set(ankiTemplateMarkerNames(template));
+    const names = new Set(ankiTemplateMarkerNames(template.value));
     for (const name of names) {
       if (name.startsWith(GLOSSARY_MARKER_PREFIX)) glossaryMarkerNames.add(name);
     }
@@ -392,11 +336,7 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
     if (values.has(name)) return values.get(name);
     let value = "";
     if (Object.hasOwn(table, name)) value = table[name]();
-    else if (name.startsWith("glossary-selection-group-")) {
-      value = groupDefinition(name.slice("glossary-selection-group-".length));
-    } else if (name.startsWith("preparation-")) {
-      value = preparationValue(request.preparation, name.slice("preparation-".length));
-    } else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
+    else if (name.startsWith(GLOSSARY_MARKER_PREFIX)) {
       glossaries ??= dynamicGlossaries(request, glossaryMarkerNames);
       if (glossaries.has(name)) value = definition(glossaries.get(name));
     } else if (name.startsWith("single-frequency-")) {
@@ -418,5 +358,5 @@ export async function buildAnkiFields(request, templates, { definition, audio = 
   // Only glossary/resource values need asynchronous settlement. Ordinary text
   // and frequency templates should not create a promise per field and marker.
   if (pending.length) await Promise.all(pending);
-  return renderPlannedFields(request, planned, handlebars);
+  return Object.fromEntries(planned.map(({ field, template, markers }) => [field, renderAnkiTemplate(template.value, markers)]));
 }

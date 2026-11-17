@@ -259,7 +259,7 @@ test("a single-profile host keeps today's hello, its one broadcast and its repli
   const { relay, host } = await hosting(singleProfileRecords());
   try {
     const older = await olderClient();
-    assert.deepEqual(older.hello.capabilities, [...protocol.SHARING_CAPABILITIES, protocol.API_CAPABILITY, protocol.LINKED_IMPORT_CAPABILITY, protocol.MCP_CAPABILITY]);
+    assert.deepEqual(older.hello.capabilities, ["linked-anki-v1", "linked-anki-v2", "linked-buttons-v1", "hoshidicts-api-v1", "linked-import-v1", "mcp-configuration-v1"]);
     assert.deepEqual(older.hello.snapshot.options, singleProfileRecords().options);
     const client = await linked("aware", ["ja", "en", "ar"]);
     const linkSockets = FakeSharingSocket.instances.filter(socket => socket.url.endsWith("/link") && socket !== older.socket);
@@ -617,7 +617,7 @@ test("a profile-aware client opts in before storing anything and discards change
   const [socket] = sockets;
   socket.readyState = 1;
   socket.onopen();
-  assert.deepEqual(socket.sent[0].capabilities, [...protocol.SHARING_CAPABILITIES], "the client advertises its supported capabilities");
+  assert.deepEqual(socket.sent[0].capabilities, ["linked-anki-v1", "linked-anki-v2", "linked-buttons-v1"], "the client's hello does not change");
   const view = { options: { revision: 3 } };
   socket.receive({ kind: "hello", protocol: 1, version: "0.4.0", name: "Chrome", dictionaryCount: 1,
     capabilities: ["linked-anki-v2", "language-profiles-v1"], snapshot: view });
@@ -691,93 +691,4 @@ test("a linked browser's whole-record hd_state_cas is refused", async () => {
   } finally {
     relay.stop();
   }
-});
-
-test("older linked Anki writers preserve group settings by Template ID in the addressed language profile", async () => {
-  const records = profileRecords(["ja", "en"]);
-  for (const profile of records.options.profiles) profile.settings.anki = { templates: [
-    { id: "word", name: "Words", deck: "Default", model: "Basic", glossarySelectionFallback: "first",
-      monolingualGroupId: `${profile.id}-mono`, bilingualGroupId: `${profile.id}-bi` },
-    { id: "sentence", name: "Sentences", deck: "Default", model: "Basic", glossarySelectionFallback: "first-brief",
-      monolingualGroupId: `${profile.id}-other`, bilingualGroupId: "" },
-  ] };
-  const host = installation({ name: "group-compatibility", records });
-  const compatible = runInContext("compatibleLinkedWorkerMessage", host.context);
-  const options = anki => ({ type: "hd_options_write", profileId: "en", options: { anki } });
-  const v1 = { linkedCapabilities: ["linked-anki-v1"] };
-  const v2 = { linkedCapabilities: ["linked-anki-v1", "linked-anki-v2"] };
-  const legacy = patch => {
-    const flat = { ...globalThis.HDReaderOptions.normaliseAnki({ model: "Basic" }) };
-    for (const key of ["templates", "glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"]) delete flat[key];
-    return { ...flat, ...patch };
-  };
-  const flat = plain(await compatible(options(legacy({ deck: "Changed" })), v1));
-  assert.equal(flat.options.anki.templates[0].monolingualGroupId, "en-mono");
-  assert.equal(flat.options.anki.templates[0].glossarySelectionFallback, "first");
-  assert.equal(flat.options.anki.templates[1].monolingualGroupId, "en-other");
-  const reordered = options({ templates: [
-    { id: "sentence", name: "Renamed" }, { id: "word", name: "Words" }, { id: "new", name: "New" },
-  ] });
-  const result = plain(await compatible(reordered, v2));
-  assert.deepEqual(result.options.anki.templates.map(({ id, glossarySelectionFallback, monolingualGroupId, bilingualGroupId }) =>
-    ({ id, glossarySelectionFallback, monolingualGroupId, bilingualGroupId })), [
-    { id: "sentence", glossarySelectionFallback: "first-brief", monolingualGroupId: "en-other", bilingualGroupId: "" },
-    { id: "word", glossarySelectionFallback: "first", monolingualGroupId: "en-mono", bilingualGroupId: "en-bi" },
-    { id: "new", glossarySelectionFallback: "first-brief", monolingualGroupId: "", bilingualGroupId: "" },
-  ]);
-  assert.equal(Object.hasOwn(reordered.options.anki.templates[0], "monolingualGroupId"), false);
-  for (const sender of [v1, v2]) {
-    await assert.rejects(compatible(options(legacy({ monolingualGroupId: "changed" })), sender), /Update.*group/iu);
-    const unchanged = await compatible(options(legacy({ monolingualGroupId: "en-mono", glossarySelectionFallback: "first" })), sender);
-    assert.equal(unchanged.options.anki.monolingualGroupId, "en-mono");
-  }
-  await assert.rejects(compatible(options({ templates: [{ id: "word", bilingualGroupId: "changed" }] }), v2), /Update.*group/iu);
-  await assert.rejects(compatible(options({ templates: [{ id: "new", monolingualGroupId: "new-group" }] }), v2), /Update.*group/iu);
-  const capability = runInContext("linkedOptionsCapability", host.context);
-  assert.equal(capability(options({ templates: [{ id: "word", monolingualGroupId: "changed" }] })), "anki-glossary-groups-v1");
-  assert.equal(capability({ type: "hd_options_write", options: { hoverEnabled: true } }), null);
-  const current = { linkedCapabilities: [...protocol.SHARING_CAPABILITIES] };
-  const change = options({ templates: [{ id: "word", monolingualGroupId: "changed" }] });
-  assert.equal(await compatible(change, current), change, "a current linked writer may edit its group settings");
-});
-
-test("older linked writers retain preparation functions in the addressed profile and cannot change them", async () => {
-  const records = profileRecords(["ja", "en"]);
-  for (const profile of records.options.profiles) profile.settings.anki = { templates: [
-    { id: "word", name: "Words", deck: "Default", model: "Basic",
-      preparationScript: { scriptId: `${profile.id}-examples`, handlerId: "prepare" } },
-    { id: "sentence", name: "Sentences", deck: "Default", model: "Basic",
-      preparationScript: { scriptId: `${profile.id}-summary`, handlerId: "summary" } },
-  ] };
-  const host = installation({ name: "preparation-compatibility", records });
-  const compatible = runInContext("compatibleLinkedWorkerMessage", host.context);
-  const options = anki => ({ type: "hd_options_write", profileId: "en", options: { anki } });
-  const v1 = { linkedCapabilities: ["linked-anki-v1"] };
-  const v2 = { linkedCapabilities: ["linked-anki-v1", "linked-anki-v2"] };
-  const legacy = patch => {
-    const flat = { ...globalThis.HDReaderOptions.normaliseAnki({ model: "Basic" }) };
-    for (const key of ["templates", "preparationScript", "glossarySelectionFallback", "monolingualGroupId", "bilingualGroupId"]) delete flat[key];
-    return { ...flat, ...patch };
-  };
-  const flat = plain(await compatible(options(legacy({ deck: "Changed" })), v1));
-  assert.deepEqual(flat.options.anki.templates.map(template => template.preparationScript), [
-    { scriptId: "en-examples", handlerId: "prepare" }, { scriptId: "en-summary", handlerId: "summary" },
-  ]);
-  const reordered = plain(await compatible(options({ templates: [
-    { id: "sentence", name: "Renamed" }, { id: "word", name: "Words" }, { id: "new", name: "New" },
-  ] }), v2));
-  assert.deepEqual(reordered.options.anki.templates.map(template => template.preparationScript), [
-    { scriptId: "en-summary", handlerId: "summary" }, { scriptId: "en-examples", handlerId: "prepare" }, null,
-  ]);
-  assert.deepEqual(reordered.options.anki.preparationScript, { scriptId: "en-summary", handlerId: "summary" });
-  for (const sender of [v1, v2]) {
-    await assert.rejects(compatible(options(legacy({ preparationScript: null })), sender), /Update.*preparation/iu);
-    const unchanged = await compatible(options(legacy({ preparationScript: { handlerId: "prepare", scriptId: "en-examples" } })), sender);
-    assert.equal(unchanged.options.anki.preparationScript.scriptId, "en-examples");
-  }
-  await assert.rejects(compatible(options({ templates: [{ id: "word", preparationScript: { scriptId: "changed", handlerId: "prepare" } }] }), v2),
-    /Update.*preparation/iu);
-  const current = { linkedCapabilities: [...protocol.SHARING_CAPABILITIES] };
-  const change = options({ templates: [{ id: "word", preparationScript: null }] });
-  assert.equal(await compatible(change, current), change);
 });

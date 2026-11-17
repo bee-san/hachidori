@@ -19,7 +19,7 @@ function showAnkiSection(window) {
   window.document.getElementById("anki").hidden = false;
 }
 
-function fixture(t, capabilities, readOwnerKey = () => "", readGroups = () => []) {
+function fixture(t, capabilities, readOwnerKey = () => "") {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"), { runScripts: "outside-only" });
   const { window } = dom;
   showAnkiSection(window);
@@ -29,7 +29,6 @@ function fixture(t, capabilities, readOwnerKey = () => "", readGroups = () => []
   const controller = createAnkiSettingsController({ document: window.document, readConfig: () => config,
     capabilities,
     readOwnerKey,
-    readGroups,
     editConfig(value) { config = value; edits.push(value); },
     send(type, fields) { return new Promise(resolve => sent.push({ type, ...fields, resolve })); } });
   const el = id => window.document.getElementById(id);
@@ -44,41 +43,6 @@ function discovery(request, patch = {}) {
 const rows = f => [...f.el("anki-templates").children];
 const row = (f, field) => rows(f).find(candidate => candidate.dataset.ankiField === field);
 const editor = (f, field) => row(f, field)?.querySelector('[role="combobox"]');
-
-test("definition group selectors and markers preserve stable IDs, unavailable choices and a focused draft", async t => {
-  let groups = [{ id: "Mono-ID", name: "Monolingual" }, { id: "bi", name: "Bilingual" }];
-  const f = fixture(t, undefined, () => "", () => groups);
-  f.adopt({ model: "A", fieldTemplates: { Front: { value: "{expression}", overwriteMode: "coalesce" } } });
-  discovery(f.sent.at(-1));
-  await tick();
-  const select = f.el("opt-anki-monolingual-group");
-  select.value = "Mono-ID";
-  select.dispatchEvent(new f.window.Event("change"));
-  assert.equal(f.read().monolingualGroupId, "Mono-ID");
-  f.el("opt-anki-glossary-fallback").value = "first";
-  f.el("opt-anki-glossary-fallback").dispatchEvent(new f.window.Event("change"));
-  assert.equal(f.read().glossarySelectionFallback, "first");
-  const input = editor(f, "Front");
-  input.focus();
-  input.value = "literal draft {glossary-selection-group-";
-  input.dispatchEvent(new f.window.Event("input"));
-  groups = [{ id: "Mono-ID", name: "Renamed monolingual" }];
-  f.controller.render();
-  assert.equal(f.window.document.activeElement, input);
-  assert.equal(input.value, "literal draft {glossary-selection-group-");
-  const option = row(f, "Front").querySelector('[data-marker="{glossary-selection-group-Mono-ID}"]');
-  assert.match(option.textContent, /Renamed monolingual/u);
-  assert.equal(row(f, "Front").querySelector('[data-marker="{glossary-selection-group-bi}"]'), null);
-  option.click();
-  assert.equal(input.value, "literal draft {glossary-selection-group-Mono-ID}");
-  assert.equal(f.read().fieldTemplates.Front.value, input.value);
-  input.blur();
-  groups = [];
-  f.controller.render();
-  assert.equal(select.value, "Mono-ID");
-  assert.match(select.selectedOptions[0].textContent, /unavailable/u);
-  assert.equal(f.read().monolingualGroupId, "Mono-ID");
-});
 
 test("overlay screenshot controls show the effective capability while preserving saved mappings", async t => {
   const f = fixture(t, { screenshot: false });
@@ -909,40 +873,4 @@ test("the video mining markers are suggested like any other and are a valid mapp
   assert.deepEqual(listed(), { visible: true, gifVisible: true });
   assert.deepEqual([...owner.querySelectorAll(".anki-template-error")].map(error => error.textContent), [""],
     "a saved {sentence-audio} mapping is valid");
-});
-
-test("field syntax is explicit and keeps authored cloze text byte-for-byte across syntax changes", async t => {
-  const f = fixture(t);
-  f.controller.render();
-  discovery(f.sent[0]);
-  await tick();
-  const value = "{{c1::{expression}}}";
-  f.adopt({ fieldTemplates: { Front: { value, overwriteMode: "coalesce" }, Back: { value: "", overwriteMode: "coalesce" } } });
-  const syntax = row(f, "Front").querySelector(".anki-template-syntax");
-  syntax.value = "handlebars";
-  syntax.dispatchEvent(new f.window.Event("change", { bubbles: true }));
-  assert.deepEqual(f.read().fieldTemplates.Front, { value, overwriteMode: "coalesce", syntax: "handlebars" });
-  assert.equal(row(f, "Front").querySelector(".anki-template-preview").hidden, false);
-  assert.match(row(f, "Front").querySelector(".anki-template-error").textContent, /Parse error/u);
-  syntax.value = "markers";
-  syntax.dispatchEvent(new f.window.Event("change", { bubbles: true }));
-  assert.deepEqual(f.read().fieldTemplates.Front, { value, overwriteMode: "coalesce" });
-  assert.equal(row(f, "Front").querySelector(".anki-template-preview").hidden, true);
-});
-
-test("preparation selection keeps stable script/function identities and shows missing scripts", async t => {
-  const f = fixture(t);
-  f.adopt({ preparationScript: { scriptId: "missing", handlerId: "examples" } });
-  const select = f.el("opt-anki-preparation-script"), handler = f.el("opt-anki-preparation-handler");
-  assert.equal(select.value, "missing");
-  assert.equal(select.selectedOptions[0].textContent, "Missing user script");
-  assert.equal(handler.value, "examples");
-  assert.equal(handler.disabled, false);
-  handler.value = "summary";
-  handler.dispatchEvent(new f.window.Event("change", { bubbles: true }));
-  assert.deepEqual(f.read().preparationScript, { scriptId: "missing", handlerId: "summary" });
-  select.value = "";
-  select.dispatchEvent(new f.window.Event("change", { bubbles: true }));
-  assert.equal(f.read().preparationScript, null);
-  assert.equal(handler.disabled, true);
 });

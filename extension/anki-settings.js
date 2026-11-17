@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { buildAnkiResourceFields } from "./anki-resources.js";
 import { ankiAvailability } from "./anki.js";
 import { ankiSetupFamily } from "./anki-setup.js";
 import { ANKI_MARKER_REQUIREMENTS, ANKI_TEMPLATE_MARKER_OPTIONS, ankiFieldNames, ankiMappedFieldNames, ankiTemplateErrors, applyAnkiPreset, resolveAnkiTemplates } from "./anki-templates.js";
@@ -71,8 +70,7 @@ function markerSelection(value, selectionStart, selectionEnd) {
   return { start: selectionStart, end: selectionEnd, query: "" };
 }
 
-function createMarkerCombobox(document, id, labelText, onValue, markerListed = () => true,
-  markerOptions = () => ANKI_TEMPLATE_MARKER_OPTIONS) {
+function createMarkerCombobox(document, id, labelText, onValue, markerListed = () => true) {
   const root = document.createElement("div");
   root.className = "anki-marker-combobox";
   root.innerHTML = `<div class="anki-marker-combobox-editor">
@@ -104,43 +102,33 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
   empty.setAttribute("aria-hidden", "true");
   empty.textContent = "No markers match. Keep typing to use this text as-is.";
   empty.hidden = true;
-  let options = [];
-  let optionsKey;
-  function syncOptions() {
-    const markers = markerOptions();
-    if (optionsKey === markers) return;
-    const activeValue = options[active]?.value;
-    optionsKey = markers;
-    options = markers.map((marker, index) => {
-      const option = document.createElement("div");
-      option.id = `${id}-option-${index + 1}`;
-      option.className = "anki-marker-option";
-      option.dataset.marker = marker.value;
-      option.setAttribute("role", "option");
-      option.setAttribute("aria-selected", "false");
-      option.setAttribute("aria-label", `${marker.value}: ${marker.description}`);
-      const value = document.createElement("code");
-      value.textContent = marker.value;
-      const description = document.createElement("span");
-      description.textContent = marker.description;
-      option.append(value, description);
-      option.addEventListener("pointerenter", () => {
-        if (!option.hidden) setActive(index);
-      });
-      option.addEventListener("pointerdown", event => event.preventDefault());
-      option.addEventListener("click", () => select(index));
-      const groupName = marker.marker.startsWith("glossary-selection-group-") ? ` ${marker.description}` : "";
-      return {
-        ...marker,
-        element: option,
-        search: `${marker.marker} ${marker.value}${groupName}`.toLocaleLowerCase(),
-      };
+  const options = ANKI_TEMPLATE_MARKER_OPTIONS.map((marker, index) => {
+    const option = document.createElement("div");
+    option.id = `${id}-option-${index + 1}`;
+    option.className = "anki-marker-option";
+    option.dataset.marker = marker.value;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", "false");
+    option.setAttribute("aria-label", `${marker.value}: ${marker.description}`);
+    const value = document.createElement("code");
+    value.textContent = marker.value;
+    const description = document.createElement("span");
+    description.textContent = marker.description;
+    option.append(value, description);
+    option.addEventListener("pointerenter", () => {
+      if (!option.hidden) setActive(index);
     });
-    listbox.replaceChildren(...options.map(option => option.element), empty);
-    active = options.findIndex(option => option.value === activeValue);
-  }
+    option.addEventListener("pointerdown", event => event.preventDefault());
+    option.addEventListener("click", () => select(index));
+    listbox.append(option);
+    return {
+      ...marker,
+      element: option,
+      search: `${marker.marker} ${marker.value}`.toLocaleLowerCase(),
+    };
+  });
+  listbox.append(empty);
 
-  let suggestions = true;
   let open = false;
   let showAll = false;
   let active = -1;
@@ -170,7 +158,6 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
   }
 
   function refreshOptions() {
-    syncOptions();
     const selection = markerSelection(editor.value, editor.selectionStart, editor.selectionEnd);
     const query = showAll ? "" : selection.query.toLocaleLowerCase();
     for (const option of options) {
@@ -194,7 +181,6 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
   }
 
   function setOpen(value, all = false) {
-    value = value && suggestions;
     open = value;
     showAll = value && all;
     editor.setAttribute("aria-expanded", `${open}`);
@@ -312,19 +298,13 @@ function createMarkerCombobox(document, id, labelText, onValue, markerListed = (
     });
   });
 
-  syncOptions();
   updateLabel(labelText);
   return {
     root,
     editor,
     error,
     close: () => setOpen(false),
-    update({ value, label, errors, syntax = "markers" }) {
-      syncOptions();
-      suggestions = syntax !== "handlebars";
-      if (!suggestions && open) setOpen(false);
-      setAttributeIfChanged(editor, "role", suggestions ? "combobox" : "textbox");
-      if (toggle.hidden === suggestions) toggle.hidden = !suggestions;
+    update({ value, label, errors }) {
       labelText = label;
       committedValue = value;
       updateLabel(label);
@@ -341,14 +321,12 @@ export function createAnkiSettingsController({
   document,
   readConfig,
   editConfig,
-  readScripts = () => [],
   send,
   capabilities = { screenshot: true },
   readOwnerKey = () => "",
   // The edited profile `{ id, language, packSettings }`, or null: every marker,
   // family and suggestion, as for Japanese.
   readProfile = () => null,
-  readGroups = () => [],
 }) {
   const { ANKI_FIELDS, ANKI_OVERWRITE_MODES, normaliseAnkiConnectUrl, optionRequirementMet } = document.defaultView.HDReaderOptions;
   // docs/languages.md 12: markers the edited profile's language lacks are not
@@ -361,19 +339,6 @@ export function createAnkiSettingsController({
   };
   const markerAvailable = marker => ANKI_MARKER_REQUIREMENTS[marker] === undefined
     || requirementMet(ANKI_MARKER_REQUIREMENTS[marker]);
-  let groupMarkerKey = "[]", groupMarkerOptions = ANKI_TEMPLATE_MARKER_OPTIONS;
-  const markerOptions = () => groupMarkerOptions;
-  function updateGroupMarkers(groups) {
-    const key = JSON.stringify(groups.map(({ id, name }) => [id, name]));
-    if (key === groupMarkerKey) return;
-    groupMarkerKey = key;
-    groupMarkerOptions = groups.length === 0 ? ANKI_TEMPLATE_MARKER_OPTIONS : [
-      ...ANKI_TEMPLATE_MARKER_OPTIONS,
-      ...groups.map(group => ({ marker: `glossary-selection-group-${group.id}`,
-        value: `{glossary-selection-group-${group.id}}`,
-        description: `Selected or first available definition in ${group.name}` })),
-    ];
-  }
   const familiesListed = () => requirementMet("ankiNoteTypeFamilies");
   const modelFamily = model => (familiesListed() ? ankiSetupFamily(model) : null);
   const fieldAliases = () => {
@@ -464,7 +429,7 @@ export function createAnkiSettingsController({
     const id = `opt-anki-template-${++nextTemplateId}`;
     let record;
     const combobox = createMarkerCombobox(document, id, field, value => editTemplate(record.field, { value }),
-      marker => markerAvailable(marker.marker), markerOptions);
+      marker => markerAvailable(marker.marker));
     const editor = combobox.editor;
     row.querySelector(".anki-template-mode").before(combobox.root);
     label.htmlFor = editor.id;
@@ -477,57 +442,7 @@ export function createAnkiSettingsController({
     for (const value of ANKI_OVERWRITE_MODES) mode.add(new document.defaultView.Option(names[value], value));
     const remove = row.querySelector("button");
     remove.setAttribute("aria-label", `Remove unavailable field: ${field}`);
-    const syntaxLabel = document.createElement("label");
-    syntaxLabel.className = "field-hint anki-template-syntax-label";
-    syntaxLabel.textContent = "Syntax";
-    const syntax = document.createElement("select");
-    syntax.className = "anki-template-syntax";
-    syntax.setAttribute("aria-label", `Field syntax: ${field}`);
-    syntax.add(new document.defaultView.Option("Markers", "markers"));
-    syntax.add(new document.defaultView.Option("Handlebars", "handlebars"));
-    syntaxLabel.append(syntax);
-    const controls = document.createElement("div");
-    controls.className = "anki-template-controls";
-    const modeLabel = mode.parentElement;
-    modeLabel.before(controls);
-    controls.append(modeLabel, syntaxLabel);
-    const preview = document.createElement("button");
-    preview.type = "button";
-    preview.className = "ghost anki-template-preview";
-    preview.textContent = "Preview with sample data";
-    preview.setAttribute("aria-label", `Preview with sample data: ${field}`);
-    const output = document.createElement("pre");
-    output.className = "field-hint anki-template-preview-output";
-    output.setAttribute("role", "status");
-    combobox.root.append(preview, output);
-    editor.addEventListener("input", () => { output.textContent = ""; });
-    record = { field, row, label, editor, combobox, mode, remove, indexBadge, syntax, preview, output,
-      modeLabel: mode.parentElement };
-    syntax.addEventListener("change", () => {
-      const templates = materializeTemplates();
-      if (syntax.value === "handlebars") templates[record.field].syntax = "handlebars";
-      else delete templates[record.field].syntax;
-      output.textContent = "";
-      change({ fieldTemplates: templates });
-    });
-    preview.addEventListener("click", async () => {
-      const value = editor.value;
-      const selectedSyntax = syntax.value;
-      preview.disabled = true;
-      output.textContent = "Rendering sample…";
-      try {
-        const request = { term: { expression: "食べる", reading: "たべる", rules: "v1", pitches: [], frequencies: [],
-          glossaries: [{ dictionary: "Sample dictionary", glossary: '["to eat"]', definitionTags: "", termTags: "" }] },
-          trace: [], sentence: "昨日、食べました。", matchOffset: 3, matched: "食べました", searchQuery: "食べました",
-          documentTitle: "Sample page", pageUrl: "https://example.com/", popupSelectionText: "", preparation: {},
-          dictionaryAliases: {}, dictionaryIds: {}, dictionaryMedia: [], dictionaryStyles: [] };
-        const rendered = await buildAnkiResourceFields(request, { preview: { value, syntax: selectedSyntax, overwriteMode: "coalesce" } },
-          { document, dictionaryPaths: {}, styles: async () => [] });
-        if (editor.value === value && syntax.value === selectedSyntax) output.textContent = rendered.fields.preview || "(empty field)";
-      } catch (error) {
-        if (editor.value === value && syntax.value === selectedSyntax) output.textContent = `Preview failed: ${error.message}`;
-      } finally { preview.disabled = false; }
-    });
+    record = { field, row, label, editor, combobox, mode, remove, indexBadge, modeLabel: mode.parentElement };
     mode.addEventListener("change", () => editTemplate(record.field, { overwriteMode: mode.value }));
     remove.addEventListener("click", () => {
       const templates = materializeTemplates();
@@ -539,12 +454,8 @@ export function createAnkiSettingsController({
   }
 
   function updateTemplateRow(row, template, showMode, unavailable, index) {
-    const errors = ankiTemplateErrors(template);
-    row.combobox.update({ value: template.value, label: row.field, errors, syntax: template.syntax });
-    if (row.syntax.value !== (template.syntax ?? "markers")) row.syntax.value = template.syntax ?? "markers";
-    const previewHidden = template.syntax !== "handlebars";
-    if (row.preview.hidden !== previewHidden) row.preview.hidden = previewHidden;
-    if (row.output.hidden !== previewHidden) row.output.hidden = previewHidden;
+    const errors = ankiTemplateErrors(template.value);
+    row.combobox.update({ value: template.value, label: row.field, errors });
     if (row.mode !== document.activeElement && row.mode.value !== template.overwriteMode) row.mode.value = template.overwriteMode;
     if (row.modeLabel.hidden === showMode) row.modeLabel.hidden = !showMode;
     if (row.remove.hidden === unavailable) row.remove.hidden = !unavailable;
@@ -770,35 +681,9 @@ export function createAnkiSettingsController({
     ["tags", "opt-anki-tags"], ["apiKey", "opt-anki-api-key"],
     ["duplicateScope", "opt-anki-duplicate-scope"], ["duplicateBehavior", "opt-anki-duplicate-behavior"],
     ["captureScreenshot", "opt-anki-screenshot"],
-    ["glossarySelectionFallback", "opt-anki-glossary-fallback"],
-    ["monolingualGroupId", "opt-anki-monolingual-group"],
-    ["bilingualGroupId", "opt-anki-bilingual-group"],
   ];
 
-  function renderPreparation(config) {
-    const select = element("opt-anki-preparation-script");
-    if (!select) return;
-    const selected = config.preparationScript;
-    const scripts = readScripts().filter(script => script.javascript.trim());
-    const choices = [["", "None"], ...scripts.map(script => [script.id, `${script.name}${script.enabled ? "" : " (disabled)"}`])];
-    if (selected && !scripts.some(script => script.id === selected.scriptId)) choices.push([selected.scriptId, "Missing user script"]);
-    const key = JSON.stringify(choices);
-    if (select.dataset.choices !== key) {
-      select.replaceChildren(...choices.map(([value, label]) => {
-        const option = document.createElement("option"); option.value = value; option.textContent = label; return option;
-      }));
-      select.dataset.choices = key;
-    }
-    const scriptId = selected?.scriptId ?? "";
-    if (select !== document.activeElement && select.value !== scriptId) select.value = scriptId;
-    const handler = element("opt-anki-preparation-handler");
-    if (handler.disabled !== !selected) handler.disabled = !selected;
-    const handlerId = selected?.handlerId ?? "prepare";
-    if (handler !== document.activeElement && handler.value !== handlerId) handler.value = handlerId;
-  }
-
   function renderFormControls(config) {
-    renderPreparation(config);
     const values = { ...config, captureScreenshot: capabilities.screenshot && config.captureScreenshot };
     for (const [key, id] of controls) {
       const control = element(id);
@@ -811,8 +696,6 @@ export function createAnkiSettingsController({
   function render() {
     syncOwner();
     const config = readConfig();
-    const groups = readGroups();
-    updateGroupMarkers(groups);
     if (!apiKeyPanelInitialized) {
       apiKeyPanelInitialized = true;
       setApiKeyExpanded(config.apiKey !== "");
@@ -846,11 +729,6 @@ export function createAnkiSettingsController({
       labels: modelLabels,
     });
     renderDuplicateScope(config);
-    const labels = Object.fromEntries(groups.map(group => [group.id, group.name]));
-    for (const [id, value] of [["opt-anki-monolingual-group", config.monolingualGroupId],
-      ["opt-anki-bilingual-group", config.bilingualGroupId]]) {
-      selectChoices(id, groups.map(group => group.id), value, "No group", { allLabel: "Dictionary groups", labels });
-    }
     const url = element("opt-anki-url");
     if (url !== document.activeElement && !url.validity.customError && url.value !== config.url) url.value = config.url;
     renderFormControls(config);
@@ -860,14 +738,6 @@ export function createAnkiSettingsController({
     if (connectionKey(config) !== requestedKey) void refresh();
   }
 
-  element("opt-anki-preparation-script")?.addEventListener("change", event => {
-    const scriptId = event.target.value;
-    change({ preparationScript: scriptId ? { scriptId, handlerId: readConfig().preparationScript?.handlerId ?? "prepare" } : null });
-  });
-  element("opt-anki-preparation-handler")?.addEventListener("change", event => {
-    const current = readConfig().preparationScript;
-    if (current) change({ preparationScript: { ...current, handlerId: event.target.value.trim() || "prepare" } });
-  });
   element("opt-anki-deck").addEventListener("change", event => change({ deck: event.target.value }));
   element("opt-anki-model").addEventListener("change", event => {
     if (event.target.value === readConfig().model) return;
@@ -926,12 +796,10 @@ export function createAnkiTemplateSettingsController({
   readAnki,
   editAnki,
   readButtons = () => [],
-  readScripts = () => [],
   send,
   capabilities = { screenshot: true },
   createId = () => document.defaultView.crypto.randomUUID(),
   readProfile = () => null,
-  readGroups = () => [],
 }) {
   const {
     ANKI_TEMPLATE_CONFIG_KEYS,
@@ -982,9 +850,7 @@ export function createAnkiTemplateSettingsController({
     send,
     capabilities,
     readOwnerKey: () => selected().template.id,
-    readScripts,
     readProfile,
-    readGroups,
   });
 
   function uniqueId() {

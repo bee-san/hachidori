@@ -113,10 +113,6 @@ describe("audio and Anki", () => {
     }), { timeout: 20_000 });
     check("Anki settings list AnkiConnect's decks and note types", discovered !== null,
       JSON.stringify({ discovered, calls: calls.map(call => call.action) }));
-    // Settings saves the address after a short delay. Writing before that save
-    // lands would race it and be refused as a change from another page.
-    await waitFor(async () => (await readStorage(page, ["options"])).options?.anki?.url === `${serverUrl}${ANKI_PATH}`,
-      { timeout: 10_000 });
 
     const defaults = await evaluateJson(page, () => JSON.stringify(HDReaderOptions.normaliseOptions({}).anki));
     const template = value => ({ value, overwriteMode: "overwrite" });

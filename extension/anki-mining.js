@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { ANKI_DECK_UNSET, ankiAvailability, isAnkiEditorConflict, isUndispatchedAnkiTransportError } from "./anki.js";
-import { ankiCaptureRequirements, ankiTemplateDependencies, resolveAnkiTemplates, substituteAnkiMarkers } from "./anki-templates.js";
-import { preparationData } from "./anki-preparation-service.js";
+import { ankiCaptureRequirements, resolveAnkiTemplates, substituteAnkiMarkers } from "./anki-templates.js";
 import { ankiDigest } from "./anki-digest.js";
 import { inspectAnkiNoteIds } from "./anki-index.js";
 import { ankiListedFamily } from "./anki-setup.js";
@@ -17,7 +16,6 @@ const SENTENCE_AUDIO_FIELDS = { kiku: "SentenceAudio", lapis: "SentenceAudio", s
 // word index and exact target fields; cross-model scopes keep their policy.
 function nativeDuplicateCheck({ config, discovery, resolved }) {
   return config.duplicateScope === "model" && config.duplicateBehavior !== "overwrite"
-    && resolved.templates[discovery.fields[0]]?.syntax !== "handlebars"
     && /^\{expression\}$/iu.test(resolved.templates[discovery.fields[0]]?.value ?? "");
 }
 
@@ -316,15 +314,9 @@ export function createAnkiMiningService({
     return promise;
   }
 
-  function selectionDependent(current) {
-    const first = current.resolved?.templates[current.discovery?.fields[0]];
-    return first ? ankiTemplateDependencies(first).selection : false;
-  }
-
   async function status(templateId) {
     const current = await configuration(templateId);
     return { available: current.errors.length === 0, configKey: current.configKey, error: current.errors.join("\n"),
-      selectionDependent: selectionDependent(current),
       // Only a deck is missing: the popup's Anki button then opens Settings →
       // Anki (docs/languages.md 6.3).
       ...(current.errors.length === 1 && current.errors[0] === ANKI_DECK_UNSET ? { emptyDeck: true } : {}) };
@@ -340,11 +332,6 @@ export function createAnkiMiningService({
       configKey: current.configKey,
       cached: false,
     };
-    // A source-dependent first field has a different duplicate identity for
-    // each choice. It cannot be answered by the expression-only word index.
-    if (Object.values(current.config.fieldTemplates ?? {}).some(field => ankiTemplateDependencies(field).selection)) {
-      if (selectionDependent(await configuration(request?.templateId))) return { ...unknown, selectionDependent: true };
-    }
     // The cached index holds the Template's own expressions, which a button
     // with marker substitutions may not write.
     if (current.config.duplicateBehavior !== "prevent" || current.config.markerSubstitutions) return unknown;
@@ -360,25 +347,6 @@ export function createAnkiMiningService({
     };
   }
 
-  async function preparationFields(request, current, rendering, fresh) {
-    const script = current.config.preparationScript;
-    if (!script) {
-      if (Object.hasOwn(request, "preparation")) throw new Error("This Anki Template has no preparation script.");
-      return buildFields(request, rendering, { preflight: !fresh });
-    }
-    if (typeof current.config.preparationSource !== "string") {
-      throw new TypeError("The preparation script is disabled or unavailable. Enable it in Advanced → User scripts.");
-    }
-    if (!Object.hasOwn(request, "preparation")) {
-      if (fresh) throw new Error("Run this Template's preparation script before adding the note.");
-      return { fields: { [current.discovery.fields[0]]: "hachidori_pending_preparation" }, media: [], deferDuplicateCheck: true };
-    }
-    if (JSON.stringify(request.preparationScript) !== JSON.stringify(script)) throw new Error(CONFIG_CHANGED);
-    // Keep request identity: linked media and speech ownership use WeakMaps.
-    preparationData(request.preparation);
-    return buildFields(request, rendering, { preflight: !fresh });
-  }
-
   async function prepare(request, fresh) {
     const configured = await configuration(request?.templateId);
     if (request.configKey !== configured.configKey) throw new Error(CONFIG_CHANGED);
@@ -390,7 +358,7 @@ export function createAnkiMiningService({
     const rendering = !fresh && nativeDuplicateCheck(current) ? { ...current, resolved: { ...current.resolved,
       templates: Object.fromEntries(Object.entries(current.resolved.templates).filter(([field, template]) =>
         field === current.discovery.fields[0] || /\{\{c/iu.test(template.value))) } } : current;
-    const resources = await preparationFields(request, current, rendering, fresh);
+    const resources = await buildFields(request, rendering, { preflight: !fresh });
     const { fields } = resources;
     const firstField = current.discovery.fields[0];
     if (!fields[firstField]?.trim()) {
@@ -425,8 +393,7 @@ export function createAnkiMiningService({
   async function deferredReply(request, prepared) {
     const extra = await preflightExtra({ request, prepared, applied: null, deferred: true });
     return { state: "addable", canAdd: true, error: null, deferred: true, screenshot: screenshotFor(prepared),
-      ...sentenceAudioFor(prepared, request), ...gifFor(prepared, request),
-      ...(prepared.config.preparationScript ? { preparationScript: prepared.config.preparationScript } : {}), ...extra };
+      ...sentenceAudioFor(prepared, request), ...gifFor(prepared, request), ...extra };
   }
 
   async function preflightReply(request, prepared, result) {

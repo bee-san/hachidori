@@ -21,18 +21,6 @@ const STORED = {
 
 const TARGETS = { worker: "worker", sharing: "sharing", anki: "anki" };
 
-test("debug info reports effective definition-group availability and enabled membership without glossary content", async () => {
-  const stored = structuredClone(STORED);
-  stored.options.anki = { monolingualGroupId: "mono", bilingualGroupId: "missing", glossarySelectionFallback: "first" };
-  stored.dictionaryState = { schemaVersion: 1, revision: 2,
-    dictionaries: [{ id: "a", enabled: true }, { id: "b", enabled: false }],
-    groups: [{ id: "mono", name: "Monolingual", dictionaryIds: ["a", "b"] }] };
-  const report = await collectDebugInfo({ ...host({ stored }), targets: TARGETS });
-  assert.deepEqual(report.configuration.profiles[0].ankiDefinitionGroups, [{ templateId: "default", fallback: "first",
-    monolingual: { id: "mono", available: true, enabledDictionaryCount: 1 },
-    bilingual: { id: "missing", available: false, enabledDictionaryCount: 0 } }]);
-});
-
 function host({ fail = new Set(), stored = STORED } = {}) {
   const sent = [];
   let storageReads = 0;
@@ -73,7 +61,6 @@ function host({ fail = new Set(), stored = STORED } = {}) {
       session: "o1", n: 1, context: "offscreen", version: "1.2.3", level: "warn", message: "hoshidicts: direct OPFS is unavailable" }] }] },
     hd_sharing_status: { ok: true, sharing: { enabled: false } },
     hd_anki_status: { ok: true, available: false, error: "Choose an Anki note type in Settings." },
-    hd_anki_preparation_status: { ok: true, registeredDocuments: 2, registeredHandlers: 3, activePreparations: 0, lastFailure: null },
     hd_state_read: { ok: true, state: { dictionaries: [{ id: "a", title: "Jitendex", enabled: true }] } },
   };
   const send = async (type, fields, target = "offscreen") => {
@@ -96,11 +83,7 @@ test("configuration includes every current default, migrated userscripts and bun
   const configuration = report.configuration;
   assert.equal(configuration.activeProfileId, "ja");
   assert.equal(configuration.optionsRevision, 3);
-  assert.deepEqual(configuration.ankiFieldTemplates, { syntaxes: ["markers", "handlebars"], handlebarsVersion: "4.7.10",
-    compilerContext: "sandbox", dataContexts: ["term", "sentence", "source", "definitions", "selection", "groups", "preparation"] });
   assert.deepEqual(configuration.experimentalFeatures, EXPERIMENTAL_FEATURES);
-  assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "selected-glossary"));
-  assert.ok(configuration.ankiExport.markers.some(entry => entry.marker === "glossary-selection"));
   const profile = configuration.profiles[0];
   assert.deepEqual(Object.keys(profile.effectiveOptions).sort(), Object.keys(DEFAULT_OPTIONS).sort());
   assert.equal(profile.effectiveOptions.userScripts[0].name, "Custom JavaScript");
@@ -283,15 +266,4 @@ test("the OPFS listing gives every file's path and size and each directory's tot
   const report = await collectDebugInfo({ ...host(), targets: TARGETS });
   assert.deepEqual(report.services.mcp, { capability: "mcp-configuration-v1", target: "hachidori-mcp",
     transport: "sharing-relay", hostLanguageSelection: true });
-});
-
-
-test("preparation diagnostics expose counts independently of Anki availability", async () => {
-  const env = host();
-  const report = await collectDebugInfo({ ...env, targets: TARGETS });
-  assert.equal(report.services.ankiPreparation.registeredDocuments, 2);
-  assert.equal(report.services.ankiPreparation.registeredHandlers, 3);
-  const failed = await collectDebugInfo({ ...host({ fail: new Set(["hd_anki_preparation_status"]) }), targets: TARGETS });
-  assert.match(failed.services.ankiPreparation.error, /did not reply/u);
-  assert.equal(failed.engine.status.ready, true);
 });
