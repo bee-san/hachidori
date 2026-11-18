@@ -36,7 +36,7 @@ function getAudioRepository() {
   return audioRepository;
 }
 const MAX_PENDING_REQUESTS = 128;
-const PROBE_TIMEOUT_MS = 10_000;
+const PROBE_SLOW_MS = 10_000;
 const MUTATION_TYPES = new Set([
   "hd_apply_state",
   "hd_reload",
@@ -311,7 +311,12 @@ function probeDirectOpfs() {
         if (event.data?.channel !== "opfs-capability-result") return;
         finish(event.data.ok === true, describeError(event.data.error || ""));
       });
-      timer = setTimeout(() => finish(false, "the OPFS capability probe timed out"), PROBE_TIMEOUT_MS);
+      // Slow is not unavailable: a browser restarting after a crash can take
+      // longer than this, and IDBFS would hide every dictionary committed to
+      // OPFS (#791). Only the probe's own answer selects the fallback.
+      timer = setTimeout(() => {
+        console.warn(`hoshidicts: the OPFS capability probe has not answered after ${PROBE_SLOW_MS / 1000} s, still waiting`);
+      }, PROBE_SLOW_MS);
       probe.postMessage({ channel: "opfs-capability-probe" });
     } catch (error) {
       finish(false, describeError(error));
