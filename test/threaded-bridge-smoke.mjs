@@ -549,6 +549,30 @@ idbfsEngine.emit("message", {
 assert.equal((await idbfsLookup.promise).ok, true);
 assert.deepEqual([(await idbfsStatus.promise).storageBackend, (await idbfsStatus.promise).threaded], ["idbfs", true]);
 
+// A probe that is merely slow (a browser restarting after a crash) is waited
+// for: starting IDBFS would hide every dictionary committed to OPFS (#791).
+mock.timers.enable({ apis: ["setTimeout"] });
+try {
+  await import(`../extension/offscreen.js?slow-probe=${Date.now()}`);
+  relay = importedRuntime();
+  const slowProbeLookup = request("hd_lookup", "slow-probe-lookup");
+  await tick();
+  const engineWorkersBeforeSlowProbe = engineWorkers.length;
+  mock.timers.tick(60_000);
+  await tick();
+  assert.equal(engineWorkers.length, engineWorkersBeforeSlowProbe, "a slow OPFS probe starts no engine");
+  assert.equal(slowProbeLookup.responses.length, 0);
+  capabilityWorkers.at(-1).emit("message", { channel: "opfs-capability-result", ok: true });
+  await tick();
+  assert.equal(engineWorkers.length, engineWorkersBeforeSlowProbe + 1);
+  const slowProbeEngine = engineWorkers.at(-1);
+  assert.match(slowProbeEngine.url, /\/engine-worker\.js$/u, "a late OPFS answer still selects the OPFS worker");
+  assert.deepEqual(slowProbeEngine.messages.filter((message) => message.channel === "engine-request")
+    .map((entry) => entry.message.type), ["hd_lookup"]);
+} finally {
+  mock.timers.reset();
+}
+
 // Exercise the actual offscreen settlement boundary, not just the scheduler:
 // an order-only reply must neither request a recycle nor cancel a pending one.
 mock.timers.enable({ apis: ["setTimeout"] });
