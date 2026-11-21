@@ -19,9 +19,8 @@
 //   cut from what was kept (no seek, player call or recorder frame), a line
 //   not heard is replayed audibly through the player (no recorder frame), and
 //   a line hover pause stopped partway plays on to its end without a seek;
-//   with {gif} mapped too, the note says Chrome has not let Hachidori record
-//   the tab and still gets the sentence audio, and on a page whose own Web
-//   Audio graph has the video, sentence audio says the same;
+//   with {gif} mapped too, or on a page whose own Web Audio graph has the
+//   video, no note is added and the popup asks for the toolbar button;
 // - after the click (CDP's Extensions.triggerAction runs the action as a click
 //   does, which grants tab capture on the tab), that page's line is recorded
 //   from the tab while it replays, and one replay of a line never heard
@@ -474,22 +473,38 @@ try {
   const onWord = () => [box.x + 12, box.y + box.height / 2];
   const away = [1150, 30];
   // Hover the word until its popup is ready, then add with the popup's Alt+E keybind.
+  async function pressAdd() {
+    await tab.mouse.move(box.x + 4, box.y + box.height / 2);
+    await new Promise(done => setTimeout(done, 300));
+    await tab.mouse.move(...onWord());
+    await new Promise(done => setTimeout(done, 700));
+    await tab.keyboard.down("Alt");
+    await tab.keyboard.press("KeyE");
+    await tab.keyboard.up("Alt");
+  }
   async function addNote() {
     const added = notes.length;
     const deadline = Date.now() + 60_000;
     while (notes.length === added && Date.now() < deadline) {
-      await tab.mouse.move(box.x + 4, box.y + box.height / 2);
-      await new Promise(done => setTimeout(done, 300));
-      await tab.mouse.move(...onWord());
-      await new Promise(done => setTimeout(done, 700));
-      await tab.keyboard.down("Alt");
-      await tab.keyboard.press("KeyE");
-      await tab.keyboard.up("Alt");
+      await pressAdd();
       for (let wait = 0; wait < 20 && notes.length === added; wait++) await new Promise(done => setTimeout(done, 500));
     }
     if (notes.length === added) console.log("diagnostics:", JSON.stringify(await diagnose(tab)));
     assert.equal(notes.length, added + 1, `a note was added (${notes.length - added})`);
     return notes.at(-1);
+  }
+  // An Add Hachidori holds back: the popup says why, and no note is added.
+  async function heldBackNote(message) {
+    const added = notes.length;
+    const deadline = Date.now() + 60_000;
+    const asked = async () => (await readerState(tab)).statuses
+      .some(status => /^Could not add: Chrome has not let Hachidori record this tab yet\./u.test(status));
+    while (!(await asked()) && Date.now() < deadline) {
+      await pressAdd();
+      for (let wait = 0; wait < 20 && !(await asked()); wait++) await new Promise(done => setTimeout(done, 500));
+    }
+    assert.ok(await asked(), message);
+    assert.equal(notes.length, added, "no note was added");
   }
   // Chrome's own GIF decoder: the frame count, loop count and size, and how many
   // decoded frames differ, from the GIF the fake AnkiConnect stored.
@@ -715,35 +730,28 @@ try {
   await tab.mouse.move(...away);
   await waitForCalls(start, 4, false, "leaving plays the video on from the line's end");
 
-  // With {gif} mapped too, tab capture needs the grant: the GIF says so, and
-  // the sentence audio of the line just heard is still attached.
+  // With {gif} mapped too, tab capture needs the grant: no note is added, and
+  // the popup asks for the toolbar button.
   await mapBack("{sentence}<br>{sentence-audio}<br>{gif}");
   start = await standAt(CUE.endMs + PAD_MS + 50);
-  note = await addNote();
-  await checkLineAudio(note.fields.Back, "heard, with a GIF but no grant");
-  assert.doesNotMatch(note.fields.Back, /hachidori-gif-/u, "no GIF without the grant");
-  await waitForStatus(/GIF: Chrome has not let Hachidori record this tab yet\. Click Hachidori's toolbar button/u,
-    "the note says the GIF needs the toolbar button");
+  await heldBackNote("a note whose GIF needs the grant asks for the toolbar button");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), [], "nothing was replayed without the grant");
 
   // When the page's own Web Audio graph has the video, Hachidori cannot keep
   // its sound, and sentence audio falls back to recording the tab while the
   // line replays, as every Netflix note did before #545. That needs the grant:
-  // without it the note says so, and nothing is replayed.
+  // without it no note is added, and nothing is replayed.
   await mapBack("{sentence}<br>{sentence-audio}");
   await leaveLine();
   await tab.goto(OWN_GRAPH);
   await tab.waitForFunction(() => window.__fixture?.ready === true);
   box = await (await tab.$("#word")).boundingBox();
   start = await standAt(3500);
-  note = await addNote();
-  assert.doesNotMatch(note.fields.Back, /\[sound:/u, "without the grant, tab capture records nothing");
-  await waitForStatus(/Sentence audio: Chrome has not let Hachidori record this tab yet\. Click Hachidori's toolbar button/u,
-    "a line Hachidori cannot keep says sentence audio needs the toolbar button");
+  await heldBackNote("a line Hachidori cannot keep asks for the toolbar button");
   after = await playback();
   assert.deepEqual(after.calls.slice(start.calls.length), [], "nothing was replayed without the grant");
-  console.log("without a capture grant: heard, replayed and played-on lines recorded; tab capture asks for the toolbar button");
+  console.log("without a capture grant: heard, replayed and played-on lines recorded; a note that needs tab capture waits for the toolbar button");
 
   // A click on Hachidori's toolbar button in the watch tab. CDP runs the
   // action as a click does, granting tab capture on the window's active tab,

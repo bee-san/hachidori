@@ -15,6 +15,12 @@ async function until(predicate) {
   for (let n = 0; n < 100 && !predicate(); n++) await tick();
   assert.ok(predicate(), "mining controller did not reach the expected state");
 }
+// An Add that would lose media to Chrome's missing capture grant writes nothing.
+async function heldBack(item) {
+  item.add.click();
+  await until(() => !item.add.disabled
+    && item.output.textContent.startsWith("Could not add: Chrome has not let Hachidori record this tab yet."));
+}
 function handlesAnkiView(send) {
   send.handlesAnkiView = true;
   return send;
@@ -946,11 +952,12 @@ test("a Netflix note records its line concealed after the screenshot, and a miss
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "hachidori-sentence-audio-a.wav" });
   assert.equal(submittedRequest.captureUnavailable, undefined);
 
-  // Chrome's missing capture grant explains the one-time invocation.
+  // Without Chrome's capture grant the note is not added: its screenshot is
+  // released and the popup asks for the toolbar click.
   recorded = async () => ({ unavailable: "grant" });
-  assert.match(await mine(1), /^Added note 12\. Sentence audio: Chrome has not let Hachidori record this tab yet\. Click Hachidori's toolbar button once/u);
-  assert.deepEqual(submittedRequest.captureUnavailable, ["sentence-audio"]);
-  assert.equal(submittedRequest.sentenceAudio, undefined);
+  await heldBack(f.items[1]);
+  assert.equal(calls.filter(type => type === "hd_anki_submit").length, 1);
+  assert.ok(calls.includes("hd_anki_screenshot_discard"));
 
   // A line with no cue says why and records nothing.
   netflix = { unavailable: "no-match" };
@@ -1081,12 +1088,9 @@ test("a note whose only Netflix field is {gif} says why it got the screenshot in
     return f.items[index].output.textContent;
   };
 
-  // Without a grant the warning still explains the one-time click.
-  assert.equal(await mine(0), "Added note 31. GIF: Chrome has not let Hachidori record this tab yet. Click Hachidori's "
-    + "toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from "
-    + "chrome://extensions/shortcuts; later notes in this tab will record the line.");
-  assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
-  assert.deepEqual(submittedRequest.screenshot, { token: "shot-a", filename: "hachidori-screenshot-a.jpg" });
+  // Without a grant the note waits for the toolbar click.
+  await heldBack(f.items[0]);
+  assert.equal(submittedRequest, null);
 
   // A recorded GIF is submitted with no warning and no audio.
   recorded = async () => ({ audio: null, gif: { token: "gif-b", filename: "hachidori-gif-b.gif" } });
@@ -1111,14 +1115,14 @@ test("sentence audio the page cut from what was heard goes in beside a GIF that 
     if (type === "hd_anki_submit") { submittedRequest = request; return { state: "added", noteId: 41, warnings: [] }; }
     return { state: "addable", canAdd: true, screenshot: true, sentenceAudio: true, gif: true };
   }, undefined, undefined, during => during(), async () => ({ audio: { token: "line-a", filename: "a.wav" },
-    gif: { unavailable: "grant" } }));
+    gif: { unavailable: "no-gif" } }));
   f.context.getRequest = result => ({ term: result.term, netflix: { cue: { movieId: "81000001", startMs: 1000, endMs: 3500 } } });
   f.controller.update(configured);
   f.controller.bind(f.items, f.context);
   await until(() => f.items[0].add && f.items[0].add.dataset.state !== "checking" && !f.items[0].add.disabled);
   f.items[0].add.click();
   await until(() => f.items[0].add.dataset.state === "success");
-  assert.match(f.items[0].output.textContent, /^Added note 41\. GIF: Chrome has not let Hachidori record this tab yet\./u);
+  assert.match(f.items[0].output.textContent, /^Added note 41\. GIF: no GIF could be made of the line\./u);
   assert.deepEqual(submittedRequest.captureUnavailable, ["gif"]);
   assert.deepEqual(submittedRequest.sentenceAudio, { token: "line-a", filename: "a.wav" });
   assert.equal(submittedRequest.gif, undefined);
