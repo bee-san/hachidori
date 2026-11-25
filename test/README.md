@@ -700,7 +700,8 @@ These run separately:
   already heard (no seek, player call or recorder frame), one not heard
   (replayed audibly, no recorder frame) and one hover pause stopped partway and
   played on; with `{gif}` mapped, or on a page whose own Web Audio graph has
-  the video, the note asks for the toolbar button. After the click (CDP's
+  the video, no note is added and the popup asks for the toolbar button. After
+  the click (CDP's
   `Extensions.triggerAction`, which grants tab capture as a click does, and
   which Chrome 128 lacks), that page's line is recorded from the tab, and one
   replay records a decodable looping GIF and the MP3. Playback is restored,

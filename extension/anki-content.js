@@ -8,7 +8,7 @@
   // the reason the reader, the page or the worker reported. Tab capture and the
   // line audio report these the same way on every site.
   const RECORDING_UNAVAILABLE = {
-    grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts; later notes in this tab will record the line.",
+    grant: "Chrome has not let Hachidori record this tab yet. Click Hachidori's toolbar button once on this tab and add again, or add notes with the “Add the current popup entry to Anki” shortcut from chrome://extensions/shortcuts.",
     "no-gif": "no GIF could be made of the line.",
     unheard: "the line did not play through, so its audio was not recorded.",
     unsupported: "this browser does not let extensions record a tab.",
@@ -75,6 +75,7 @@
     return wanted.audio ? "Sentence audio" : "GIF";
   }
   function markUnavailable(site, outcome, wanted, reason) {
+    if (reason === "grant") outcome.needsGrant = true;
     outcome.warnings.push(`${mediaLabel(wanted)}: ${siteReason(site, reason)}`);
     if (wanted.audio) outcome.captureUnavailable.push("sentence-audio");
     if (wanted.gif) outcome.captureUnavailable.push("gif");
@@ -604,6 +605,10 @@
         await recordVideoMedia(site, record, outcome, wanted, cue);
       }
       record.videoWarning = outcome.warnings.join(" ");
+      // Chrome lets Hachidori record a tab only once its toolbar button or a
+      // shortcut has been used there. Rather than add the note without its
+      // media, ask for that and let the next Add record them.
+      if (outcome.needsGrant) throw new Error(RECORDING_UNAVAILABLE.grant);
       const next = { ...request };
       if (record.sentenceAudio) next.sentenceAudio = record.sentenceAudio;
       if (record.gif) next.gif = record.gif;

@@ -3954,9 +3954,11 @@ then. The page's seek back reports itself after its answer and is not taken
 for the viewer's; a line played on has no seek back, so the viewer's next seek
 is the viewer's.
 
-**Warnings.** No timing (with its reason), no capture grant (click the toolbar
-button once on the tab, or add notes with the **Add the current popup entry to
-Anki** shortcut), a missing Netflix player or an unfinished replay are each a
+**Warnings.** Without the capture grant the note is not added: the popup says
+to click the toolbar button once on the tab and add again, or to add notes with
+the **Add the current popup entry to Anki** shortcut, so the next note gets its
+media instead of a note going in without them. No timing (with its reason), a
+missing Netflix player or an unfinished replay are each a
 warning on the added note, named for the media its fields map: `Sentence
 audio:`, `GIF:` or `Sentence audio and GIF:`. A silent recording (a muted video
 or protected playback; turning off Chrome's graphics acceleration can help) is a
