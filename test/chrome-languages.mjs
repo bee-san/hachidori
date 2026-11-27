@@ -286,7 +286,7 @@ try {
       const card = document.getElementById("language-settings");
       return {
         sidebar: children(document), markup: children(markup),
-        rail: document.querySelectorAll(".settings-nav a").length,
+        rail: [...document.querySelectorAll(".settings-nav a")].filter(link => !link.closest(".nav-item").hidden).length,
         outside: [...document.querySelectorAll("#settings-language-select, #language-auto-switch, [data-scope-note], [data-language-settings]")]
           .map(node => node.id || node.className),
         section: card.closest("section").id, first: card === document.querySelector("#languages fieldset"),

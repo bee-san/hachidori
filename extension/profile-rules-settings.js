@@ -47,14 +47,14 @@ const LANGUAGE_CARD = {
 export function createProfileRules({ document, create, readSelection, profileList, profileLabel, writeRules, setStatus,
   card: texts = LANGUAGE_CARD }) {
   const card = create("fieldset", { className: "lookup-group", id: texts.id });
-  card.innerHTML = `<legend data-search-keywords="profile conditions website domain url modifier key popup level"></legend>
-    <p class="field-hint" id="${texts.id}-help"></p>
-    <ol class="language-list language-rule-list" id="${texts.id}-list"></ol>
-    <div class="options-actions"><button type="button" class="ghost" id="${texts.id}-add" aria-describedby="${texts.id}-help">Add a rule</button></div>`;
-  card.querySelector("legend").textContent = texts.legend;
-  card.querySelector(`#${texts.id}-help`).textContent = texts.help;
-  const list = card.querySelector(`#${texts.id}-list`);
-  const add = card.querySelector(`#${texts.id}-add`);
+  const list = create("ol", { className: "language-list language-rule-list", id: `${texts.id}-list` });
+  const add = create("button", { type: "button", className: "ghost", id: `${texts.id}-add`, text: "Add a rule",
+    "aria-describedby": `${texts.id}-help` });
+  const actions = create("div", { className: "options-actions" });
+  actions.append(add);
+  card.append(create("legend", { text: texts.legend,
+    "data-search-keywords": "profile conditions website domain url modifier key popup level" }),
+  create("p", { className: "field-hint", id: `${texts.id}-help`, text: texts.help }), list, actions);
   let rules = [];
   let shown = null;
   let saving = Promise.resolve();

@@ -59,7 +59,8 @@ describe("Settings library", () => {
     const libraryFirst = await page.evaluate(() => {
       window.scrollTo(0, 0);
       const row = document.querySelector("#dict-list .dict-row");
-      const links = [...document.querySelectorAll(".settings-nav a")];
+      // A section an experimental switch reveals keeps its link hidden.
+      const links = [...document.querySelectorAll(".settings-nav a")].filter(link => !link.closest(".nav-item").hidden);
       const libraryLinks = [...document.querySelectorAll("#library-navigation a")];
       return document.querySelector("main > section")?.id === "dictionaries"
         && row.getBoundingClientRect().bottom < window.innerHeight
