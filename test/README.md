@@ -597,6 +597,15 @@ These run separately:
   `chrome-languages/builds.mjs`; the sharing suite needs `python3` and the
   relay from `HACHIDORI_RELAY_SERVER`, `HACHIDORI_ANKI_ADDON` or the pinned
   release.
+- **`chrome-languages/profiles.mjs`**, run by `node test/run.mjs chrome-languages`
+  after them, covers Settings → Profiles (docs/profiles.md 9) in a
+  Japanese-only installation: the section appears with its switch, Copy makes
+  a named copy that Settings then shows, a name typed in the list is stored, a
+  website rule added there makes a lookup on that host use the copy, the
+  list's default choice applies without a rule, the `ja` profile cannot be
+  removed while it has copies, and removing the copy returns the records to
+  the single-profile shape. It saves the section in the light and dark
+  palettes as `test/tmp/languages/profiles-light.png` and `profiles-dark.png`.
 - **`chrome-language-pack.mjs`** (`node test/run.mjs chrome-language-pack`)
   checks one language pack of `extension/vendor/languages/` with a real
   dictionary: the check each language's pack passes before it merges. It is

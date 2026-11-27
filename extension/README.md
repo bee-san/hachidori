@@ -235,6 +235,10 @@ stores it as `rank-based` when its values are ranks (#684).
   languages) and the sidebar's
   language link, `profile-rules-settings.js` its Language rules card, and `language-settings.js` the settings a language pack
   defines, in cards after it (docs/languages.md 5.3, 7.5, 16.3-16.5);
+  `profile-list-settings.js` Settings → Profiles, which Experimental features →
+  Profiles reveals: the named profiles with their default choice, Copy and
+  Remove, and the same rules card as Switch profiles automatically
+  (docs/profiles.md);
   `memory-settings.js` the Advanced → Memory readout and each Dictionaries
   row's *In memory* line;
   `debug-info.js` the Advanced → Troubleshooting *Get debug info* JSON report,

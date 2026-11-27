@@ -85,8 +85,9 @@ The user interface stays in English.
   `third_party/hoshidicts/languages/<code>/`. Hachidori ships a generated copy
   in `extension/vendor/languages/`.
 - **Profile**: a language plus the user's settings and dictionaries for it.
-  Version 1 allows one profile per language, whose id is the language code;
-  the data model allows more later.
+  A language's first profile has the language code as its id; with
+  Experimental features → Profiles a profile can be copied within its
+  language under a generated id and a name ([profiles.md](profiles.md)).
 - **Active profile**: the profile this browser looks words up in. Each
   installation has its own (section 4.4).
 - **Edited profile**: the profile a Settings page shows and saves to. It
@@ -810,7 +811,7 @@ Pinyin / Zhuyin* (display, with a pinyin-to-zhuyin `map` step).
 The content script holds the projection of every profile. For each candidate
 it chooses the profile in effect:
 
-0. While Multiple languages is on, the profile of the first **language rule**
+0. While Multiple languages or Profiles ([profiles.md](profiles.md)) is on, the profile of the first **language rule**
    (section 4.4) whose conditions all match the lookup: the page's address,
    the modifier keys held as the word is scanned, and the level the lookup
    starts in (0 for a word on the page, the parent popup's depth plus one for
@@ -2153,11 +2154,10 @@ language** (with Multiple languages on) and in every theme.
 ## 21. Known limits
 
 - The user interface is English; only content follows the language.
-- One profile per language in version 1. Language rules (section 8.1) choose
-  between languages, so they cannot pick, for one language, a monolingual
-  profile on the page and a bilingual one in nested popups, or different
-  scanning keys per site: the activation key and the other scanning settings
-  are global (section 3).
+- The activation key and the other scanning settings are global (section 3),
+  so a rule cannot give a site its own scanning key yet; several profiles of
+  one language, such as a monolingual one on the page and a bilingual one in
+  nested popups, come with Profiles ([profiles.md](profiles.md)).
 - Recommended dictionaries for other languages are links, not one-click
   installs.
 - Downgrading is not supported once a second language is added: older builds
