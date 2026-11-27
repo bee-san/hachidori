@@ -1376,9 +1376,46 @@ async function checkSourceFallback(settings, tab, popup) {
   }
 }
 
+// Issue #782: on a phone a tap is the only gesture there is. With Shift
+// required and a long hover delay, a finger's tap still looks up the word at
+// once, the same word tapped again keeps its popup, and a tap on blank page
+// dismisses it. Touch emulation makes Chrome derive the mouse events and click
+// a phone would send after the tap.
+async function checkReaderTap(settings, tab, popup) {
+  const original = await readSettingsControls(settings, ["opt-activation-key", "opt-lookup-sticky", "opt-scan-delay"]);
+  const cdp = await tab.createCDPSession();
+  try {
+    await editSettingsControls(settings, { "opt-activation-key": "Shift", "opt-lookup-sticky": true, "opt-scan-delay": "700" });
+    await tab.keyboard.press("Escape");
+    await popup.waitForHidden();
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    const box = await (await tab.$("#verb")).boundingBox();
+    const word = { x: box.x + box.width * 0.15, y: box.y + box.height / 2 };
+    await tab.touchscreen.tap(word.x, word.y);
+    const tapped = await popup.waitForVisible(3000);
+    await tab.touchscreen.tap(word.x, word.y);
+    await tab.evaluate(() => new Promise(done => setTimeout(done, 300)));
+    const kept = popup.visible(await popup.state());
+    const blank = await tab.evaluate(() => ({ x: innerWidth - 4, y: innerHeight - 4 }));
+    await tab.touchscreen.tap(blank.x, blank.y);
+    const dismissed = await popup.waitForHidden(3000);
+    check("a tap looks up the word without the activation key, keeps it when tapped again and dismisses it on blank page",
+      tapped?.plain.includes("食べる") === true && kept && dismissed,
+      JSON.stringify({ tapped: tapped?.plain?.slice(0, 40) ?? null, kept, dismissed }));
+  } finally {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false }).catch(() => {});
+    await cdp.detach().catch(() => {});
+    await editSettingsControls(settings, original);
+  }
+}
+
 describe("activation and selection", () => {
   step("reader activation", async () => {
     await checkReaderActivation(page, tab, popup);
+  });
+
+  step("reader tap", async () => {
+    await checkReaderTap(page, tab, popup);
   });
 
   step("reader selection", async () => {

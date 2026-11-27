@@ -596,6 +596,10 @@
   let activeSelectionCandidate = null;
   // A drag the reader selects itself, glyph by glyph, in an overlay host.
   let dragSelection = null;
+  // Touch (#782): whether the latest pointer is a finger, and the finger's
+  // press that may still end as a tap.
+  let touchInput = false;
+  let touchTap = null;
   let overlayMode = false;
   let hostCapabilities = { linkButtons: true, externalLinkHost: false };
   let hostAttentionPublished = false;
@@ -1617,6 +1621,10 @@
     clearCursorExitTimer();
     scanTimer = null;
     hideTimer = null;
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("pointermove", onPointerMove, true);
+    document.removeEventListener("pointerup", onPointerUp, true);
+    document.removeEventListener("pointercancel", onPointerCancel, true);
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("mousedown", onMouseDown, true);
     document.removeEventListener("mouseup", onMouseUp, true);
@@ -2578,15 +2586,15 @@
       cancelScanDwell();
       dismissLevels(depth, false);
     });
-    // Reading → Activation → Child popups → Click, and on the search page
-    // Reading → Search page → Look up words with a click (#656): a primary
-    // click on a word in the definitions opens its child once the press above
-    // has retired the previous one. A press that travels or leaves a selection
+    // Reading → Activation → Child popups → Click, on the search page
+    // Reading → Search page → Look up words with a click (#656), and a tap
+    // (#782): a primary click on a word in the definitions opens its child
+    // once the press above has retired the previous one. A press that travels or leaves a selection
     // is a copy, and links, images, buttons and disclosures keep their own click.
     popup.addEventListener("click", (event) => {
       const start = press;
       press = null;
-      if (!definitionClickLookup() || !start || event.defaultPrevented || hasProtectedNote()
+      if (!(definitionClickLookup() || touchInput) || !start || event.defaultPrevented || hasProtectedNote()
           || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= GLYPH_DRAG_START_PX
           || event.target.closest("a, button, summary")) return;
       const selection = shadow.getSelection?.() ?? window.getSelection();
@@ -4429,7 +4437,7 @@
   }
 
   function onPopupMouseMove(event, level) {
-    if (popupResize) return;
+    if (popupResize || touchInput) return;
     if (disposed || !options.hoverEnabled || level.retired) {
       return;
     }
@@ -4466,7 +4474,7 @@
   }
 
   function onMouseMove(event) {
-    if (popupResize) return;
+    if (popupResize || touchInput) return;
     if (disposed || !options.hoverEnabled) {
       return;
     }
@@ -4566,7 +4574,7 @@
   }
 
   function onMouseDown(event) {
-    if (disposed) {
+    if (disposed || touchInput) {
       return;
     }
     editedSincePointerMoved = true;
@@ -4702,7 +4710,7 @@
   }
 
   function onMouseUp(event) {
-    if (disposed) return;
+    if (disposed || touchInput) return;
     const button = activationButton();
     if (button && event.button === button.button) {
       if (scanPress?.button === event.button && scanPress.cancelRelease) event.preventDefault();
@@ -4713,6 +4721,73 @@
     if (event.button !== 0 || !selectionDragActive) return;
     updateModifierState(event);
     finishSelectionDrag({ dismissClick: true });
+  }
+
+  // Touch (#782). A phone has no hover and no activation key, so a tap on a
+  // word looks it up at once, whatever Reading → Activation says, as in
+  // Yomitan, and a tap elsewhere dismisses the popups as a click does. The
+  // mouse events a browser derives from a tap follow its release, where they
+  // would cancel the lookup as a press on text and dismiss it as a click, so
+  // the mouse handlers leave a finger's input to these. Pointer events arrive
+  // even on a page that cancels its touch events. A finger that travels pans,
+  // a second finger pinches, and a long press that selects text leaves the
+  // selection lookup to read it.
+  const TAP_SLOP_PX = 10;
+
+  function onPointerDown(event) {
+    touchInput = event.pointerType === "touch";
+    touchTap = touchInput && event.isPrimary
+      ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY, selection: selectedText() }
+      : null;
+  }
+
+  function selectedText() {
+    return window.getSelection()?.toString() ?? "";
+  }
+
+  function onPointerMove(event) {
+    if (event.pointerType !== "touch") touchInput = false;
+    else if (touchTap?.pointerId === event.pointerId && tapTravelled(event, touchTap)) touchTap = null;
+  }
+
+  function onPointerCancel() {
+    touchTap = null;
+  }
+
+  function tapTravelled(event, tap) {
+    return Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TAP_SLOP_PX;
+  }
+
+  function onPointerUp(event) {
+    const tap = touchTap;
+    touchTap = null;
+    if (disposed || tap?.pointerId !== event.pointerId || tapTravelled(event, tap)) return;
+    const selection = selectedText();
+    if (selection !== "" && selection !== tap.selection) return;
+    const { clientX, clientY, target } = event;
+    // The popup's own press and click take a tap inside it.
+    if (isOurNode(target) || pointInsidePopup(clientX, clientY)) return;
+    editedSincePointerMoved = true;
+    if (!options.hoverEnabled || !lookUpTap(clientX, clientY, target)) dismissPopups();
+  }
+
+  // Whether the tap keeps the popups: it looked up a word, tapped the one
+  // shown again, or a Note draft or focused popup control holds the view.
+  // A text field is for typing.
+  function lookUpTap(clientX, clientY, target) {
+    if (hasProtectedNote() || focusBlocksScan(null)) return true;
+    if (isEditingElement(target)) return false;
+    lastPointer = { clientX, clientY, target };
+    const candidate = resolveCandidate(clientX, clientY);
+    if (!candidate) return false;
+    const signature = candidateSignature(candidate);
+    cancelScanDwell();
+    clearHideTimer();
+    clearCursorExitTimer();
+    // The selection a long press left behind no longer speaks for the reader.
+    activeSelectionCandidate = null;
+    if (!rootHolds(candidate, signature)) lookupCandidate(candidate, signature);
+    return true;
   }
 
   // A scan click on a word opens no new tab or context menu.
@@ -5470,6 +5545,10 @@
     // an overlay drag and a scan button's press are the reader's, not the
     // browser's.
     const observe = { capture: true, passive: true };
+    document.addEventListener("pointerdown", onPointerDown, observe);
+    document.addEventListener("pointermove", onPointerMove, observe);
+    document.addEventListener("pointerup", onPointerUp, observe);
+    document.addEventListener("pointercancel", onPointerCancel, observe);
     document.addEventListener("mousemove", onMouseMove, observe);
     document.addEventListener("mousedown", onMouseDown, { capture: true });
     document.addEventListener("mouseup", onMouseUp, { capture: true });
