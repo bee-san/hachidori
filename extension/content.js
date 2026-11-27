@@ -318,6 +318,7 @@
       return [profile.id, {
         id: profile.id,
         language: profile.language,
+        name: profile.name ?? null,
         // Whether lookups may use it (docs/profiles.md 4).
         usable: layer.profileUsable(storedOptionsRecord, profile),
         options: applyHostCapabilities(layer.projectOptions(storedOptionsRecord, profile.id)),
@@ -501,14 +502,17 @@
     if (!label) {
       label = document.createElement("span");
       label.className = "gsm-hoshidicts-profile-label";
-      label.lang = "en";
       // The popup's own text colour at 11px, legible in every palette (WCAG AA).
       label.style.cssText = "display:block;order:-1;margin:2px 8px 0;text-align:end;pointer-events:none;"
         + "font-size:11px;line-height:1.4;color:var(--hoshidicts-text,currentColor);";
       level.profileLabel = label;
     }
-    const name = globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;
+    // A named profile by its name, in whatever language the reader wrote it
+    // (docs/profiles.md 2); otherwise its language's English name.
+    const name = profile.name ?? globalThis.HDLanguages?.get?.(profile.language)?.name ?? profile.language;
     if (label.textContent !== name) label.textContent = name;
+    if (profile.name === null) label.lang = "en";
+    else label.removeAttribute("lang");
     if (level.popup.firstChild !== label) level.popup.prepend(label);
   }
 

@@ -221,8 +221,8 @@ export function createProfileListSettings({ document, element, send, setStatus, 
       ? "Lookups use the default profile unless a rule below picks another. Settings shows one profile at a time: every"
         + " other section changes the profile marked Settings shows. Copy makes a new profile with the same settings and"
         + " dictionaries."
-      : "Copy your profile to keep a second set of settings and dictionaries, such as one for video with no activation"
-        + " key, and switch between them automatically below.");
+      : "Copy your profile to keep a second set of settings and dictionaries, such as one for video with other"
+        + " dictionaries and buttons, and switch between them automatically by website, a held key or the popup level.");
   }
 
   // Copy starts from the profile's saved settings, so this page's unsaved
