@@ -282,16 +282,16 @@ function removedProfileOptions(message, storedOptions, language) {
   }
   if (record.profiles.length === 1) throw new Error("The last language cannot be removed.");
   const removed = record.profiles.find(profile => profile.id === message.profileId);
-  const sharing = record.profiles.some(profile => profile.id !== removed.id && profile.language === removed.language);
+  const siblings = record.profiles.some(profile => profile.id !== removed.id && profile.language === removed.language);
   // The `ja` profile is the Japanese one older code, linked browsers and the
   // Relay API know, so its copies go first (docs/profiles.md 5.3).
-  if (sharing && removed.id === JAPANESE_PROFILE_ID) {
+  if (siblings && removed.id === JAPANESE_PROFILE_ID) {
     throw profileError("Remove the other Japanese profiles first: this one is the Japanese profile linked browsers and"
       + " other apps use.", "profile-original");
   }
   // The personal dictionary, counts and marks belong to the language, which
   // another profile still reads in.
-  if (sharing && message.erase === true) {
+  if (siblings && message.erase === true) {
     throw profileError("Another profile still uses this language, so its personal dictionary, lookup counts and marked"
       + " words are kept.", "language-in-use");
   }

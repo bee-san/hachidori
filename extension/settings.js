@@ -677,16 +677,8 @@ function adoptLanguageSelection(value) {
 }
 
 // Use for lookups activates the edited profile in this browser (section 16.3).
-async function useEditedProfileForLookups() {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const reply = await send("hd_language_selection_write",
-      { baseRevision: languageSelection.revision, activeProfileId: editedProfile.id }, WORKER_TARGET);
-    if (reply.selection) adoptLanguageSelection(reply.selection);
-    if (reply.ok) return;
-    // A conflict means another page chose first; this click still means this language.
-    if (reply.conflict !== true) throw new Error(reply.error || "the language could not be chosen");
-  }
-  throw new Error("the language changed in another page; try again");
+function useEditedProfileForLookups() {
+  return setDefaultProfile(editedProfile.id);
 }
 
 // Advanced → Languages → Switch language automatically (section 16.3).
@@ -723,9 +715,10 @@ async function setDefaultProfile(profileId) {
       { baseRevision: languageSelection.revision, activeProfileId: profileId }, WORKER_TARGET);
     if (reply.selection) adoptLanguageSelection(reply.selection);
     if (reply.ok) return;
-    if (reply.conflict !== true) throw new Error(reply.error || "the default profile could not be chosen");
+    // A conflict means another page chose first; this click still means this profile.
+    if (reply.conflict !== true) throw new Error(reply.error || "the profile could not be chosen");
   }
-  throw new Error("the default profile changed in another page; try again");
+  throw new Error("the profile used for lookups changed in another page; try again");
 }
 
 // A profile's name goes through the options writer with the profile it names
