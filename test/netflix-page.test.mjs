@@ -148,7 +148,9 @@ test("a reader that missed the subtitles can ask for them again", async () => {
 
 // A <video> whose time advances while playing, which a write to currentTime
 // would fail (Netflix stops with M7375), and a Netflix player that seeks it.
-function playerFixture({ startMs = 7000, paused = true, rate = 1.5 } = {}) {
+// Once an ad has played the <video> and Netflix's clock run `offsetMs` from
+// the episode, which its segment time and seek keep to.
+function playerFixture({ startMs = 7000, paused = true, rate = 1.5, offsetMs = 0 } = {}) {
   const calls = [];
   const video = new EventTarget();
   let mediaMs = startMs, playingSince = null;
@@ -171,13 +173,14 @@ function playerFixture({ startMs = 7000, paused = true, rate = 1.5 } = {}) {
       calls.push(["seek", ms]);
       const wasPlaying = playingSince !== null;
       pause();
-      mediaMs = ms;
+      mediaMs = ms + offsetMs;
       if (wasPlaying) playingSince = now();
       setTimeout(() => video.dispatchEvent(new Event("seeked")), 1);
     },
     play() { calls.push(["play", video.playbackRate]); if (playingSince === null) playingSince = now(); },
     pause() { calls.push(["pause"]); pause(); },
     getCurrentTime: () => video.currentTime * 1000,
+    getSegmentTime: () => video.currentTime * 1000 - offsetMs,
     getMovieId: () => 81000001,
     getElement: () => video,
   };
@@ -213,6 +216,25 @@ test("a replay plays the cue at 1× through Netflix's player and restores the vi
   const offsets = reply.anchors.map(([wall, media]) => wall - media);
   assert.ok(Math.max(...offsets) - Math.min(...offsets) < 40, JSON.stringify(offsets));
   assert.ok(reply.anchors.at(-1)[1] >= 1100);
+});
+
+test("after an ad a replay seeks, samples and returns by the episode's time, not Netflix's clock", async () => {
+  // A 31 s ad midway: the <video> and Netflix's clock read 41 s where the episode is at 2079.5 s.
+  const { calls, video, player } = playerFixture({ startMs: 41_000, offsetMs: 41_000 - 2_079_500 });
+  const { posted, command } = page({ player, video });
+  command({ type: "replay", id: "r1", startMs: 2_081_000, endMs: 2_081_100, padMs: 50 });
+  const reply = await replayed(posted);
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.deepEqual(calls[0], ["seek", 2_080_950]);
+  assert.ok(reply.anchors.length > 0 && reply.anchors.at(-1)[1] >= 2_081_100, JSON.stringify(reply.anchors.at(-1)));
+  assert.ok(Math.abs(calls.at(-1)[1] - 2_079_500) < 1, "playback returns to where the viewer was in the episode");
+});
+
+test("on Netflix the page tells the reader how far the <video> runs from the episode when that changes", () => {
+  const { video, player } = playerFixture({ startMs: 41_000, offsetMs: 41_000 - 2_079_500 });
+  const { context, posted } = page({ player, video });
+  for (let tick = 0; tick < 2; tick++) context.document.dispatchEvent(new Event("timeupdate"));
+  assert.deepEqual(posted, [{ kind: "clock", offsetMs: 41_000 - 2_079_500 }]);
 });
 
 test("a replay of a playing video resumes it, and a page without the player or a second replay is refused", async () => {

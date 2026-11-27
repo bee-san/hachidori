@@ -97,6 +97,16 @@ test("a hovered subtitle line pins its cue and the whole cue becomes the root se
   assert.deepEqual(f.netflix.miningFields(null, { sentence: "タイトル", matchOffset: 0 }), {});
 });
 
+test("after an ad the hovered line is timed by the episode, as the page says", t => {
+  // A 31 s opening ad: the <video> reads 33 s where the episode is at 2 s.
+  const f = netflix(t, { timeMs: 33_000 });
+  f.subtitle(EPISODE);
+  f.post({ kind: "clock", offsetMs: 31_000 });
+  const observation = f.netflix.observe(f.spans()[1]);
+  assert.equal(observation.mediaTimeMs, 2000);
+  assert.deepEqual(cueOf(f.netflix.resolve(observation)), { startMs: 1000, endMs: 3500, text: "お前、こんなとこで\n何してんの？" });
+});
+
 test("ruby readings are left out of the hovered line", t => {
   const f = netflix(t, { lines: ["<ruby>漢字<rt>かんじ</rt></ruby>を読む"], timeMs: 63_000 });
   f.subtitle(EPISODE);
