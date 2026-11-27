@@ -2783,3 +2783,28 @@ textarea {
   border-radius: var(--radius-control);
   background: var(--surface-sunken);
 }
+/* Settings → Profiles (docs/profiles.md 6): the default choice, the name with
+   what the profile reads in and holds, and its actions, which wrap under the
+   name on a phone. */
+.profile-row { flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.profile-row > input[type="radio"] { flex: none; margin: 0; }
+.profile-row-body { display: flex; flex: 1 1 16em; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.profile-name { flex: 1 1 12em; width: auto; min-width: 0; font-weight: var(--weight-medium); }
+.profile-meta { white-space: nowrap; }
+.profile-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.profile-badge {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--text);
+  font-size: var(--font-caption);
+  font-weight: var(--weight-medium);
+}
+.profile-badge-edited {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text-dim);
+}
+.profile-actions { flex: none; margin-inline-start: auto; }
+.profile-row > .profile-actions { margin-inline-start: auto; }

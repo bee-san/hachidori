@@ -15,7 +15,7 @@ import { customDictionaryDocumentFor, languageEntryCount } from "./custom-dictio
 import { heldLanguages } from "./profile-state.js";
 import { createProfileRules } from "./profile-rules-settings.js";
 
-const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, languagesEnabled,
+const { JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, languagesEnabled, profilesEnabled,
   profiles: optionProfiles } = globalThis.HDReaderOptions;
 
 // Settings every language shares (section 16.4): fieldsets and sections whose
@@ -133,6 +133,11 @@ export function createProfileSettings({ document, element, send, setStatus, read
     return optionProfiles(readOptionsRecord());
   }
 
+  // A profile's name, else its language (docs/profiles.md 2).
+  function profileLabel(profile) {
+    return profile.name ?? optionLabel(profile.language);
+  }
+
   function activeName() {
     return languageName(profileList().find(profile => profile.id === readActiveProfileId())?.language ?? "ja");
   }
@@ -216,14 +221,15 @@ export function createProfileSettings({ document, element, send, setStatus, read
       return;
     }
     if (rules === null) {
-      rules = createProfileRules({ document, create, readSelection, profileList, optionLabel, writeRules, setStatus });
+      rules = createProfileRules({ document, create, readSelection, profileList, writeRules, setStatus, profileLabel });
       card.after(rules.card);
     }
     rules.render();
   }
 
   function renderEdited(several) {
-    renderRules(several);
+    // With Profiles on, its section holds the rules (docs/profiles.md 6).
+    renderRules(several && !profilesEnabled(readOptionsRecord()));
     if (!several) {
       for (const node of edited?.nodes ?? []) node.remove();
       edited = null;
@@ -232,7 +238,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
     edited ??= createEditedRows();
     const { select, use, input, help, hint } = edited;
     const editedProfile = readEditedProfile();
-    renderChoices(select, profileList().map(profile => [profile.id, optionLabel(profile.language)]));
+    renderChoices(select, profileList().map(profile => [profile.id, profileLabel(profile)]));
     if (select.value !== editedProfile.id && select !== document.activeElement) select.value = editedProfile.id;
     select.disabled = busy;
     const active = readActiveProfileId() === editedProfile.id;
@@ -259,7 +265,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
       return;
     }
     if (link === null) {
-      link = create("a", { className: "settings-language-link", id: "settings-language-link", href: "#languages" });
+      link = create("a", { className: "settings-language-link", id: "settings-language-link" });
       link.addEventListener("click", event => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -267,7 +273,10 @@ export function createProfileSettings({ document, element, send, setStatus, read
       });
       element("setup-resume").after(link);
     }
-    setText(link, `Settings shows ${languageName(readEditedProfile().language)}`);
+    // With Profiles on it names the profile and leads to Profiles (docs/profiles.md 6).
+    const edited = readEditedProfile();
+    link.href = profilesEnabled(readOptionsRecord()) ? "#profiles" : "#languages";
+    setText(link, `Settings shows ${edited.name ?? languageName(edited.language)}`);
   }
 
   // Rebuilds a list only when what its rows show changes, so a render while
@@ -297,14 +306,15 @@ export function createProfileSettings({ document, element, send, setStatus, read
     const removable = list.length > 1;
     renderRows(card.querySelector("#settings-language-profiles"), "profileId", list.map(profile => {
       const count = countLabel(profileDictionaryCount(profile.id), "dictionary", "dictionaries");
-      return { key: profile.id, shows: [profile.language, count, removable], build() {
+      return { key: profile.id, shows: [profile.language, profile.name, count, removable], build() {
         const item = create("li", { className: "language-row" });
         const label = create("span", { className: "language-label" });
+        if (profile.name !== undefined) label.append(create("strong", { text: profile.name }), " ");
         label.append(...nameNodes(profile.language), " ", create("span", { className: "field-hint", text: count }));
         item.append(label);
         if (removable) {
           const remove = create("button", { className: "ghost danger", type: "button", text: "Remove",
-            "aria-label": `Remove ${languageName(profile.language)}` });
+            "aria-label": `Remove ${profile.name ?? languageName(profile.language)}` });
           remove.addEventListener("click", () => openRemoval(profile));
           item.append(remove);
         }
@@ -360,13 +370,18 @@ export function createProfileSettings({ document, element, send, setStatus, read
   function openRemoval(profile) {
     removing = { ...profile, document: null };
     const name = languageName(profile.language);
-    panelPart("settings-language-remove-text").textContent = `Remove ${name}? Its settings and its`
+    // Another profile of the language keeps reading its personal records
+    // (docs/profiles.md 5.3), so they cannot be erased with this one.
+    const shared = profileList().some(other => other.id !== profile.id && other.language === profile.language);
+    panelPart("settings-language-erase").closest("label").hidden = shared;
+    panelPart("settings-language-erase-help").hidden = shared;
+    panelPart("settings-language-remove-text").textContent = `Remove ${profile.name ?? name}? Its settings and its`
       + " list of dictionaries are deleted. Its dictionaries stay in your library, and its personal dictionary,"
-      + " lookup counts and marked words are kept.";
+      + ` lookup counts and marked words are kept${shared ? ` for your other ${name} profiles` : ""}.`;
     panelPart("settings-language-erase").checked = false;
     panelPart("settings-language-erase-label").textContent =
       `Also erase my ${name} personal dictionary, lookup counts and marked words`;
-    panelPart("settings-language-remove-confirm").textContent = `Remove ${name}`;
+    panelPart("settings-language-remove-confirm").textContent = `Remove ${profile.name ?? name}`;
     const help = panelPart("settings-language-erase-help");
     help.textContent = "";
     card.querySelector("#settings-language-profiles").after(panel);
@@ -468,7 +483,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
         if (refused !== null) throw new Error(refused);
       }
       setStatus(`Removing ${name}…`, "working");
-      const reply = await send("hd_profile_remove", { profileId: profile.id,
+      const reply = await send("hd_profile_remove", { profileId: profile.id, language: profile.language,
         ...(erase ? { erase: true, baseDocumentRevision: profile.document.revision } : {}) });
       if (!reply.ok) throw replyError(reply, `${name} could not be removed`);
       closeRemoval();
@@ -582,7 +597,7 @@ export function createProfileSettings({ document, element, send, setStatus, read
     // Records without profiles hold no other language (section 4.5).
     if (!withProfiles) held = [];
     renderEdited(several);
-    renderLink(several && shown);
+    renderLink(several && (shown || profilesEnabled(readOptionsRecord())));
     renderProfiles();
     renderAvailable();
     renderHeld();

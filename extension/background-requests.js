@@ -70,6 +70,8 @@ import {
 } from "./background-sharing.js";
 import { alarms, sharingReady } from "./background.js";
 
+const { profileName } = globalThis.HDReaderOptions;
+
 let ankiGateway, ankiMining, ankiDuplicateIndex;
 
 // One first-run Anki detection at a time; duplicate startup pages share it.
@@ -235,18 +237,36 @@ function profileRequestOptions(message, stored, language) {
   return removedProfileOptions(message, stored[OPTIONS_KEY], language);
 }
 
+// A new language's profile has the language's code as its id and starts from
+// the copied profile's language-free settings (docs/languages.md 6.3). A
+// profile request that names its own `profileId` instead copies a profile of
+// the same language whole, under that id and `name` (docs/profiles.md 5.1).
 function addedProfileOptions(message, stored, language) {
   const storedOptions = stored[OPTIONS_KEY];
   const descriptor = languageDescriptor(language);
   if (descriptor === null) throw profileError(`This Hachidori has no pack for ${language}.`, "language-unknown");
   const record = optionsWithProfiles(storedOptions);
+  const source = record.profiles.find(profile => profile.id === (message.copyFrom ?? JAPANESE_PROFILE_ID));
+  if (source === undefined) throw profileError("The profile to copy settings from was removed.", "profile-missing");
+  if (message.profileId !== undefined) return copiedProfileOptions(message, record, source, language);
   if (record.profiles.some(profile => profile.language === language)) {
     throw profileError(`${descriptor.name} is already one of your languages.`, "language-present");
   }
-  const source = record.profiles.find(profile => profile.id === (message.copyFrom ?? JAPANESE_PROFILE_ID));
-  if (source === undefined) throw profileError("The language to copy settings from was removed.", "profile-missing");
   return { ...record, profiles: [...record.profiles, { id: language, language,
     settings: newProfileSettings(source.settings, descriptor), packSettings: packSettingDefaults(descriptor) }] };
+}
+
+function copiedProfileOptions(message, record, source, language) {
+  const id = message.profileId;
+  if (typeof id !== "string" || id === "" || LANGUAGE_CODE.test(id) || record.profiles.some(profile => profile.id === id)) {
+    throw new TypeError("the profile request named an invalid new profile id");
+  }
+  if (source.language !== language) throw new TypeError("a copied profile keeps its language");
+  const name = profileName(message.name);
+  // A JSON copy is exactly what storage keeps of the settings.
+  const settings = JSON.parse(JSON.stringify(source.settings)); // NOSONAR: a JSON copy is the stored form
+  return { ...record, profiles: [...record.profiles, { id, language, ...(name === null ? {} : { name }), settings,
+    packSettings: { ...source.packSettings } }] };
 }
 
 function removedProfileOptions(message, storedOptions, language) {
@@ -261,6 +281,20 @@ function removedProfileOptions(message, storedOptions, language) {
     throw profileError(PROFILE_REMOVED, "profile-missing");
   }
   if (record.profiles.length === 1) throw new Error("The last language cannot be removed.");
+  const removed = record.profiles.find(profile => profile.id === message.profileId);
+  const siblings = record.profiles.some(profile => profile.id !== removed.id && profile.language === removed.language);
+  // The `ja` profile is the Japanese one older code, linked browsers and the
+  // Relay API know, so its copies go first (docs/profiles.md 5.3).
+  if (siblings && removed.id === JAPANESE_PROFILE_ID) {
+    throw profileError("Remove the other Japanese profiles first: this one is the Japanese profile linked browsers and"
+      + " other apps use.", "profile-original");
+  }
+  // The personal dictionary, counts and marks belong to the language, which
+  // another profile still reads in.
+  if (siblings && message.erase === true) {
+    throw profileError("Another profile still uses this language, so its personal dictionary, lookup counts and marked"
+      + " words are kept.", "language-in-use");
+  }
   return { ...record, profiles: record.profiles.filter(profile => profile.id !== message.profileId) };
 }
 
@@ -728,7 +762,10 @@ const WORKER_HANDLERS = {
   async hd_state_read(message, sender) {
     const { state, legacyDictionaries, options } = await readDictionaryStorage(false, stateStore(sender));
     if (!hasProfiles(options)) return { state, legacyDictionaries };
-    return { state, legacyDictionaries, languages: [...new Set(profileLanguages(options).values())] };
+    const languages = profileLanguages(options);
+    // Each profile's language, which places its personal package (docs/profiles.md 5.1).
+    return { state, legacyDictionaries, languages: [...new Set(languages.values())],
+      profileLanguages: Object.fromEntries(languages) };
   },
 
   async hd_state_cas(message, sender) {

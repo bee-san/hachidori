@@ -222,11 +222,13 @@ export function mergeDictionaryView(state, profileId, view, { legacy = false } =
  */
 // `joins` names installed packages that join `profileId` when its list lacks
 // them: an import requested for that profile replaced them (design 14).
-export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_PROFILE_ID, joins = [] } = {}) {
+// `languages` maps each profile id to its language; a profile it leaves out
+// has its language's code as id.
+export function mergeEngineDictionaries(state, packages, { profileId = JAPANESE_PROFILE_ID, joins = [], languages = {} } = {}) {
   const previous = new Set(state.dictionaries.map(row => row.id));
   const present = new Set(packages.map(row => row.id));
   assertJoinedProfile(state, packages, previous, profileId);
-  const context = { packages, previous, present, joins, profileId };
+  const context = { packages, previous, present, joins, profileId, languages };
   const result = {};
   for (const [id, profile] of Object.entries(state.profiles)) {
     const list = mergedProfileList(profile, id, context);
@@ -252,8 +254,8 @@ function assertJoinedProfile(state, packages, previous, profileId) {
 
 // One profile's list after the merge: its remaining entries in their order,
 // new packages (and `joins`) last in `profileId`, and the personal package of
-// its language first. In version 1 a profile's id is its language (decision 0002).
-function mergedProfileList(profile, id, { packages, previous, present, joins, profileId }) {
+// its language first.
+function mergedProfileList(profile, id, { packages, previous, present, joins, profileId, languages }) {
   const list = (Array.isArray(profile?.dictionaries) ? profile.dictionaries : []).filter(entry => present.has(entry?.id));
   if (id === profileId) {
     for (const row of packages) {
@@ -261,7 +263,8 @@ function mergedProfileList(profile, id, { packages, previous, present, joins, pr
       if (!list.some(entry => entry.id === row.id)) list.push({ id: row.id, enabled: row.enabled !== false });
     }
   }
-  const personal = packages.filter(row => personalDictionaryLanguage(row) === id);
+  const language = typeof languages[id] === "string" ? languages[id] : id;
+  const personal = packages.filter(row => personalDictionaryLanguage(row) === language);
   const personalIds = new Set(packages.filter(isPersonalPackage).map(row => row.id));
   return [...personal.map(row => ({ id: row.id, enabled: true })), ...list.filter(entry => !personalIds.has(entry.id))];
 }

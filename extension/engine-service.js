@@ -1139,6 +1139,8 @@ const JAPANESE_PROFILE_ID = "ja";
 // languages in the records' order (hd_state_read's `languages`).
 let profileRecords = false;
 let recordLanguages = [];
+// Each profile's language, by profile id, while the records have profiles.
+let recordProfileLanguages = {};
 
 // The profile code (docs/languages.md 5): the packs' descriptors
 // (registry.js), the profile projections (reader-options.js) and the
@@ -1209,12 +1211,15 @@ async function requestDictionaryStorage() {
     await loadProfileCode();
     profileRecords = true;
     recordLanguages = reply.languages.filter(code => typeof code === "string");
+    recordProfileLanguages = Object.fromEntries(Object.entries(reply.profileLanguages ?? {})
+      .filter(([, code]) => typeof code === "string"));
     // This engine's debug log redacts the records' languages too (docs/languages.md 8.5).
     setDebugLogLanguages(recordLanguages);
     return { state: engineState(reply.state), legacyDictionaries: null };
   }
   profileRecords = false;
   recordLanguages = [];
+  recordProfileLanguages = {};
   setDebugLogLanguages(recordLanguages);
   if (reply.state !== null && (
     reply.state?.schemaVersion !== 1
@@ -1316,7 +1321,7 @@ async function commitProfileCustomStorage(snapshot, source, semanticRevision, di
   const document = expectedCustomDocument(snapshot.document, source, semanticRevision);
   const { stored } = snapshot.state;
   const next = dictionaries === undefined ? null
-    : profileState.mergeEngineDictionaries(stored, dictionaries.map(withTargetLanguage));
+    : profileState.mergeEngineDictionaries(stored, dictionaries.map(withTargetLanguage), { languages: recordProfileLanguages });
   const changesState = next !== null
     && !(sameJsonValue(next.dictionaries, stored.dictionaries) && sameJsonValue(next.profiles, stored.profiles));
   const language = custom.language ?? JAPANESE_PROFILE_ID;
@@ -1466,7 +1471,8 @@ async function commitProfileDictionaryState(baseRevision, next) {
 async function commitDictionaryState(baseRevision, dictionaries, context = null) {
   if (context?.stored) {
     return commitProfileDictionaryState(baseRevision, profileState.mergeEngineDictionaries(context.stored,
-      dictionaries.map(withTargetLanguage), { profileId: context.profileId ?? JAPANESE_PROFILE_ID, joins: context.joins ?? [] }));
+      dictionaries.map(withTargetLanguage), { profileId: context.profileId ?? JAPANESE_PROFILE_ID, joins: context.joins ?? [],
+        languages: recordProfileLanguages }));
   }
   try {
     return await ask("hd_state_cas", { baseRevision, dictionaries });
@@ -2227,7 +2233,7 @@ async function addProfile(message) {
   }
   for (let attempt = 0; ; attempt += 1) {
     const snapshot = await requestDictionaryStorage();
-    const plan = addedProfileState(snapshot, language);
+    const plan = addedProfileState(snapshot, language, message);
     const { loadedCount, reply } = await commitAddedProfile(snapshot, plan, language, message);
     if (reply.ok === true) {
       adoptProfileRecords(reply);
@@ -2246,17 +2252,32 @@ function addedLanguage(message) {
   if (message.copyFrom !== undefined && typeof message.copyFrom !== "string") {
     throw new TypeError("the language request named an invalid profile to copy");
   }
+  if (message.profileId !== undefined && (typeof message.profileId !== "string" || message.profileId === "")) {
+    throw new TypeError("the language request named an invalid new profile");
+  }
   return language;
 }
 
-// The records an added language leaves: its profile, holding its personal
-// package when the library has one, and whether a package enters the set.
-function addedProfileState(snapshot, language) {
+// A copied profile (docs/profiles.md 5.1) keeps its source's dictionary list
+// and enabled flags, and its tab groups under new ids, which stay unique
+// across profiles.
+function copiedProfileView(stored, sourceId) {
+  const source = stored.profiles[sourceId];
+  if (!source) throw profileRequestError("The profile to copy settings from was removed.", "profile-missing");
+  return { dictionaries: source.dictionaries.map((entry) => ({ ...entry })),
+    groups: source.groups.map((group) => ({ ...group, id: crypto.randomUUID(), dictionaryIds: [...group.dictionaryIds] })) };
+}
+
+// The records an added profile leaves: a new language's profile, holding its
+// personal package when the library has one, or a copy of a profile; and
+// whether a package enters the set.
+function addedProfileState(snapshot, language, message) {
   const stored = snapshot.state?.stored ?? withTargetLanguages(profileState.dictionaryStateWithProfiles(snapshot.state));
   const personal = personalDictionaryIdentity(language);
   const own = personal !== null && stored.dictionaries.some((row) => row.id === personal.id)
     ? [{ id: personal.id, enabled: true }] : [];
-  const profiles = { ...stored.profiles, [language]: { dictionaries: own, groups: [] } };
+  const profiles = { ...stored.profiles, [message.profileId ?? language]: message.profileId === undefined
+    ? { dictionaries: own, groups: [] } : copiedProfileView(stored, message.copyFrom ?? JAPANESE_PROFILE_ID) };
   const next = { schemaVersion: DICTIONARY_STATE_PROFILES_SCHEMA, revision: stored.revision, dictionaries: stored.dictionaries, profiles };
   const union = globalThis.HDReaderOptions.allPackages(next);
   const before = new Set((snapshot.state?.dictionaries ?? []).filter((row) => row.enabled !== false).map((row) => row.path));
@@ -2284,6 +2305,7 @@ async function commitAddedProfile(snapshot, plan, language, message) {
 async function askProfileAdd(plan, language, message) {
   try {
     return await ask("hd_profile_cas", { action: "add", language, copyFrom: message.copyFrom,
+      ...(message.profileId === undefined ? {} : { profileId: message.profileId, name: message.name }),
       baseRevision: plan.baseRevision,
       state: { dictionaries: plan.next.dictionaries, profiles: plan.next.profiles } });
   } catch (commitError) {
@@ -2363,7 +2385,9 @@ function removedLanguage(message) {
   if (profileId !== undefined && (typeof profileId !== "string" || profileId === "")) {
     throw new TypeError("the language request named an invalid profile");
   }
-  const language = profileId ?? text(message.language);
+  // Settings names the profile's language; a request that does not is for a
+  // profile whose id is its language's code (docs/profiles.md 5.3).
+  const language = message.language === undefined ? profileId : text(message.language);
   if (!LANGUAGE_CODE.test(language) || (profileId === undefined && !erase)) {
     throw new TypeError("the language request named no language");
   }
@@ -2398,8 +2422,10 @@ async function askProfileRemove({ erase, profileId, language }, stored, next, ba
       erase, baseRevision: stored.revision, ...(erase ? { baseDocumentRevision } : {}),
       state: { dictionaries: next.dictionaries, profiles: next.profiles } });
   } catch (commitError) {
+    // The committed profiles, keyed by id, show the removal; the language
+    // stays while another profile reads in it.
     return profileCasReadback(commitError, stored.revision, next,
-      (languages) => profileId === undefined || !languages.includes(language),
+      (languages) => profileId !== undefined || !languages.includes(language),
       erase ? { language, documentRevision: baseDocumentRevision } : null);
   }
 }
@@ -3886,6 +3912,8 @@ async function adoptRestoredLanguages(options) {
   const { hasProfiles, profiles } = globalThis.HDReaderOptions;
   profileRecords = hasProfiles(options);
   recordLanguages = profileRecords ? [...new Set(profiles(options).map(profile => profile.language))] : [];
+  recordProfileLanguages = profileRecords
+    ? Object.fromEntries(profiles(options).map(profile => [profile.id, profile.language])) : {};
   setDebugLogLanguages(recordLanguages);
   if (profileRecords) await loadLanguagePacks(recordLanguages, { all: true });
   else languageFailures = [];

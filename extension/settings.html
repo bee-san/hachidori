@@ -36,6 +36,7 @@
               <option value="dictionary-groups">Groups</option>
               <option value="custom-dictionary">Personal dictionary</option>
             </optgroup>
+            <option value="profiles">Profiles</option>
             <optgroup label="Reading">
               <option value="lookup">Reading</option>
               <option value="word-highlighting">Word highlighting</option>
@@ -56,6 +57,10 @@
           <div class="nav-item">
             <a href="#dictionaries" aria-describedby="nav-status-dictionaries">Dictionaries</a>
             <output class="nav-status" id="nav-status-dictionaries" aria-live="polite"></output>
+          </div>
+          <div class="nav-item">
+            <a href="#profiles" aria-describedby="nav-status-profiles">Profiles</a>
+            <output class="nav-status" id="nav-status-profiles" aria-live="polite"></output>
           </div>
           <div class="nav-item">
             <a href="#lookup" aria-describedby="nav-status-lookup">Reading</a>
@@ -1705,6 +1710,21 @@
             <ul id="script-store-list" class="script-store-list"></ul>
             <p class="field-hint"><a href="https://github.com/bee-san/hachidori-scripts/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Share a script in the Script Store</a></p>
           </fieldset>
+        </section>
+
+        <section
+          class="card"
+          id="profiles"
+          aria-labelledby="profiles-heading"
+          data-settings-group="Profiles"
+          data-settings-name="Profiles"
+          hidden
+        >
+          <div class="card-head">
+            <h1 id="profiles-heading" tabindex="-1">Profiles</h1>
+            <p class="hint">Each profile has its own settings and dictionaries. Lookups use the default profile, or the profile a rule picks for the website, a held key or the popup level.</p>
+          </div>
+          <div class="options-feedback-slot"></div>
         </section>
 
         <section

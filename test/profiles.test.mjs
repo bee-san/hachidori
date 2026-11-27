@@ -834,3 +834,88 @@ test("the Japanese view leaves out targetLanguage, and a view written back keeps
   const merged = profileState.mergeDictionaryView(state, "ja", view, { legacy: true });
   assert.ok(merged.dictionaries.every(row => row.targetLanguage === "en"), JSON.stringify(merged.dictionaries));
 });
+
+// docs/profiles.md 5: a copy of a profile in the same language, its name, and
+// removals that keep what the language's other profiles still read.
+test("a copied profile keeps its language's settings and list under a new id and name", async () => {
+  const records = singleProfileRecords();
+  const { fromEngine, worker, stored } = backgroundWorker(records);
+  const converted = profileState.dictionaryStateWithProfiles(records.dictionaryState);
+  const copy = { dictionaries: converted.profiles.ja.dictionaries,
+    groups: [{ id: "g2", name: "G", dictionaryIds: ["jitendex"] }] };
+  let reply = await fromEngine({ type: "hd_profile_cas", action: "add", language: "ja", copyFrom: "ja",
+    profileId: "p-video", name: "  Video ", baseRevision: 6,
+    state: { dictionaries: converted.dictionaries, profiles: { ...converted.profiles, "p-video": copy } } });
+  assert.equal(reply.ok, true, reply.error);
+  assert.deepEqual(plain(reply.languages), ["ja"]);
+  const [ja, video] = stored("options").profiles;
+  assert.equal(ja.id, "ja");
+  assert.deepEqual({ id: video.id, language: video.language, name: video.name }, { id: "p-video", language: "ja", name: "Video" });
+  assert.deepEqual(video.settings, ja.settings, "a copy keeps every setting, Templates and selections included");
+  assert.deepEqual(stored("dictionaryState").profiles["p-video"], copy);
+  // The state read names each profile's language, which places personal packages.
+  const read = await fromEngine({ type: "hd_state_read" });
+  assert.deepEqual(plain(read.profileLanguages), { ja: "ja", "p-video": "ja" });
+  // A name is written by the options writer, to the profile the request names.
+  const options = stored("options");
+  reply = await worker({ type: "hd_options_write", baseRevision: options.revision, profileId: "p-video", options: {},
+    profileName: "Netflix" });
+  assert.equal(reply.ok, true, reply.error);
+  assert.equal(stored("options").profiles[1].name, "Netflix");
+  reply = await worker({ type: "hd_options_write", baseRevision: stored("options").revision, profileId: "p-video", options: {},
+    profileName: " " });
+  assert.equal(reply.ok, true, reply.error);
+  assert.equal(Object.hasOwn(stored("options").profiles[1], "name"), false, "an empty name calls it by its language");
+  // A copy's id names no language, and a copy keeps its source's language.
+  for (const bad of [{ profileId: "en" }, { profileId: "p-video" }, { profileId: "p-x", language: "en" }]) {
+    reply = await fromEngine({ type: "hd_profile_cas", action: "add", language: "ja", copyFrom: "ja", baseRevision: 7,
+      state: { dictionaries: converted.dictionaries, profiles: stored("dictionaryState").profiles }, ...bad });
+    assert.equal(reply.ok, false, JSON.stringify(bad));
+  }
+});
+
+test("removing one of a language's profiles keeps the language's records and the ja profile goes last", async () => {
+  const records = singleProfileRecords();
+  const { fromEngine, stored, storage } = backgroundWorker(records);
+  const converted = profileState.dictionaryStateWithProfiles(records.dictionaryState);
+  let reply = await fromEngine({ type: "hd_profile_cas", action: "add", language: "ja", copyFrom: "ja", profileId: "p-books",
+    baseRevision: 6, state: { dictionaries: converted.dictionaries,
+      profiles: { ...converted.profiles, "p-books": { dictionaries: converted.profiles.ja.dictionaries, groups: [] } } } });
+  assert.equal(reply.ok, true, reply.error);
+  const state = stored("dictionaryState");
+  const without = id => ({ dictionaries: state.dictionaries,
+    profiles: Object.fromEntries(Object.entries(state.profiles).filter(([key]) => key !== id)) });
+  reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "ja", language: "ja", baseRevision: 7,
+    state: without("ja") });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.errorCode, "profile-original");
+  reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "p-books", language: "ja", erase: true,
+    baseDocumentRevision: 0, baseRevision: 7, state: without("p-books") });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.errorCode, "language-in-use");
+  await storage.api().local.set({ languageSelection: { revision: 1, activeProfileId: "p-books", autoSwitch: false,
+    rules: [{ profileId: "p-books", conditions: [{ type: "domain", value: "example.com" }] }] } });
+  reply = await fromEngine({ type: "hd_profile_cas", action: "remove", profileId: "p-books", language: "ja", baseRevision: 7,
+    state: without("p-books") });
+  assert.equal(reply.ok, true, reply.error);
+  assert.equal(reply.converted, true, "one Japanese profile left is the single-profile shape again");
+  assert.equal(Object.hasOwn(stored("options"), "profiles"), false);
+  assert.equal(storage.raw.has("languageSelection"), false);
+});
+
+test("the Profiles switch lets lookups use any Japanese profile; others need Multiple languages", () => {
+  const options = readerOptions(LANGUAGES);
+  const record = { ...profileRecords().options };
+  record.profiles = [...record.profiles, { id: "p-video", language: "ja", name: "Video", settings: {}, packSettings: {} }];
+  const video = { revision: 3, activeProfileId: "p-video", autoSwitch: false };
+  const arabic = { revision: 3, activeProfileId: "ar", autoSwitch: false };
+  assert.equal(options.profilesEnabled(record), false);
+  assert.equal(options.activeProfileId(record, video), "ja", "off, the default Japanese profile");
+  const profilesOn = { ...record, experimental: { profiles: true } };
+  assert.equal(options.activeProfileId(profilesOn, video), "p-video");
+  assert.equal(options.activeProfileId(profilesOn, arabic), "ja", "another language still needs Multiple languages");
+  assert.equal(options.profiles(profilesOn).find(profile => profile.id === "p-video").name, "Video");
+  // Without the ja profile, the first Japanese profile is the Japanese one.
+  const copiesOnly = { ...profilesOn, profiles: profilesOn.profiles.filter(profile => profile.id !== "ja") };
+  assert.equal(options.japaneseProfileId(copiesOnly), "p-video");
+});

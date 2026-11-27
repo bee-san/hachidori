@@ -140,6 +140,8 @@ try {
     await run("chrome-languages-sharing", ["test/chrome-languages/sharing.mjs"]);
     // An Arabic note through a fake AnkiConnect, in left-to-right and right-to-left card templates.
     await run("chrome-languages-anki", ["test/chrome-languages/anki.mjs"]);
+    // Settings → Profiles in a Japanese-only installation (docs/profiles.md 9).
+    await run("chrome-languages-profiles", ["test/chrome-languages/profiles.mjs"]);
   } else if (suite === "chrome-language-pack") {
     // One language pack with a real dictionary: HACHIDORI_LANGUAGE and HACHIDORI_DICTIONARY (see its header).
     await run(suite, [`test/${suite}.mjs`]);

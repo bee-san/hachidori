@@ -101,7 +101,7 @@ const {
   activationLabel, clampOption, frequencyModeOrder, hasCapability, normaliseCustomButtons, normaliseKanjiSelection, normaliseUserScripts,
   normaliseOptions, JAPANESE_PROFILE_ID, OPTION_REQUIREMENTS, languageDescriptor, optionRequirementMet,
   hasProfiles, projectOptions, profileDescriptor, LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId,
-  languagesEnabled, profiles: recordProfiles,
+  languagesEnabled, profilesEnabled, profileUsable, profiles: recordProfiles,
 } = globalThis.HDReaderOptions;
 const STATUS_POLL_MS = 1000;
 // Slower than the boot poll: a failing poll may be failing for a while, and the
@@ -220,6 +220,10 @@ let languageSelection = { revision: 0, activeProfileId: null, autoSwitch: false 
 // Advanced → Languages and the sidebar's language link (profile-settings.js),
 // loaded once the page has a language registry.
 let profileSettings = null;
+// Settings → Profiles (docs/profiles.md 6), loaded once its switch is on.
+let profileListSettings = null;
+let profileListLoading = null;
+const PROFILE_STATUS = "profile-list-status";
 let editedProfileChosen = false;
 // The catalogue entry Design's controls follow, for the pack's display
 // settings (docs/languages.md 11.3), and the module that renders a pack's
@@ -566,27 +570,36 @@ function addressedProfile() {
 // page then shows the active profile, discards the drafts kept for the one it
 // left and says so (sections 5.3 and 16.3). True when it changed.
 function followEditedProfile() {
-  const enabled = languagesEnabled(storedOptionsRecord);
+  // Multiple languages lets Settings show any profile, and Profiles any
+  // Japanese one (docs/profiles.md 4).
+  const editable = profile => profile !== null && (profileUsable(storedOptionsRecord, profile) || profile.id === activeProfile());
   if (!editedProfileChosen) {
     editedProfileChosen = true;
-    const initial = (enabled ? describedProfile(addressedProfile()) : null) ?? describedProfile(activeProfile())
+    const addressed = describedProfile(addressedProfile());
+    const initial = (editable(addressed) ? addressed : null) ?? describedProfile(activeProfile())
       ?? { ...JAPANESE_EDITED_PROFILE };
     const changed = initial.id !== editedProfile.id;
     editedProfile = initial;
     return changed;
   }
   const current = describedProfile(editedProfile.id);
-  if (current !== null && (enabled || current.id === activeProfile())) {
+  if (editable(current)) {
     editedProfile = current;
     return false;
   }
-  const left = languageName(editedProfile.language);
+  const left = profileLabel(editedProfile);
   editedProfile = describedProfile(activeProfile()) ?? { ...JAPANESE_EDITED_PROFILE };
   discardProfileDrafts();
-  const cause = current === null ? `${left} was removed` : "Multiple languages was turned off";
-  profileSettings?.announce(`${cause} in another Hachidori page, so Settings now shows ${languageName()}.`
+  const cause = current === null ? `${left} was removed`
+    : `${current.language === "ja" ? "Profiles" : "Multiple languages"} was turned off`;
+  profileSettings?.announce(`${cause} in another Hachidori page, so Settings now shows ${profileLabel(editedProfile)}.`
     + ` Unsaved changes made for ${left} were discarded.`);
   return true;
+}
+
+// What Settings calls a profile: its name, else its language (docs/profiles.md 2).
+function profileLabel(profile) {
+  return profile?.name ?? languageName(profile?.language);
 }
 
 // The edits a removed profile kept: option drafts, the personal dictionary
@@ -610,7 +623,7 @@ function renderEditedProfile() {
   renderCurrentOptions();
   ankiController?.render();
   customButtonController?.render();
-  profileSettings?.render();
+  renderProfileCards();
 }
 
 function listOf(items) {
@@ -660,20 +673,12 @@ function adoptLanguageSelection(value) {
   // Adopted in commit order whatever the revision: the key can disappear and
   // come back lower (section 4.4).
   languageSelection = normaliseLanguageSelection(value);
-  profileSettings?.render();
+  renderProfileCards();
 }
 
 // Use for lookups activates the edited profile in this browser (section 16.3).
-async function useEditedProfileForLookups() {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const reply = await send("hd_language_selection_write",
-      { baseRevision: languageSelection.revision, activeProfileId: editedProfile.id }, WORKER_TARGET);
-    if (reply.selection) adoptLanguageSelection(reply.selection);
-    if (reply.ok) return;
-    // A conflict means another page chose first; this click still means this language.
-    if (reply.conflict !== true) throw new Error(reply.error || "the language could not be chosen");
-  }
-  throw new Error("the language changed in another page; try again");
+function useEditedProfileForLookups() {
+  return setDefaultProfile(editedProfile.id);
 }
 
 // Advanced → Languages → Switch language automatically (section 16.3).
@@ -692,11 +697,82 @@ async function writeProfileRules(rules) {
   if (!reply.ok) throw new Error(reply.error || "the rules could not be saved");
 }
 
-// The sidebar's language link leads to Advanced → Languages' Settings shows.
+// The sidebar's language link leads to Advanced → Languages' Settings shows,
+// or with Profiles on to the profiles.
 function openLanguages() {
-  if (window.location.hash !== "#languages") window.history.pushState(null, "", "#languages");
+  const section = profilesEnabled(storedOptionsRecord) ? "profiles" : "languages";
+  if (window.location.hash !== `#${section}`) window.history.pushState(null, "", `#${section}`);
   showSettingsSection();
-  element("settings-language-select")?.focus();
+  (section === "profiles" ? element("profile-list")?.querySelector('[aria-pressed="true"]')
+    : element("settings-language-select"))?.focus();
+}
+
+// Makes `profileId` the profile this browser looks words up in when no rule
+// picks another (docs/profiles.md 6).
+async function setDefaultProfile(profileId) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const reply = await send("hd_language_selection_write",
+      { baseRevision: languageSelection.revision, activeProfileId: profileId }, WORKER_TARGET);
+    if (reply.selection) adoptLanguageSelection(reply.selection);
+    if (reply.ok) return;
+    // A conflict means another page chose first; this click still means this profile.
+    if (reply.conflict !== true) throw new Error(reply.error || "the profile could not be chosen");
+  }
+  throw new Error("the profile used for lookups changed in another page; try again");
+}
+
+// A profile's name goes through the options writer with the profile it names
+// (docs/profiles.md 5.2), after this page's pending edits.
+async function renameProfile(profileId, name) {
+  if (!await settlePendingOptions()) throw new Error("Save your changes or use the saved settings first.");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const reply = await send("hd_options_write", { baseRevision: optionsRevision, profileId, options: {}, profileName: name },
+      WORKER_TARGET);
+    if (reply.options) adoptOptions(reply.options);
+    if (reply.ok) return;
+    if (reply.conflict !== true) throw new Error(reply.error || "the profile could not be renamed");
+  }
+  throw new Error("the settings changed in another page; try again");
+}
+
+// Both profile cards follow every change of the records they show.
+function renderProfileCards() {
+  profileSettings?.render();
+  if (profileListSettings !== null) profileListSettings.render();
+  else if (profilesEnabled(storedOptionsRecord) && profileListLoading === null) profileListLoading = loadProfileList();
+}
+
+async function loadProfileList() {
+  const { createProfileListSettings } = await import("./profile-list-settings.js");
+  profileListSettings = createProfileListSettings({ document, element, send, languageName,
+    setStatus: (message, tone = "", error = null) => setSectionStatus(PROFILE_STATUS, message, tone, false, error),
+    readOptionsRecord: () => storedOptionsRecord,
+    readDictionaryState: () => storedDictionaryState,
+    readSelection: () => languageSelection,
+    readEditedProfile: () => editedProfile,
+    readActiveProfileId: activeProfile,
+    chooseEditedProfile,
+    setDefaultProfile,
+    renameProfile,
+    writeRules: writeProfileRules,
+    settleEdits: profileEditsSettled,
+    afterProfileChange: adoptProfileChange,
+  });
+  SECTION_STATUSES[PROFILE_STATUS] = { section: "profiles", label: "Profiles" };
+  profileListSettings.render();
+}
+
+async function profileEditsSettled() {
+  if (!await settlePendingOptions()) throw new Error("Save your changes or use the saved settings first.");
+  await settleDictionaryCommits();
+}
+
+async function adoptProfileChange() {
+  const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
+  adoptLanguageSelection(stored[LANGUAGE_SELECTION_KEY]);
+  adoptOptions(stored.options);
+  await reloadDictionaries();
+  await refreshStatus();
 }
 
 // Advanced → Languages needs the language registry; a page without one is a
@@ -722,17 +798,8 @@ async function loadProfileSettings() {
     useEditedProfileForLookups,
     writeAutoSwitch,
     writeRules: writeProfileRules,
-    settleEdits: async () => {
-      if (!await settlePendingOptions()) throw new Error("Save your changes or use the saved settings first.");
-      await settleDictionaryCommits();
-    },
-    afterProfileChange: async () => {
-      const stored = await chrome.storage.local.get(["options", LANGUAGE_SELECTION_KEY]);
-      adoptLanguageSelection(stored[LANGUAGE_SELECTION_KEY]);
-      adoptOptions(stored.options);
-      await reloadDictionaries();
-      await refreshStatus();
-    },
+    settleEdits: profileEditsSettled,
+    afterProfileChange: adoptProfileChange,
   });
   SECTION_STATUSES[LANGUAGE_STATUS] = { section: "languages", label: "Languages" };
   profileSettings.render();
@@ -1016,8 +1083,8 @@ async function applyExperimentalToggle(id, enabled) {
     renderExperimentalSettings();
     return;
   }
-  if (id === "multipleLanguages" && !enabled) {
-    const refused = await showLookupLanguageFirst();
+  if ((id === "multipleLanguages" || id === "profiles") && !enabled) {
+    const refused = await showLookupLanguageFirst(id);
     if (refused !== null) {
       setSectionStatus("experimental-status", refused, "error");
       // The switch shows the stored flag again.
@@ -1031,15 +1098,20 @@ async function applyExperimentalToggle(id, enabled) {
 }
 
 // Turning Multiple languages off returns lookups to Japanese (docs/languages.md
-// 16.3), so Settings first shows Japanese, saving the edits made for the
-// language it showed. Resolves with the message to show when it stays on.
-async function showLookupLanguageFirst() {
+// 16.3), and turning Profiles off to the Japanese profile (docs/profiles.md
+// 4), so Settings first shows it unless the profile it shows stays usable,
+// saving the edits made for the one it showed. Resolves with the message to
+// show when the switch stays on.
+async function showLookupLanguageFirst(id) {
   if (!hasProfiles(storedOptionsRecord)) return null;
+  const after = { ...storedOptionsRecord, experimental: { ...options.experimental, [id]: false } };
+  if (profileUsable(after, editedProfile)) return null;
   if (describedProfile(JAPANESE_PROFILE_ID) === null) {
     return "Japanese is not one of your languages, so lookups would have no language. Add Japanese in Advanced"
       + " → Languages first.";
   }
-  return chooseEditedProfile(JAPANESE_PROFILE_ID, "turning off Multiple languages");
+  const feature = EXPERIMENTAL_FEATURES.find(entry => entry.id === id);
+  return chooseEditedProfile(JAPANESE_PROFILE_ID, `turning off ${feature.label}`);
 }
 
 function renderExperimentalSettings() {
@@ -1456,7 +1528,7 @@ function adoptOptions(value) {
   }
   savedOptions = projectEditedOptions(value);
   renderCurrentOptions();
-  profileSettings?.render();
+  renderProfileCards();
   return true;
 }
 
@@ -1497,7 +1569,7 @@ function handleStorageChange(changes, area) {
   }
   // Advanced → Languages counts each language's dictionaries and lists the
   // languages held without a profile.
-  if (changes.dictionaryState) profileSettings?.render();
+  if (changes.dictionaryState) renderProfileCards();
   if (changes.options || changes.dictionaryState || changes[CUSTOM_DICTIONARY_SOURCE_KEY] || changes.lookupStats
       || changes.wordStatusOverrides) profileSettings?.recordsChanged();
   if (changes.options) {

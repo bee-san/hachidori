@@ -39,6 +39,10 @@
     // switches language; the profiles and this browser's choice are kept.
     { id: "multipleLanguages", label: "Multiple languages", section: "languages",
       description: "Read other languages besides Japanese, such as English, Korean, Spanish or Arabic, each with its own dictionaries, settings, Anki Templates and pronunciation sources. Adds Languages under Advanced, where you add a language and choose the one lookups use; with two or more, the toolbar switches between them. Turning this off returns lookups to Japanese and keeps the languages you added, with their settings and dictionaries, for the next time you turn it on." },
+    // docs/profiles.md (#796). Off, lookups use the default Japanese profile
+    // and no profile condition applies; the profiles are kept.
+    { id: "profiles", label: "Profiles", section: "profiles",
+      description: "Keep several named sets of settings and dictionaries, such as one for video and one for books, and switch between them automatically by website, a held key or the popup level, as Yomitan's profiles do. Adds Profiles to Settings. Turning this off returns lookups to your default profile and keeps your profiles and their conditions for the next time you turn it on." },
   ];
   const DEFAULT_EXPERIMENTAL = Object.fromEntries(EXPERIMENTAL_FEATURES.map(feature => [feature.id, false]));
   // yomitan-gsm hotkey actions that map onto existing Hachidori behaviour, in
@@ -1210,6 +1214,12 @@
     return source === null ? null : { templates: normaliseAnki({ templates: source.templates }).templates };
   }
 
+  // A profile's own name (docs/profiles.md 2): text the reader chose, or
+  // none, when the profile is called by its language.
+  function profileName(value) {
+    return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+  }
+
   // A stored profile with anything malformed dropped; null when it has no
   // usable id or language. Its settings are the sparse profile keys it holds.
   function normaliseProfile(value) {
@@ -1219,9 +1229,11 @@
     const settings = plainObject(source.settings) ?? {};
     const projected = projectOptionKeys(pick(settings, [...PROFILE_OPTION_KEYS, "definitionBlurEnabled"]), false);
     const anki = ankiTemplates(settings.anki);
+    const name = profileName(source.name);
     return {
       id: source.id,
       language: source.language,
+      ...(name === null ? {} : { name }),
       settings: { ...pick(projected, PROFILE_OPTION_KEYS), ...(anki === null ? {} : { anki }) },
       packSettings: { ...plainObject(source.packSettings) },
     };
@@ -1370,7 +1382,8 @@
   // `{ id, language, packSettings }`, or null when the record has no such profile.
   function profileDescriptor(storedOptions, profileId) {
     const profile = findProfile(storedOptions, profileId);
-    return profile === null ? null : { id: profile.id, language: profile.language, packSettings: { ...profile.packSettings } };
+    return profile === null ? null : { id: profile.id, language: profile.language,
+      ...(profile.name === undefined ? {} : { name: profile.name }), packSettings: { ...profile.packSettings } };
   }
 
   // The top level of a record with profiles, normalised: sparse global keys
@@ -1422,6 +1435,19 @@
     }
     return { revision, ...top,
       profiles: list.map((profile, position) => position === index ? { ...profile, settings } : profile) };
+  }
+
+  // A profile's new name (docs/profiles.md 5.2): text, or "" to call it by
+  // its language again.
+  function applyProfileNamePatch(storedOptions, value, profileId) {
+    if (typeof value !== "string") throw new TypeError("the profile name write carried no text");
+    if (!hasProfiles(storedOptions)) throw new Error("Add a second profile before naming one.");
+    const list = storedProfiles(storedOptions);
+    if (!list.some(profile => profile.id === profileId)) throw new Error("the options write names a profile that does not exist");
+    const name = profileName(value);
+    return { ...storedOptions, profiles: list.map(profile => profile.id !== profileId ? profile
+      : { id: profile.id, language: profile.language, ...(name === null ? {} : { name }), settings: profile.settings,
+        packSettings: profile.packSettings }) };
   }
 
   // A patch of pack settings by id (section 7.5): ids the language's pack
@@ -1602,14 +1628,35 @@
     return normaliseExperimental(plainObject(storedOptions)?.experimental).multipleLanguages === true;
   }
 
+  // Advanced → Experimental features → Profiles (docs/profiles.md).
+  function profilesEnabled(storedOptions) {
+    return normaliseExperimental(plainObject(storedOptions)?.experimental).profiles === true;
+  }
+
+  // Whether lookups may use `profile` (docs/profiles.md 4): any profile while
+  // Multiple languages is on, a Japanese one while only Profiles is.
+  function profileUsable(storedOptions, profile) {
+    if (profile === null || profile === undefined) return false;
+    if (languagesEnabled(storedOptions)) return true;
+    return profile.language === JAPANESE_LANGUAGE && profilesEnabled(storedOptions);
+  }
+
+  // The Japanese profile older code knows: the one with the id `ja`, else
+  // the first Japanese profile, else null.
+  function japaneseProfileId(storedOptions) {
+    const list = profiles(storedOptions);
+    return list.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id
+      ?? list.find(profile => profile.language === JAPANESE_LANGUAGE)?.id ?? null;
+  }
+
   // The profile this installation looks words up in: the selection's when it
-  // names an existing profile and Multiple languages is on, otherwise the
-  // Japanese profile, or the first profile when there is none.
+  // names a profile lookups may use, otherwise the Japanese profile, or the
+  // first profile when there is none.
   function activeProfileId(storedOptions, selection) {
     const list = profiles(storedOptions);
-    const chosen = languagesEnabled(storedOptions) ? normaliseLanguageSelection(selection).activeProfileId : null;
-    if (list.some(profile => profile.id === chosen)) return chosen;
-    return list.find(profile => profile.id === JAPANESE_PROFILE_ID)?.id ?? list[0]?.id ?? JAPANESE_PROFILE_ID;
+    const chosen = list.find(profile => profile.id === normaliseLanguageSelection(selection).activeProfileId);
+    if (chosen !== undefined && (chosen.id === JAPANESE_PROFILE_ID || profileUsable(storedOptions, chosen))) return chosen.id;
+    return japaneseProfileId(storedOptions) ?? list[0]?.id ?? JAPANESE_PROFILE_ID;
   }
 
   globalThis.HDReaderOptions = {
@@ -1636,6 +1683,7 @@
     hasDictionaryProfiles, projectDictionaryState, allPackages, packageWithEnabled,
     languageDescriptor, optionRequirementMet, packSettingValue,
     LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, activeProfileId, languagesEnabled,
+    profilesEnabled, profileUsable, japaneseProfileId, profileName, applyProfileNamePatch,
     PROFILE_RULE_MODIFIERS, PROFILE_RULE_COMPARISONS, normaliseProfileRules, matchProfileRule,
   };
 }());
