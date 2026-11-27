@@ -2588,9 +2588,8 @@
     });
     // Reading → Activation → Child popups → Click, on the search page
     // Reading → Search page → Look up words with a click (#656), and a tap
-    // (#782): a primary
-    // click on a word in the definitions opens its child once the press above
-    // has retired the previous one. A press that travels or leaves a selection
+    // (#782): a primary click on a word in the definitions opens its child
+    // once the press above has retired the previous one. A press that travels or leaves a selection
     // is a copy, and links, images, buttons and disclosures keep their own click.
     popup.addEventListener("click", (event) => {
       const start = press;
@@ -4731,14 +4730,19 @@
   // would cancel the lookup as a press on text and dismiss it as a click, so
   // the mouse handlers leave a finger's input to these. Pointer events arrive
   // even on a page that cancels its touch events. A finger that travels pans,
-  // and a second finger pinches.
+  // a second finger pinches, and a long press that selects text leaves the
+  // selection lookup to read it.
   const TAP_SLOP_PX = 10;
 
   function onPointerDown(event) {
     touchInput = event.pointerType === "touch";
     touchTap = touchInput && event.isPrimary
-      ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+      ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY, selection: selectedText() }
       : null;
+  }
+
+  function selectedText() {
+    return window.getSelection()?.toString() ?? "";
   }
 
   function onPointerMove(event) {
@@ -4758,6 +4762,8 @@
     const tap = touchTap;
     touchTap = null;
     if (disposed || tap?.pointerId !== event.pointerId || tapTravelled(event, tap)) return;
+    const selection = selectedText();
+    if (selection !== "" && selection !== tap.selection) return;
     const { clientX, clientY, target } = event;
     // The popup's own press and click take a tap inside it.
     if (isOurNode(target) || pointInsidePopup(clientX, clientY)) return;

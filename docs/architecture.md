@@ -765,8 +765,8 @@ and click a browser derives from the tap come after it and would cancel the
 lookup as a press on text and dismiss it as a click, so the page's mouse
 handlers ignore input while the latest pointer is a finger; a mouse's next
 `pointermove` gives them back. A tap in a text field focuses it for typing and
-looks nothing up. A long press still selects text natively, and the selection
-lookup takes it from there.
+looks nothing up. A long press still selects text natively: a press that leaves
+a new selection is not a tap, and the selection lookup takes it from there.
 
 Pointer movement is coalesced into one scan on the next timer turn at the
 pointer's latest position. **Hover scan delay** (`scanDelayMs`, 0–5,000 ms)
