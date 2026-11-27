@@ -752,6 +752,22 @@ with No key and Child popups set to hold it, only a press over a popup is a
 scan press, and page presses keep their ordinary meaning. Otherwise No key and
 keyboard keys are unchanged, including a middle press closing the popup.
 
+A phone has no hover and no key to hold, so a finger's tap is its own
+activation (#782), as in Yomitan. Whatever the lookup mode, key and Hover scan
+delay say, a tap on a word looks it up at once, a tap on the word already shown
+keeps its popup, and a tap on anything else dismisses the popups as a click
+does; a tap on a word in a popup's definitions opens its child as Child popups
+→ Click does. A tap is a primary touch pointer released within 10 CSS pixels of
+where it went down, with no second finger and no `pointercancel` (the browser
+taking the touch to scroll or zoom). The reader takes it from `pointerup`,
+which arrives even on pages that cancel their touch events. The mouse events
+and click a browser derives from the tap come after it and would cancel the
+lookup as a press on text and dismiss it as a click, so the page's mouse
+handlers ignore input while the latest pointer is a finger; a mouse's next
+`pointermove` gives them back. A tap in a text field focuses it for typing and
+looks nothing up. A long press still selects text natively, and the selection
+lookup takes it from there.
+
 Pointer movement is coalesced into one scan on the next timer turn at the
 pointer's latest position. **Hover scan delay** (`scanDelayMs`, 0–5,000 ms)
 is an opening delay for lookups that need no key: with No key, a word is
