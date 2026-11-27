@@ -185,6 +185,8 @@ function browserFacts(navigator, window) {
     timeZoneOffsetMinutes: new Date().getTimezoneOffset(),
     hardwareConcurrency: navigator.hardwareConcurrency ?? null,
     deviceMemoryGb: navigator.deviceMemory ?? null,
+    // A tap is a lookup (#782) only where the browser reports touch points.
+    maxTouchPoints: navigator.maxTouchPoints ?? null,
     onLine: navigator.onLine ?? null,
     connection: connection ? { effectiveType: connection.effectiveType, downlinkMbps: connection.downlink, rttMs: connection.rtt, saveData: connection.saveData } : null,
     webdriver: navigator.webdriver ?? null,

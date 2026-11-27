@@ -43,7 +43,7 @@ function host({ fail = new Set(), stored = STORED } = {}) {
     }, getBytesInUse: () => Promise.resolve(4096) } },
   };
   const window = {
-    navigator: { userAgent: "Test/1", languages: ["ja-JP", "en"], hardwareConcurrency: 8,
+    navigator: { userAgent: "Test/1", languages: ["ja-JP", "en"], hardwareConcurrency: 8, maxTouchPoints: 5,
       storage: { estimate: () => Promise.resolve({ usage: 10, quota: 100 }), persisted: () => Promise.resolve(true) } },
     location: { href: "chrome-extension://extension-id/settings.html#advanced" },
     crossOriginIsolated: true, SharedArrayBuffer, WebAssembly,
@@ -180,6 +180,7 @@ test("the debug report carries version, engine, dictionaries and settings withou
   assert.equal(report.extension.version, "1.2.3");
   assert.deepEqual(report.browser.os, { os: "linux", arch: "x86-64" });
   assert.equal(report.browser.av1Encoding, true);
+  assert.equal(report.browser.maxTouchPoints, 5);
   assert.equal(report.engine.status.dictionaryCount, 2);
   assert.equal(report.engine.memory.heapBytes, 1024);
   assert.equal(report.engine.extensionMemory.bytes, 2048);
