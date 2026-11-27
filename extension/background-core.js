@@ -27,7 +27,7 @@ import { mergeDictionaryView, profileLanguages } from "./profile-state.js";
 const {
   ANKI_TEMPLATE_CONFIG_KEYS, DEFAULT_OPTIONS, ankiTemplateConfig, normaliseDictionarySelections, normaliseOptions, projectStoredOptions,
   validateOptionsPatch, JAPANESE_PROFILE_ID, hasProfiles, hasDictionaryProfiles, profiles: optionProfiles,
-  applyOptionsPatch, applyPackSettingsPatch, projectDictionaryState, languageDescriptor, packSettingValue,
+  applyOptionsPatch, applyPackSettingsPatch, applyProfileNamePatch, projectDictionaryState, languageDescriptor, packSettingValue,
   LANGUAGE_SELECTION_KEY, normaliseLanguageSelection, normaliseProfileRules,
 } = globalThis.HDReaderOptions;
 const { normaliseExternalUrl } = globalThis.HDExternalLinks;
@@ -364,10 +364,12 @@ function withPrunedProfileSelections(record, profileId, view) {
 function profileOptionsWriteResult(message, patch, state, storedOptions) {
   const revision = optionsRevision(storedOptions);
   if (message.baseRevision !== revision) return optionsWriteConflict(message, applyOptionsPatch(storedOptions, {}));
-  const globalOnly = Object.keys(patch).every(key => GLOBAL_OPTIONS.has(key)) && message.packSettings === undefined;
+  const globalOnly = Object.keys(patch).every(key => GLOBAL_OPTIONS.has(key)) && message.packSettings === undefined
+    && message.profileName === undefined;
   const profileId = globalOnly ? null : requestProfileId(message, storedOptions);
   let options = applyOptionsPatch(storedOptions, patch, profileId ?? JAPANESE_PROFILE_ID);
   if (message.packSettings !== undefined) options = applyPackSettingsPatch(options, message.packSettings, profileId);
+  if (message.profileName !== undefined) options = applyProfileNamePatch(options, message.profileName, profileId);
   if (profileId !== null && state !== null) {
     options = withPrunedProfileSelections(options, profileId, projectDictionaryState(state, profileId));
   }
@@ -612,6 +614,7 @@ function optionsWriteResult(message, patch, state, storedOptions) {
   // declares no settings of its own.
   if (message.profileId !== undefined) requestProfileId(message, storedOptions);
   if (message.packSettings !== undefined) applyPackSettingsPatch(storedOptions, message.packSettings, JAPANESE_PROFILE_ID);
+  if (message.profileName !== undefined) applyProfileNamePatch(storedOptions, message.profileName, JAPANESE_PROFILE_ID);
   const revision = optionsRevision(storedOptions);
   const current = { ...projectStoredOptions(storedOptions), revision };
   if (message.baseRevision !== revision) return optionsWriteConflict(message, current);

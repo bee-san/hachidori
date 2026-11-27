@@ -102,7 +102,10 @@ export function japaneseReply(type, response) {
   if (Object.hasOwn(next, "state")) next.state = japaneseRecord("dictionaryState", next.state);
   if (Object.hasOwn(next, "document")) next.document = withoutLanguages(next.document);
   // Today's hd_state_read reply has no language codes.
-  if (type === "hd_state_read") delete next.languages;
+  if (type === "hd_state_read") {
+    delete next.languages;
+    delete next.profileLanguages;
+  }
   return next;
 }
 

@@ -318,6 +318,8 @@
       return [profile.id, {
         id: profile.id,
         language: profile.language,
+        // Whether lookups may use it (docs/profiles.md 4).
+        usable: layer.profileUsable(storedOptionsRecord, profile),
         options: applyHostCapabilities(layer.projectOptions(storedOptionsRecord, profile.id)),
         dictionaries: state.dictionaries,
         groups: state.groups,
@@ -361,24 +363,34 @@
 
   // The profile whose language a `lang` names by primary subtag (`ja-JP` →
   // ja, `zh-Hant` → zh), or null.
+  // The active profile when it reads that language, else the first that does.
   function profileForLang(tag) {
     const wanted = primarySubtag(tag);
     if (wanted === "" || readingProfiles === null) return null;
-    for (const profile of readingProfiles.values()) {
+    const reads = profile => {
       const bcp47 = globalThis.HDLanguages?.get?.(profile.language)?.bcp47;
-      if (profile.language === wanted || primarySubtag(bcp47) === wanted) return profile;
+      return profile.language === wanted || primarySubtag(bcp47) === wanted;
+    };
+    const active = activeReadingProfile();
+    if (active && reads(active)) return active;
+    for (const profile of readingProfiles.values()) {
+      if (reads(profile)) return profile;
     }
     return null;
   }
 
   // Whether the page's lookups may leave the active profile (8.1): never on
-  // the search and startup pages, or while Multiple languages is off.
+  // the search and startup pages, or while Multiple languages and Profiles
+  // are both off (docs/profiles.md 4).
   function profilesSwitchable() {
-    return readingProfiles !== null && !READER_PAGE && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord);
+    const layer = globalThis.HDReaderOptions;
+    return readingProfiles !== null && !READER_PAGE
+      && (layer.languagesEnabled(storedOptionsRecord) || layer.profilesEnabled(storedOptionsRecord));
   }
 
   function autoSwitching() {
-    return profilesSwitchable() && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
+    return profilesSwitchable() && globalThis.HDReaderOptions.languagesEnabled(storedOptionsRecord)
+      && globalThis.HDReaderOptions.normaliseLanguageSelection(languageSelection).autoSwitch;
   }
 
   function profileRulesApply() {
@@ -399,7 +411,8 @@
   // is held for them.
   function ruleProfile(popupLevel, modifiers = null) {
     if (!profileRulesApply()) return null;
-    const id = globalThis.HDReaderOptions.matchProfileRule(languageSelection, [...readingProfiles.keys()],
+    const usable = [...readingProfiles.values()].filter(profile => profile.usable).map(profile => profile.id);
+    const id = globalThis.HDReaderOptions.matchProfileRule(languageSelection, usable,
       { hostname: location.hostname, href: location.href, modifiers: modifiers ?? heldModifiers(), popupLevel });
     return readingProfiles.get(id) ?? null;
   }
