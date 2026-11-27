@@ -237,6 +237,7 @@ const PLANNED = [
   "hover enablement closes active popups and changes already-open tabs without reloading the engine",
   "configured activation keys open stationary lookups and release them using the saved delays",
   "No key looks up on hover and keeps the remembered key, which returns with the popup staying open",
+  "a tap looks up the word without the activation key, keeps it when tapped again and dismisses it on blank page",
   "a hover scan delay keeps a quick pass across a word from looking anything up and looks up the word the pointer rests on once",
   "hide popup on cursor exit hides a sticky popup the pointer left despite mouse focus, but not keyboard focus",
   "Press to set records the middle button, which opens a stationary lookup and releases it like a key",
