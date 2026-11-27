@@ -47,8 +47,7 @@ list order, top to bottom.
 
 ## Custom buttons
 
-With Experimental features → **More custom buttons** on, Design → Custom
-buttons can add a button of the kind **Tell a user script**. The popup shows it
+Design → Custom buttons can add a button of the kind **Tell a user script**. The popup shows it
 like any custom button and leaves its press to the user's scripts:
 
 - A press dispatches `hachidori-button` on the button, inside the popup's

@@ -675,9 +675,6 @@
   }
 
   function applyHostCapabilities(projected) {
-    // Without More custom buttons the popup has only the original kinds.
-    projected = { ...projected,
-      customButtons: globalThis.HDReaderOptions.effectiveCustomButtons(projected.customButtons, projected.experimental) };
     if (!hostCapabilities.linkButtons) projected = {
       ...projected,
       customLinks: [],
@@ -2784,7 +2781,7 @@
   // A user script runs a button action as a press of that button would, on
   // the entry whose row holds the event's target, or the current entry.
   function onScriptAction(event) {
-    if (options.experimental?.popupActions !== true || typeof event.detail !== "string") return;
+    if (typeof event.detail !== "string") return;
     let request;
     try { request = JSON.parse(event.detail); } catch { return; }
     if (!globalThis.HDReaderOptions.BUTTON_ACTIONS.some(action => action.id === request?.action)) return;

@@ -666,8 +666,7 @@ These run separately:
   Overwrite and opens the note in Anki's browser, Mine as kana adds a note whose
   Front is かんじ with 漢字's definitions, and a user script hears the script
   button and runs View notes through `hachidori-action`, which a page's own
-  event cannot. View in Anki hides on 読む, which Anki lacks, and with the
-  switch off the popup shows none of these buttons. It writes
+  event cannot. View in Anki hides on 読む, which Anki lacks. It writes
   `test/tmp/ci/more-buttons-settings.png` and `more-buttons-popup.png`, with
   `-dark` and `-forced-colors` copies of the popup.
 - **`chrome-crunchyroll.mjs`**, included in `test:chrome`, mines a fixture page

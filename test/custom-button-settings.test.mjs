@@ -77,7 +77,7 @@ test("GSM word, reading and sentence link markers encode once and reject unsafe 
   assert.match(validateLinkButton("", "https://example.test/%w"), /name/u);
 });
 
-function fixture(t, { experimental = {} } = {}) {
+function fixture(t) {
   const dom = new JSDOM(readFileSync(new URL("../extension/settings.html", import.meta.url), "utf8"),
     { pretendToBeVisual: true, url: "https://extension.test/settings.html" });
   const { document } = dom.window;
@@ -88,7 +88,6 @@ function fixture(t, { experimental = {} } = {}) {
   let nextId = 0;
   const controller = createCustomButtonSettings({ document, readButtons: () => buttons,
     readTemplates: () => templates, createId: () => `button-${++nextId}`,
-    readExperimental: () => experimental,
     readAudioSources: () => [{ id: "jpod", type: "jpod101", enabled: true }],
     saveButtons(value) { saves.push(value); buttons = value; } });
   function change(id, value, event = "input") {
@@ -115,7 +114,6 @@ function fixture(t, { experimental = {} } = {}) {
     get buttons() { return buttons; },
     receive(value) { buttons = value; controller.render(); },
     templates(value) { templates = value; controller.render(); },
-    experimental(value) { experimental = value; controller.render(); },
   };
 }
 
@@ -198,7 +196,7 @@ test("global Settings search reaches Custom buttons with keyboard-focusable nati
 });
 
 test("More custom buttons: action, script, icon and marker fields are stored, and validated as written", () => {
-  const { normaliseCustomButtons, effectiveCustomButtons, extendedCustomButton, popupActionsButton } = globalThis.HDReaderOptions;
+  const { normaliseCustomButtons, extendedCustomButton, popupActionsButton } = globalThis.HDReaderOptions;
   const buttons = normaliseCustomButtons([
     { id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "x", icon: "book-search" },
     { id: "next", type: "action", label: "Next", action: "nextEntry", argument: "3" },
@@ -217,39 +215,29 @@ test("More custom buttons: action, script, icon and marker fields are stored, an
   ], "search-page actions are not button actions, and unknown icons and no-op substitutions drop");
   assert.deepEqual(buttons.map(extendedCustomButton), [true, true, true, true, false]);
   assert.deepEqual(buttons.map(popupActionsButton), [true, true, true, true, false]);
-  assert.deepEqual(effectiveCustomButtons(buttons, {}).map(button => button.id), ["jisho"]);
-  // Off, a link or plain Anki button with an icon shows by its name.
-  assert.deepEqual(effectiveCustomButtons([{ ...buttons[4], icon: "search" }], {}), [buttons[4]]);
   assert.equal(extendedCustomButton({ ...buttons[4], icon: "search" }), true);
   assert.equal(popupActionsButton({ ...buttons[4], icon: "search" }), false);
-  assert.equal(effectiveCustomButtons(buttons, { popupActions: true }), buttons);
   assert.deepEqual(validateOptionsPatch({ customButtons: buttons }).customButtons, buttons);
   assert.throws(() => validateOptionsPatch({ customButtons: [{ ...buttons[2], markers: { Expression: "reading" } }] }),
     /invalid reader option/u);
-  assert.equal(globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental.popupActions, false);
+  assert.equal(Object.hasOwn(globalThis.HDReaderOptions.DEFAULT_OPTIONS.experimental, "popupActions"), false);
 });
 
-test("More custom buttons off: only link and Anki kinds are offered, and its buttons stay listed but cannot be edited", t => {
+test("every button kind, ready-made buttons, icons and markers are offered, and action buttons stay editable", t => {
   const f = fixture(t);
   const offered = () => [...f.el("opt-custom-button-type").options].filter(option => !option.disabled).map(option => option.value);
-  assert.deepEqual(offered(), ["link", "anki"]);
-  assert.equal(f.el("custom-button-presets").hidden, true);
-  assert.equal(f.el("custom-button-icon-field").hidden, true);
-  f.change("opt-custom-button-type", "anki", "change");
-  assert.equal(f.el("custom-button-markers-field").hidden, true);
-  f.receive([{ id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "" },
-    { id: "jisho", type: "link", label: "Jisho", url: "https://jisho.org/search/%w" }]);
-  assert.equal(f.action("View in Anki", "Edit").disabled, true);
-  assert.match(f.row("View in Anki").textContent, /Hidden: turn on More custom buttons/u);
-  assert.equal(f.action("Jisho", "Edit").disabled, false);
-  f.experimental({ popupActions: true });
   assert.deepEqual(offered(), ["link", "anki", "action", "script"]);
+  assert.equal(f.el("custom-button-presets").hidden, false);
+  assert.equal(f.el("custom-button-icon-field").hidden, false);
+  f.change("opt-custom-button-type", "anki", "change");
+  assert.equal(f.el("custom-button-markers-field").hidden, false);
+  f.receive([{ id: "view", type: "action", label: "View in Anki", action: "viewNotes", argument: "" }]);
   assert.equal(f.action("View in Anki", "Edit").disabled, false);
   assert.doesNotMatch(f.row("View in Anki").textContent, /Hidden/u);
 });
 
 test("ready-made buttons fill the form for View in Anki, Mine as kana and Jisho; action arguments and markers save", t => {
-  const f = fixture(t, { experimental: { popupActions: true } });
+  const f = fixture(t);
   const preset = id => f.el("custom-button-preset-list").querySelector(`[data-preset="${id}"]`);
   preset("view-notes").click();
   assert.equal(f.el("opt-custom-button-type").value, "action");
