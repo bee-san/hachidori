@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Settings → Advanced → Languages → Language rules (docs/languages.md 8.1 and
-// 16.3): ordered rules that choose a lookup's language by the website, a held
-// key or the popup level. profile-settings.js shows the card with two or more
-// languages; each edit writes every rule with hd_language_selection_write.
+// 16.3), or Settings → Profiles → Switch profiles automatically
+// (docs/profiles.md 6): ordered rules that choose a lookup's profile by the
+// website, a held key or the popup level. profile-settings.js or
+// profile-list-settings.js shows the card with two or more profiles; each edit
+// writes every rule with hd_language_selection_write.
 
 import { describeErrorOrJson } from "./error-text.js";
 
@@ -31,16 +33,28 @@ function newCondition(type) {
   return { type, value: "" };
 }
 
-export function createProfileRules({ document, create, readSelection, profileList, optionLabel, writeRules, setStatus }) {
-  const card = create("fieldset", { className: "lookup-group", id: "language-rules" });
-  card.innerHTML = `<legend data-search-keywords="profile conditions website domain url modifier key popup level">Language rules</legend>
-    <p class="field-hint" id="language-rules-help">In this browser, a lookup uses the language of the first rule whose
-      conditions all match. Website domains match their subdomains too, Key held is checked as each word is scanned,
-      and popup level 0 is the page, 1 the first popup. When no rule matches, the language is chosen as above.</p>
-    <ol class="language-list language-rule-list" id="language-rules-list"></ol>
-    <div class="options-actions"><button type="button" class="ghost" id="language-rules-add" aria-describedby="language-rules-help">Add a rule</button></div>`;
-  const list = card.querySelector("#language-rules-list");
-  const add = card.querySelector("#language-rules-add");
+// The Languages tab's card; Profiles passes its own `card` texts and ids.
+const LANGUAGE_CARD = {
+  id: "language-rules",
+  legend: "Language rules",
+  help: "In this browser, a lookup uses the language of the first rule whose conditions all match. Website domains match"
+    + " their subdomains too, Key held is checked as each word is scanned, and popup level 0 is the page, 1 the first"
+    + " popup. When no rule matches, the language is chosen as above.",
+  noun: "Language",
+  failure: "language rules",
+};
+
+export function createProfileRules({ document, create, readSelection, profileList, profileLabel, writeRules, setStatus,
+  card: texts = LANGUAGE_CARD }) {
+  const card = create("fieldset", { className: "lookup-group", id: texts.id });
+  card.innerHTML = `<legend data-search-keywords="profile conditions website domain url modifier key popup level"></legend>
+    <p class="field-hint" id="${texts.id}-help"></p>
+    <ol class="language-list language-rule-list" id="${texts.id}-list"></ol>
+    <div class="options-actions"><button type="button" class="ghost" id="${texts.id}-add" aria-describedby="${texts.id}-help">Add a rule</button></div>`;
+  card.querySelector("legend").textContent = texts.legend;
+  card.querySelector(`#${texts.id}-help`).textContent = texts.help;
+  const list = card.querySelector(`#${texts.id}-list`);
+  const add = card.querySelector(`#${texts.id}-add`);
   let rules = [];
   let shown = null;
   let saving = Promise.resolve();
@@ -53,7 +67,7 @@ export function createProfileRules({ document, create, readSelection, profileLis
 
   // What the list shows: the rules and the languages their menus offer.
   function shownKey() {
-    return JSON.stringify([rules, profileList().map(profile => [profile.id, profile.language])]);
+    return JSON.stringify([rules, profileList().map(profile => [profile.id, profileLabel(profile)])]);
   }
 
   // Applies `change` to a copy of the rules, shows it with focus on `focus`
@@ -66,7 +80,7 @@ export function createProfileRules({ document, create, readSelection, profileLis
     renderRules(focus);
     pending += 1;
     saving = saving.then(() => writeRules(next)).then(() => setStatus(""), error => {
-      setStatus(`Could not save the language rules: ${describeErrorOrJson(error)}`, "error", error);
+      setStatus(`Could not save the ${texts.failure}: ${describeErrorOrJson(error)}`, "error", error);
       rules = copyRules(storedRules());
     }).finally(() => {
       pending -= 1;
@@ -136,9 +150,9 @@ export function createProfileRules({ document, create, readSelection, profileLis
     item.dataset.focusKey = `${index}`;
     const head = create("div", { className: "options-actions language-rule-head" });
     const label = create("label", { className: "field-label", text: `Rule ${index + 1}: use` });
-    const profile = select(profileList().map(entry => [entry.id, optionLabel(entry.language)]), rule.profileId,
-      "profile", `Language of ${name}`, value => edit(next => { next[index].profileId = value; }));
-    profile.id = `language-rule-${index}-profile`;
+    const profile = select(profileList().map(entry => [entry.id, profileLabel(entry)]), rule.profileId,
+      "profile", `${texts.noun} of ${name}`, value => edit(next => { next[index].profileId = value; }));
+    profile.id = `${texts.id === "language-rules" ? "language-rule" : texts.id}-${index}-profile`;
     label.htmlFor = profile.id;
     const move = (to, role) => edit(next => next.splice(to, 0, ...next.splice(index, 1)), { key: `${to}`, role });
     head.append(label, profile,

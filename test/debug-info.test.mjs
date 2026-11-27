@@ -118,6 +118,7 @@ test("each language keeps its stored and effective settings, selected theme, scr
       { id: "ja", language: "ja", settings: { popupTheme: "crystal", popupThemeVariant: "blue" }, packSettings: {} },
       { id: "ar", language: "ar", settings: { showPitchAccentColors: true, maxResults: 8 }, packSettings: {} },
       { id: "zz", language: "zz", settings: {}, packSettings: { preserved: true } },
+      { id: "p-video", language: "ja", name: "Video", settings: {}, packSettings: {} },
     ] };
   stored.languageSelection = { revision: 2, activeProfileId: "ar", autoSwitch: true,
     rules: [{ profileId: "ar", conditions: [{ type: "domain", value: "example.com" }, { type: "modifier", key: "Alt" }] }] };
@@ -129,7 +130,9 @@ test("each language keeps its stored and effective settings, selected theme, scr
   const config = report.configuration;
   assert.equal(config.activeProfileId, "ar");
   assert.deepEqual(config.languageSelection, stored.languageSelection);
-  const [ja, ar, missing] = config.profiles;
+  const [ja, ar, missing, video] = config.profiles;
+  // A copied profile is reported with its id, language and name (docs/profiles.md 2).
+  assert.deepEqual([video.id, video.language, video.name], ["p-video", "ja", "Video"]);
   assert.deepEqual(ja.theme, { selected: "crystal", renderer: "crystal", variant: "blue" });
   assert.equal(ar.packAvailable, true);
   assert.equal(ar.settings.showPitchAccentColors, true);
